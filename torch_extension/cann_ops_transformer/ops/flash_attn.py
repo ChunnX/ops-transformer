@@ -7,31 +7,32 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional
 import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 
 FA_METADATA_SIZE = 1024
 FA_METADATA_OP_NAME = "flash_attn_metadata"
 
+
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
-    batchSize = 0
     if batch_size is not None:
-        batchSize = batch_size
+        return batch_size
     elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
-        batchSize = cu_seqlens_q.size(0) - 1
+        return cu_seqlens_q.size(0) - 1
     elif seqused_q is not None:
-        batchSize = seqused_q.size(0)
-    return batchSize
+        return seqused_q.size(0)
+    return 0
+
 
 def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
-    metadataSize = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
-    alignedSize = ((metadataSize + 4095) // 4096) * 4096
-    return alignedSize
+    metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    return ((metadata_size + 4095) // 4096) * 4096
+
 
 class FlashAttenOpBuilder(OpBuilder):
     def __init__(self):
@@ -75,8 +76,8 @@ class FlashAttenOpBuilder(OpBuilder):
             mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
             layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
         ):
-            metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
-            return torch.empty((metadataSize,), dtype=torch.int32, device="npu")
+            metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
+            return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def flash_attn_meta(
@@ -94,51 +95,52 @@ class FlashAttenOpBuilder(OpBuilder):
             return_softmax_lse: Optional[int] = 0
         ):
             if layout_q == "TND":
-                tSize = q.size(0)
-                nSize = q.size(1)
-                dSize = v.size(2)
-                softmaxOutSize = (nSize, tSize)
+                t_size = q.size(0)
+                n_size = q.size(1)
+                d_size = v.size(2)
+                softmax_out_size = (n_size, t_size)
             elif layout_q == "BSND":
-                bSize = q.size(0)
-                sSize = q.size(1)
-                nSize = q.size(2)
-                dSize = v.size(3)
-                softmaxOutSize = (bSize, nSize, sSize)
+                b_size = q.size(0)
+                s_size = q.size(1)
+                n_size = q.size(2)
+                d_size = v.size(3)
+                softmax_out_size = (b_size, n_size, s_size)
             else:
-                bSize = q.size(0)
-                nSize = q.size(1)
-                sSize = q.size(2)
-                dSize = v.size(3)
-                softmaxOutSize = (bSize, nSize, sSize)
+                b_size = q.size(0)
+                n_size = q.size(1)
+                s_size = q.size(2)
+                d_size = v.size(3)
+                softmax_out_size = (b_size, n_size, s_size)
 
             if layout_out == "TND":
                 torch._check(
                     layout_q == "TND",
-                    lambda: "When the layout of output is TND, the layout of query  must be TND, but got " + str(layout_q),
+                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
                 )
-                attentionOutSize = (tSize, nSize, dSize)
+                attention_out_size = (t_size, n_size, d_size)
             elif layout_out == "BNSD":
                 torch._check(
                     layout_q == "BNSD",
-                    lambda: "When the layout of output is BNSD, the layout of query  must be BNSD, but got " + str(layout_q),
+                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
                 )
-                attentionOutSize = (bSize, nSize, sSize, dSize)
+                attention_out_size = (b_size, n_size, s_size, d_size)
             else:
                 torch._check(
                     layout_q != "TND",
-                    lambda: "When the layout of output is BSND, the layout of query  must be BNSD or BSND, but got " + str(layout_q),
+                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
                 )
-                attentionOutSize = (bSize, sSize, nSize, dSize)
+                attention_out_size = (b_size, s_size, n_size, d_size)
 
             return (
-                     torch.empty(attentionOutSize, dtype=q.dtype, device='meta'),
-                     torch.empty(softmaxOutSize, dtype=q.dtype, device='meta')
+                     torch.empty(attention_out_size, dtype=q.dtype, device='meta'),
+                     torch.empty(softmax_out_size, dtype=q.dtype, device='meta')
                  )
 
 
 # Instantiate the builder
 flash_attn_op_builder = FlashAttenOpBuilder()
 op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
+
 
 @impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
 def flash_attn_metadata(
@@ -164,8 +166,8 @@ def flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
-    output = torch.empty((metadataSize,), dtype=torch.int32, device="npu")
+    metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
+    output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
  
     return op_module.flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                               num_heads_q, num_heads_kv, head_dim,
