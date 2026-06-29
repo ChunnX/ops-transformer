@@ -28,6 +28,9 @@ def _clear_caches():
     global _kernel_cache, _workspace_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
+    # Clear TileLang JIT artifact cache to avoid stale compiled kernels
+    import tilelang
+    tilelang.disable_cache()
 
 
 pass_configs = {
