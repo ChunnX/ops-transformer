@@ -752,7 +752,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1Dis
     for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
         Level1DispatchUrmaComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
     }
-    // PipeBarrier<PIPE_ALL>();
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
 }
@@ -952,7 +951,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ReadRelay
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
-    // PipeBarrier<PIPE_ALL>();
 }
 
 // ============================================================================
@@ -1092,7 +1090,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::TripleInf
                     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
 
-                // Phase 2: flag位AtomicAdd，确认当前token需要atomic的槽位
+                    // Phase 2: flag位AtomicAdd，确认当前token需要atomic的槽位
                     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                     // rowDstOffsetInCore 是跨expert累加的全局偏移(含前置 expert 的行数)，需要减掉前置专家行数;
                     int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
