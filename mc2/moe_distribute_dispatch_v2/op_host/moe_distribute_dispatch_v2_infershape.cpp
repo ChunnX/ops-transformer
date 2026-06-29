@@ -29,7 +29,7 @@ enum class QuantMode : int64_t {
     QUANT_MODE_PERTOKEN = 2,
     QUANT_MODE_PERGROUP = 3,
     QUANT_MODE_MX = 4,
-    QUANT_MODE_MX_CUBLAS = 6,
+    QUANT_MODE_MX_CUBLAS = 5,
 };
 }
 

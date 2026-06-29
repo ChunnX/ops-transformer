@@ -62,7 +62,7 @@ enum class QuantModeA5 : uint32_t {
     PERTOKEN_DYNAMIC_QUANT = 2,
     PERGROUP_DYNAMIC_QUANT = 3,
     MX_QUANT = 4,
-    MX_QUANT_CUBLAS = 6,
+    MX_QUANT_CUBLAS = 5,
     BUTT
 };
 
