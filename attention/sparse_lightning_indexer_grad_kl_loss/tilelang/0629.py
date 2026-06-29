@@ -28,9 +28,6 @@ def _clear_caches():
     global _kernel_cache, _workspace_cache
     _kernel_cache.clear()
     _workspace_cache.clear()
-    # Clear TileLang JIT artifact cache to avoid stale compiled kernels
-    import tilelang
-    tilelang.disable_cache()
 
 
 pass_configs = {
@@ -153,8 +150,8 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-5, -4, -3, -2],  # dQueryIndex(15), dWeight_partial(16), reluGradRes(17), LossOut(18)
-    workspace_idx=[10, 11, 12, 13, 14, 19, 20],  # +MatmulPartial(19), dQueryIndex_ws(20)
+    out_idx=[15, 16, 17, 18],  # dQueryIndex, dWeight_partial, reluGradRes, LossOut
+    workspace_idx=[10, 11, 12, 13, 14, 19, 20],  # bmm1Res,bmm2Res,PReduced,ReduceSumY,SoftmaxI,MatmulPartial,dQueryIndex_ws
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
