@@ -53,6 +53,15 @@ void CheckStemIndexerInputs(const at::Tensor &qflat, const at::Tensor &kflat, co
 }
 } // namespace
 
+at::Tensor npu_stem_indexer_metadata(const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
+                                     int64_t q_heads, int64_t kv_heads, bool causal, int64_t stem_block_size,
+                                     int64_t dim_qkflat, int64_t window_size, const at::Tensor &output)
+{
+    ACLNN_CMD(aclnnStemIndexerMetadata, q_seq_lens, kv_seq_lens, q_heads, kv_heads, causal, stem_block_size,
+              dim_qkflat, window_size, output);
+    return output;
+}
+
 std::tuple<at::Tensor, at::Tensor> npu_stem_indexer(
     const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
     const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens, const c10::optional<at::Tensor> &num_prompt_tokens,
@@ -80,6 +89,7 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("npu_stem_indexer_metadata", &npu_stem_indexer_metadata, "npu_stem_indexer_metadata");
     m.def("npu_stem_indexer", &npu_stem_indexer, "npu_stem_indexer");
 }
 } // namespace op_api

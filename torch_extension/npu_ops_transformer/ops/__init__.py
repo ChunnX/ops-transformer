@@ -31,5 +31,4 @@
 #     convert_npu_quant_lightning_indexer_v2_metadata
 # )
 
-from .stem_indexer import npu_stem_indexer
-from .stem_indexer_metadata import npu_stem_indexer_metadata
+from .stem_indexer import npu_stem_indexer, npu_stem_indexer_metadata
