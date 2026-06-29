@@ -1226,7 +1226,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetRowGroupCom
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> rowGroupCompleteGm;
-        rowGroupCompleteGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.rowGroupCompletePtr);
+        rowGroupCompleteGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
         if (coreLen > 0) {
             Duplicate(resetTensor_, 0, coreLen);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
@@ -1289,7 +1289,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
 
     GlobalTensor<int32_t> rowGroupComplete;
-    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.rowGroupCompletePtr);
+    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
 
     // Phase 1: 从本地 URMA mask slot 读取每个源 rank 的 token count, 计算每 rank 的行范围
     // token 按源 rank 紧密排布, 利用 mask slot 中的 count 可精确计算每 rank 的起止行
