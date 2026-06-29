@@ -24,14 +24,6 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 
-// #ifdef BUILD_OPEN_PROJECT
-// #include "version/hcomm_version.h"
-// #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-// #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-// #include "common/op_api/mc2_context.h"
-// #endif
-// #endif
-
 // 量化与非量化共用的方法和常量、枚举值
 namespace matmul_allto_all_check {
 using namespace op;
@@ -250,18 +242,8 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-//             // default：小于等于8P走CCU，否则走AICPU
-//             // 获取卡数
-//             uint32_t rankSize = 0;
-// #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-//             auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-//             CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-// #endif
-//             commModeEnum = (rankSize <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         } else {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"\" or \"ccu\" or \"ai_cpu\"");
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, \"ccu\" or \"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
