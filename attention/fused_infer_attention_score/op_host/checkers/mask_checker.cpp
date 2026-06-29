@@ -404,7 +404,8 @@ ge::graphStatus MaskChecker::CheckAndProcessTreeMask(const FiaTilingInfo &fiaInf
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape, MaskInfo &maskInfo) const
+ge::graphStatus MaskChecker::CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo,
+                                                   const gert::Tensor *maskShape, MaskInfo &maskInfo) const
 {
     if ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) &&
         fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
@@ -479,7 +480,6 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
         }
     }
     
-
     return ge::GRAPH_SUCCESS;
 }
 
