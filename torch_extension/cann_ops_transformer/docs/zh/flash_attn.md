@@ -1,4 +1,4 @@
-# flash_attn / flash_attn_metadata<a name="ZH-CN_TOPIC_0000002309174912"></a>
+# flash_attn <a name="ZH-CN_TOPIC_0000002309174912"></a>
 
 ## 产品支持情况
 
