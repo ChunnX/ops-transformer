@@ -189,6 +189,7 @@ public:
         CommProtocol protocol;
         GetCommProtocol(hcclHandle, protocol);
 
+        protocol = COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, protocol, commContextStruct, cclBufferSize);
 
