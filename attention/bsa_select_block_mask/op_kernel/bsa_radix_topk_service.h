@@ -20,10 +20,6 @@
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
 
-#ifndef BSA_TOPK_INIT_ATTNSCORE_PROBE
-#define BSA_TOPK_INIT_ATTNSCORE_PROBE 0
-#endif
-
 template <typename BSAT>
 class BSARadixTopKService {
 public:
@@ -44,7 +40,6 @@ public:
 
     __aicore__ inline void ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx);
 private:
-    __aicore__ inline void InitAttnScoreGmForRobustness(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen,
                                         int32_t roundId, int32_t tileId);
@@ -269,56 +264,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(uint32_t batchIdx, uint32_t headIdx)
-{
-    if (tileNum_ == 0) {
-        return;
-    }
-
-    (void)batchIdx;
-    (void)headIdx;
-    // attnScoreGmLocal is a per batch/head scratch buffer reused by the outer loop.
-    uint64_t baseOffset = 0;
-    for (uint64_t tileId = 0; tileId < tileNum_; ++tileId) {
-        uint64_t globalTileId = tileStartId_ + tileId;
-        uint64_t curTileLen = (tileId + 1 == tileNum_) ? tailTileLen_ : tileLen_;
-        uint64_t offset = baseOffset + globalTileId * tileLen_;
-        AscendC::InitOutput(attnScoreGmLocal[offset], curTileLen, static_cast<SCORE_T>(0.0f));
-        PipeBarrier<PIPE_ALL>();
-
-        uint64_t oneLen = curTileLen >= 64 ? 8 : (curTileLen >= 16 ? 4 : 1);
-        uint64_t oneStart = curTileLen / 2;
-        if (oneStart + oneLen > curTileLen) {
-            oneStart = curTileLen > oneLen ? curTileLen - oneLen : 0;
-        }
-        AscendC::InitOutput(attnScoreGmLocal[offset + oneStart], oneLen, static_cast<SCORE_T>(1.0f));
-
-        uint64_t gap = curTileLen >= 64 ? 16 : 4;
-        uint64_t setStart = oneStart + oneLen + gap;
-        if (setStart < curTileLen) {
-            uint64_t stride = curTileLen >= 64 ? 7 : 3;
-            uint64_t jitter = globalTileId % stride;
-            for (uint64_t i = 0; i < 4; ++i) {
-                uint64_t pos = setStart + jitter + i * stride;
-                if (pos < curTileLen) {
-                    SCORE_T targetValue = (i % 2 == 0) ? static_cast<SCORE_T>(2.0f) : static_cast<SCORE_T>(-2.0f);
-                    attnScoreGmLocal.SetValue(offset + pos, targetValue);
-                }
-            }
-        }
-    }
-    PipeBarrier<PIPE_ALL>();
-}
-
-template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
     // 1. Calculate blockOffset
     this->blockOffset_ = tileStartId_ * tileLen_;
-    if (BSA_TOPK_INIT_ATTNSCORE_PROBE) {
-        InitAttnScoreGmForRobustness(batchIdx, headIdx);
-        SyncAll();
-    }
 
     // 3. ClearTileTopKInWs() — batch zero tileTopK in WS
     ClearTileTopKInWs();
