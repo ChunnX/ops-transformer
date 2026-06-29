@@ -1546,33 +1546,30 @@ private:
             const int64_t E = params.expertPerRank;
             const int64_t M = params.maxOutputSize;
             const int64_t h = params.problemShape.k();
-            const int64_t MB = static_cast<int64_t>(MB_SIZE);
+            const int64_t bs = params.problemShape.m();
+            const int64_t topK = params.topK;
 
-            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
-            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
-            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
+            // tokenPerExpert = EP × AlignUp(EP×E, 128) × 4B
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line
+            int64_t flagSize = EP * E * 64;
+            // CrossRankSync 尾部
+            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
 
-            // perTokenScale: M×4B
-            int64_t perTokenScaleNeed = M * 4;
-            int64_t perTokenScaleSize = (perTokenScaleNeed > MB) ? perTokenScaleNeed : MB;
+            // offsetA: dispatch 数据区（A2 W4A8 分开发送，不含 scale）
+            int64_t offsetASize = M * h;
+            // perTokenScale: 独立 scale 区
+            int64_t perTokenScaleSize = M * sizeof(float);
+            // offsetD: combine 输出区
+            int64_t offsetDSize = bs * topK * h * sizeof(int16_t);
 
-            // Flag: EP×E×64B，每 slot 占 64B cache line
-            int64_t flagSize = (EP * E * 64 > MB) ? EP * E * 64 : MB;
-
-            // 从尾部向前布局固定段
-            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            // 从尾部向前：TPE → flag → D → perTokenScale
+            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
             offsetFlag = offsetPeerTokenPerExpert - flagSize;
 
-            // offsetA:offsetD 按 (h+512):2h 比例动态切分剩余空间
-            int64_t remaining = offsetFlag - perTokenScaleSize;
-            int64_t ratioA = h + 512;
-            int64_t ratioD = 2 * h;
-            int64_t ratioSum = ratioA + ratioD;
-            int64_t offsetASize = remaining * ratioA / ratioSum;
-
             offsetA = 0;
-            offsetPeerPerTokenScale = AlignUp(offsetASize, 512);
-            offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
+            offsetPerTokenScale = offsetASize;
+            offsetD = offsetPerTokenScale + perTokenScaleSize;
         }
     };
 
