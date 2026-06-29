@@ -409,6 +409,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const a
         return ACLNN_SUCCESS;
     }
     OP_LOGD("X1 is %s. X2 is %s.", x1->ToString().GetString(), x2->ToString().GetString());
+    OP_LOGI("[MatmulReduceScatterV2][ADDR_TRACE] x1Addr=0x%llx x2Addr=0x%llx outputAddr=0x%llx workspaceSize=%lu",
+            (uint64_t)x1->GetTensor()->GetAddr(), (uint64_t)x2->GetTensor()->GetAddr(),
+            (uint64_t)output->GetTensor()->GetAddr(), workspaceSize ? *workspaceSize : 0);
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
     bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
