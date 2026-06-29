@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file vf_mul_sel_softmaxflashv2_cast_nz_dn.h
  * \brief
@@ -27,13 +27,12 @@ using namespace MicroAPI;
 constexpr float VF_BSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-    __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, 
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
-    const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
-    const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+__simd_vf__ inline void ProcessVec1DnNoUpdateVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
+    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    float deScaleQK, const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -130,8 +129,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -177,8 +175,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -223,7 +220,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    
+
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -289,19 +286,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
@@ -313,19 +313,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
@@ -339,48 +342,48 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnNoUpdate(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor, 
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
     float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T*) expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
-    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
-    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = nullptr;
+    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
+    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
+    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale * deScaleQK;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnNoUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
-        new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
+    ProcessVec1DnNoUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
+                                                  maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale,
+                                                  deScaleQK, minValue, keepProb, needAtten, dScale, blockStride,
+                                                  repeatStride, pScale, qGatherIdxUb);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-    __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, 
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
-    const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
-    const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+__simd_vf__ inline void
+ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+                      __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
+                      __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, __ubuf__ uint8_t *indexesUb, const uint32_t m,
+                      const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                      float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+                      const uint32_t repeatStride, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -478,8 +481,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -525,8 +527,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -580,10 +581,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -643,19 +642,22 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
@@ -667,19 +669,22 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
@@ -695,38 +700,38 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     LoadAlign(vreg_l0, new_global_sum);
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdate(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
     float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
-    __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float* new_global_sum = (__ubuf__ T*) expSumTensor.GetPhyAddr();
-    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
-    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
-    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = nullptr;
+    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
+    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
+    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale * deScaleQK;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
-        new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
+                                                maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK,
+                                                minValue, keepProb, needAtten, dScale, blockStride, repeatStride,
+                                                pScale, qGatherIdxUb);
 }
 
 /*
@@ -748,38 +753,40 @@ __aicore__ inline void ProcessVec1DnUpdate(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
-                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
-                                       const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                       const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, 
-                                       const LocalTensor<T>& kScaleTensor, const uint32_t m, const uint32_t n,
+__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                       const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                       const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                       const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
+                                       const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n,
                                        const uint32_t originN, const T scale, float deScaleQK, const T minValue,
                                        float keepProb, bool needAtten, const float pScale = 1.0f)
 {
-    __ubuf__ uint32_t* qGatherIdxUb = (__ubuf__ uint32_t*)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)].template Get<uint32_t>().GetPhyAddr());
+    __ubuf__ uint32_t *qGatherIdxUb =
+        (__ubuf__ uint32_t *)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
+                                  .template Get<uint32_t>()
+                                  .GetPhyAddr());
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdate<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
+            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnUpdate<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
+            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-    __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, 
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
-    const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
-    const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f)
+__simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
+    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    float deScaleQK, const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -876,8 +883,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -912,8 +918,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -958,7 +963,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    
+
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -1024,19 +1029,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
@@ -1047,19 +1055,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
         Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
@@ -1073,48 +1084,46 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor, 
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
     float keepProb, bool needAtten, const float pScale = 1.0f)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T*) expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
-    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
-    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = nullptr;
+    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
+    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
+    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale * deScaleQK;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
-        new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+    ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-    __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, 
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
-    const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
-    const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f)
+__simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
+    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    float deScaleQK, const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1212,8 +1221,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -1248,8 +1256,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -1303,10 +1310,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -1366,19 +1371,22 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
         Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
@@ -1389,19 +1397,22 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
         Add(vreg_x_sum_7, vreg_x_exp_7, vreg_x_sum_7, preg_134);
         if constexpr (IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         } else {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
@@ -1417,61 +1428,59 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
     LoadAlign(vreg_l0, new_global_sum);
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
     float keepProb, bool needAtten, const float pScale = 1.0f)
 {
-    __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float* new_global_sum = (__ubuf__ T*) expSumTensor.GetPhyAddr();
-    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
-    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
-    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = nullptr;
+    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
+    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
+    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale * deScaleQK;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
-        new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+    ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
-                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
-                                       const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                       const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, 
-                                       const LocalTensor<T>& kScaleTensor, const uint32_t m, const uint32_t n,
-                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-                                       float keepProb, bool needAtten, const float pScale = 1.0f)
+__aicore__ inline void ProcessVec1VfDnPerTokenHead(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+    float keepProb, bool needAtten, const float pScale = 1.0f)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdatePerTokenHead<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
+            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnUpdatePerTokenHead<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
+            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
     }
 }
 
@@ -1487,16 +1496,16 @@ __simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float *out_ub, __ubuf__ float
 }
 
 template <typename T>
-__aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const LocalTensor<T> &oriTensor,
+__aicore__ inline void BroadcastMaxSum(const LocalTensor<T> &outTensor, const LocalTensor<T> &oriTensor,
                                        uint32_t vecS1RealSize)
 {
-    __ubuf__ float *out_ub = (__ubuf__ T*)outTensor.GetPhyAddr();
-    __ubuf__ float *ori_ub = (__ubuf__ T*)oriTensor.GetPhyAddr();
+    __ubuf__ float *out_ub = (__ubuf__ T *)outTensor.GetPhyAddr();
+    __ubuf__ float *ori_ub = (__ubuf__ T *)oriTensor.GetPhyAddr();
 
     // Align8, broadcast one element to 8 elements, one register can store 64 elements,
     // so we can handle 64 / 8 = 8 elements per loop.
     uint16_t loopM = (vecS1RealSize + 7) >> 3;
     BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
 }
-}
+} // namespace FaVectorApi
 #endif // MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_

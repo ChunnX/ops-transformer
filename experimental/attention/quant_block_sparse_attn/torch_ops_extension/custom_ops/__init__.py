@@ -1,31 +1,31 @@
-# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+# pylint: disable=huawei-wrong-import-position
 import os
 import pkgutil
 import warnings
 
-__all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]))
+import torch
+import torch_npu
 
 # 导入so 和 python
 from . import custom_ops_lib
 from .converter import npu_quant_block_sparse_attn
 from .converter import npu_quant_block_sparse_attn_metadata
 
+__all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]))
+
 """
 import custom ops as torch_npu ops to support the following usage:
 'torch.ops.custom.npu_quant_block_sparse_attn()'
 'torch_npu.npu_quant_block_sparse_attn()'
 """
-
-# Ensure that the torch and torch_npu has been successfully imported to avoid subsequent mount operation failures
-import torch
-import torch_npu
 
 # get torch.ops.custom module
 custom_ops_module = getattr(torch.ops, 'custom', None)
@@ -41,7 +41,7 @@ if custom_ops_module is not None:
         setattr(torch_npu, op_name, custom_op_func)
 
 else:
-    warn_msg = "torch.ops.custom module is not found, mount custom ops to torch_npu failed." \
+    WARN_MSG = "torch.ops.custom module is not found, mount custom ops to torch_npu failed." \
                "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.custom.xxx."
-    warnings.warn(warn_msg)
-    warnings.filterwarnings("ignore", message=warn_msg)
+    warnings.warn(WARN_MSG)
+    warnings.filterwarnings("ignore", message=WARN_MSG)

@@ -1,15 +1,16 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 // BSA-COPY-OF: FIA fullquant GQA local migration.
-// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
+// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空
+// sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
  * ile quant_block_sparse_attn_attenmask.h
@@ -60,8 +61,8 @@ struct AttenMaskInfo {
 };
 
 __aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
-    int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size, int64_t s2BaseSize, 
-    ConstInfo &constInfo)
+                                         int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size,
+                                         int64_t s2BaseSize, ConstInfo &constInfo)
 {
     if (s1Size == 0 || s2Size == 0) {
         return;
@@ -86,9 +87,8 @@ __aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, 
 }
 
 template <bool hasAtten>
-__aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_t deltaPre,
-                                               int64_t s1Offset, const RunInfo &runInfo, 
-                                               ConstInfo &constInfo,
+__aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_t deltaPre, int64_t s1Offset,
+                                               const RunInfo &runInfo, ConstInfo &constInfo,
                                                AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
@@ -104,10 +104,10 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
             return;
         }
         if (((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) ||
-            (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_BAND_MODE) &&
-                runInfo.boIdx == attenMaskInfo.bandIndex) ||
-            (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_LEFT_UP_CAUSAL_MODE) &&
-                runInfo.boIdx == attenMaskInfo.bandIndex))) {
+             (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_BAND_MODE) &&
+              runInfo.boIdx == attenMaskInfo.bandIndex) ||
+             (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_LEFT_UP_CAUSAL_MODE) &&
+              runInfo.boIdx == attenMaskInfo.bandIndex))) {
             int64_t preFactor = deltaPre + 1 + constInfo.s1BaseSize;
             if (causalOrNextFactor >= 0 && preFactor <= 0) {
                 attenMaskInfo.computeMode = AttenMaskComputeMode::NO_NEED_COMPUTE_MODE;
@@ -128,7 +128,7 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
                 attenMaskInfo.computeMode = AttenMaskComputeMode::NO_NEED_COMPUTE_MODE;
             } else {
                 int64_t intersectionX = runInfo.actualS1Size - runInfo.actualS2Size +
-                    ((__gm__ int64_t *)attenMaskInfo.prefixNAddr)[runInfo.boIdx];
+                                        ((__gm__ int64_t *)attenMaskInfo.prefixNAddr)[runInfo.boIdx];
                 if (s1Offset >= intersectionX) {
                     attenMaskInfo.computeMode = AttenMaskComputeMode::CAUSAL_OR_NEXT_ONLY_MODE;
                 } else if (s1Offset + constInfo.s1BaseSize <= intersectionX) {
@@ -143,8 +143,8 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
 }
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
-__aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo &runInfo, 
-    ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo)
+__aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo &runInfo, ConstInfo &constInfo,
+                                                     AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
         int64_t bOffset = 0;
@@ -159,8 +159,8 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo &runInfo,
             bOffset = runInfo.b1SSAttenMaskOffset;
         }
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize + runInfo.vecCoreOffset;
-        if (constInfo.isGqa) { 
-            s1Offset = s1Offset % constInfo.s1Size; 
+        if (constInfo.isGqa) {
+            s1Offset = s1Offset % constInfo.s1Size;
         }
         int64_t s2Offset = 0;
 
@@ -205,8 +205,7 @@ __aicore__ inline int64_t ComputeOffsetForPrefixRectangle(const int64_t &delta, 
 }
 
 #ifndef __CCE_KT_TEST__
-__simd_vf__ inline void MergeBandVF(const uint64_t maskPreUb, const uint64_t maskNextUb,
-                                    const uint16_t loopCount)
+__simd_vf__ inline void MergeBandVF(const uint64_t maskPreUb, const uint64_t maskNextUb, const uint16_t loopCount)
 {
     RegTensor<uint32_t> vreg_pre;
     RegTensor<uint32_t> vreg_next;
@@ -217,11 +216,11 @@ __simd_vf__ inline void MergeBandVF(const uint64_t maskPreUb, const uint64_t mas
     Duplicate(vreg_xor, 0x1010101);
 
     for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_pre, (__ubuf__ uint32_t*&)maskPreUb + i * 64);
-        LoadAlign(vreg_next, (__ubuf__ uint32_t*&)maskNextUb + i * 64);
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
         Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
         Or(vreg_or, vreg_not, vreg_next, preg_all);
-        StoreAlign((__ubuf__ uint32_t*&)maskNextUb + i * 64, vreg_or, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_or, preg_all);
     }
 }
 
@@ -246,8 +245,7 @@ __aicore__ inline void MergeBandModeMask(LocalTensor<uint8_t> &maskPre, LocalTen
     MergeBandVF(maskPreUb, maskNextUb, loopCount);
 }
 
-__simd_vf__ inline void MergePrefixVF(const uint64_t maskPreUb, const uint64_t maskNextUb,
-                                      const uint16_t loopCount)
+__simd_vf__ inline void MergePrefixVF(const uint64_t maskPreUb, const uint64_t maskNextUb, const uint16_t loopCount)
 {
     RegTensor<uint32_t> vreg_pre;
     RegTensor<uint32_t> vreg_next;
@@ -255,16 +253,16 @@ __simd_vf__ inline void MergePrefixVF(const uint64_t maskPreUb, const uint64_t m
     MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_pre, (__ubuf__ uint32_t*&)maskPreUb + i * 64);
-        LoadAlign(vreg_next, (__ubuf__ uint32_t*&)maskNextUb + i * 64);
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
         And(vreg_and, vreg_pre, vreg_next, preg_all);
-        StoreAlign((__ubuf__ uint32_t*&)maskNextUb + i * 64, vreg_and, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_and, preg_all);
     }
 }
 
 template <bool hasAtten>
 __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalTensor<uint8_t> &maskNext,
-                                         int32_t &halfS1RealSize, int64_t s2BaseSize)
+                                           int32_t &halfS1RealSize, int64_t s2BaseSize)
 {
     uint64_t maskPreUb = maskPre.GetPhyAddr();
     uint64_t maskNextUb = maskNext.GetPhyAddr();
@@ -295,10 +293,11 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 {
 }
 #endif
-                                      
+
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-                                                      AttenMaskInfo &attenMaskInfo, bool first_block = true, const bool useDn = false, const int32_t subLoop = 0)
+                                                      AttenMaskInfo &attenMaskInfo, bool first_block = true,
+                                                      const bool useDn = false, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten == true) {
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
@@ -315,7 +314,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
         } else {
             s2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
         }
-        
+
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
         }
@@ -323,17 +322,19 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
         int64_t ret = 0;
 
         uint32_t s2BaseSize = constInfo.s2BaseSize;
-        ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize,
-            attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
+        ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize, attenMaskInfo.attenMaskS2Size,
+                                     runInfo.vecCoreOffset, useDn);
         return ret;
     }
 }
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-    AttenMaskInfo &attenMaskInfo, const bool first_block = false, const bool useDn = true, const int32_t subLoop = 0)
+                                                 AttenMaskInfo &attenMaskInfo, const bool first_block = false,
+                                                 const bool useDn = true, const int32_t subLoop = 0)
 {
-    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo, first_block, useDn, subLoop);
+    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo, first_block,
+                                                                       useDn, subLoop);
     return result;
 }
 
@@ -370,10 +371,9 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
 }
 
 template <bool hasAtten>
-__aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb,
-                                            GlobalTensor<uint8_t> &srcTensor,
-                                            RunInfo &runInfo, ConstInfo &constInfo,
-                                            AttenMaskInfo &attenMaskInfo, bool needAtten, uint64_t offset, int32_t sparseBlkIdx, uint32_t s2Len)
+__aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb, GlobalTensor<uint8_t> &srcTensor,
+                                            RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
+                                            bool needAtten, uint64_t offset, int32_t sparseBlkIdx, uint32_t s2Len)
 {
     if constexpr (hasAtten) {
         int64_t maskOffset = 0;
@@ -383,9 +383,10 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb,
             Duplicate<uint8_t>(attenMaskUb[offset], 0, constInfo.kvSparseBlockSize * (constInfo.s1BaseSize >> 1));
         } else {
             if (needAtten) {
-                maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, sparseBlkIdx == runInfo.sparseBlkIdx1);
-                BoolCopyInRegbase(attenMaskUb[offset], srcTensor, maskOffset, s2Len,
-                            constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+                maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo,
+                                                              sparseBlkIdx == runInfo.sparseBlkIdx1);
+                BoolCopyInRegbase(attenMaskUb[offset], srcTensor, maskOffset, s2Len, constInfo.s1BaseSize >> 1,
+                                  attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
             } else {
                 Duplicate<uint8_t>(attenMaskUb[offset], 1, s2Len * (constInfo.s1BaseSize >> 1));
             }
@@ -394,17 +395,19 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb,
 }
 
 template <bool hasAtten>
-__aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
-                                            GlobalTensor<uint8_t> &srcTensor,
-                                            RunInfo &runInfo, ConstInfo &constInfo,
-                                            AttenMaskInfo &attenMaskInfo, bool needAtten1, bool needAtten2)
+__aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
+                                         RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
+                                         bool needAtten1, bool needAtten2)
 {
     LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten1, 0, runInfo.sparseBlkIdx1, runInfo.s2SparseBlk1RealSize);
-    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten2, (constInfo.s1BaseSize >> 1) * runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx2, runInfo.s2SparseBlk2RealSize);  
+    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten1, 0,
+                                   runInfo.sparseBlkIdx1, runInfo.s2SparseBlk1RealSize);
+    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten2,
+                                   (constInfo.s1BaseSize >> 1) * runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx2,
+                                   runInfo.s2SparseBlk2RealSize);
     attenMaskInQue.template EnQue(attenMaskUb);
 }
 
-}
+} // namespace regbaseutil
 
 #endif // QUANT_BLOCK_SPARSE_ATTN_ATTENMASK_H_

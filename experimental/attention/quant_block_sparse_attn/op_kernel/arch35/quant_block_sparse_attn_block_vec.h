@@ -9,7 +9,8 @@
  */
 
 // BSA-COPY-OF: FIA fullquant GQA local migration.
-// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
+// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空
+// sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
  * ile quant_block_sparse_attn_block_vec.h
@@ -50,18 +51,15 @@ public:
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
-    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool containAllOptionalInput = hasAtten;
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     static constexpr TPosition bmm2OutPos = GetC2Position();
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
-    static constexpr bool isW8In = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                                  IsSameType<INPUT_T, hifloat8_t>::value ||
-                                  IsSameType<INPUT_T, int8_t>::value;
+    static constexpr bool isW8In = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                                   IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value;
     static constexpr bool POST_QUANT = false;
     static constexpr bool USE_DN = true;
     static constexpr int64_t FP8_QUANT_KV_BLOCK_SIZE = 256;
@@ -72,9 +70,11 @@ public:
     static constexpr uint32_t preloadTimes = 3;
     static constexpr uint64_t SYNC_MODE = 4;
 
-    __aicore__ inline BSABlockVec() {};
+    __aicore__ inline BSABlockVec(){};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
-        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, AttenMaskInfo &attenMaskInfo) {
+                                        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        AttenMaskInfo &attenMaskInfo)
+    {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             tilingData = tiling;
@@ -83,42 +83,45 @@ public:
             attenMaskInfoPtr = &attenMaskInfo;
         }
     }
-    __aicore__ inline void InitCommonGlobalBuffer(
-        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-        __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-        ConstInfo &constInfo);
+    __aicore__ inline void InitCommonGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+                                                  __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+                                                  __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+                                                  __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
+                                                  ConstInfo &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
-        ConstInfo &constInfo, int32_t subLoop = 0);
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                       RunInfo &runInfo, ConstInfo &constInfo, int32_t subLoop = 0);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
-        ConstInfo &constInfo);
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-        ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(
-        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-        __gm__ uint8_t *pScale,
-        __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-        __gm__ uint8_t *softmaxMax,
-        __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-        ConstInfo &constInfo);
+    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx,
+                                                   uint8_t subBlockIdx);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+                                            __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
+                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
+                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
+                                            ConstInfo &constInfo);
     __aicore__ inline void InitUniqueLocalBuffer(ConstInfo &constInfo);
-    __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb) {}
+    __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb)
+    {
+    }
     __aicore__ inline void SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb,
                                               LocalTensor<float> &maxUb);
-    __aicore__ inline void SoftmaxDataCopyOutFp8(RunInfo &runInfo, ConstInfo &constInfo,
-                                                 LocalTensor<half> &sumUb, LocalTensor<half> &maxUb) {}
+    __aicore__ inline void SoftmaxDataCopyOutFp8(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<half> &sumUb,
+                                                 LocalTensor<half> &maxUb)
+    {
+    }
     template <typename VEC2_RES_T>
-    __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                               int64_t vec2S1Idx, int64_t vec2CalcSize);
+    __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                               LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+                                               int64_t vec2CalcSize);
 
     TPipe *tPipe;
     const QuantBlockSparseAttnTilingData *__restrict tilingData;
@@ -171,31 +174,35 @@ public:
 
 
 protected:
-    __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
-                                               GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize);
+    __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm, GlobalTensor<T> &maxGm,
+                                               int64_t gmOffset, int64_t calculateSize);
 
     template <typename VEC2_RES_T>
-    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
+    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                           int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
+
 private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
+                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                         RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        RunInfo &runInfo, ConstInfo &constInfo);
+                                           RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo);
-    __aicore__ inline void InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb);
+    __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
+                                                   SoftMaxShapeInfo &softmaxShapeInfo);
+    __aicore__ inline void InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb,
+                                              LocalTensor<T> &maxUb);
 
     __aicore__ inline int64_t ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, RunInfo &runInfo,
-        ConstInfo &constInfo, int64_t dSizeAligned64);
+                                      ConstInfo &constInfo, int64_t dSizeAligned64);
     __aicore__ inline void MlaTransposeDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-	    LocalTensor<OUTPUT_T> &attenOut);
+                                                   LocalTensor<OUTPUT_T> &attenOut);
     __aicore__ inline void MlaTranspose2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-        LocalTensor<OUTPUT_T> &attenOut);
+                                                    LocalTensor<OUTPUT_T> &attenOut);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
@@ -204,9 +211,8 @@ private:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
     ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
@@ -231,9 +237,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
             if constexpr (splitD) {
                 bmm2ResBlock = (int64_t)dVTemplateType;
             }
-            int64_t vec2ResultSize = (s1BaseSize) * constInfo.dBasicBlock;
+            int64_t vec2ResultSize = (s1BaseSize)*constInfo.dBasicBlock;
             int64_t vec2Offset = CeilDiv(vec2ResultSize, 128) * 128 * sizeof(T);
-            int64_t mm2ResultSize = (s1BaseSize) * bmm2ResBlock;
+            int64_t mm2ResultSize = (s1BaseSize)*bmm2ResBlock;
             if constexpr (splitD) {
                 vec2SubBlockOffset = constInfo.subBlockIdx * vec2ResultSize >> 1;
                 vec2ResGm[0].SetGlobalBuffer((__gm__ T *)(workspace));
@@ -250,17 +256,18 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
 
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, 
-    ConstInfo &constInfo, int32_t subLoop)
+__aicore__ inline void
+BSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                        RunInfo &runInfo, ConstInfo &constInfo, int32_t subLoop)
 {
-        ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
+    ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool BSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(
-    LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo)
+__aicore__ inline bool BSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb,
+                                                                           uint32_t negativeIntScalar,
+                                                                           SoftMaxShapeInfo &softmaxShapeInfo)
 {
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
@@ -270,7 +277,7 @@ __aicore__ inline bool BSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(
     SetVectorMask<float, MaskMode::COUNTER>(0, softmaxShapeInfo.srcK);
     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
         T maxValue = maxUb.GetValue(i);
-        uint32_t checkValue = *reinterpret_cast<uint32_t*>(&maxValue);
+        uint32_t checkValue = *reinterpret_cast<uint32_t *>(&maxValue);
         if (checkValue == negativeIntScalar) {
             isUpdateNeedCheck = true;
             break;
@@ -282,29 +289,28 @@ __aicore__ inline bool BSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InvalidLineProcess(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                      LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
 {
     if (constInfo.softMaxCheckRes) {
-        SoftMaxShapeInfo softmaxShapeInfo{
-            static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1),
-            static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1)};
+        SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1),
+                                          static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1)};
         bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
         if (!res) {
             constInfo.softMaxCheckRes = false;
         } else {
             if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
                 SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
-                    this->positiveFloatScalar);
+                                    this->positiveFloatScalar);
             }
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(
-    RunInfo &runInfo, GlobalTensor<T> &sumGm,
-    GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
+                                                                       GlobalTensor<T> &maxGm, int64_t gmOffset,
+                                                                       int64_t calculateSize)
 {
     LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
@@ -325,17 +331,16 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(
 
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
-    ConstInfo &constInfo)
+__aicore__ inline void
+BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                          RunInfo &runInfo, ConstInfo &constInfo)
 {
     // bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (isFp8 && hasAtten) {
-        AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
-                                    runInfo, constInfo, *attenMaskInfoPtr,
-                                    runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
+        AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt, runInfo, constInfo,
+                                    *attenMaskInfoPtr, runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
@@ -343,7 +348,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
-     
+
     float descaleQK = 1.0;
     int64_t deScaleQOffset = 0;
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
@@ -361,30 +366,30 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     if constexpr (layout == BSALayout::NTD) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
-                ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
-                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
+                kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
+                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
-                ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
-                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
+                kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
+                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     } else {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
-                ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
-                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
+                kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
+                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
-                ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
-                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
+                kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
+                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     }
     qScaleInputQue.FreeTensor(qScaleUbTensor);
@@ -400,10 +405,11 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 
     // 按照64对齐搬运
     DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * ((runInfo.s2RealSize + 63) >> 6 << 6)],
-        stage1CastTensor, {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
+             stage1CastTensor, {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
     DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * ((runInfo.s2RealSize + 63) >> 6 << 6) +
-        ((runInfo.s2RealSize + 63) >> 6 << 6) * 32], stage1CastTensor[65 << 5], {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
- 
+                          ((runInfo.s2RealSize + 63) >> 6 << 6) * 32],
+             stage1CastTensor[65 << 5], {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
+
     outputBuf.SetCrossCore();
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -414,16 +420,16 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t BSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(
-    RunInfo &runInfo, const int64_t vec2S1Idx)
+__aicore__ inline int64_t BSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx)
 {
     return vec2S1Idx * runInfo.vec2S1BaseSize;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo,
-    ConstInfo &constInfo) {
+__aicore__ inline void
+BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+                                            RunInfo &runInfo, ConstInfo &constInfo)
+{
     if (unlikely(runInfo.vec2S1BaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
         return;
@@ -447,25 +453,25 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(vec2ResUb, mmRes, vec2ResUb, expUb,
+                                                                             runInfo.vec2S1RealSize, dTemplateAlign64,
+                                                                             deSCaleVValue, deSCalePreVValue);
             } else {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);             
+                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
+                                                                              runInfo.vec2S1RealSize, dTemplateAlign64,
+                                                                              deSCaleVValue, deSCalePreVValue);
             }
         } else {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);            
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             }
         }
     }
@@ -473,8 +479,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-            LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
-                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
+            LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize,
+                                                               (uint16_t)dTemplateAlign64, deSCaleVValue);
         }
         CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
@@ -483,8 +489,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
 
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
-    mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
+                                                               ConstInfo &constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
     ProcessVec2OnUb(bmm2ResBuf, runInfo, constInfo);
@@ -493,8 +499,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb,
-    int64_t vec2S1Idx, RunInfo &runInfo, ConstInfo &constInfo, int64_t dSizeAligned64)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+                                                              RunInfo &runInfo, ConstInfo &constInfo,
+                                                              int64_t dSizeAligned64)
 {
     if constexpr (hasAtten) {
         if (!constInfo.isRowInvalid) {
@@ -509,27 +516,30 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_R
         bool isRowInvalidNeedUpdate = false;
         for (uint32_t i = 0; i < runInfo.vec2S1RealSize; i++) {
             float maxValue = maxTensor.GetValue(i);
-            uint32_t checkValue = *(uint32_t*)&maxValue;
+            uint32_t checkValue = *(uint32_t *)&maxValue;
             if (checkValue == NEGATIVE_MIN_VALUE_FP32) {
                 isRowInvalidNeedUpdate = true;
                 break;
             }
         }
         if (isRowInvalidNeedUpdate) {
-            RowInvalidUpdateVF<float>(vec2ResUb, maxTensor,  runInfo.vec2S1RealSize, constInfo.dSizeV, static_cast<uint32_t>(dSizeAligned64));
+            RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, constInfo.dSizeV,
+                                      static_cast<uint32_t>(dSizeAligned64));
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTransposeDataCopyOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<OUTPUT_T> &attenOut)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTransposeDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                           LocalTensor<OUTPUT_T> &attenOut)
 {
     int64_t s1DealSize = runInfo.vec2S1RealSize;
     int64_t headSize = 0;
     int64_t attenOutOffset = constInfo.dSizeV;
-    int64_t headUbOffset = 0, headGmOffset = 0;
-    int64_t curGIdx = runInfo.goIdx, curS1Idx = runInfo.s1oIdx;
+    int64_t headUbOffset = 0;
+    int64_t headGmOffset = 0;
+    int64_t curGIdx = runInfo.goIdx;
+    int64_t curS1Idx = runInfo.s1oIdx;
 
     if (constInfo.gSize == 128) {
         curGIdx = (curS1Idx % 2 == 0) ? curGIdx : 64;
@@ -572,20 +582,21 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTransposeDataCopyOut(
         }
 
         DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + headGmOffset + attenOutOffset],
-            attenOut[headUbOffset + i * constInfo.gSize * constInfo.dSizeV], dataCopyParams);
+                    attenOut[headUbOffset + i * constInfo.gSize * constInfo.dSizeV], dataCopyParams);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTranspose2DataCopyOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<OUTPUT_T> &attenOut)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTranspose2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                            LocalTensor<OUTPUT_T> &attenOut)
 {
     int64_t s1DealSize = runInfo.vec2S1RealSize;
     int64_t curGIdx = runInfo.sOuterOffset / constInfo.s1Size;
     int64_t curS1Idx = runInfo.sOuterOffset % constInfo.s1Size;
     bool hasHeadBlock = curS1Idx != 0;
     int headBlock = hasHeadBlock ? constInfo.s1Size - curS1Idx : 0;
-    int gCount = hasHeadBlock ? (runInfo.vec2S1BaseSize - headBlock) / constInfo.s1Size : runInfo.vec2S1BaseSize / constInfo.s1Size;
+    int gCount = hasHeadBlock ? (runInfo.vec2S1BaseSize - headBlock) / constInfo.s1Size :
+                                runInfo.vec2S1BaseSize / constInfo.s1Size;
     bool hasTailBlock = (runInfo.vec2S1BaseSize - headBlock) % constInfo.s1Size;
     int tailBlock = hasTailBlock ? runInfo.vec2S1BaseSize - gCount * constInfo.s1Size - headBlock : 0;
     uint32_t attenOutUbOffset = 0;
@@ -604,7 +615,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTranspose2DataCopyOut(
     dataCopyParams.blockLen = constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T);
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = (constInfo.bSize - 1) * constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T);
-    runInfo.attentionOutOffset += int(hasHeadBlock) * constInfo.bSize * constInfo.s1Size * constInfo.dSizeV - curS1Idx * constInfo.dSizeV;
+    runInfo.attentionOutOffset +=
+        int(hasHeadBlock) * constInfo.bSize * constInfo.s1Size * constInfo.dSizeV - curS1Idx * constInfo.dSizeV;
     DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], attenOut[attenOutUbOffset], dataCopyParams);
     attenOutUbOffset += dataCopyParams.blockCount * (constInfo.s1Size * constInfo.dSizeV);
 
@@ -621,8 +633,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTranspose2DataCopyOut(
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                   LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                   int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -638,7 +651,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
     } else {
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.taskIdMod2]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.taskIdMod2]);
-        attenOut = vec2ResUb; 
+        attenOut = vec2ResUb;
     }
 
     DataCopyExtParams dataCopyParams;
@@ -657,19 +670,21 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
         }
     }
 
-    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && constInfo.layoutType == static_cast<uint8_t>(BSALayout::TND)) {
-        for(int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++){
+    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 &&
+        constInfo.layoutType == static_cast<uint8_t>(BSALayout::TND)) {
+        for (int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++) {
             attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
             dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
             dataCopyParams.blockCount = constInfo.gSize;
             dataCopyParams.dstStride = 0;
             DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
-                attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
+                        attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
         }
     } else {
-        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
+        DataCopyPad(
+            this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
             attenOut, dataCopyParams);
-    }         
+    }
 }
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
@@ -717,7 +732,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
                 tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
             }
         }
-    } else { 
+    } else {
         SoftmaxInitBuffer();
 
         if constexpr (hasAtten) {
@@ -742,7 +757,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)], 256);
     if constexpr (layout != BSALayout::NTD) {
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)], 64 * sizeof(uint32_t));
+        tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)],
+                          64 * sizeof(uint32_t));
     }
     LocalTensor<uint8_t> vselrIndexesTensor =
         vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -782,8 +798,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
 
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetExtremeValue(
-    T &negativeScalar, T &positiveScalar)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar, T &positiveScalar)
 {
     uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
     negativeScalar = *((half *)&tmp1);
@@ -792,8 +807,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetExtremeValue(
 // ================================= Child-specific functions =================================
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams,
+                                                                           int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     sharedParams.bSize = inputParamsRegbase.bSize;
@@ -815,7 +830,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
- 
+
     sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
@@ -845,21 +860,20 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0);
+            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0);
             auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
+#pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams<isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
                 *tempTilingSSbuf = *tempTiling;
             }
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
     }
-
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *attentionOut, ConstInfo &constInfo) 
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                                               ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -878,15 +892,12 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-    __gm__ uint8_t *softmaxMax,
-    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-    ConstInfo &constInfo)
+    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
+    uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo &constInfo)
 {
-    InitCommonGlobalBuffer(
-        deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable,
-        workspace, constInfo);
+    InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable, workspace,
+                           constInfo);
 }
 
 
@@ -899,24 +910,26 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstIn
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb,
-    LocalTensor<float> &maxUb)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                      LocalTensor<float> &sumUb,
+                                                                      LocalTensor<float> &maxUb)
 {
     SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                       LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                       int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
-    LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp,
+                                                                     LocalTensor<float> &softmaxMaxTmp,
+                                                                     RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
@@ -947,7 +960,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
 {
     auto &initParams = this->tilingData->initOutputParams;
     uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
-        (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) : 0;
+                            (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) :
+                            0;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], singleInitOutputSize, 0.0);
 }
@@ -962,8 +976,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(Const
         if (constInfo.aivIdx == coreNum - 1) {
             singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
         }
-        InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)], 
-            singleCoreLseSize, BSA_EMPTY_LSE_VALUE);
+        InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)],
+                          singleCoreLseSize, BSA_EMPTY_LSE_VALUE);
     }
 }
 
@@ -974,29 +988,37 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr TPosition bmm2OutPos = GetC2Position();
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
-    __aicore__ inline BSABlockVecDummy() {};
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, 
-        ConstInfo &constInfo) {}
+    __aicore__ inline BSABlockVecDummy(){};
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo)
+    {
+    }
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
-        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
-        AttenMaskInfo &attenMaskInfo) {};
-    __aicore__ inline void InitGlobalBuffer(
-        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-        __gm__ uint8_t *prefix,
-        __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-        __gm__ uint8_t *kvPaddingSize,
-        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset,
-        uint32_t aicIdx, ConstInfo &constInfo) {}
+                                        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        AttenMaskInfo &attenMaskInfo) {};
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+                                            __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
+                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
+                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
+                                            ConstInfo &constInfo)
+    {
+    }
 
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
+    {
+    }
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
-        ConstInfo &constInfo) {}
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                       RunInfo &runInfo, ConstInfo &constInfo)
+    {
+    }
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
-        ConstInfo &constInfo) {}
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    {
+    }
 };
-}
+} // namespace BaseApi
 #endif // QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_

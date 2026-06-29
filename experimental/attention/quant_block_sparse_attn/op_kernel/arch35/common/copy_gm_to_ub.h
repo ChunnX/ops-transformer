@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_gm_to_ub.h
@@ -18,19 +18,23 @@
 #include "offset_calculator.h"
 
 // GM->UB
-//antiquant
+// antiquant
 // ----------------------------------------------CopyAntiquantGmToUb--------------------------------
 template <typename T, BSALayout GM_FORMAT>
 class CopyAntiquantGmToUb {
 public:
-    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
+                                      const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
+                                      const ConstInfo &constInfo)
     {
-        //per per_head + per_token + PA
+        // per per_head + per_token + PA
         ProcessPA(dstTensor, srcTensor, blockTableTensor, runInfo, constInfo);
     }
 
 private:
-    __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
+                                     const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
+                                     const ConstInfo &constInfo)
     {
         int32_t byteOffset1 = 0;
         int32_t byteOffset2 = 0;
@@ -48,7 +52,7 @@ private:
             if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
                 GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
                 DataCopyPad(dstTensor[constInfo.kvSparseBlockSize], srcTensor[byteOffset2], dataCopyParams,
-                    dataCopyPadParams);
+                            dataCopyPadParams);
             }
         } else if (GM_FORMAT == BSALayout::PA_BSND) {
             GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
@@ -63,25 +67,29 @@ private:
             DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
         }
     }
-    __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx,
+                                             const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
+                                             const ConstInfo &constInfo)
     {
         int32_t physicalBlock = blockTableTensor.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx);
-        byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
-            runInfo.n2oIdx * constInfo.kvSparseBlockSize;
+        byteOffset =
+            physicalBlock * (constInfo.paBlockStride / sizeof(float)) + runInfo.n2oIdx * constInfo.kvSparseBlockSize;
     }
 };
 
 // ----------------------------------------------CopyQueryScaleGmToUb--------------------------------
 template <typename T, BSALayout GM_FORMAT>
-class  CopyQueryScaleGmToUb
-{
+class CopyQueryScaleGmToUb {
 public:
-    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
+                                      const RunInfo &runInfo, const ConstInfo &constInfo)
     {
         ProcessGS1(dstTensor, srcTensor, runInfo, constInfo);
     }
+
 private:
-    __aicore__ inline void ProcessGS1(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void ProcessGS1(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
+                                      const RunInfo &runInfo, const ConstInfo &constInfo)
     {
         if (GM_FORMAT == BSALayout::TND) {
             DataCopyExtParams dataCopyParams;
@@ -103,11 +111,8 @@ private:
             int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset;
             DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
         } else if (GM_FORMAT == BSALayout::BSND) {
-
         } else if (GM_FORMAT == BSALayout::BNSD) {
-
         }
-        
     }
 };
 #endif
