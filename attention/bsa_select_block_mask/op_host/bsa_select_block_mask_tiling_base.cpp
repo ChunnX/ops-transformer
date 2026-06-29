@@ -247,16 +247,13 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t topkTileDataSize = static_cast<uint64_t>(totalTileNum) * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
     uint64_t topkWorkspaceSize = topkHeaderSize + topkTileDataSize;
 
-    uint64_t maskSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint8_t);
-
     outputParams_->set_qCmpSize(qCmpSize);
     outputParams_->set_kCmpSize(kCmpSize);
     outputParams_->set_attnScoreSize(attnScoreFp16Size);
     outputParams_->set_softmaxTmpSize(scoreFp32Size);
     outputParams_->set_topkWorkspaceSize(topkWorkspaceSize);
-    outputParams_->set_maskSize(maskSize);
     outputParams_->set_totalWorkspaceSize(qCmpSize + kCmpSize + attnScoreFp16Size + scoreFp32Size +
-                                          topkWorkspaceSize + maskSize);
+                                          topkWorkspaceSize);
 }
 
 ge::graphStatus BSASelectBlockMaskTilingBase::GetShapeAttrsInfo()

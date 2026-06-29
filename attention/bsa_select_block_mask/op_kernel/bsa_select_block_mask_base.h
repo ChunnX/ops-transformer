@@ -94,7 +94,6 @@ private:
     GlobalTensor<POOL_OUT_T> qCmpGm, kCmpGm;
     GlobalTensor<SFTMAX_OUT_T> attnScoreFp16Gm;
     GlobalTensor<T> scoreFp32Gm;
-    GlobalTensor<uint8_t> maskTmpGm;
     GlobalTensor<int32_t> topkWorkspaceGm;
 
     // Output tensor pointers for the 4 new outputs
@@ -145,7 +144,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.attnScoreOffset = constInfo.kCmpOffset + outInfo.kCmpSize;
     constInfo.softmaxTmpOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
-    constInfo.maskOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
 }
 
 template <typename BSAT>
@@ -163,8 +161,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
                                  outInfo.softmaxTmpSize / sizeof(T));
     topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
                                     outInfo.topkWorkspaceSize / sizeof(int32_t));
-    maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset),
-                              outInfo.maskSize / sizeof(uint8_t));
 
     SyncAll();
 }
@@ -280,7 +276,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
                              qCmpOutGm, kCmpOutGm, softmaxOutGm);
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
-        radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskTmpGm, maskOutGmU8);
+        radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskOutGmU8);
     } else if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitBuffers(pipe);

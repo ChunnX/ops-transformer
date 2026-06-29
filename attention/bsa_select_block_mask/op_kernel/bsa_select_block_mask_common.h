@@ -133,7 +133,6 @@ struct BSAConstInfo {
     uint64_t attnScoreOffset;
     uint64_t softmaxTmpOffset;
     uint64_t topkWorkspaceOffset;
-    uint64_t maskOffset;
 };
 
 struct BSARunInfo {

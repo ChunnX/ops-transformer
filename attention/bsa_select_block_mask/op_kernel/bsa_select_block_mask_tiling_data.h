@@ -163,7 +163,6 @@ public:
     uint64_t kCmpSize;
     uint64_t attnScoreSize;
     uint64_t topkWorkspaceSize;
-    uint64_t maskSize;
     uint64_t softmaxTmpSize;
     uint64_t totalWorkspaceSize;
 
@@ -175,8 +174,6 @@ public:
     void set_attnScoreSize(uint64_t v) { this->attnScoreSize = v; }
     uint64_t get_topkWorkspaceSize() const { return topkWorkspaceSize; }
     void set_topkWorkspaceSize(uint64_t v) { this->topkWorkspaceSize = v; }
-    uint64_t get_maskSize() const { return maskSize; }
-    void set_maskSize(uint64_t v) { this->maskSize = v; }
     uint64_t get_softmaxTmpSize() const { return softmaxTmpSize; }
     void set_softmaxTmpSize(uint64_t v) { this->softmaxTmpSize = v; }
     uint64_t get_totalWorkspaceSize() const { return totalWorkspaceSize; }

@@ -38,7 +38,6 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGM(GlobalTensor<SCORE_T> &attnScoreGm,
                                    GlobalTensor<int32_t> &topkWorkspaceGm,
-                                   GlobalTensor<uint8_t> &maskTmpGm,
                                    GlobalTensor<uint8_t> &maskOutGmU8);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -107,7 +106,6 @@ private:
 
     GlobalTensor<SCORE_T> attnScoreGmLocal;
     GlobalTensor<int32_t> topkWorkspaceGmLocal;
-    GlobalTensor<uint8_t> maskTmpGmLocal;
     GlobalTensor<uint8_t> maskOutGmU8Local;
 
     GlobalTensor<int32_t> globalHistGm_;
@@ -233,12 +231,10 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     GlobalTensor<SCORE_T> &attnScoreGm,
     GlobalTensor<int32_t> &topkWorkspaceGm,
-    GlobalTensor<uint8_t> &maskTmpGm,
     GlobalTensor<uint8_t> &maskOutGmU8)
 {
     this->attnScoreGmLocal = attnScoreGm;
     this->topkWorkspaceGmLocal = topkWorkspaceGm;
-    this->maskTmpGmLocal = maskTmpGm;
     this->maskOutGmU8Local = maskOutGmU8;
 
     uint32_t coreNum = constInfo.aivNum;
