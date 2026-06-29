@@ -30,10 +30,10 @@
 using namespace AscendC;
 
 namespace MegaMoeImpl {
-using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t>;
+// using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+// using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
+//                             int64_t, int64_t, int64_t, int64_t, int64_t,
+//                             int64_t, int64_t>;
 
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
                                   int32_t QuantMode, int32_t CombineQuantMode
