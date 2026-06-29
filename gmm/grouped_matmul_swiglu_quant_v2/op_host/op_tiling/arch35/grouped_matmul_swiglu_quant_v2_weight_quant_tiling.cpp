@@ -542,6 +542,50 @@ bool IsInputShapeValid([[maybe_unused]] gert::TilingContext& context, const GMMS
     return true;
 }
 
+bool CheckSingleMultiSingleInputs(
+    gert::TilingContext& context, const GMMSQWeightQuantInputParams& params, int64_t scaleKSize)
+{
+    const std::vector<int64_t> expectedWeightShape = {
+        GroupedMatmul::CeilDiv<int64_t>(params.kSize, C0_SIZE),
+        GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
+        CUBE_BLOCK,
+        C0_SIZE
+    };
+    const std::vector<int64_t> expectedWeightScaleShape = {
+        params.nSize,
+        scaleKSize,
+        MX_INNER_DIM
+    };
+    for (int64_t i = 0; i < params.groupNum; ++i) {
+        uint32_t tensorIndex = static_cast<uint32_t>(i);
+        auto* curWeightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, tensorIndex);
+        auto* curWeightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, tensorIndex);
+        OP_CHECK_IF(curWeightShapePtr == nullptr || curWeightScaleShapePtr == nullptr,
+            OP_LOGE(params.opName, "weight or weightScale shape[%ld] should not be null", i), return false);
+        OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, tensorIndex, "weight"),
+            OP_LOGE(params.opName, "Check dynamic input shape of weight[%ld] failed.", i), return false);
+        OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale"),
+            OP_LOGE(params.opName, "Check dynamic input shape of weightScale[%ld] failed.", i), return false);
+        OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_INDEX, tensorIndex, "weight", ge::DT_FLOAT4_E2M1),
+            OP_LOGE(params.opName, "Check dynamic input desc of weight[%ld] failed.", i), return false);
+        OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale",
+                                          ge::DT_FLOAT8_E8M0),
+            OP_LOGE(params.opName, "Check dynamic input desc of weightScale[%ld] failed.", i), return false);
+        OP_CHECK_IF(!CheckWeightFormat(context, tensorIndex),
+            OP_LOGE(params.opName, "Check weight[%ld] format failed.", i), return false);
+        OP_CHECK_IF(!CheckWeightScaleFormat(context, tensorIndex, params.opName.c_str()),
+            OP_LOGE(params.opName, "Check weightScale[%ld] format failed.", i), return false);
+        if (!CheckInputShape(&context, "weight", curWeightShapePtr->GetStorageShape(), expectedWeightShape)) {
+            return false;
+        }
+        if (!CheckInputShape(&context, "weightScale", curWeightScaleShapePtr->GetOriginShape(),
+                             expectedWeightScaleShape)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
 {
     if (!IsInputShapeValid(context, params)) {
@@ -585,45 +629,7 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
     }
 
     if (params.isSingleMultiSingle) {
-        const std::vector<int64_t> expectedWeightShape = {
-            GroupedMatmul::CeilDiv<int64_t>(params.kSize, C0_SIZE),
-            GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
-            CUBE_BLOCK,
-            C0_SIZE
-        };
-        const std::vector<int64_t> expectedWeightScaleShape = {
-            params.nSize,
-            scaleKSize,
-            MX_INNER_DIM
-        };
-        for (int64_t i = 0; i < params.groupNum; ++i) {
-            uint32_t tensorIndex = static_cast<uint32_t>(i);
-            auto* curWeightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, tensorIndex);
-            auto* curWeightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, tensorIndex);
-            OP_CHECK_IF(curWeightShapePtr == nullptr || curWeightScaleShapePtr == nullptr,
-                OP_LOGE(params.opName, "weight or weightScale shape[%ld] should not be null", i), return false);
-            OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, tensorIndex, "weight"),
-                OP_LOGE(params.opName, "Check dynamic input shape of weight[%ld] failed.", i), return false);
-            OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale"),
-                OP_LOGE(params.opName, "Check dynamic input shape of weightScale[%ld] failed.", i), return false);
-            OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_INDEX, tensorIndex, "weight", ge::DT_FLOAT4_E2M1),
-                OP_LOGE(params.opName, "Check dynamic input desc of weight[%ld] failed.", i), return false);
-            OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale",
-                                              ge::DT_FLOAT8_E8M0),
-                OP_LOGE(params.opName, "Check dynamic input desc of weightScale[%ld] failed.", i), return false);
-            OP_CHECK_IF(!CheckWeightFormat(context, tensorIndex),
-                OP_LOGE(params.opName, "Check weight[%ld] format failed.", i), return false);
-            OP_CHECK_IF(!CheckWeightScaleFormat(context, tensorIndex, params.opName.c_str()),
-                OP_LOGE(params.opName, "Check weightScale[%ld] format failed.", i), return false);
-            if (!CheckInputShape(&context, "weight", curWeightShapePtr->GetStorageShape(), expectedWeightShape)) {
-                return false;
-            }
-            if (!CheckInputShape(&context, "weightScale", curWeightScaleShapePtr->GetOriginShape(),
-                                 expectedWeightScaleShape)) {
-                return false;
-            }
-        }
-        return true;
+        return CheckSingleMultiSingleInputs(context, params, scaleKSize);
     }
 
     if (params.wFormat == ge::FORMAT_FRACTAL_NZ || params.wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
