@@ -616,6 +616,20 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
     if constexpr (IS_MXFP8) {
+        // MXFP8: mmad_mx 硬件指令要求 n 必须是 16 的倍数
+        // 当 actS2Size 不是 16 的倍数时（如 red_2: actS2Size=8, red_3: actS2Size=1~4），
+        // 尾部 S2 块的 s2L0RealSize 不满足对齐要求，需要向上对齐并清零 L0B 中的 extra columns
+        uint64_t alignedN = CeilAlign(s2L0RealSize, (uint64_t)BLOCK_CUBE);
+        if (alignedN > s2L0RealSize) {
+            mmadParams.n = alignedN;
+            // NZ layout: [k/D_BASIC_BLOCK, n/BLOCK_CUBE, D_BASIC_BLOCK, BLOCK_CUBE]
+            // extra columns 在最后一个 NZ block 内是连续内存，可以一次 Duplicate 清零
+            uint64_t extraColStart = (s2L0RealSize / BLOCK_CUBE) * BLOCK_CUBE * D_BASIC_BLOCK;
+            uint64_t extraColBytes = (alignedN - s2L0RealSize) * D_BASIC_BLOCK;
+            LocalTensor<uint8_t> keyL0Bytes =
+                keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<uint8_t>();
+            Duplicate(keyL0Bytes[extraColStart], (uint8_t)0, extraColBytes);
+        }
         // MXFP8: 使用 mx_fp8_e4m3_t 类型触发 mmad_mx 硬件指令
         LocalTensor<mx_fp8_e4m3_t> qL0Mx =
             queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
