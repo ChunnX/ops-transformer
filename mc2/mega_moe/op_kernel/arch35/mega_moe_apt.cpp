@@ -21,6 +21,7 @@
 
 #ifdef ENABLE_TENSOR_API
 #include "mega_moe.h"
+#include "mega_moe_layered.h"
 #endif
 
 #include "mega_moe_tiling.h"
