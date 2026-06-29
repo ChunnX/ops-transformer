@@ -247,16 +247,39 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
     if (isExistXCache_) {
-        uint64_t cacheStart = (startPosGm_.GetValue(info.bStart) + info.sStart) % constInfo_.xCacheSize;
-        uint32_t firstCopySeqCnt = min(copySeqCnt, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
-        uint64_t firstGmOffset = (info.bStart * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
-        CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue, srcDValue,
-                               dstNzC0Stride);
-        if (firstCopySeqCnt < copySeqCnt) {
-            uint64_t secondGmOffset = info.bStart * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
-            uint32_t secondL1Offset = xL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
-            CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
-                                   copySeqCnt - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+        // Compose grouped decode input from cached history and the current x tensor inside the operator.
+        uint32_t seqUsed = isExistSeqUsed ? static_cast<uint32_t>(sequsedGm_.GetValue(info.bStart)) :
+                                            constInfo_.xCacheReadSize;
+        uint32_t currentInputSeqSize = min(constInfo_.sSize, seqUsed);
+        uint32_t currentStart = seqUsed - currentInputSeqSize;
+        uint32_t sliceStart = info.sStart;
+        uint32_t sliceEnd = info.sStart + copySeqCnt;
+        uint32_t cacheCopyEnd = min(sliceEnd, currentStart);
+        if (sliceStart < cacheCopyEnd) {
+            uint32_t cacheCopyRows = cacheCopyEnd - sliceStart;
+            uint64_t cacheStart = (startPosGm_.GetValue(info.bStart) + sliceStart) % constInfo_.xCacheSize;
+            uint32_t firstCopySeqCnt = min(cacheCopyRows, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
+            uint64_t firstGmOffset = (info.bStart * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
+            CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue, srcDValue,
+                                   dstNzC0Stride);
+            if (firstCopySeqCnt < cacheCopyRows) {
+                uint64_t secondGmOffset = info.bStart * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
+                uint32_t secondL1Offset = xL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
+                CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
+                                       cacheCopyRows - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+            }
+        }
+        uint32_t currentCopyStart = max(sliceStart, currentStart);
+        uint32_t currentCopyEnd = min(sliceEnd, seqUsed);
+        if (currentCopyStart < currentCopyEnd) {
+            uint32_t currentLocalRow = currentCopyStart - sliceStart;
+            uint32_t currentXRow = currentCopyStart - currentStart;
+            uint32_t currentCopyRows = currentCopyEnd - currentCopyStart;
+            uint32_t currentL1Offset = xL1Offset + currentLocalRow * (32 / sizeof(X_T));
+            uint64_t currentGmOffset =
+                (static_cast<uint64_t>(info.bStart) * constInfo_.sSize + currentXRow) * constInfo_.hSize + hIdx;
+            CopySingleMatrixNDToNZ(xL1Tensor[currentL1Offset], xGm_[currentGmOffset], currentCopyRows, dValue,
+                                   srcDValue, dstNzC0Stride);
         }
     } else {
         uint64_t sIdx = tStart;    // 起始s在整个T的起始点
