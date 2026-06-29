@@ -55,8 +55,10 @@ constexpr uint32_t SEQUSED_Q_INDEX = 7;
 constexpr uint32_t SEQUSED_K_INDEX = 8;
 constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
 constexpr uint32_t BLOCK_TABLE_INDEX = 10;
+constexpr uint32_t OUTPUT_IDX_OFFSET_INDEX = 11;
 constexpr uint32_t METADATA_INDEX = 12;
 constexpr uint32_t SPARSE_INDICES_INDEX = 0;
+constexpr uint32_t SPARSE_VALUES_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
@@ -122,6 +124,7 @@ struct QLIV2ParaInfo {
     TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
@@ -247,6 +250,7 @@ public:
     ge::DataType blockTableType_ = ge::DT_FLOAT16;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
+    ge::DataType valuesOutType_ = ge::DT_BF16;
 };
 
 // ---------------算子Tiling类---------------

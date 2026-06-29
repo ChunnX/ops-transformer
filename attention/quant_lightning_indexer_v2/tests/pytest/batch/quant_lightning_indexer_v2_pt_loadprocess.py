@@ -46,6 +46,10 @@ def test_qliv2_process(filepath, device_id=0):
     key_dequant_scale = test_data['key_dequant_scale'].cpu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].cpu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].cpu()
+    if test_data.get('output_idx_offset') is not None:
+        output_idx_offset = test_data['output_idx_offset'].cpu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_query'] is not None:
         cu_seqlens_query = test_data['cu_seqlens_query'].cpu()
     else:
@@ -76,7 +80,7 @@ def test_qliv2_process(filepath, device_id=0):
                                                     seqused_q = actual_seq_lengths_query,
                                                     seqused_k = actual_seq_lengths_key,
                                                     cmp_residual_k = cmp_residual_k_for_npu,
-                                                    output_idx_offset = None,
+                                                    output_idx_offset = output_idx_offset,
                                                     max_seqlen_q = max_seqlen_q,
                                                     block_table=block_table,
                                                     metadata = metadata,
