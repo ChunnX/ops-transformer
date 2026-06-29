@@ -16,9 +16,8 @@
   import torch
   import torch_npu
   import cann-ops-transformer
-
-  ```
-
+```
+  
 - **V版本演进说明**
 
   请注意，部分API存在多个V版本，使用时选择最高V版本即可（高版本API已兼容低版本API的所有能力）。
