@@ -51,6 +51,23 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
+class DeviceAddrListGuard {
+public:
+    explicit DeviceAddrListGuard(std::vector<void *> &addrs) : addrs_(addrs) {}
+    ~DeviceAddrListGuard()
+    {
+        for (auto addr : addrs_) {
+            if (addr != nullptr) {
+                aclrtFree(addr);
+            }
+        }
+    }
+    DeviceAddrListGuard(const DeviceAddrListGuard &) = delete;
+    DeviceAddrListGuard &operator=(const DeviceAddrListGuard &) = delete;
+private:
+    std::vector<void *> &addrs_;
+};
+
 int Init(int32_t deviceId, aclrtStream *stream)
 {
     auto ret = aclInit(nullptr);
@@ -165,6 +182,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = CreateAclTensorListMulti(xHostDataList, xShapes, xDeviceAddrList, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> xPtr(x, aclDestroyTensorList);
+    DeviceAddrListGuard xDeviceAddrGuard(xDeviceAddrList);
 
     // weight: INT4, 多tensor, 每个element 4 bit, 用int8存储
     std::vector<std::vector<int8_t>> weightHostDataList = {
@@ -173,6 +191,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
                                    &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightPtr(weight, aclDestroyTensorList);
+    DeviceAddrListGuard weightDeviceAddrGuard(weightDeviceAddrList);
 
     // bias: FLOAT32, 多tensor (A16W4场景x为BF16时bias支持BFLOAT16/FLOAT32，通用通路默认期望FLOAT)
     std::vector<std::vector<float>> biasHostDataList = {
@@ -180,6 +199,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = CreateAclTensorListMulti(biasHostDataList, biasShapes, biasDeviceAddrList, aclDataType::ACL_FLOAT, &bias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> biasPtr(bias, aclDestroyTensorList);
+    DeviceAddrListGuard biasDeviceAddrGuard(biasDeviceAddrList);
 
     // antiquantScale: BFLOAT16, pergroup 2D (G_i, N), 多tensor
     std::vector<std::vector<int16_t>> antiquantScaleHostDataList = {
@@ -189,6 +209,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantScalePtr(antiquantScale,
                                                                                             aclDestroyTensorList);
+    DeviceAddrListGuard antiquantScaleDeviceAddrGuard(antiquantScaleDeviceAddrList);
 
     // antiquantOffset: BFLOAT16, pergroup 2D (G_i, N), 多tensor（多多多场景通用通路要求antiquantOffset非空）
     std::vector<std::vector<int16_t>> antiquantOffsetHostDataList = {
@@ -198,6 +219,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantOffsetPtr(antiquantOffset,
                                                                                              aclDestroyTensorList);
+    DeviceAddrListGuard antiquantOffsetDeviceAddrGuard(antiquantOffsetDeviceAddrList);
 
     // y: BFLOAT16, 多tensor
     std::vector<std::vector<uint16_t>> yHostDataList = {
@@ -205,6 +227,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = CreateAclTensorListMulti(yHostDataList, yShapes, yDeviceAddrList, aclDataType::ACL_BF16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> outPtr(out, aclDestroyTensorList);
+    DeviceAddrListGuard yDeviceAddrGuard(yDeviceAddrList);
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -243,13 +266,6 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         }
     }
 
-    // 释放device资源
-    for (auto addr : xDeviceAddrList) { if (addr) aclrtFree(addr); }
-    for (auto addr : weightDeviceAddrList) { if (addr) aclrtFree(addr); }
-    for (auto addr : biasDeviceAddrList) { if (addr) aclrtFree(addr); }
-    for (auto addr : antiquantScaleDeviceAddrList) { if (addr) aclrtFree(addr); }
-    for (auto addr : antiquantOffsetDeviceAddrList) { if (addr) aclrtFree(addr); }
-    for (auto addr : yDeviceAddrList) { if (addr) aclrtFree(addr); }
     return ACL_SUCCESS;
 }
 

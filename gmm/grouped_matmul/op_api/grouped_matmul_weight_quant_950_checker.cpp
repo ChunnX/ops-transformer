@@ -652,14 +652,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
 {
-    if (IsA16W4()) {
-        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
-        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
-        if (antiquantScaleDimNum <= perchannelDim) {
-            return ACLNN_SUCCESS;
-        }
-        
+    if (IsA16W4Pergroup()) {
         CHECK_RET(CheckDimValueAllOne(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
 
@@ -828,44 +821,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
-    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4())) {
-        return ACLNN_SUCCESS;
-    }
-
-    if (IsA16W4()) {
-        if (gmmParams_.antiquantScaleOptional == nullptr) {
-            return ACLNN_SUCCESS;
-        }
-        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
-        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
-        if (antiquantScaleDimNum <= perchannelDim) {
-            return ACLNN_SUCCESS;
-        }
-        auto weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
-        int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
-        int64_t groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
-        if (unlikely(groupNum <= 0)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum",
-                std::to_string(groupNum),
-                "The value of groupNum must be greater than 0");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (unlikely(kSize % groupNum != 0)) {
-            std::string incorrectValues = "kSize: " + std::to_string(kSize) +
-                ", groupNum: " + std::to_string(groupNum);
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum",
-                incorrectValues, "kSize must be a multiple of groupNum");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        int64_t groupSize = kSize / groupNum;
-        // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
-        if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
-                std::to_string(groupSize),
-                "When the quant mode is A16W4 pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4Pergroup())) {
         return ACLNN_SUCCESS;
     }
 
@@ -904,6 +860,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
                 std::to_string(groupSize),
                 "The value of groupSize must be 128/192/256/512");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (IsA16W4Pergroup()) {
+        // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
+        if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
+                std::to_string(groupSize),
+                "When the quant mode is A16W4 pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {

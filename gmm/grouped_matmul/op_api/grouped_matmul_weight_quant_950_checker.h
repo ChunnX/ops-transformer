@@ -60,7 +60,8 @@ private:
     bool IsS8S4NZ() const;
     bool IsA16W4() const;
     bool IsMultiTensorWeight() const;
-    
+    bool IsA16W4Pergroup() const;
+
     std::string GetDataFlowString() const;
     const char* GetAclnnName() const;
 
