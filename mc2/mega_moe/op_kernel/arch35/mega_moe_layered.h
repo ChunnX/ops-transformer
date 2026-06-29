@@ -30,11 +30,6 @@
 using namespace AscendC;
 
 namespace MegaMoeImpl {
-// using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-// using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
-//                             int64_t, int64_t, int64_t, int64_t, int64_t,
-//                             int64_t, int64_t>;
-
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
@@ -246,8 +241,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, ELEMS_PER_BYTE, serverNum_);
     params_.tilingData = tilingData;
-    params_.peermemInfo.hcomm = &hcomm_;
-    params_.peermemInfo.mc2Context = mc2Context_;
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     expertRevNumsGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
     tripleGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tripleInfoPtr);
@@ -330,7 +323,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的dispatch buffer。
     // Tensor大小：每块大小为 TOKEN_SCALE_SIZE=8KB, 容纳token+scale。
-    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;
+    // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
+    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+        static_cast<int64_t>(ALIGN_32));
+    uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     copyTmpBaseAddr_ = copyTmpBaseAddr;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
@@ -660,7 +658,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 {
     uint32_t xInBytes = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
-    uint32_t startOffset = copyTmpBaseAddr_ + TOKEN_SCALE_SIZE * 3;
+    // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
+    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+        static_cast<int64_t>(ALIGN_32));
+    uint32_t startOffset = copyTmpBaseAddr_ + tokenScaleSize * 3;
     uint32_t xOutAddr = startOffset + xInBytes;
     uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
 
