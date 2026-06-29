@@ -168,10 +168,10 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
     }
 }
 
-__simd_callee__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
-                                                    __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
-                                                    uint32_t vHeadOffset, uint32_t vHeadSize, uint32_t qkvUbStrideN,
-                                                    uint32_t qkvUbStrideT, uint32_t vInputHeadBase)
+__simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
+                                                __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
+                                                uint32_t vHeadOffset, uint32_t vHeadSize, uint32_t qkvUbStrideN,
+                                                uint32_t qkvUbStrideT, uint32_t vInputHeadBase)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     const uint32_t outputHeadStride = tokenSize * QKV_RRC_D128_FULL_SIZE;
@@ -210,24 +210,6 @@ __simd_callee__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputB
                 (MicroAPI::RegTensor<uint8_t> &)vHighFp8, outputLowAddrReg, mask64);
         }
     }
-}
-
-__simd_vf__ inline void VScaleFp8D128NtdToNtdVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
-                                                __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
-                                                uint32_t vHeadOffset, uint32_t vHeadSize,
-                                                uint32_t vInputHeadBase)
-{
-    VScaleFp8D128ToNtdVfImpl(inputBf16, vScale, vOutFp8Ntd, tokenSize, vHeadOffset, vHeadSize,
-                             tokenSize * QKV_RRC_D128_FULL_SIZE, QKV_RRC_D128_FULL_SIZE, vInputHeadBase);
-}
-
-__simd_vf__ inline void VScaleFp8D128TndToNtdVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
-                                                __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
-                                                uint32_t vHeadOffset, uint32_t vHeadSize, uint32_t qkvHeadNum,
-                                                uint32_t vInputHeadBase)
-{
-    VScaleFp8D128ToNtdVfImpl(inputBf16, vScale, vOutFp8Ntd, tokenSize, vHeadOffset, vHeadSize,
-                             QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE, vInputHeadBase);
 }
 
 __simd_callee__ inline void QDynamicQuantD128NtdWithScaleLayoutVfImpl(__ubuf__ float *qFp32Ntd,

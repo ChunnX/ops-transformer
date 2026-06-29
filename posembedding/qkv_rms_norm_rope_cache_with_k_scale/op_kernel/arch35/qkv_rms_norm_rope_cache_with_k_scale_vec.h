@@ -357,16 +357,18 @@ private:
         const uint64_t vHeadOffset = qHeadNum_ + kvHeadNum_;
         if constexpr (IS_TND) {
             const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
-            AscendC::VF_CALL<VScaleFp8D128TndToNtdVf>(
+            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
                 (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
                 static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
-                static_cast<uint32_t>(qkvHeadNum), static_cast<uint32_t>(vHeadOffset));
+                QKV_RRC_D128_FULL_SIZE, static_cast<uint32_t>(qkvHeadNum) * QKV_RRC_D128_FULL_SIZE,
+                static_cast<uint32_t>(vHeadOffset));
         } else {
-            AscendC::VF_CALL<VScaleFp8D128NtdToNtdVf>(
+            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
                 (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
                 static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
+                static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE, QKV_RRC_D128_FULL_SIZE,
                 static_cast<uint32_t>(vHeadOffset));
         }
     }
