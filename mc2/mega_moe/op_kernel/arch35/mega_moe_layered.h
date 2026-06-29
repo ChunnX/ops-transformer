@@ -29,7 +29,7 @@
 
 using namespace AscendC;
 
-namespace MegaMoeImpl {
+namespace MegaMoeLayeredImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,

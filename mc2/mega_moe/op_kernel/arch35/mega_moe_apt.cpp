@@ -30,6 +30,7 @@
 using namespace AscendC;
 #ifdef ENABLE_TENSOR_API
 using namespace MegaMoeImpl;
+using namespace MegaMoeLayeredImpl;
 #endif
 
 template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommMode>
