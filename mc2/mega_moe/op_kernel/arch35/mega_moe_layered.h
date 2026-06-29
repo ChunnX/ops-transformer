@@ -193,10 +193,8 @@ private:
     LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
     LocalTensor<int32_t> tripleTensor_;
-    LocalTensor<bfloat16_t> xInTensor1_;
-    LocalTensor<bfloat16_t> xInTensor2_;
-    LocalTensor<ActivationType> xOutTensor1_;
-    LocalTensor<ActivationType> xOutTensor2_;
+    LocalTensor<bfloat16_t> xInTensor_;
+    LocalTensor<ActivationType> xOutTensor_;
     LocalTensor<uint16_t> mxTempTensor_;
     LocalTensor<int32_t> resetTensor_;
     LocalTensor<int32_t> topkIdsTensor_;
@@ -369,9 +367,27 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     sendDedupMaskTensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, sendDedupMaskTensorAddr,
         SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
     Duplicate<uint32_t>(sendDedupMaskTensor_, 0, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
+    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于量化计算中间区域；
+    // Tensor大小：参考 mega_moe.h，当前申请2K；
+    uint32_t mxTempTensorAddr = sendDedupMaskTensorAddr + SEND_DEDUP_MASK_UB_BYTES;
+    uint32_t mxTempTensorSize = 2 * 1024;
+    mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr,
+        mxTempTensorSize / sizeof(uint16_t));
+    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于存储量化输出结果和 32B meta；
+    // Tensor大小：token长度Align256字节对齐 + scale存储长度 + meta，单buffer；
+    uint32_t xOutTensorAddr = mxTempTensorAddr + mxTempTensorSize;
+    uint32_t xOutTensorSize = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
+    xOutTensor_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr,
+        xOutTensorSize / sizeof(ActivationType));
+    // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于存储输入token；
+    // Tensor大小：token长度Align128后按 bf16 字节数申请，单buffer；
+    uint32_t xInTensorAddr = xOutTensorAddr + xOutTensorSize;
+    uint32_t xInTensorSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
+    xInTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInTensorAddr,
+        xInTensorSize / sizeof(bfloat16_t));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
-    uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + 6U * COPY_TMP_BUFFER_SIZE;
+    uint32_t expertTokenNumsOutTensorAddr = xInTensorAddr + xInTensorSize;
     uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
@@ -629,22 +645,7 @@ template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantTokenToWorkspaceRecord(uint32_t tokenIdx,
     GM_ADDR recordAddr)
 {
-    uint32_t xInBytes = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
-    // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
-    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
-        static_cast<int64_t>(ALIGN_32));
-    uint32_t startOffset = copyTmpBaseAddr_ + tokenScaleSize * 3;
-    uint32_t xOutAddr = startOffset + xInBytes;
-    uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
-
-    LocalTensor<bfloat16_t> xInTensor(TPosition::VECCALC, startOffset, xInBytes / sizeof(bfloat16_t));
-    LocalTensor<ActivationType> xOutTensor(TPosition::VECCALC, xOutAddr,
-        recordPayloadBytes / sizeof(ActivationType));
-    LocalTensor<uint16_t> mxTempTensor(TPosition::VECCALC, mxTempAddr, (2 * 1024) / sizeof(uint16_t));
-    LocalTensor<uint8_t> xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
+    LocalTensor<uint8_t> xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
 
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(
@@ -655,16 +656,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
-    DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+    DataCopyPad(xInTensor_, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
-    __ubuf__ bfloat16_t* srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInTensor.GetPhyAddr());
-    __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor.GetPhyAddr());
-    __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor[Ops::Base::CeilAlign(
+    __ubuf__ bfloat16_t* srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInTensor_.GetPhyAddr());
+    __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor_.GetPhyAddr());
+    __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor_[Ops::Base::CeilAlign(
         mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
-    __ubuf__ int8_t* outDataAddr = reinterpret_cast<__ubuf__ int8_t*>(xOutTensor.GetPhyAddr());
+    __ubuf__ int8_t* outDataAddr = reinterpret_cast<__ubuf__ int8_t*>(xOutTensor_.GetPhyAddr());
     __ubuf__ uint16_t* mxScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(
-        xOutTensor[mxQuantTokenAlignBytes_].GetPhyAddr());
+        xOutTensor_[mxQuantTokenAlignBytes_].GetPhyAddr());
 
     quant::ComputeMaxExp(srcAddr, maxExpAddr, k_);
     quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, mxQuantScaleNumAlignPerToken_);
@@ -970,7 +971,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
     if (copyNum <= 0) {
         return;
     }
-    constexpr int32_t BufferNum = 2;
+    constexpr int32_t BufferNum = DISPATCH_BUFFER_NUM;
     constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1};
     int64_t widthA = k_ / ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
