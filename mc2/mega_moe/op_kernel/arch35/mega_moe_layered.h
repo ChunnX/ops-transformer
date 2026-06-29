@@ -616,17 +616,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 }
                 sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
                 uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                // GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
-                //     targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
-                //     relayOffset;
-                // if (targetServer != serverId_) {
+                GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
+                    targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
+                    relayOffset;
+                if (targetServer != serverId_) {
                     __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                     params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServer));
                     int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
                     GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
-                // }
+                }
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
         }
@@ -641,9 +641,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         uint32_t senderIdx = blockIdx_ - senderCoreStart;
         for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
             targetServerForSender += senderCoreNum) {
-            // if (targetServerForSender == serverId_) {
-            //         continue;
-            // }
+            if (targetServerForSender == serverId_) {
+                    continue;
+            }
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
             int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -680,24 +680,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     GM_ADDR notifyAddr = dstAddr + recordDataBytes;
                     
                     if (targetServerForSender == serverId_) {
-                        PRINTF("Sender DataCopy\n");
-                        GlobalTensor<uint8_t> relayDstGlobal;
-                        LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
-                        uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
-                        DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
-                        DataCopyPadExtParams<uint8_t> recordCopyPad{false, 0U, 0U, 0U};
-                        workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
-                        relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
-                        DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
-                        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-                        PipeBarrier<PIPE_ALL>();
-                        LocalTensor<uint64_t> mTensor = copyTmpBytes[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<uint64_t>();
-                        mTensor.SetValue(0, uint64_t(1));
-                        PipeBarrier<PIPE_ALL>();
-                        SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
-                        DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
-                        SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-                        // continue;
+                        // PRINTF("Sender DataCopy\n");
+                        // GlobalTensor<uint8_t> relayDstGlobal;
+                        // LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
+                        // uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
+                        // DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
+                        // DataCopyPadExtParams<uint8_t> recordCopyPad{false, 0U, 0U, 0U};
+                        // workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
+                        // relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
+                        // DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
+                        // SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+                        // PipeBarrier<PIPE_ALL>();
+                        // LocalTensor<uint64_t> mTensor = copyTmpBytes[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<uint64_t>();
+                        // mTensor.SetValue(0, uint64_t(1));
+                        // PipeBarrier<PIPE_ALL>();
+                        // SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+                        // DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
+                        // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
+                        continue;
                     } else {
                         uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                         ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
