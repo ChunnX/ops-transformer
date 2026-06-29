@@ -39,8 +39,12 @@ private:
     // singlepara
     ge::graphStatus CheckActualSeqLenQDim(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckActualSeqLenQData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenQDataTND(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenQDataNonTND(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckActualSeqLenKvDim(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckActualSeqLenKvData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenKvDataTND(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenKvDataNonTND(const FiaTilingInfo &fiaInfo);
 
     // existence
     ge::graphStatus CheckExistenceActualSeqLenQ(const FiaTilingInfo &fiaInfo);

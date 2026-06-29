@@ -40,12 +40,17 @@ private:
     ge::graphStatus CheckSharedPrefixDataType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckSharedPrefixShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckActualSharedPrefixLenData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus GetPrefixLenByLayout(const FiaTilingInfo &fiaInfo, uint32_t &keySharedPrefixS,
+        uint32_t &valueSharedPrefixS);
 
     // existence
     ge::graphStatus CheckSharedPrefixExistence(const FiaTilingInfo &fiaInfo);
 
     // feature
     ge::graphStatus CheckUnSupportFeature(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckUnSupportFeatureDtype(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckUnSupportFeaturePostQuant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckUnSupportFeatureLayout(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureAntiquantS1Gt1(const FiaTilingInfo &fiaInfo,
         int64_t keyAntiquantMode, int64_t valueAntiquantMode);
