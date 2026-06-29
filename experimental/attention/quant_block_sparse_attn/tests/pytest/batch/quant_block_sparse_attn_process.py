@@ -49,10 +49,10 @@ def _check_runtime_available():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
         pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn is not registered.{suffix}")
-    if not custom_ops.has_quant_block_sparse_attention_metadata_op():
+    if not custom_ops.has_quant_block_sparse_attn_metadata_op():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
-        pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attention_metadata is not registered.{suffix}")
+        pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered.{suffix}")
 
 
 def _prepare_kv_inputs(inputs):
@@ -110,11 +110,11 @@ def _metadata_needs_generation(metadata):
     return False
 
 
-def _call_npu_quant_block_sparse_attention_metadata(test_data):
+def _call_npu_quant_block_sparse_attn_metadata(test_data):
     inputs = test_data["input"]
     metadata_input = test_data.get("metadata_input", {})
     sparse_seq_len = _to_npu(inputs["sparse_seq_len"])
-    metadata = torch.ops.custom.npu_quant_block_sparse_attention_metadata(
+    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
         sparse_seq_len,
         metadata_input["num_heads_q"],
         metadata_input["num_heads_kv"],
@@ -144,7 +144,7 @@ def _prepare_metadata(test_data):
     metadata = test_data["input"].get("metadata")
     if not _metadata_needs_generation(metadata):
         return _to_npu(metadata)
-    return _call_npu_quant_block_sparse_attention_metadata(test_data)
+    return _call_npu_quant_block_sparse_attn_metadata(test_data)
 
 
 def _call_npu_quant_block_sparse_attn(test_data, device_id):

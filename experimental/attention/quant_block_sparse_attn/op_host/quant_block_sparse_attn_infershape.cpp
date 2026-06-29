@@ -40,16 +40,24 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         OP_LOGE(kOpName, "InferShape: attentionOut shape is nullptr");
         return ge::GRAPH_FAILED;
     }
-    *attentionOutShape = *queryShape;
+    auto attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        OP_LOGE(kOpName, "InferShape: attrs is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    const std::string layoutQ = optiling::BSAGetStringAttr(attrs, optiling::BSA_LAYOUT_Q_ATTR_INDEX, "TND");
+    if (layoutQ == "NTD" && queryShape->GetDimNum() == 3U) {
+        attentionOutShape->SetDimNum(3);
+        attentionOutShape->SetDim(0, queryShape->GetDim(1)); // T
+        attentionOutShape->SetDim(1, queryShape->GetDim(0)); // N
+        attentionOutShape->SetDim(2, queryShape->GetDim(2)); // D
+    } else {
+        *attentionOutShape = *queryShape;
+    }
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::BSA_SOFTMAX_LSE_INDEX);
     if (softmaxLseShape == nullptr) {
         OP_LOGE(kOpName, "InferShape: softmaxLse shape is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    auto attrs = context->GetAttrs();
-    if (attrs == nullptr) {
-        OP_LOGE(kOpName, "InferShape: attrs is nullptr");
         return ge::GRAPH_FAILED;
     }
     const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(optiling::BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
