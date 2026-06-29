@@ -23,17 +23,6 @@
 #endif
 
 namespace vector1 {
-template <typename T>
-struct UIntSortTraits;
-template <>
-struct UIntSortTraits<bfloat16_t> {
-    using UInt = uint16_t;
-    static constexpr UInt ZERO      = 0x0000;
-    static constexpr UInt SIGN_MASK = 0x8000;
-    static constexpr UInt NAN_MASK  = 0xFFC0;
-    static constexpr UInt ALL_ONE   = 0xFFFF;
-};
-
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
                                               const LocalTensor<uint16_t> &in,
                                               const uint32_t topK)

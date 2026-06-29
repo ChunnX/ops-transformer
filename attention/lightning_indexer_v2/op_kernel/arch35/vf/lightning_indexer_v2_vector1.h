@@ -20,19 +20,6 @@
 
 namespace liV2Vector1 {
 
-template <typename T>
-struct UIntSortTraits;
-
-// uint32-fp32
-template <>
-struct UIntSortTraits<float> {
-    using UInt = uint32_t;
-    static constexpr UInt ZERO      = 0x00000000;
-    static constexpr UInt SIGN_MASK = 0x80000000;
-    static constexpr UInt NAN_MASK  = 0xFFC00000;
-    static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
-};
-
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
                                               const LocalTensor<uint32_t> &in,
                                               const uint32_t topK)

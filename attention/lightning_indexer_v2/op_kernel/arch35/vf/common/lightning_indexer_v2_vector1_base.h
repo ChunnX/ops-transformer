@@ -18,6 +18,24 @@
 #include "basic_api/kernel_basic_intf.h"
 
 namespace liV2Vector1 {
+template <>
+struct UIntSortTraits<float> {
+    using UInt = uint32_t;
+    static constexpr UInt ZERO      = 0x00000000;
+    static constexpr UInt SIGN_MASK = 0x80000000;
+    static constexpr UInt NAN_MASK  = 0xFFC00000;
+    static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
+};
+
+template <>
+struct UIntSortTraits<bfloat16_t> {
+    using UInt = uint16_t;
+    static constexpr UInt ZERO      = 0x0000;
+    static constexpr UInt SIGN_MASK = 0x8000;
+    static constexpr UInt NAN_MASK  = 0xFFC0;
+    static constexpr UInt ALL_ONE   = 0xFFFF;
+};
+
 template <typename FloatT>
 struct UIntSortConstCtx {
     using Traits = UIntSortTraits<FloatT>;
