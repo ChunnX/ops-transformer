@@ -566,16 +566,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                             static_cast<uint64_t>(maskSlotSize_);
             dstGlobalTensor.SetGlobalBuffer(
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
-            if (curRankId == rankId_) {
+            //if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
                     (__gm__ uint8_t*)(GetRankWinAddrWithOffset(rankId_, dstOffset)));
-            }
+            //}
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                //hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
