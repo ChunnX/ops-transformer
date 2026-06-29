@@ -90,14 +90,17 @@ bool GetContext(GMMSQWeightQuantInputParams& params, const gert::TilingContext& 
 bool CheckDynamicInputShapeNotEmpty(
     const gert::TilingContext& context, uint32_t inputIndex, uint32_t tensorIndex, const char* inputName)
 {
+    const std::string paramName = std::string(inputName) + "[" + std::to_string(tensorIndex) + "]";
     const auto *shapePtr = context.GetDynamicInputShape(inputIndex, tensorIndex);
     OP_CHECK_IF(shapePtr == nullptr,
-        OP_LOGE(OP_NAME, "Dynamic input shape of %s[%u] is nullptr.", inputName, tensorIndex),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, paramName, "nullptr",
+            "Dynamic input shape cannot be nullptr"),
         return false);
 
     const auto &storageShape = shapePtr->GetStorageShape();
     OP_CHECK_IF(storageShape.GetShapeSize() == 0,
-        OP_LOGE(OP_NAME, "Not yet support empty tensor for %s[%u].", inputName, tensorIndex),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, paramName, "shapeSize=0",
+            "Empty tensor is not supported"),
         return false);
     return true;
 }
