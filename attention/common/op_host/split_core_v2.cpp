@@ -294,9 +294,9 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
     const BaseInfo &baseInfo = splitContext.baseInfo;
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
-    costInfo.bN2CostOfEachBatch[bIdx] = 0L;
+    costInfo.bN2CostOfEachBatch[bIdx] = 0LL;
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
-    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0L;
+    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0LL;
 
     if (GetS1SeqSize(bIdx, baseInfo) == 0U || GetS2SeqSize(bIdx, baseInfo) == 0U) {
         return;
