@@ -34,28 +34,28 @@ uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
         return static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx]);
     }
 
-    return (bIdx == 0) ? static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx]) :
+    return (bIdx == 0U) ? static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx]) :
                          static_cast<uint32_t>(baseInfo.actualSeqS1Size[bIdx] - baseInfo.actualSeqS1Size[bIdx - 1U]);
 }
 
 uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 {
-    uint32_t prefix = static_cast<uint32_t>(baseInfo.actualSeqPrefixSize);
+    uint32_t prefixSize = static_cast<uint32_t>(baseInfo.actualSeqPrefixSize);
     if (baseInfo.actualSeqS2Size.empty()) {
-        return prefix + baseInfo.s2Size;
+        return prefixSize + baseInfo.s2Size;
     }
 
     if (baseInfo.actualLenKvDims == 1U) {
-        return prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[0]);
+        return prefixSize + static_cast<uint32_t>(baseInfo.actualSeqS2Size[0]);
     }
 
     if (!baseInfo.isAccumSeqS2) {
-        return prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]);
+        return prefixSize + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]);
     }
 
-    return (bIdx == 0) ?
-               prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]) :
-               prefix + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx] - baseInfo.actualSeqS2Size[bIdx - 1U]);
+    return (bIdx == 0U) ?
+               prefixSize + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx]) :
+               prefixSize + static_cast<uint32_t>(baseInfo.actualSeqS2Size[bIdx] - baseInfo.actualSeqS2Size[bIdx - 1U]);
 }
 
 int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
@@ -93,18 +93,18 @@ int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
 }
 
-BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
+BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize,
                                  uint32_t s2TailSize)
 {
     BlockCost<int64_t> typeCost{};
     typeCost[NORMAL_BLOCK][NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
-    typeCost[TAIL_BLOCK][NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2NormalSize);
+    typeCost[TAIL_BLOCK][NORMAL_BLOCK] = (mTailSize == 0U) ? 0U : CalcCost(mTailSize, s2NormalSize);
     typeCost[NORMAL_BLOCK][TAIL_BLOCK] = (s2TailSize == 0U) ? 0U : CalcCost(s1NormalSize, s2TailSize);
-    typeCost[TAIL_BLOCK][TAIL_BLOCK] = (s1GTailSize == 0U || s2TailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2TailSize);
+    typeCost[TAIL_BLOCK][TAIL_BLOCK] = (mTailSize == 0U || s2TailSize == 0U) ? 0U : CalcCost(mTailSize, s2TailSize);
     return typeCost;
 }
 
-Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
+Range<uint32_t> CalcS2Range(uint32_t mIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
                             const BatchCache &batchCache)
 {
     uint32_t s2Start = 0U;
@@ -122,22 +122,21 @@ Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const Spl
         return std::make_pair(s2Start, s2End);
     }
 
-    // 1. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
-    int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(splitParam.mBaseSize);
-    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(splitParam.mBaseSize),
-                                    static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.gSize)) -
-                           1;
+    // 1. calc index of s2FirstToken, s2LastToken by index of mFirstToken, mLastToken
+    int64_t mFirstToken = static_cast<int64_t>(mIdx) * static_cast<int64_t>(splitParam.mBaseSize);
+    int64_t mLastToken = std::min(mFirstToken + static_cast<int64_t>(splitParam.mBaseSize),
+                                  static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.gSize)) - 1;
 
     int64_t s1FirstToken = 0;
     int64_t s1LastToken = 0;
     if (baseInfo.isS1G) {
-        s1FirstToken = s1GFirstToken / static_cast<int64_t>(baseInfo.gSize);
-        s1LastToken = s1GLastToken / static_cast<int64_t>(baseInfo.gSize);
+        s1FirstToken = mFirstToken / static_cast<int64_t>(baseInfo.gSize);
+        s1LastToken = mLastToken / static_cast<int64_t>(baseInfo.gSize);
     } else {
-        if (s1GFirstToken / batchCache.s1Size == s1GLastToken / batchCache.s1Size) {
+        if (mFirstToken / batchCache.s1Size == mLastToken / batchCache.s1Size) {
             // start and end locate in one G
-            s1FirstToken = s1GFirstToken % static_cast<int64_t>(batchCache.s1Size);
-            s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
+            s1FirstToken = mFirstToken % static_cast<int64_t>(batchCache.s1Size);
+            s1LastToken = mLastToken % static_cast<int64_t>(batchCache.s1Size);
         } else {
             // start and end locate in tow or more G, but working same as crossing a complete block
             s1FirstToken = 0;
@@ -150,7 +149,7 @@ Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const Spl
 
     // 2. trans index of token to index of block
     // no valid token
-    if (s2FirstToken >= batchCache.s2Size || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+    if (s2LastToken < 0 || s2FirstToken >= batchCache.s2Size || s2LastToken < s2FirstToken) {
         s2Start = 0U;
         s2End = 0U;
         return std::make_pair(s2Start, s2End);
@@ -177,11 +176,11 @@ void CalcSplitInfo(SplitContext &splitContext)
         uint32_t s1Size = GetS1SeqSize(bIdx, baseInfo);
         uint32_t s2Size = GetS2SeqSize(bIdx, baseInfo);
 
-        splitInfo.s1GBaseNum[bIdx] = (s1Size * baseInfo.gSize + (splitParam.mBaseSize - 1U)) / splitParam.mBaseSize;
-        splitInfo.s1GTailSize[bIdx] = (s1Size * baseInfo.gSize) % splitParam.mBaseSize;
+        splitInfo.mBaseNum[bIdx] = (s1Size * baseInfo.gSize + (splitParam.mBaseSize - 1U)) / splitParam.mBaseSize;
+        splitInfo.mTailSize[bIdx] = (s1Size * baseInfo.gSize) % splitParam.mBaseSize;
         splitInfo.s2BaseNum[bIdx] = (s2Size + splitParam.s2BaseSize - 1U) / splitParam.s2BaseSize;
         splitInfo.s2TailSize[bIdx] = s2Size % splitParam.s2BaseSize;
-        if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
+        if (splitInfo.mBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
             splitInfo.isKvSeqAllZero = false;
         }
     }
@@ -198,53 +197,53 @@ void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache 
     batchCache.s2Size = GetS2SeqSize(bIdx, baseInfo);
     batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size, baseInfo);
     batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size, baseInfo);
-    batchCache.typeCost = CalcCostTable(splitParam.mBaseSize, splitParam.s2BaseSize, splitInfo.s1GTailSize[bIdx],
+    batchCache.typeCost = CalcCostTable(splitParam.mBaseSize, splitParam.s2BaseSize, splitInfo.mTailSize[bIdx],
                                         splitInfo.s2TailSize[bIdx]);
 }
 
-void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
+void CalcMCache(uint32_t mIdx, const SplitContext &splitContext, const BatchCache &batchCache, MCache &mCache)
 {
     const BaseInfo &baseInfo = splitContext.baseInfo;
     const SplitParam &splitParam = splitContext.splitParam;
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
-    s1GCache.bIdx = batchCache.bIdx;
-    s1GCache.s1GIdx = s1GIdx;
+    mCache.bIdx = batchCache.bIdx;
+    mCache.mIdx = mIdx;
 
-    auto s2Range = CalcS2Range(s1GIdx, baseInfo, splitParam, batchCache);
-    s1GCache.s2Start = s2Range.first;
-    s1GCache.s2End = s2Range.second;
+    auto s2Range = CalcS2Range(mIdx, baseInfo, splitParam, batchCache);
+    mCache.s2Start = s2Range.first;
+    mCache.s2End = s2Range.second;
 
-    if (s1GCache.s2Start >= s1GCache.s2End) {
-        s1GCache.s1GBlock = 0;
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
+    if (mCache.s2Start >= mCache.s2End) {
+        mCache.mBlock = 0;
+        mCache.mCost = 0;
+        mCache.mLastBlockCost = 0;
+        mCache.mNormalBlockCost = 0;
         return;
     }
 
     // 计算S2方向满块、尾块数量
-    s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
+    mCache.mBlock = mCache.s2End - mCache.s2Start;
     uint32_t curTailS2Num =
-        (splitInfo.s2TailSize[batchCache.bIdx] != 0U && s1GCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U :
+        (splitInfo.s2TailSize[batchCache.bIdx] != 0U && mCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U :
                                                                                                                   0U;
-    uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
-    if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
-    } else if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-        s1GCache.s1GCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
+    uint32_t curNormalS2Num = mCache.mBlock - curTailS2Num;
+    if (splitInfo.mBaseNum[batchCache.bIdx] == 0) {
+        mCache.mCost = 0;
+        mCache.mLastBlockCost = 0;
+        mCache.mNormalBlockCost = 0;
+    } else if (mIdx == (splitInfo.mBaseNum[batchCache.bIdx] - 1U) && splitInfo.mTailSize[batchCache.bIdx] != 0U) {
+        mCache.mCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
                            batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] :
+        mCache.mLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] :
                                                         batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
+        mCache.mNormalBlockCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
     } else {
-        s1GCache.s1GCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
+        mCache.mCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
                            batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
+        mCache.mLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
                                                         batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
+        mCache.mNormalBlockCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
     }
 }
 
@@ -294,26 +293,26 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
     const BaseInfo &baseInfo = splitContext.baseInfo;
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
-    costInfo.bN2CostOfEachBatch[bIdx] = 0;
+    costInfo.bN2CostOfEachBatch[bIdx] = 0LL;
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
-    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0U;
+    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0LL;
 
     if (GetS1SeqSize(bIdx, baseInfo) == 0U || GetS2SeqSize(bIdx, baseInfo) == 0U) {
         return;
     }
 
     BatchCache bCache;
-    S1GCache s1GCache;
+    MCache mCache;
     CalcBatchCache(bIdx, splitContext, bCache);
-    for (uint32_t s1GIdx = 0; s1GIdx < splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
-        CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache);
-        costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost;
-        costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock;
-        if (s1GCache.s1GCost > costInfo.maxS1GCost) {
-            costInfo.maxS1GCost = s1GCache.s1GCost;
+    for (uint32_t mIdx = 0; mIdx < splitInfo.mBaseNum[bIdx]; mIdx++) {
+        CalcMCache(mIdx, splitContext, bCache, mCache);
+        costInfo.bN2CostOfEachBatch[bIdx] += mCache.mCost;
+        costInfo.bN2BlockOfEachBatch[bIdx] += mCache.mBlock;
+        if (mCache.mCost > costInfo.maxMCost) {
+            costInfo.maxMCost = mCache.mCost;
         }
-        if (s1GCache.s1GBlock > 0) {
-            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
+        if (mCache.mBlock > 0) {
+            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = mCache.mLastBlockCost;
         }
     }
 }
@@ -326,8 +325,8 @@ void CalcCostInfo(SplitContext &splitContext)
     CostInfo &costInfo = splitContext.costInfo;
 
     if (splitInfo.isKvSeqAllZero) {
-        costInfo.totalCost = 0;
         costInfo.totalBlockNum = 0U;
+        costInfo.totalCost = 0;
         return;
     }
 
@@ -345,26 +344,26 @@ void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
 
-    bool UpdateS1G = false;
+    bool UpdateM = false;
     bool UpdateBatch = false;
 
     // Update S2
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) { // 边界assignInfo.s2End是取不到的开区间
+    if (assignContext.curS2Idx >= assignContext.mCache.s2End) { // 边界assignInfo.s2End是取不到的开区间
         assignContext.curS2Idx = 0U;
-        assignContext.curS1GIdx++;
-        UpdateS1G = true;
+        assignContext.curMIdx++;
+        UpdateM = true;
     }
 
-    // Update S1G
-    if (assignContext.curS1GIdx >= splitInfo.s1GBaseNum[assignContext.curBIdx]) {
-        assignContext.curS1GIdx = 0U;
+    // Update M
+    if (assignContext.curMIdx >= splitInfo.mBaseNum[assignContext.curBIdx]) {
+        assignContext.curMIdx = 0U;
         assignContext.curBN2Idx++;
     }
 
     // Update Batch
     if (assignContext.curBN2Idx ==
         baseInfo.bSize * baseInfo.n2Size) { // 所有负载全部分配完，设置最后一个核的右开区间，返回
-        assignContext.curS1GIdx = 0U;
+        assignContext.curMIdx = 0U;
         assignContext.curS2Idx = 0U;
         assignContext.isFinished = true;
         return;
@@ -372,9 +371,9 @@ void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext
 
     if (assignContext.curBN2Idx / baseInfo.n2Size != assignContext.curBIdx) {
         assignContext.curBIdx = assignContext.curBN2Idx / baseInfo.n2Size;
-        assignContext.curS1GIdx = 0U;
+        assignContext.curMIdx = 0U;
         UpdateBatch = true;
-        UpdateS1G = true;
+        UpdateM = true;
     }
 
     // Update Cache
@@ -383,9 +382,9 @@ void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext
         assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
         assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
     }
-    if (UpdateS1G) {
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+    if (UpdateM) {
+        CalcMCache(assignContext.curMIdx, splitContext, assignContext.batchCache, assignContext.mCache);
+        assignContext.curS2Idx = assignContext.mCache.s2Start;
     }
 }
 
@@ -408,7 +407,7 @@ void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContex
 
         // to the end
         if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
-            assignContext.curS1GIdx = 0U;
+            assignContext.curMIdx = 0U;
             assignContext.curS2Idx = 0U;
             assignContext.isFinished = true;
             return;
@@ -422,9 +421,9 @@ void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContex
 
         assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
         assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-        assignContext.curS1GIdx = 0U;
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+        assignContext.curMIdx = 0U;
+        CalcMCache(assignContext.curMIdx, splitContext, assignContext.batchCache, assignContext.mCache);
+        assignContext.curS2Idx = assignContext.mCache.s2Start;
     }
 }
 
@@ -435,24 +434,24 @@ void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
     }
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
-                             assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
-                             assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
-        assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
-        assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
+                             assignContext.mCache.mLastBlockCost / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost + assignContext.mCache.mCost)) {
+        assignContext.coreCache.cost += assignContext.mCache.mCost;
+        assignContext.coreCache.block += assignContext.mCache.mBlock;
 
         // 当前batch被分配一行出去，更新剩余负载
-        assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                    assignContext.bN2Cost - assignContext.s1GCache.s1GCost :
+        assignContext.bN2Cost = assignContext.bN2Cost > assignContext.mCache.mCost ?
+                                    assignContext.bN2Cost - assignContext.mCache.mCost :
                                     0;
-        assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                     assignContext.bN2Block - assignContext.s1GCache.s1GBlock :
+        assignContext.bN2Block = assignContext.bN2Block > assignContext.mCache.mBlock ?
+                                     assignContext.bN2Block - assignContext.mCache.mBlock :
                                      0U;
         // 计算新一行的信息
         do {
-            assignContext.curS1GIdx++;
-            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while (assignContext.s1GCache.s1GBlock == 0);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+            assignContext.curMIdx++;
+            CalcMCache(assignContext.curMIdx, splitContext, assignContext.batchCache, assignContext.mCache);
+        } while (assignContext.mCache.mBlock == 0);
+        assignContext.curS2Idx = assignContext.mCache.s2Start;
     }
 }
 
@@ -462,9 +461,9 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
         return;
     }
 
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
+    int64_t curCost = assignContext.mCache.mNormalBlockCost;
+    if (assignContext.curS2Idx == (assignContext.mCache.s2End - 1U)) {
+        curCost = assignContext.mCache.mLastBlockCost;
     }
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
@@ -476,9 +475,9 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
         // 当前batch被分配一块出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost - curCost;
         // 当前行被分配一块出去，更新剩余负载
-        assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
+        assignContext.mCache.mCost = assignContext.mCache.mCost - curCost;
         assignContext.bN2Block--;
-        assignContext.s1GCache.s1GBlock--;
+        assignContext.mCache.mBlock--;
     }
 }
 
@@ -488,9 +487,9 @@ void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
         return;
     }
 
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
+    int64_t curCost = assignContext.mCache.mNormalBlockCost;
+    if (assignContext.curS2Idx == (assignContext.mCache.s2End - 1U)) {
+        curCost = assignContext.mCache.mLastBlockCost;
     }
 
     assignContext.coreCache.cost += curCost;
@@ -500,8 +499,8 @@ void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
     assignContext.bN2Cost = assignContext.bN2Cost - curCost;
     assignContext.bN2Block--;
     // 当前行被分配一块出去，更新剩余负载
-    assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-    assignContext.s1GCache.s1GBlock--;
+    assignContext.mCache.mCost = assignContext.mCache.mCost - curCost;
+    assignContext.mCache.mBlock--;
     UpdateCursor(splitContext, assignContext);
 }
 
@@ -518,7 +517,7 @@ bool IsNeedRecordFDInfo(const AssignContext &assignContext, const FAMetaData &sp
     }
     // 需要归约的行还未处理完
     if (assignContext.curBN2Idx == splitRes.bN2End[assignContext.curCoreIdx - 1U] &&
-        assignContext.curS1GIdx == splitRes.mEnd[assignContext.curCoreIdx - 1U]) {
+        assignContext.curMIdx == splitRes.mEnd[assignContext.curCoreIdx - 1U]) {
         return false;
     }
     return true;
@@ -531,12 +530,12 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
     uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / baseInfo.n2Size;
-    uint32_t splitS1GIdx = result.mEnd[assignContext.curCoreIdx - 1U];
+    uint32_t splitMIdx = result.mEnd[assignContext.curCoreIdx - 1U];
     uint32_t s1Size = GetS1SeqSize(splitBIdx, baseInfo);
 
     // 计算归约数据的FD均衡划分信息
-    uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                                (s1Size * baseInfo.gSize - splitS1GIdx * splitParam.mBaseSize) :
+    uint32_t curFdS1gSize = (splitMIdx == splitInfo.mBaseNum[splitBIdx] - 1U) ?
+                                (s1Size * baseInfo.gSize - splitMIdx * splitParam.mBaseSize) :
                                 splitParam.mBaseSize;
     uint32_t curFdS1gSplitPart = (curFdS1gSize + splitParam.gS1BaseSizeOfFd - 1U) / splitParam.gS1BaseSizeOfFd;
     uint32_t curFdS1gLastPartSize = curFdS1gSize - (splitParam.gS1BaseSizeOfFd * (curFdS1gSplitPart - 1U));
@@ -562,13 +561,13 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
 
     AssignContext assignContext{};
     assignContext.curBIdx = 0U;
-    assignContext.curS1GIdx = 0U;
+    assignContext.curMIdx = 0U;
     assignContext.unassignedCost = costInfo.totalCost;
     assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
     assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
     CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-    CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-    assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+    CalcMCache(assignContext.curMIdx, splitContext, assignContext.batchCache, assignContext.mCache);
+    assignContext.curS2Idx = assignContext.mCache.s2Start;
 
     for (uint32_t i = 0; i < coreNum; ++i) {
         if (result.maxCost > costLimit) {
@@ -585,7 +584,7 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
         int64_t avgCost = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
         assignContext.coreCache = {};
         if (!splitContext.splitParam.streamK) {
-            assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
+            assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxMCost);
         } else {
             assignContext.coreCache.costLimit = avgCost;
         }
@@ -602,7 +601,7 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
         }
 
         result.bN2End[i] = assignContext.curBN2Idx;
-        result.mEnd[i] = assignContext.curS1GIdx;
+        result.mEnd[i] = assignContext.curMIdx;
         result.s2End[i] = assignContext.curS2Idx;
         result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
 
@@ -616,8 +615,8 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
         }
 
         // 更新S2切分信息
-        if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
-            assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
+        if (assignContext.curS2Idx > assignContext.mCache.s2Start &&
+            assignContext.curS2Idx <= assignContext.mCache.s2End) {
             assignContext.curKvSplitPart++;
         }
     }
