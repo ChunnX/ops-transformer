@@ -53,7 +53,7 @@ inline bool IsA5Smla(const char *socVersion)
     return socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr;
 }
 
-inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
+inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t, int64_t cmpRatio)
 {
     if (!hasCmpKv) {
         return cmpRatio == 1;
@@ -61,7 +61,7 @@ inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int
     if (isA5) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
     }
-    return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
+    return cmpRatio == 4 || cmpRatio == 128;
 }
 
 inline bool IsTensorExistSmla(const aclTensor *tensor)

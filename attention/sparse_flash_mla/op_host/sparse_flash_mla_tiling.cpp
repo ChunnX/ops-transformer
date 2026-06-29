@@ -1365,16 +1365,15 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
                             A5_PLATFORM_LOG.c_str(), cmpRatio_),
                         return ge::GRAPH_FAILED);
         }
+    } else if (opParamInfo_.cmpKv.tensor == nullptr) {
+        OP_CHECK_IF(cmpRatio_ != 1,
+                    OP_LOGE(opName_, "cmpRatio should be 1 in C1A on %s, but got %ld.",
+                        A2_A3_PLATFORM_LOG.c_str(), cmpRatio_),
+                    return ge::GRAPH_FAILED);
     } else {
-        uint32_t expectedCmpRatio = 1;
-        if (smlaInfo_.perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-            expectedCmpRatio = 4;
-        } else if (smlaInfo_.perfMode == SMLATemplateMode::CFA_TEMPLATE_MODE) {
-            expectedCmpRatio = 128;
-        }
-        OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
-                    OP_LOGE(opName_, "cmpRatio should be %u in current template mode on %s, but got %ld.",
-                        expectedCmpRatio, A2_A3_PLATFORM_LOG.c_str(), cmpRatio_),
+        OP_CHECK_IF(cmpRatio_ != 4 && cmpRatio_ != 128,
+                    OP_LOGE(opName_, "cmpRatio should be 4 or 128 in C4A/C128A on %s, but got %ld.",
+                        A2_A3_PLATFORM_LOG.c_str(), cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
