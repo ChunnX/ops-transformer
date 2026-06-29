@@ -74,8 +74,11 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
         OP_CHECK_IF(!SetShapeListMultiXMultiWeightMultiY(context),
                     OP_LOGE(context->GetNodeName(), "Unable to get MMM shape list"), return false);
     } else if (isSingleMultiSingle_) {
-        OP_CHECK_IF(!SetShapeListSplitMSingleXMultiWeightSingleY(context),
-                    OP_LOGE(context->GetNodeName(), "Unable to get single-multi-single shape list when x-weight is float8_e4m3fn-float4_e2m1/fp32"), return false);
+        OP_CHECK_IF(
+            !SetShapeListSplitMSingleXMultiWeightSingleY(context),
+            OP_LOGE(context->GetNodeName(),
+                    "Unable to get single-multi-single shape list when x-weight is float8_e4m3fn-float4_e2m1/fp32"),
+            return false);
     } else {
         std::string incorrectValue = "groupType: " + std::to_string(static_cast<int8_t>(groupType_)) +
             ", singleX: " + (isSingleX_ ? "true" : "false") +
@@ -123,12 +126,12 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                     "The size of antiquantScaleOptional does not match the expected value"),
                 return false);
     if (hasAntiquantOffset_) {
-        OP_CHECK_IF(
-            isSingleMultiSingle_,
-            OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
-                                         std::to_string(numAntiquantOffset_),
-                                         "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in single-multi-single mode, antiquantOffsetOptional must be empty"),
-            return false);
+        OP_CHECK_IF(isSingleMultiSingle_,
+                    OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
+                                                 std::to_string(numAntiquantOffset_),
+                                                 "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in "
+                                                 "single-multi-single mode, antiquantOffsetOptional must be empty"),
+                    return false);
         OP_CHECK_IF(
             numAntiquantOffset_ != expectedParamNum,
             OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
@@ -587,8 +590,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantOffsetSingleXMultiWeight
     const gert::TilingContext *context) const
 {
     OP_CHECK_IF(hasAntiquantOffset_,
-                OP_LOGE(context->GetNodeName(),
-                        "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in single-multi-single mode, antiquantOffsetOptional must be empty."),
+                OP_LOGE(context->GetNodeName(), "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in "
+                                                "single-multi-single mode, antiquantOffsetOptional must be empty."),
                 return false);
     return true;
 }
@@ -691,7 +694,8 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
                        context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr &&
                        context->GetDynamicInputTensor(WEIGHT_IDX, 0) != nullptr &&
-                       context->GetDynamicInputTensor(WEIGHT_IDX, 0)->GetOriginShape().GetDimNum() == 3); // 3:单tensor时weight的维度为3
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 0)->GetOriginShape().GetDimNum() ==
+                           3); // 3:单tensor时weight的维度为3
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     isSingleY_ = (splitItem_ == 2 || splitItem_ == 3);
     GetNumOfInputs(context);
@@ -718,7 +722,8 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
         OP_CHECK_IF(!CheckEveryTensorSingleXMultiWeightSingleY(context),
                     OP_LOGE(context->GetNodeName(), "CheckEveryTensorSingleXMultiWeightSingleY failed."), return false);
     } else {
-        OP_CHECK_IF(!CheckEveryTensor(context), OP_LOGE(context->GetNodeName(), "CheckEveryTensor failed."), return false);
+        OP_CHECK_IF(!CheckEveryTensor(context), OP_LOGE(context->GetNodeName(), "CheckEveryTensor failed."),
+                    return false);
     }
 
     // 参数设置
@@ -1183,9 +1188,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
                 "The shape dim of weight must be >= 2"),
             return false);
         if (weightNzFlag_) {
-            OP_CHECK_IF(wDimNum != 4,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight[" + std::to_string(i) + "]",
-                    std::to_string(wDimNum), "The shape dim of weight must be 4 when x-weight is float8_e4m3fn-float4_e2m1/fp32 in NZ mode"),
+            OP_CHECK_IF(
+                wDimNum != 4,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    OP_NAME, "weight[" + std::to_string(i) + "]", std::to_string(wDimNum),
+                    "The shape dim of weight must be 4 when x-weight is float8_e4m3fn-float4_e2m1/fp32 in NZ mode"),
                 return false);
         }
         // -2含义为(N, K)场景N索引，-1含义为(K, N)场景N索引
