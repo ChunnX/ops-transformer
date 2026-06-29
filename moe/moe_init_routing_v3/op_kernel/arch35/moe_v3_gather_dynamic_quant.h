@@ -263,7 +263,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int6
             int64_t outBatchBufIdx = 0;
             bool outBatchPending0 = false;
             bool outBatchPending1 = false;
-            int64_t scaleBatchRows = BLOCK_BYTES / static_cast<int64_t>(sizeof(float));
+            int64_t scaleBatchRows =
+                Max(BLOCK_BYTES / static_cast<int64_t>(sizeof(float)), outBatchRows);
             int64_t scaleBatchCount = 0;
             int64_t scaleBatchStart = 0;
             int64_t scaleBatchBufIdx = 0;
@@ -864,7 +865,14 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
     pipe_->InitBuffer(calcQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         pipe_->InitBuffer(outBatchQueue_, 2, AlignBytes(perLoopCols_, sizeof(float)));
-        pipe_->InitBuffer(scaleBatchQueue_, 2, BLOCK_BYTES);
+        int64_t scaleBatchBytes = BLOCK_BYTES;
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            int64_t outBatchRows =
+                Max(static_cast<int64_t>(1), AlignBytes(perLoopCols_, sizeof(float)) / colsAsInt8_);
+            int64_t scaleBatchRows = Max(BLOCK_BYTES / static_cast<int64_t>(sizeof(float)), outBatchRows);
+            scaleBatchBytes = AlignBytes(scaleBatchRows, sizeof(float));
+        }
+        pipe_->InitBuffer(scaleBatchQueue_, 2, scaleBatchBytes);
     }
     pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
     pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
