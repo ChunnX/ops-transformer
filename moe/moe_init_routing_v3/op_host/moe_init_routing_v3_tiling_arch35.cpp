@@ -2151,23 +2151,57 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
     int64_t perLoopCols = cols_;
-    int64_t colMultiple = NUM_TWO * inputXDtypeSize_;
-    int64_t rowMultiple = NUM_TWO;
-    int64_t scaleCopyInQueueSize = UB_BLOCK_SIZE * NUM_TWO;
+    constexpr int64_t maxDataCopyBlockCount = 4095LL;
+    int64_t scaleCopyInQueueSize = isInputScale_ == 1 ?
+        DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
+    int64_t int32ElementsPerBlock = UB_BLOCK_SIZE / static_cast<int64_t>(sizeof(int32_t));
+    int64_t maxCoreIndicesElements = std::max(perCoreIndicesElements, lastCoreIndicesElements);
+    int64_t maxUsefulBatchRows = Ops::Base::CeilDiv(maxCoreIndicesElements,
+        std::max(k_, static_cast<int64_t>(1))) + 1;
+    int64_t xBatchSize = 1;
+    int64_t perLoopMaxIndicesElements = 0;
 
-    int64_t xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
-    int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
-    int64_t maxAlignedBytes = remainUbForIndices / rowMultiple;
-    int64_t perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
-    perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
+    while (perLoopMaxIndicesElements <= 0 && perLoopCols > 0) {
+        int64_t rowBytes = AlignBytes(perLoopCols, inputXDtypeSize_);
+        int64_t availableAfterScale = availUbSize_ - scaleCopyInQueueSize;
+        int64_t maxBatchRows = (rowBytes > 0) ? (availableAfterScale / rowBytes) : 1;
+        maxBatchRows = std::min(maxBatchRows, maxDataCopyBlockCount);
+        maxBatchRows = std::min(maxBatchRows, maxUsefulBatchRows);
 
-    while (perLoopMaxIndicesElements <= 0) {
+        xBatchSize = 1;
+        for (int64_t candidateBatchRows = maxBatchRows; candidateBatchRows > 1; --candidateBatchRows) {
+            int64_t requiredIndices = std::min(candidateBatchRows * std::max(k_, static_cast<int64_t>(1)),
+                                               maxCoreIndicesElements);
+            int64_t rowIdxQueueSize = DOUBLE_BUFFER *
+                AlignBytes(requiredIndices, static_cast<int64_t>(sizeof(int32_t)));
+            int64_t batchBufferSize = candidateBatchRows * rowBytes;
+            if (scaleCopyInQueueSize + rowIdxQueueSize + batchBufferSize > availUbSize_) {
+                continue;
+            }
+            int64_t remainUbForIndices = availUbSize_ - scaleCopyInQueueSize - batchBufferSize;
+            int64_t maxAlignedBytes = remainUbForIndices / DOUBLE_BUFFER;
+            perLoopMaxIndicesElements = maxAlignedBytes / static_cast<int64_t>(sizeof(int32_t));
+            perLoopMaxIndicesElements = perLoopMaxIndicesElements / int32ElementsPerBlock * int32ElementsPerBlock;
+            xBatchSize = candidateBatchRows;
+            break;
+        }
+
+        if (perLoopMaxIndicesElements <= 0) {
+            int64_t xCopyInQueueSize = DOUBLE_BUFFER * rowBytes;
+            int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
+            int64_t maxAlignedBytes = remainUbForIndices / DOUBLE_BUFFER;
+            perLoopMaxIndicesElements = maxAlignedBytes / static_cast<int64_t>(sizeof(int32_t));
+            perLoopMaxIndicesElements = perLoopMaxIndicesElements / int32ElementsPerBlock * int32ElementsPerBlock;
+            xBatchSize = 1;
+        }
+
+        if (perLoopMaxIndicesElements > 0) {
+            break;
+        }
+        if (perLoopCols <= 1) {
+            break;
+        }
         perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
-        xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
-        remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
-        maxAlignedBytes = remainUbForIndices / rowMultiple;
-        perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
-        perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
     }
 
     int64_t colsLoops = Ops::Base::CeilDiv(cols_, perLoopCols);
@@ -2194,18 +2228,9 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
     tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
 
-    constexpr int64_t maxDataCopyBlockCount = 4095LL;
-    int64_t rowBytes = AlignBytes(perLoopCols, inputXDtypeSize_);
-    int64_t xQueueSize = DOUBLE_BUFFER * rowBytes;
-    int64_t scaleQueueSize = isInputScale_ == 1 ?
-        DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
     int64_t maxPerLoopIndicesElements = std::max(perCorePerLoopIndicesElements, lastCorePerLoopIndicesElements);
-    int64_t rowIdxQueueSize = DOUBLE_BUFFER *
-        AlignBytes(maxPerLoopIndicesElements, static_cast<int64_t>(sizeof(int32_t)));
-    int64_t remainUbForBatch = availUbSize_ - xQueueSize - scaleQueueSize - rowIdxQueueSize;
-    int64_t xBatchSize = (rowBytes > 0) ? (remainUbForBatch / rowBytes) : 1;
-    xBatchSize = std::min(xBatchSize, maxDataCopyBlockCount);
-    tilingData->xBatchSize = std::max(xBatchSize, static_cast<int64_t>(1));
+    int64_t maxUsefulBatchSize = Ops::Base::CeilDiv(maxPerLoopIndicesElements, std::max(k_, static_cast<int64_t>(1))) + 1;
+    tilingData->xBatchSize = std::max(std::min(xBatchSize, maxUsefulBatchSize), static_cast<int64_t>(1));
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
