@@ -133,10 +133,10 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>scales</td>
     <td>输入</td>
     <td>每个专家的平滑权重、融合量化平滑权重的量化系数或量化系数。</td>
-    <td>要求为1D或2D Tensor。</td>
+    <td>要求为2D Tensor。</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td>-</td>
+    <td>无共享专家卡时为(moeExpertNum, H)；存在共享专家卡时为(sharedExpertNum + moeExpertNum, H)</td>
     <td>-</td>
     </tr>
     <tr>
@@ -156,7 +156,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>要求为2D Tensor。</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td>-</td>
+    <td>(BS, K)</td>
     <td>-</td>
     </tr>
     <tr>

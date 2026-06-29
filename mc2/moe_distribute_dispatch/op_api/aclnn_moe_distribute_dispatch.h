@@ -25,9 +25,9 @@ extern "C" {
  * @domain aclnn_ops_infer
  * @param [in] x: 计算输入，Tensor，数据类型float16，bfloat16，必须为2维，数据格式支持ND。输入的token数据。
  * @param [in] expertIds: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND。每个token的topK个专家索引。
- * @param [in] scales: 计算可选输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。每个专家的smooth权重。
+ * @param [in] scales: 计算可选输入，Tensor，数据类型float32，必须为2维，shape为(moeExpertNum, H)或(sharedExpertNum + moeExpertNum, H)，数据格式支持ND。每个专家的smooth权重。
  * @param [in] xActiveMask: 计算输入，Tensor，数据类型Bool，必须为1维，数据格式支持ND。预留参数，暂未使用，传空即可。
- * @param [in] expertScales: 计算输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。
+ * @param [in] expertScales: 计算可选输入，Tensor，数据类型float32，必须为2维，shape为(BS, K)，数据格式支持ND。
  * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域。不能和groupTp相同。
  * @param [in] epWorldSize: 计算输入，int。ep通信域size。
  * @param [in] epRankId: 计算输入，int。ep本卡Id。同一个EP通信域中各卡的epRankId不能重复。
