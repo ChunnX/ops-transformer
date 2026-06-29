@@ -33,23 +33,27 @@ pass_configs = {
 
 # Test 1: Static index atomic_add (baseline) - using L0C (like 0622.py)
 # Correct gemm dimensions: (M,K) @ (K,M) -> (M,M) when transpose_B=True
+# Use TWO DIFFERENT input buffers (like 0622.py does)
 @tilelang.jit(out_idx=[-1], pass_configs=pass_configs)
 def test_static_atomic_add():
     @T.prim_func
     def main(
-        Src: T.Tensor((16, 128), "float16"),  # Input in FP16
+        SrcA: T.Tensor((16, 128), "float16"),  # Input A in FP16
+        SrcB: T.Tensor((16, 128), "float16"),  # Input B in FP16 (different from A)
         Dst: T.Tensor((256, 16), "float32"),  # Output: M x M result
     ):
         with T.Kernel(1, is_npu=True) as (cid, vid):
             with T.Scope("C"):
-                src_L1 = T.alloc_L1((16, 128), "float16")
+                A_L1 = T.alloc_L1((16, 128), "float16")
+                B_L1 = T.alloc_L1((16, 128), "float16")
                 # gemm: (16,128) @ (128,16) -> (16,16)
                 result_L0C = T.alloc_L0C((16, 16), "float32")
                 
-                T.copy(Src[0:16, 0:128], src_L1)
-                # transpose_B=True: src_L1 @ src_L1^T
+                T.copy(SrcA[0:16, 0:128], A_L1)
+                T.copy(SrcB[0:16, 0:128], B_L1)
+                # transpose_B=True: A @ B^T
                 # (M,K) @ (K,M) -> (M,M)
-                T.gemm_v0(src_L1, src_L1, result_L0C, transpose_B=True, init=True)
+                T.gemm_v0(A_L1, B_L1, result_L0C, transpose_B=True, init=True)
                 
                 # Static atomic_add: write to fixed position [0:16, 0:16]
                 T.tile.atomic_add(Dst[0:16, 0:16], result_L0C)
@@ -116,6 +120,7 @@ def test_dynamic_atomic_add_buffer_load():
 # Each core scatters to its assigned block (no dynamic index)
 # Uses L0C->GM atomic_add like 0622.py
 # gemm: (BLOCK_SIZE, K) @ (K, BLOCK_SIZE) -> (BLOCK_SIZE, BLOCK_SIZE)
+# Use TWO DIFFERENT input buffers
 @tilelang.jit(out_idx=[-1], pass_configs=pass_configs)
 def test_multicore_fixed_scatter():
     BLOCK_SIZE = 16
@@ -123,19 +128,22 @@ def test_multicore_fixed_scatter():
     
     @T.prim_func
     def main(
-        Src: T.Tensor((64, K_DIM), "float16"),  # 4 blocks × 16 rows
+        SrcA: T.Tensor((64, K_DIM), "float16"),  # 4 blocks × 16 rows
+        SrcB: T.Tensor((64, K_DIM), "float16"),  # Different input
         Dst: T.Tensor((256, BLOCK_SIZE), "float32"),  # Output: M x M result
     ):
         with T.Kernel(4, is_npu=True) as (cid, vid):  # 4 cores
             block_id = cid
             
             with T.Scope("C"):
-                src_L1 = T.alloc_L1((BLOCK_SIZE, K_DIM), "float16")
+                A_L1 = T.alloc_L1((BLOCK_SIZE, K_DIM), "float16")
+                B_L1 = T.alloc_L1((BLOCK_SIZE, K_DIM), "float16")
                 # gemm: (16,128) @ (128,16) -> (16,16)
                 result_L0C = T.alloc_L0C((BLOCK_SIZE, BLOCK_SIZE), "float32")
                 
-                T.copy(Src[block_id * BLOCK_SIZE:(block_id + 1) * BLOCK_SIZE, 0:K_DIM], src_L1)
-                T.gemm_v0(src_L1, src_L1, result_L0C, transpose_B=True, init=True)
+                T.copy(SrcA[block_id * BLOCK_SIZE:(block_id + 1) * BLOCK_SIZE, 0:K_DIM], A_L1)
+                T.copy(SrcB[block_id * BLOCK_SIZE:(block_id + 1) * BLOCK_SIZE, 0:K_DIM], B_L1)
+                T.gemm_v0(A_L1, B_L1, result_L0C, transpose_B=True, init=True)
                 
                 # Each core scatters to 4 fixed destination blocks
                 for rep in T.serial(4):
@@ -281,18 +289,21 @@ def run_tests():
     try:
         func1 = test_static_atomic_add()
         print("Kernel compiled OK")
-        dst = torch.zeros(256, 16, dtype=torch.float32, device=device)  # Fixed: M x M output
-        src = torch.ones(16, 128, dtype=torch.float16, device=device) * 2.0
-        func1(src, dst)
-        # gemm_v0(src, src, transpose_B=True) = src @ src^T
-        # Each row sum: 128 * 2^2 = 512 (for diagonal)
-        # Non-diagonal elements also filled
+        dst = torch.zeros(256, 16, dtype=torch.float32, device=device)
+        src_a = torch.ones(16, 128, dtype=torch.float16, device=device) * 2.0
+        src_b = torch.ones(16, 128, dtype=torch.float16, device=device) * 3.0  # Different value
+        func1(src_a, src_b, dst)
+        # gemm_v0(A, B, transpose_B=True) = A @ B^T
+        # A(16,128) @ B^T(128,16) -> (16,16)
+        # Each element[i,j] = sum_k A[i,k] * B[j,k] = 128 * 2 * 3 = 768
         print(f"Dst[0:2, 0:8] = {dst[0:2, 0:8].cpu().numpy()}")
-        expected_diag = 128.0 * 4.0  # sum(128 elements * value^2) = 128 * 4 = 512
+        expected_val = 128.0 * 2.0 * 3.0  # 768
         actual_val = dst[0, 0].item()
-        print(f"Expected diagonal ~512, actual = {actual_val}")
-        if dst.abs().max().item() > 0:
+        print(f"Expected ~{expected_val}, actual = {actual_val}")
+        if actual_val > 0 and abs(actual_val - expected_val) < 10:
             print("PASS: L0C->GM atomic_add works!")
+        elif actual_val > 0:
+            print(f"PARTIAL: Got non-zero value {actual_val}, but not matching expected")
         else:
             print("FAILED: All zeros")
     except Exception as e:
@@ -316,14 +327,15 @@ def run_tests():
     print("=" * 60)
     try:
         func3 = test_dynamic_atomic_add_buffer_load()
+        # Use float32 as function expects (not float16)
         dst = torch.zeros(256, 128, dtype=torch.float32, device=device)
-        src = torch.ones(16, 128, dtype=torch.float16, device=device)
+        src = torch.ones(16, 128, dtype=torch.float32, device=device) * 3.0
         indices = torch.tensor([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160], 
                                dtype=torch.int32, device=device)
         func3(src, dst, indices)
         print(f"Dst[10:12, 0:5] = {dst[10:12, 0:5].cpu().numpy()}")
         if dst.abs().max().item() > 0:
-            print("PASS: Dynamic atomic_add somehow worked!")
+            print("UNEXPECTED: Dynamic atomic_add somehow worked!")
         else:
             print("CONFIRMED: Dynamic atomic_add failed (all zeros)")
     except Exception as e:
@@ -335,15 +347,23 @@ def run_tests():
     print("=" * 60)
     try:
         func3b = test_multicore_fixed_scatter()
-        dst = torch.zeros(256, 16, dtype=torch.float32, device=device)  # Fixed: BLOCK_SIZE x BLOCK_SIZE
-        src = torch.ones(64, 128, dtype=torch.float16, device=device)
-        func3b(src, dst)
+        dst = torch.zeros(256, 16, dtype=torch.float32, device=device)
+        src_a = torch.ones(64, 128, dtype=torch.float16, device=device) * 2.0
+        src_b = torch.ones(64, 128, dtype=torch.float16, device=device) * 3.0
+        func3b(src_a, src_b, dst)
         print(f"Dst[0:2, 0:8] = {dst[0:2, 0:8].cpu().numpy()}")
         if dst.abs().max().item() > 0:
-            print("PASS: Fixed pattern scatter with L0C->GM works")
-            # Each block accumulated 4 times: value should be 4 * 512 = 2048 (diagonal)
+            # Each block accumulated 4 times
+            # gemm: 128 * 2 * 3 = 768 per element
+            # 4x accumulation: 768 * 4 = 3072
+            expected_single = 128.0 * 2.0 * 3.0  # 768
+            expected_4x = expected_single * 4  # 3072
             actual = dst[0, 0].item()
-            print(f"Block 0 diagonal value = {actual} (expected ~2048 = 4x accumulation)")
+            print(f"Block 0 diagonal value = {actual} (expected ~{expected_4x} = 4x accumulation)")
+            if actual > 0:
+                print("PASS: Fixed pattern scatter with L0C->GM works")
+            else:
+                print("FAILED: All zeros")
         else:
             print("FAILED: Implementation issue")
     except Exception as e:
@@ -366,16 +386,24 @@ def run_tests():
     print("=" * 60)
     try:
         func5b = test_partial_matmul_output()
-        relu_grad = torch.ones(16, 128, dtype=torch.float16, device=device)
-        query_index = torch.ones(16, 128, dtype=torch.float16, device=device)
-        sparse_indices = torch.arange(128, dtype=torch.int32, device=device)
+        relu_grad = torch.ones(16, 128, dtype=torch.float16, device=device) * 2.0
+        query_index = torch.ones(16, 128, dtype=torch.float16, device=device) * 3.0
         matmul_result = torch.zeros(128, 128, dtype=torch.float32, device=device)
         indices_out = torch.zeros(128, dtype=torch.int32, device=device)
+        sparse_indices = torch.arange(128, dtype=torch.int32, device=device)
         
-        func5b(relu_grad, query_index, sparse_indices, matmul_result, indices_out)
+        # Correct parameter order: (ReluGrad, QueryIndex, MatmulResult, IndicesOut, SparseIndices)
+        func5b(relu_grad, query_index, matmul_result, indices_out, sparse_indices)
         
         print(f"MatmulResult[0:2, 0:5] = {matmul_result[0:2, 0:5].cpu().numpy()}")
-        if matmul_result.abs().max().item() > 0:
+        # transpose_A=True: ReluGrad^T @ QueryIndex
+        # (128,16) @ (16,128) -> (128,128)
+        # Each element = sum over 16: 16 * 2 * 3 = 96
+        expected = 16.0 * 2.0 * 3.0  # 96
+        actual = matmul_result[0, 0].item()
+        print(f"Expected ~{expected}, actual = {actual}")
+        
+        if actual > 0:
             print("PASS: Partial output works - Python can scatter afterwards")
         else:
             print("FAILED: Matmul didn't work")
