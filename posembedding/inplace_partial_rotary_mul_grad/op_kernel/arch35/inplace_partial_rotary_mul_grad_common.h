@@ -150,6 +150,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(__local_mem__ TDY *in, __local_
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy; // in/out B stride
     int32_t nStepUb = ubFactorS * dAlignDy;             // in/out N stride
     int32_t cosBStepUb = ubFactorS * dAlignCos;         // cos/sin B stride
+    int32_t cosSStepUb = dAlignCos;                     // cos/sin S stride
 
     __VEC_SCOPE__
     {
@@ -168,11 +169,11 @@ __aicore__ inline void BatchInterleaveModeGradVF(__local_mem__ TDY *in, __local_
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
                     if constexpr (IsBroadCast) {
-                        currCosUb = cos + sIdx * dAlignCos;
-                        currSinUb = sin + sIdx * dAlignCos;
+                        currCosUb = cos + sIdx * cosSStepUb;
+                        currSinUb = sin + sIdx * cosSStepUb;
                     } else {
-                        currCosUb = cos + bIdx * cosBStepUb + sIdx * dAlignCos;
-                        currSinUb = sin + bIdx * cosBStepUb + sIdx * dAlignCos;
+                        currCosUb = cos + bIdx * cosBStepUb + sIdx * cosSStepUb;
+                        currSinUb = sin + bIdx * cosBStepUb + sIdx * cosSStepUb;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
