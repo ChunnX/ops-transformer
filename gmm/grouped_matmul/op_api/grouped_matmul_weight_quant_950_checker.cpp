@@ -297,7 +297,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantParams() cons
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(size_t xIdx, size_t yIdx, size_t wIdx) const
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(size_t xIdx, size_t yIdx,
+                                                                              size_t wIdx) const
 {
     if (unlikely(op::IsPrivateFormat((*gmmParams_.x)[xIdx]->GetStorageFormat()))) {
         OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "x", "not ND", "ND");
@@ -336,7 +337,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
                     std::to_string(xDimNum), reason);
                 return ACLNN_ERR_PARAM_INVALID;
             }
-        } else {        
+        } else {
             if (unlikely(!(xDimNum <= MAX_FM_DIM && xDimNum >= MIN_FM_DIM))) {
                 std::string incorrectDim = "The shape dim of x[" + std::to_string(xIdx) + "] must be within the range ";
                 std::string reason = incorrectDim + std::to_string(MIN_FM_DIM) + "-" + std::to_string(MAX_FM_DIM);
@@ -645,7 +646,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName,
             "true",
             "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + "not support all be 1");
-        return ACLNN_ERR_PARAM_INVALID;        
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     return ACLNN_SUCCESS;
