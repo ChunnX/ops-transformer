@@ -410,43 +410,6 @@ protected:
         return true;
     }
 
-    op::Shape GetOriginalShapeForTransposedLastTwoDims(const aclTensor *tensor) const
-    {
-        auto viewShape = tensor->GetViewShape();
-        const uint32_t dimNum = viewShape.GetDimNum();
-        if (dimNum < LAST_SECOND_DIM_INDEX || !IsTransposeLastTwoDims(tensor)) {
-            return viewShape;
-        }
-
-        op::Shape originalShape;
-        originalShape.SetScalar();
-        for (uint32_t i = 0; i < dimNum - LAST_SECOND_DIM_INDEX; ++i) {
-            originalShape.AppendDim(viewShape.GetDim(i));
-        }
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_SECOND_DIM_INDEX));
-        return originalShape;
-    }
-
-    op::Shape GetOriginalShapeForMxScale(const aclTensor *tensor) const
-    {
-        auto viewShape = tensor->GetViewShape();
-        const uint32_t dimNum = viewShape.GetDimNum();
-        if (dimNum < LAST_THIRD_DIM_INDEX || !IsTransposeForMxShape(tensor)) {
-            return viewShape;
-        }
-
-        op::Shape originalShape;
-        originalShape.SetScalar();
-        for (uint32_t i = 0; i < dimNum - LAST_THIRD_DIM_INDEX; ++i) {
-            originalShape.AppendDim(viewShape.GetDim(i));
-        }
-        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_SECOND_DIM_INDEX));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_THIRD_DIM_INDEX));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
-        return originalShape;
-    }
-
     void SetTensorListOriginalShapes(const aclTensorList *tensorList, const std::vector<op::Shape> &originalShapes) const
     {
         if (tensorList == nullptr || tensorList->Size() != originalShapes.size()) {
@@ -460,6 +423,29 @@ protected:
         }
     }
 
+    void CreateMultiWeightScaleTensorListForTranspose(const aclTensorList *tensorList,
+                                                      std::vector<aclTensor *> &newTensorList,
+                                                      aclOpExecutor *executor) const
+    {
+        op::Shape shape;
+        for (uint64_t idx = 0; idx < (*tensorList).Size(); idx++) {
+            const aclTensor *inputTensor = (*tensorList)[idx];
+            op::Shape viewShape = inputTensor->GetViewShape();
+            if (viewShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM) {
+                continue;
+            }
+            auto storageShape = inputTensor->GetStorageShape();
+            shape.SetScalar();
+            shape.AppendDim(viewShape.GetDim(1));
+            shape.AppendDim(viewShape.GetDim(0));
+            shape.AppendDim(viewShape.GetDim(2));
+            aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
+            tensor->SetStorageFormat(inputTensor->GetStorageFormat());
+            tensor->SetStorageShape(storageShape);
+            newTensorList.emplace_back(tensor);
+        }
+    }
+
     void PrepareOriginalShapesBeforeContiguous() override
     {
         weightScaleOriginalShapes_.clear();
@@ -467,15 +453,27 @@ protected:
             GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
             return;
         }
+        if (!gmmDsqParams_.transposeWeight) {
+            GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
+            return;
+        }
+
+        std::vector<aclTensor *> weightTensorList;
+        std::vector<aclTensor *> weightScaleTensorList;
+        CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, l0Executor_);
+        gmmDsqParams_.weight = l0Executor_->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+        CreateMultiWeightScaleTensorListForTranspose(gmmDsqParams_.weightScale, weightScaleTensorList, l0Executor_);
+        gmmDsqParams_.weightScale =
+            l0Executor_->AllocTensorList(weightScaleTensorList.data(), weightScaleTensorList.size());
 
         for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
             auto *w = (*gmmDsqParams_.weight)[i];
             if (w != nullptr && IsPrivateFormat(w->GetStorageFormat())) {
-                w->SetOriginalShape(GetOriginalShapeForTransposedLastTwoDims(w));
+                w->SetOriginalShape(w->GetViewShape());
             }
         }
         for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); ++i) {
-            weightScaleOriginalShapes_.emplace_back(GetOriginalShapeForMxScale((*gmmDsqParams_.weightScale)[i]));
+            weightScaleOriginalShapes_.emplace_back((*gmmDsqParams_.weightScale)[i]->GetViewShape());
         }
     }
 
