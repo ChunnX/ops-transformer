@@ -36,8 +36,9 @@
 |[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)|将MoE层的专家FFN完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现通信和计算的掩盖。|  |  |
 |[mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|
 |[mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。|默认确定性实现|-|
-|[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认确定性实现|-|
-|[sparse_flash_mla_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_grad.md)|SparseFlashMla训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认确定性实现|-|
-|[sparse_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)|计算 Lightning Indexer KL Loss训练场景下的反向输出。|默认确定性实现|-|
-
-```
+|[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认确定性实现|默认确定性实现|
+|[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|生成SparseFlashMla主算子使用的任务切分metadata。|默认支持确定性计算；默认支持batch invariance。|xx|
+|[get_low_latency_ccl_buffer_size](../../torch_extension/cann_ops_transformer/docs/zh/get_low_latency_ccl_buffer_size.md)|计算low_latency_dispatch/low_latency_combine所需的HCCL通信buffer_size（单位MB），为MoeDistributeBuffer的静态方法，可在初始化前调用。|默认支持确定性计算|-|
+|[low_latency_dispatch](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_dispatch.md)|完成MoE并行部署下token的低时延dispatch分发，支持动态量化与EP域alltoallv通信，需与low_latency_combine配套使用。|默认支持确定性计算|-|
+|[low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)|与low_latency_dispatch配套，按dispatch原路返回完成token的低时延combine反向聚合（乘路由权重再相加）。|默认支持确定性计算|-|
+|[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)|MoE端到端通算融合算子，将Dispatch+GroupMatmul1+SwiGLUQuant+GroupMatmul2+Combine融合为单算子；配套get_mega_moe_ccl_buffer_size、get_symm_buffer_for_mega_moe使用。|-|默认支持确定性计算|
