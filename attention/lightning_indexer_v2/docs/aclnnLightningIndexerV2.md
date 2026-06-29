@@ -142,7 +142,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B+1,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>sequsedQOptional（aclTensor*）</td>
     <td>输入</td>
     <td>不同Batch中q的真实使用长度。</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>sequsedKOptional（aclTensor*）</td>
     <td>输入</td>
     <td>不同Batch中k的真实使用长度。</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>cmpResidualKOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示k压缩前token数量除以cmpRatio的余数。</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>shape支持(B,S2_max/block_size)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>outputIdxOffsetOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示topK结果输出索引所需要加上的偏移。</td>
@@ -192,15 +192,15 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
-	<td>metadataOptional（aclTensor*）</td>
-	<td>输入</td>
-	<td>QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
-	<td><ul><li>不支持空tensor。</li><li>block_size取值为16的整数倍，最大支持到1024。</li></ul></td>
-	<td>INT32</td>
-	<td>ND</td>
-  <td>shape支持(B,S2_max/block_size)</td>
-	<td>x</td>
+    <tr>
+    <td>metadataOptional（aclTensor*）</td>
+    <td>输入</td>
+    <td>QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
+    <td><ul><li>不支持空tensor。</li><li>block_size取值为16的整数倍，最大支持到1024。</li></ul></td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>shape支持(B,S2_max/block_size)</td>
+    <td>x</td>
   </tr>
   <tr>
   <td>topk（int64_t）</td>
