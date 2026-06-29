@@ -1,10 +1,10 @@
 # FA
 
 ## 核心交付件
-1. `csrc/flash_attn/op_host` 算子host实现
-2. `csrc/flash_attn/op_kernel`算子kernel实现
-3. `csrc/flash_attn/torch_interface.cpp`算子pytorch层和C++实现层接口
-4. `csrc/flash_attn/CMakeLists.txt` 算子cmake配置
+1. `csrc/flash_attn_example/op_host` 算子host实现
+2. `csrc/flash_attn_example/op_kernel`算子kernel实现
+3. `csrc/flash_attn_example/torch_interface.cpp`算子pytorch层和C++实现层接口
+4. `csrc/flash_attn_example/CMakeLists.txt` 算子cmake配置
 
 ## 计算公式
 
@@ -25,7 +25,7 @@ $$
 
 ## 接口参数说明
 
-- <a id="query"></a>**Q/K/V**
+- <a id="query"></a>**query/key/value**
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -68,7 +68,7 @@ $$
     </table>
 **QKV目前不支持空Tensor传入**
 
-- <a id="mask"></a>**Mask**
+- <a id="attnMask"></a>**attnMask**
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -84,13 +84,12 @@ $$
         <tbody>
         <tr>
             <td>Shape</td>
-            <td>Mask矩阵的传入形状</td>
-            <td>必选输入，支持以(QS,KvS), (1,QS,KvS), (1,1,QS,KvS)形状传入</td>
+            <td>Mask矩阵的传入形状，必选输入，支持以(2048, 2048)形状传入下三角矩阵</td>
         </tr>
         </tbody>
     </table>
 
-- <a id="sparseMode"></a>**SparseMode（必传属性）**
+- <a id="softmaxScale"></a>**softmaxScale**
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -106,13 +105,13 @@ $$
         <tbody>
         <tr>
             <td>1</td>
-            <td>allMask，必须传入完整的attenmask矩阵</td>
+            <td>Q与K矩阵相乘之后的缩放系数，等于1表示不缩放，默认为0</td>
             <td>-</td>
         </tr>
         </tbody>
     </table>
 
-- <a id="inputLayout"></a>**InputLayout（必传属性）**
+- <a id="isCausal"></a>**isCausal**
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -127,49 +126,19 @@ $$
         </thead>
         <tbody>
         <tr>
-            <td>BNSD</td>
-            <td>Q、K、V以及输出矩阵的排布格式</td>
-            <td>目前只支持BNSD格式</td>
+            <td>1</td>
+            <td>因果注意力掩码，目前仅支持传入true</td>
+            <td>-</td>
         </tr>
         </tbody>
     </table>
-- <a id="attr"></a>**其他参数**
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 740px">
-        <col style="width: 360px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>属性</th>
-                <th>含义</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>ScaleValue</td>
-            <td>Q与K矩阵相乘之后的缩放系数</td>
-            <td>必传属性，等于1表示不缩放，默认为  1/√d</td>
-        </tr>
-        <tr>
-            <td>Num_heads</td>
-            <td>Q矩阵的N</td>
-            <td>必传属性</td>
-        </tr>
-        <tr>
-            <td>NumKeyValueHeads</td>
-            <td>K、V矩阵的N</td>
-            <td>必传属性、KV矩阵的N要一致</td>
-        </tr>
-        </tbody>
-    </table>
-
-
 
 ## 代码架构
 算子执行在Device侧（NPU，执行Kernel函数），但是所有的输入都在Host侧（CPU，执行Tiling函数），Device侧无法直接读取Host侧的数据，两者存在数据隔离。在Host侧准备好的数据需要通过TilingData(用户自定义的数据结构)传递给Device侧，Device侧拿到这个数据再去执行算子。因此代码主要分为如下三部分：
- - **csrc/flash_attn/torch_interface.cpp** 里面包含了算子执行的所有流程，上层python入参传递到该文件，经过Tiling函数计算得到TilingData，将TilingData传递给算子的Kernel函数进行执行，最终得到结果。
- - **csrc/flash_attn/op_host** 算子从入参计算得到TilingData的所有文件都在该目录下
- - **csrc/flash_attn/op_kernel**算子的Kernel函数所有文件都在该目录下
+ - **csrc/flash_attn_example/torch_interface.cpp** 里面包含了算子执行的所有流程，上层python入参传递到该文件，经过Tiling函数计算得到TilingData，将TilingData传递给算子的Kernel函数进行执行，最终得到结果。
+ - **csrc/flash_attn_example/op_host** 算子从入参计算得到TilingData的所有文件都在该目录下
+ - **csrc/flash_attn_example/op_kernel**算子的Kernel函数所有文件都在该目录下
 
+## 内部实现文档
+
+欲了解算子的内存层级分配、PRELOAD 流水线设计、分核算法及典型 Case 走读，请参阅 [FA_IMPL.md](./FA_IMPL.md)。

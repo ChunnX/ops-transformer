@@ -23,7 +23,7 @@ AscendOps 是一个轻量级，高性能的算子开发工程模板，它集成�
 *   Python: 3.8+
 *   PyTorch: 2.6.0+
 *   PyTorchAdapter 7.1.0+
-*   Cmake: 3.18+
+*   Cmake: 3.16+
 *   CANN Ascend Toolkit
 
 ## 环境准备
@@ -119,11 +119,11 @@ AscendOps 是一个轻量级，高性能的算子开发工程模板，它集成�
 ## 使用示例
 1. 上板执行
 
-安装完成后，您可以像使用普通PyTorch操作一样使用NPU算子，以FIA算子为例，您可以在`ascend_ops/csrc/flash_attn/test`目录下找到并执行这个脚本:
+安装完成后，您可以像使用普通PyTorch操作一样使用NPU算子，以FIA算子为例，您可以在`ascend_ops/csrc/flash_attn_example/test`目录下找到并执行这个脚本:
 
 ```bash
-cd ./ascend_ops/csrc/flash_attn/test/
-python3 test_fia_v2.py
+cd ./ascend_ops/csrc/flash_attn_example/test/
+python3 test_fa.py
 ```
 
 最终看到如下输出，即为执行成功：
@@ -140,4 +140,4 @@ msprof --application="python3 test_fia_v2.py"
 ## 进阶参考
 下述资料可让您更深入的理解算子的开发与实现，实现更优性能的算子。
 
-- [FA算子实践](./ascend_ops/csrc/flash_attn/README.md)。
+- [FA算子实践](./ascend_ops/csrc/flash_attn_example/README.md)。

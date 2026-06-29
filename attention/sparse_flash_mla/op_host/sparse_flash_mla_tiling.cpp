@@ -380,6 +380,19 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE_INDEX);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
 
+    auto oriKeyStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
+    if (oriKeyStrides != nullptr && oriKeyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < oriKeyStrides->GetDimNum(); i++) {
+            oriKeyStridesVec_.push_back(oriKeyStrides->GetStride(i));
+        }
+    }
+    auto cmpKeyStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
+    if (cmpKeyStrides != nullptr && cmpKeyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < cmpKeyStrides->GetDimNum(); i++) {
+            cmpKeyStridesVec_.push_back(cmpKeyStrides->GetStride(i));
+        }
+    }
+
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
 }
@@ -559,6 +572,53 @@ void SMLAInfoParser::SetSMLAShape()
             OP_LOGE(opName_, "cmpSparseIndices tensor is nullptr, please check input parameters.");
         }
     }
+}
+
+// 非连续校验：通过shape计算expected stride进行校验
+// PA_BBND时，只允许0轴非连续，其余轴必须连续
+// 非PA_BBND时，所有轴都必须连续
+ge::graphStatus SMLAInfoParser::CheckContiguous() const
+{
+    bool oriKeyNonContiguous = false;
+    bool cmpKeyNonContiguous = false;
+    size_t checkStartIdx = (kvLayout_ == SMLALayout::PA_BBND) ? 1 : 0;
+    if (opParamInfo_.oriKv.tensor != nullptr && !oriKeyStridesVec_.empty()) {
+        std::vector<uint32_t> oriExpectedStrides;
+        if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
+            oriExpectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2) * oriKvShape_.GetDim(3),
+                               oriKvShape_.GetDim(2) * oriKvShape_.GetDim(3), oriKvShape_.GetDim(3), 1};
+        } else if (kvLayout_ == SMLALayout::TND) {
+            oriExpectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2), oriKvShape_.GetDim(2), 1};
+        }
+        OP_CHECK_IF(oriKeyStridesVec_.size() != oriExpectedStrides.size(),
+            OP_LOGE(opName_, "oriKey strideVec size[%zu] not match kvLayout expect len[%zu].",
+                oriKeyStridesVec_.size(), oriExpectedStrides.size()),
+                return ge::GRAPH_FAILED);
+        oriKeyNonContiguous = oriKeyStridesVec_[checkStartIdx] != oriExpectedStrides[checkStartIdx];
+    }
+    if (opParamInfo_.cmpKv.tensor != nullptr && !cmpKeyStridesVec_.empty()) {
+        std::vector<uint32_t> cmpExpectedStrides;
+        if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
+            cmpExpectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2) * cmpKvShape_.GetDim(3),
+                               cmpKvShape_.GetDim(2) * cmpKvShape_.GetDim(3), cmpKvShape_.GetDim(3), 1};
+        } else if (kvLayout_ == SMLALayout::TND) {
+            cmpExpectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2), cmpKvShape_.GetDim(2), 1};
+        }
+        OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
+            OP_LOGE(opName_, "cmpKey strideVec size[%zu] not match kvLayout expect len[%zu].",
+                cmpKeyStridesVec_.size(), cmpExpectedStrides.size()),
+                return ge::GRAPH_FAILED);
+        cmpKeyNonContiguous = cmpKeyStridesVec_[checkStartIdx] != cmpExpectedStrides[checkStartIdx];
+    }
+    
+    OP_CHECK_IF(oriKeyNonContiguous,
+        OP_LOGE(opName_, "oriKey only support non-continuous keying on the 0-axis."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cmpKeyNonContiguous,
+        OP_LOGE(opName_, "cmpKey only support non-continuous keying on the 0-axis."),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLAInfoParser::GetN1Size()
@@ -926,6 +986,11 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
     smlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
     smlaInfo.cmpResidualKVSize = cmpResidualKVSize_;
+
+    smlaInfo.oriKeyStride0 = !oriKeyStridesVec_.empty() ?
+        static_cast<uint32_t>(oriKeyStridesVec_[0]) : 0;
+    smlaInfo.cmpKeyStride0 = !cmpKeyStridesVec_.empty() ?
+        static_cast<uint32_t>(cmpKeyStridesVec_[0]) : 0;
 }
 
 ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
@@ -967,6 +1032,9 @@ ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetActualseqInfo()) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ge::GRAPH_SUCCESS != CheckContiguous()) {
         return ge::GRAPH_FAILED;
     }
     GenerateInfo(smlaInfo);
@@ -1829,6 +1897,8 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
     tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
     tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
+    tilingData_.baseParams.set_oriKeyStride0(tilingInfo->oriKeyStride0);
+    tilingData_.cmpParams.set_cmpKeyStride0(tilingInfo->cmpKeyStride0);
 
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
         tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
