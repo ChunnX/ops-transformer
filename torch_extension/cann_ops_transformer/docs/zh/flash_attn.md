@@ -1,4 +1,4 @@
-# flash_attn <a name="ZH-CN_TOPIC_0000002309174912"></a>
+# flash_attn
 
 ## 产品支持情况
 
@@ -9,7 +9,7 @@
 - <term>Atlas 推理系列产品</term>：不支持
 - <term>Atlas 训练系列产品</term>：不支持
 
-## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
+## 功能说明
 
 - 接口功能:
 
@@ -40,7 +40,7 @@
   其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
   增加**sink**之后计算逻辑如下所示，主要修改相关softmax_max和softmax_sum逻辑计算部分。
-    
+  
   $$
   S = \frac{QK^T}{\sqrt{d}}
   $$
@@ -55,29 +55,29 @@
 
 开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑如下所示：
 
-  $$
+$$
   S = \frac{QK^T}{\sqrt{d}}
-  $$
-  
-  $$
-  softmax\_max = max(S)
-  $$
+$$
 
-  $$
+$$
+  softmax\_max = max(S)
+$$
+
+$$
   softmax\_lse = log{\sum e^{S-softmax\_max}} + softmax\_max
-  $$
+$$
 
 > [!NOTE]
 >
 > q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有k、v Batch输入样本序列长度的累加和。
 > Q_S表示seqlen_q，Q_N表示nheads_q，KV_S表示seqlen_kv，KV_N表示nheads_kv。
 
-## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
+## 函数原型
 
 调用flash_attn接口之前，请先调用前置接口flash_attn_metadata，完成flash_attn负载均衡的计算。
 
 ```python
-cann_ops_transformer.ops.flash_attn_metadata(
+flash_attn_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -99,7 +99,7 @@ cann_ops_transformer.ops.flash_attn_metadata(
 ```
 
 ```python
-cann_ops_transformer.ops.flash_attn(
+flash_attn(
     q,
     k,
     v,
@@ -124,8 +124,7 @@ cann_ops_transformer.ops.flash_attn(
 ) -> (Tensor, Tensor)
 ```
 
-## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
-
+## 参数说明
 
 ### flash_attn_metadata
 
@@ -174,7 +173,7 @@ cann_ops_transformer.ops.flash_attn(
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
 | return_softmax_lse | int | 可选 | 是否需要获取softmax的LSE结果 | int32 | - | - | - |
 
-## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
+## 返回值说明
 
 ### flash_attn_metadata
 
@@ -190,14 +189,15 @@ cann_ops_transformer.ops.flash_attn(
 | softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | <ul><li>(B, Q_N, Q_S)</li><li>(Q_N, Q_T)</li></ul> | ✓ |
 
 **说明**
--   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
--   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse为1时，一般情况下，输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
 
+- attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
+- softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse为1时，一般情况下，输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
 
-## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
+## 约束说明
 
-- 声明
-  - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+声明：
+
+- 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
 ### 特性参数组
 
@@ -245,11 +245,13 @@ cann_ops_transformer.ops.flash_attn(
 ### 参数组约束
 
 #### 公共参数组
+
 - 入参为空的场景处理：
-    - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
-    - 触发空tensor的用例将全部拦截报错。
+  - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
+  - 触发空tensor的用例将全部拦截报错。
 
 - q、k、v、attn_out校验
+
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -330,7 +332,6 @@ cann_ops_transformer.ops.flash_attn(
     </tr>
 </tbody>
 </table>
-
 
 layout匹配关系表：
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
@@ -592,6 +593,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
+
 当block_table不为空时，开启Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
@@ -716,9 +718,9 @@ mask_mode参数解释
     </tbody>
 </table>
 
-## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
+## 调用示例
 
--   flash_attn_metadata + flash_attn 联合调用示例（BSND）
+- flash_attn_metadata + flash_attn 联合调用示例（BSND）
 
     ```python
     import torch

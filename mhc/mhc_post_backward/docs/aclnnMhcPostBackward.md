@@ -85,7 +85,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -99,7 +99,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与hRes一致</td>
       <td>ND</td>
@@ -157,7 +157,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHRes</td>
@@ -168,7 +167,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHout</td>
@@ -179,7 +177,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHpost</td>

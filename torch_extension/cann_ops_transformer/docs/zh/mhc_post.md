@@ -48,7 +48,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
+mhc_post(x, h_res, h_out, h_post) -> Tensor
 ```
 
 ## 参数说明

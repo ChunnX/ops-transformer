@@ -960,7 +960,6 @@ aclnnStatus aclnnMlaProlog(
   </div>
   </details>
 
-  <!-- 参数解释请参见**算子执行接口**。-->
 
 ## 调用示例
 
