@@ -82,7 +82,7 @@ ge::graphStatus CheckSoftmaxMaxSumTndShape(gert::TilingContext *context, int64_t
             // check whether softmax_out_layout is TND
             return ge::GRAPH_SUCCESS;
         }
-    } else {
+    } else { 
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxSumShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
