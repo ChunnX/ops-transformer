@@ -431,7 +431,7 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulK1(
     const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
-    uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
+    uint32_t l0ABBufId, uint32_t &l0ABBufIdx)
 {
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK; // 尾块处理
     uint32_t tailSize = param.singleK % baseK;
@@ -451,16 +451,19 @@ __aicore__ inline void MatmulK1(
 #endif
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
-        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufId];
-        WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufIdx];
+        get_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, false);
+        rls_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, false);
         LoadDataToL0A(curAL0Tensor, aL1Tensor, param, k * l1Aoffset, tileK, param.singleM);
 
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufIdx];
         LoadDataToL0B(curBL0Tensor, bL1Tensor, param, k * l1Boffset, tileK, param.singleN, loopNum);
 
-        SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
-        WaitFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+        get_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, true);
+        rls_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, true);
+        get_buf(PIPE_M, l0ABBufId + l0ABBufIdx, false);
+        rls_buf(PIPE_M, l0ABBufId + l0ABBufIdx, false);
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
         if (param.realM != 0) {
@@ -478,8 +481,9 @@ __aicore__ inline void MatmulK1(
                                 UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
         }
         Mmad(cL0Tensor, curAL0Tensor, curBL0Tensor, mmadParams);
-        SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
-        l0ABBufId ^= 1;
+        get_buf(PIPE_M, l0ABBufId + l0ABBufIdx, true);
+        rls_buf(PIPE_M, l0ABBufId + l0ABBufIdx, true);
+        l0ABBufIdx ^= 1;
     }
 }
  	 
@@ -488,7 +492,7 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulN1(
     const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
-    uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
+    uint32_t l0ABBufId, uint32_t &l0ABBufIdx)
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN; // 尾块处理
     uint32_t tailSize = param.singleN % baseN;
@@ -521,22 +525,27 @@ __aicore__ inline void MatmulN1(
         uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
         mmadParams.n = tileN;
 
-        WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
-        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufId];
+        get_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, false);
+        rls_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, false);
+
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufIdx];
         if (n == 0 || n == 1) { // n=1时多搬运一次, 为了将l0ab的同步flagId合并, 减少指令数量，解决MAC队列满阻塞scalar的问题
             LoadDataToL0A(curAL0Tensor, aL1Tensor, param, 0, param.singleK, param.singleM);
         }
 
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufIdx];
         LoadDataToL0B(curBL0Tensor, bL1Tensor, param, n * l1BOffset, param.singleK, tileN, loopNum);
-        SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
-        WaitFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+        get_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, true);
+        rls_buf(PIPE_MTE1, l0ABBufId + l0ABBufIdx, true);
+        get_buf(PIPE_M, l0ABBufId + l0ABBufIdx, false);
+        rls_buf(PIPE_M, l0ABBufId + l0ABBufIdx, false);
 
         Mmad(cL0Tensor[n * l0COffset], curAL0Tensor, curBL0Tensor, mmadParams);
 
-        SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
-        l0ABBufId ^= 1;
+        get_buf(PIPE_M, l0ABBufId + l0ABBufIdx, true);
+        rls_buf(PIPE_M, l0ABBufId + l0ABBufIdx, true);
+        l0ABBufIdx ^= 1;
     }
 }
 
