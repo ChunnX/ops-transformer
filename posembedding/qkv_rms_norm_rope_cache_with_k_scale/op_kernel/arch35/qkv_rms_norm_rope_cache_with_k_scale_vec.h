@@ -444,14 +444,15 @@ private:
     {
         const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
+        const uint64_t kFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         uint64_t kUbTokenStride;
         uint64_t kUbHeadStride;
         if constexpr (IS_TND) {
-            kUbTokenStride = kvHeadNum_ * headDim_;
-            kUbHeadStride = headDim_;
+            kUbTokenStride = kvHeadNum_ * kFp8SparseRowStride;
+            kUbHeadStride = kFp8SparseRowStride;
         } else {
-            kUbTokenStride = headDim_;
-            kUbHeadStride = tile.aivTokenSize * headDim_;
+            kUbTokenStride = kFp8SparseRowStride;
+            kUbHeadStride = tile.cubeHalfTokenSize * kFp8SparseRowStride;
         }
         for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
             const uint64_t kUbOffset = tokenIdx * kUbTokenStride;
