@@ -877,34 +877,34 @@ ge::graphStatus DequantChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo 
 
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type", "2 or 3",
-                    "In FP8 GQA fullquant scenario, pse_type should not be 2/3."),
+                    "In FP8 GQA fullquant scenario, pse_type should not be 2/3"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
-                    "In FP8 GQA fullquant scenario, pse is not supported."),
+                    "In FP8 GQA fullquant scenario, pse is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
                     "query_padding_size and kv_padding_size",
-                    "In FP8 GQA fullquant scenario, left padding is not supported."),
+                    "In FP8 GQA fullquant scenario, left padding is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
                     "key_shared_prefix and value_shared_prefix",
-                    "In FP8 GQA fullquant scenario, system prefix is not supported."),
+                    "In FP8 GQA fullquant scenario, system prefix is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key and value",
-                    "In FP8 GQA fullquant scenario, key/value tensorlist is not supported."),
+                    "In FP8 GQA fullquant scenario, key/value tensorlist is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::NO_ROPE,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope and key_rope",
-                    "In FP8 GQA fullquant scenario, rope is not supported."),
+                    "In FP8 GQA fullquant scenario, rope is not supported"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1200,7 +1200,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         (CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
         (CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex) != ge::GRAPH_SUCCESS))),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key/value/keyAntiquantScale/valueAntiquantScale",
-            "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
+            "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors"),
             return ge::GRAPH_FAILED); 
     
     // qscale dim支持4维[T, N, D//64, 2]和5维[N2, T, G, D//64, 2]
