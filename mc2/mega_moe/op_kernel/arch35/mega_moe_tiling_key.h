@@ -18,7 +18,6 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 namespace Mc2Tiling {
-#define DISPATCH_QUANT_MODE_NO_QUANT 0
 #define DISPATCH_QUANT_MODE_MXFP 4
 #define DISPATCH_QUANT_OUT_DTYPE_E5M2 3
 #define DISPATCH_QUANT_OUT_DTYPE_E4M3FN 4

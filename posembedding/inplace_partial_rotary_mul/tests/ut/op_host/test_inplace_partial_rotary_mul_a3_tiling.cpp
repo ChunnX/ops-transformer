@@ -350,6 +350,27 @@ TEST_F(InplacePartialRotaryMulTilingA3, generic_partial_slice)
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, 2000);
 }
 
+TEST_F(InplacePartialRotaryMulTilingA3, cos_sin_empty_d_noop)
+{
+    optiling::InplacePartialRotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingPara("InplacePartialRotaryMul",
+        {
+            {{{458, 1, 8, 2}, {458, 1, 8, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{458, 1, 1, 0}, {458, 1, 1, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{458, 1, 1, 0}, {458, 1, 1, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{458, 1, 8, 2}, {458, 1, 8, 2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({2, 2})},
+        },
+        &compileInfo, kSocVersion, k910bCoreNum, k910bUbSize);
+
+    ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, 1);
+}
+
 // ============================================================================
 // 7. Boundary Tests
 // ============================================================================
@@ -505,6 +526,29 @@ TEST_F(InplacePartialRotaryMulTilingA3, invalid_slice_negative)
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({-1, 64})},
+        },
+        &compileInfo, kSocVersion, k910bCoreNum, k910bUbSize);
+
+    ExecuteTestCase(tilingPara, ge::GRAPH_FAILED);
+}
+
+// sliceLength 为奇数 (interleave requires sliceLength%2==0) 非法
+// x D=128 (even, passes D%2 check), but slice=[0,3) → sliceLength=3 (odd)
+TEST_F(InplacePartialRotaryMulTilingA3, invalid_slice_length_odd)
+{
+    optiling::InplacePartialRotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingPara("InplacePartialRotaryMul",
+        {
+            {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 1, 3}, {1, 1, 1, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 1, 3}, {1, 1, 1, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 3})},
         },
         &compileInfo, kSocVersion, k910bCoreNum, k910bUbSize);
 

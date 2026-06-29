@@ -263,12 +263,6 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Init(
     tokenCopyOutParams = {(uint16_t)1, (uint32_t)(oneTokenBtypeSize), 0, 0, 0};
     indicesMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
     indicesSToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE2));
-    if constexpr (ifNumOutTokens == true) {
-        if (GetBlockIdx() == 0) {
-            InitOutput<T>(dstGm, this->numOutTokens * this->cols, 0);
-        }
-        SyncAll();
-    }
 }
 
 template <typename T, bool ifNumOutTokens>

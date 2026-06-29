@@ -296,7 +296,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
       <td>从oriKv中筛选的稀疏token个数。</td>
-      <td>当前暂不支持，默认值为0。</td>
+      <td>当前暂不支持，默认值为0，当前仅支持0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -435,8 +435,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128。
-  - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv支持2、4、8、16、32、64、128，不支持1。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
+  - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv不支持1，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
 
 - **返回值**
 

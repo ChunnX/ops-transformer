@@ -931,20 +931,32 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
         if (__builtin_expect((expectedParam != it.second), 0)) {
             isCorrect = ge::GRAPH_FAILED;
             if (expectedParam.isValid != it.second.isValid) {
-                OP_LOGE_WITH_INVALID_INPUT(context_.opName, it.first);
+                if (expectedParam.isValid && !it.second.isValid) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, it.first, "null",
+                                                          "this parameter is required under current configuration");
+                } else {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, it.first, "not null",
+                                                          "this parameter is not required under current configuration");
+                }
                 continue;
             }
             if (expectedParam.dtype != it.second.dtype) {
-                OP_LOGE_FOR_INVALID_DTYPE(context_.opName, it.first, TypeUtils::DataTypeToSerialString(it.second.dtype),
-                                          TypeUtils::DataTypeToSerialString(expectedParam.dtype));
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    context_.opName, it.first, TypeUtils::DataTypeToSerialString(it.second.dtype),
+                    "this parameter requires dtype " + TypeUtils::DataTypeToSerialString(expectedParam.dtype) +
+                        " under current configuration");
             }
             if (expectedParam.format != it.second.format) {
-                OP_LOGE_FOR_INVALID_FORMAT(context_.opName, it.first, std::string(ge::GetFormatName(it.second.format)),
-                                           std::string(ge::GetFormatName(expectedParam.format)));
+                OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                    context_.opName, it.first, std::string(ge::GetFormatName(it.second.format)),
+                    "this parameter requires format " + std::string(ge::GetFormatName(expectedParam.format)) +
+                        " under current configuration");
             }
             if (expectedParam.shape != it.second.shape) {
-                OP_LOGE_FOR_INVALID_SHAPE(context_.opName, it.first, ConvertContainerToStringV3(it.second.shape),
-                                          ConvertContainerToStringV3(expectedParam.shape));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_.opName, it.first, ConvertContainerToStringV3(it.second.shape),
+                    "this parameter requires shape " + ConvertContainerToString(expectedParam.shape) +
+                        " under current configuration");
             }
         }
     }

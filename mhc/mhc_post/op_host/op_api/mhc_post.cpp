@@ -55,8 +55,11 @@ const aclTensor* MhcPost(
 {
     L0_DFX(MhcPost, x, hRes, hOut, hPost);
 
-    // 根据输入x的shape分配输出tensor
     auto output = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
+    if (output == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER, "MhcPost AllocTensor failed.");
+        return nullptr;
+    }
 
     return MhcPostAICore(x, hRes, hOut, hPost, output, executor);
 }
