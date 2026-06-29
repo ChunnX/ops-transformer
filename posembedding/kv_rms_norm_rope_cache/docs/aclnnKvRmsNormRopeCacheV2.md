@@ -703,26 +703,36 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口定义构造
-  std::vector<int64_t> kvShape = {181,1,1,576};
-  std::vector<int64_t> gammaShape = {512,};
-  std::vector<int64_t> cosShape = {181,1,1,64};
-  std::vector<int64_t> sinShape = {181,1,1,64};
-  std::vector<int64_t> indexShape = {181,1};
-  std::vector<int64_t> kpeCacheShape = {181,1,1,64};
-  std::vector<int64_t> ckvCacheShape = {181,1,1,512};
-  std::vector<int64_t> kRopeShape = {181,1,1,64};
-  std::vector<int64_t> cKvShape = {181,1,1,512};
-  
-  std::vector<int16_t> kvHostData(181*1*1*576,0);
-  std::vector<int16_t> gammaHostData(512,0);
-  std::vector<int16_t> cosHostData(181*1*1*64,0);
-  std::vector<int16_t> sinHostData(181*1*1*64,0);
-  std::vector<int64_t> indexHostData(181*1,0);
-  std::vector<int16_t> kpeCacheHostData(181*1*1*64,0);
-  std::vector<int16_t> ckvCacheHostData(181*1*1*512,0);
-  std::vector<int16_t> kRopeHostData(181*1*1*64,0);
-  std::vector<int16_t> cKvHostData(181*1*1*512,0);
-  
+  uint64_t totalBatch = 32;
+  uint64_t totalHeads = 2;
+  uint64_t seqLength = 64;
+  uint64_t hDimK = 192;
+  uint64_t hDimV = 128;
+  uint64_t hDimRope = 64;
+  uint64_t idxSlotNum = totalBatch * seqLength;
+  std::vector<int64_t> kvShape = {totalBatch, totalHeads, seqLength, hDimK};
+  std::vector<int64_t> gammaShape = {hDimK,};
+  std::vector<int64_t> cosShape = {totalBatch, totalHeads, seqLength, hDimRope};
+  std::vector<int64_t> sinShape = {totalBatch, totalHeads, seqLength, hDimRope};
+  std::vector<int64_t> indexShape = {idxSlotNum,1};
+  std::vector<int64_t> kpeCacheShape = {totalBatch, totalHeads, seqLength, hDimK};
+  std::vector<int64_t> ckvCacheShape = {totalBatch, totalHeads, seqLength, hDimV};
+  std::vector<int64_t> kRopeShape = {totalBatch, totalHeads, seqLength, hDimK};
+  std::vector<int64_t> cKvShape = {totalBatch, totalHeads, seqLength, hDimV};
+  std::vector<int64_t> vOptionalShape = {totalBatch, totalHeads, seqLength, hDimV};
+
+  uint64_t totalEleHeads = totalBatch * totalHeads * seqLength;
+  std::vector<int16_t> kvHostData(totalEleHeads*hDimK,0);
+  std::vector<int16_t> gammaHostData(hDimK,0);
+  std::vector<int16_t> cosHostData(totalEleHeads*hDimRope,0);
+  std::vector<int16_t> sinHostData(totalEleHeads*hDimRope,0);
+  std::vector<int64_t> indexHostData(idxSlotNum*1,0);           // Bkv * Skv
+  std::vector<int16_t> kpeCacheHostData(totalEleHeads*hDimK,0);
+  std::vector<int16_t> ckvCacheHostData(totalEleHeads*hDimV,0);
+  std::vector<int16_t> kRopeHostData(totalEleHeads*hDimK,0);
+  std::vector<int16_t> cKvHostData(totalEleHeads*hDimV,0);
+  std::vector<int16_t> vOptionalHostData(totalEleHeads*hDimV,0);
+
   void* kvDeviceAddr = nullptr;
   void* gammaDeviceAddr = nullptr;
   void* cosDeviceAddr = nullptr;
@@ -730,9 +740,10 @@ int main() {
   void* indexDeviceAddr = nullptr;
   void* kpeCacheDeviceAddr = nullptr;
   void* ckvCacheDeviceAddr = nullptr;
+  void* vOptionalDeviceAddr = nullptr;
   void* kRopeDeviceAddr = nullptr;
   void* cKvDeviceAddr = nullptr;
- 
+
   aclTensor* kv = nullptr;
   aclTensor* gamma = nullptr;
   aclTensor* cos = nullptr;
@@ -740,9 +751,9 @@ int main() {
   aclTensor* index = nullptr;
   aclTensor* kpeCache = nullptr;
   aclTensor* ckvCache = nullptr;
+  aclTensor* vOpt = nullptr;
   aclTensor* kRope = nullptr;
   aclTensor* cKv = nullptr;
- 
 
   double epsilon = 1e-5;
   char cacheMode[] = "Norm";
@@ -762,6 +773,8 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(ckvCacheHostData, ckvCacheShape, &ckvCacheDeviceAddr, aclDataType::ACL_FLOAT16, &ckvCache);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(vOptionalHostData, vOptionalShape, &vOptionalDeviceAddr, aclDataType::ACL_FLOAT16, &vOpt);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(kRopeHostData, kRopeShape, &kRopeDeviceAddr, aclDataType::ACL_FLOAT16, &kRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cKvHostData, cKvShape, &cKvDeviceAddr, aclDataType::ACL_FLOAT16, &cKv);
@@ -773,7 +786,7 @@ int main() {
 
   // 调用aclnnKvRmsNormRopeCacheV2第一段接口
   ret = aclnnKvRmsNormRopeCacheV2GetWorkspaceSize(kv,gamma,cos,sin,index,
-                                                kpeCache,ckvCache,nullptr,nullptr,nullptr,nullptr,epsilon,cacheMode,isOutputKv,kRope,cKv,&workspaceSize,&executor);
+                                                kpeCache,ckvCache,nullptr,nullptr,nullptr,nullptr,vOpt,epsilon,cacheMode,isOutputKv,kRope,cKv,&workspaceSize,&executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnKvRmsNormRopeCacheV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -803,6 +816,7 @@ int main() {
   aclDestroyTensor(index);
   aclDestroyTensor(kpeCache);
   aclDestroyTensor(ckvCache);
+  aclDestroyTensor(vOpt);
   aclDestroyTensor(kRope);
   aclDestroyTensor(cKv);
 
@@ -814,9 +828,9 @@ int main() {
   aclrtFree(indexDeviceAddr);
   aclrtFree(kpeCacheDeviceAddr);
   aclrtFree(ckvCacheDeviceAddr);
+  aclrtFree(vOptionalDeviceAddr);
   aclrtFree(kRopeDeviceAddr);
   aclrtFree(cKvDeviceAddr);
-
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
