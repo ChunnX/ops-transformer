@@ -785,6 +785,14 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_scatter_start = torch.npu.Event(enable_timing=True)
             _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_scatter_start.record()
+        # DEBUG: compare kernel bmm output vs Python reference
+        _rg = relu_grad.float()
+        _qi = query_index.float()
+        _rg_t = _rg.permute(0, 1, 3, 2).reshape(B * S1, K, Nidx1)
+        _qi_f = _qi.reshape(B * S1, Nidx1, DQueryIndex)
+        _ref_bmm = torch.bmm(_rg_t, _qi_f).reshape(B, S1, K, DQueryIndex)
+        _diff = (matmul_partial_out - _ref_bmm).abs()
+        print(f"  [DEBUG Matmul5] kernel vs py bmm: max={_diff.max().item():.4e} mean={_diff.mean().item():.4e}")
         # SIMPLIFIED: bmm removed (moved to kernel), only scatter_add remains
         d_key_index = _compute_d_key_index(
             matmul_partial_out, sparse_indices,
