@@ -27,6 +27,7 @@
 namespace QLIKernel {
 using namespace QLICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+constexpr uint32_t TRUNK_LEN_6K = 6144;
 template <typename QLIT>
 class QLIVector {
 public:
@@ -194,7 +195,11 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     blockId_ = GetBlockIdx();
-    trunkLen_ = TRUNK_LEN_16K;
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        trunkLen_ = TRUNK_LEN_6K;
+    } else {
+        trunkLen_ = TRUNK_LEN_16K;
+    }
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
