@@ -1090,7 +1090,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     int32_t rowEndLocal = rowStartLocal + rowsNumInCore;
                     int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
                     int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-                    __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
+                    __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
                     for (int32_t w = waveLo; w <= waveHi; ++w) {
                         int32_t waveStartLocal = w * L1_TILE_M_I32;
                         int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
