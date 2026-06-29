@@ -29,7 +29,6 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
     int64_t batchCount, int64_t numTokens,
     int32_t blockSize, int32_t numblkTabCol, int32_t tokenSizeK, int32_t tokenSizeV,
     int32_t numBlocks,
-    int64_t magicBlk, int64_t shiftBlk,
     __gm__ uint8_t *keyCache, __gm__ uint8_t *valueCache,
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
@@ -71,7 +70,7 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
 
         for (uint64_t j = start; j < totalTokens; j += stride) {
             // j % blockSize → off, j / blockSize → blk
-            uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), shiftBlk);
+            uint64_t blk = j / static_cast<uint64_t>(blockSize);
             uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
 
             // blockId lookup (once per token, shared for key and value)
@@ -154,10 +153,6 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
-    uint64_t magicBlk = 0;
-    int64_t  shiftBlk = 0;
-    GetUintDivMagicAndShift(magicBlk, shiftBlk, static_cast<uint64_t>(cacheBlockSize_));
-
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         batchCount_, numTokens_,
         static_cast<int32_t>(cacheBlockSize_),
@@ -165,7 +160,6 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         static_cast<int32_t>(hiddenSizeK_),
         static_cast<int32_t>(hiddenSizeV_),
         static_cast<int32_t>(numBlocks_),
-        static_cast<int64_t>(magicBlk), shiftBlk,
         keyCacheGm_, valueCacheGm_, blockTablesGm_, seqLensGm_, seqOffsetGm_,
         keyOutGm_, valueOutGm_);
 }
