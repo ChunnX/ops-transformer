@@ -332,7 +332,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) c
                 }
             } else {
                 OP_LOGE(fiaInfo.opName,
-                        "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                        "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported");
                 return ge::GRAPH_FAILED;
             }
         } else {
