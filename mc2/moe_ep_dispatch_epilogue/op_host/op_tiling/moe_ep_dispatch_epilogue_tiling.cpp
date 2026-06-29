@@ -28,7 +28,6 @@
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling_key.h"
-#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
 
 #ifndef ALIGN_UP
 #define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
