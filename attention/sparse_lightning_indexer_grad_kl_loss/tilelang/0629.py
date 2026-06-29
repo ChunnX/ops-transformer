@@ -150,8 +150,8 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-5, -4, -3, -2],
-    workspace_idx=[10, 11, 12, 13, 14, 19],
+    out_idx=[-6, -5, -4, -3],
+    workspace_idx=[10, 11, 12, 13, 14, 19, 20],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -194,6 +194,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),
+        MatmulPartial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype),  # NEW: Matmul5 output
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -476,6 +477,35 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
                             T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
+                T.set_cross_flag("FIX", 4)
+
+            # ============================================================
+            # C scope 3: Matmul5 = reluGrad^T @ QueryIndex -> matmul_partial
+            # Each core processes its own K block (n_idx_k)
+            # Uses transpose_A=True: (Nidx1, n_block) @ (Nidx1, k_block) -> (n_block, k_block)
+            # ============================================================
+            with T.Scope("C"):
+                T.wait_cross_flag(4)
+
+                RG5_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)  # reluGradRes slice
+                QI5_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)  # QueryIndex
+                MP_L0C = T.alloc_L0C((n_block, k_block), calc_dtype)  # Matmul5 result
+
+                for s1_row in T.serial(s1_start, s1_end):
+                    # Load reluGradRes for MY K block
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG5_L1)
+                    
+                    for d_idx in T.serial(d_num_query_index):
+                        # Load QueryIndex
+                        T.copy(QueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], QI5_L1)
+                        
+                        # Matmul5: reluGrad^T @ QueryIndex
+                        # (Nidx1, n_block)^T @ (Nidx1, k_block) -> (n_block, k_block)
+                        T.gemm_v0(RG5_L1, QI5_L1, MP_L0C, transpose_A=True, init=True)
+                        
+                        # Output to GM using atomic_add (static position)
+                        T.tile.atomic_add(MatmulPartial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block], MP_L0C)
+
     return main
 
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
@@ -555,27 +585,19 @@ def _compute_vector_outputs(
 
 
 # ==============================================================================
-# ScatterAdd: compute dKeyIndex from reluGrad and queryIndex
+# ScatterAdd: compute dKeyIndex from matmul_partial (kernel output)
+# SIMPLIFIED: bmm moved to kernel (Matmul5), Python only does scatter_add
 # ==============================================================================
-def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
-    relu_grad_fp32 = relu_grad.float()
-    query_index_fp32 = query_index.float()
-
-    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
-    scatter_add = torch.bmm(
-        relu_grad_t.reshape(B * S1, K, Nidx1),
-        query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
-    ).reshape(B, S1, K, DQueryIndex)
-
+def _compute_d_key_index(matmul_partial, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
     d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
     sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
     valid_mask = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(torch.float32)
 
-    scatter_add_masked = scatter_add * valid_mask
+    matmul_partial_masked = matmul_partial * valid_mask
     idx_expanded = sparse_idx.unsqueeze(-1).expand(B, S1, K, DQueryIndex)
     d_key_index_2d = d_key_index[:, :, 0, :]
     d_key_index_2d.scatter_add_(1, idx_expanded.reshape(B, S1 * K, DQueryIndex)[:, :S2, :],
-                                 scatter_add_masked.reshape(B, S1 * K, DQueryIndex)[:, :S2, :])
+                                 matmul_partial_masked.reshape(B, S1 * K, DQueryIndex)[:, :S2, :])
 
     return d_key_index.to(dtype)
 
@@ -702,7 +724,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
             bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
-                d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out = ws
+                d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, \
+                matmul_partial_out = ws
         else:
             bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
             bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
@@ -714,11 +737,14 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
             loss_out = torch.zeros(B, S1, n_num_ws * 16, dtype=torch.float32, device=query.device)
+            matmul_partial_out = torch.zeros(B, S1, K, DQueryIndex, dtype=torch.float32, device=query.device)  # NEW
             _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-                                        d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
+                                        d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
+                                        matmul_partial_out)
 
-        # Zero dQueryIndex_ws before each call: atomic_add accumulates from zero
+        # Zero workspaces before each call
         d_query_index_ws.zero_()
+        matmul_partial_out.zero_()  # NEW: atomic_add accumulates from zero
 
         if _PROFILE:
             _t_prep_end.record()
@@ -732,6 +758,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
             d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
+            matmul_partial_out,  # NEW: Matmul5 output
             d_query_index_ws,
         )
         if _PROFILE:
@@ -742,6 +769,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight_partial = results[1]
         relu_grad = results[2]
         loss_out = results[3]
+        matmul_partial = results[4]  # NEW: Matmul5 output
 
         # Accumulate partial dWeight across K blocks
         d_weight = d_weight_partial.sum(dim=2)
@@ -759,8 +787,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_scatter_start = torch.npu.Event(enable_timing=True)
             _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_scatter_start.record()
+        # SIMPLIFIED: bmm removed (moved to kernel), only scatter_add remains
         d_key_index = _compute_d_key_index(
-            relu_grad, query_index, sparse_indices,
+            matmul_partial, sparse_indices,
             B, S1, S2, Nidx1, Nidx2, K, DQueryIndex,
             query.device, input_dtype,
         )
