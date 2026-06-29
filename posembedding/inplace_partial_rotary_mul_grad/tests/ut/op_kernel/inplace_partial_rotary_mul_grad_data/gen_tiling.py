@@ -5,15 +5,15 @@ Generate tiling data binary for InplacePartialRotaryMulGrad kernel UT.
 Usage: python3 gen_tiling.py <tiling_key> [slice_start] [slice_end]
 
 The tiling data uses InplacePartialRotaryMulGradRegbaseTilingData struct
-(18 int64_t fields) or InplacePartialRotaryMulGradRegbaseTilingDataAb struct
-(18 int64_t fields).
+(19 int64_t fields) or InplacePartialRotaryMulGradRegbaseTilingDataAb struct
+(19 int64_t fields).
 """
 
 import sys
 import numpy as np
 
-# Number of int64_t fields in the tiling data struct (both base and AB have ~18 fields)
-TILING_DATA_SIZE = 18
+# Number of int64_t fields in the tiling data struct (both base and AB have ~19 fields)
+TILING_DATA_SIZE = 19
 
 # Pre-calibrated tiling data for specific test cases
 # To calibrate: run OpHost UT, copy tiling data from log output

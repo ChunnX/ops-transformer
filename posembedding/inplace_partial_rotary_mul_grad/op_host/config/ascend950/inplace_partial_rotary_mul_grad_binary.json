@@ -67,7 +67,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -142,7 +142,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -217,7 +217,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -292,7 +292,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -367,7 +367,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -442,7 +442,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -517,7 +517,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -592,7 +592,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",
@@ -667,7 +667,7 @@
                 {
                     "name": "rotary_mode",
                     "dtype": "int",
-                    "value": 0
+                    "value": 1
                 },
                 {
                     "name": "partial_slice",

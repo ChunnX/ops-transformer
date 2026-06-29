@@ -77,12 +77,12 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, 
     }
 
     __local_mem__ TDY *currInUb, *currOutUb;
-    __local_mem__ TCOS *currSinUb, *currCosUb, *tailSinUb, *tailCosUb;
+    __local_mem__ TCOS *currSinUb, *currCosUb;
 
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> vregFormerCos, vregLatterCos, vregFormerSin, vregLatterSin, vregFormerIn,
-            vregLatterIn, vregOdd, vregEven;
+            vregLatterIn;
         MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlignLenCos;
