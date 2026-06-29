@@ -2157,7 +2157,6 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     int64_t scaleCopyInQueueSize = isInputScale_ == 1 ?
         DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
     int64_t int32ElementsPerBlock = UB_BLOCK_SIZE / static_cast<int64_t>(sizeof(int32_t));
-    int64_t xBatchSize = 1;
     int64_t perLoopMaxIndicesElements = 0;
 
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > 0) {
@@ -2167,7 +2166,6 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
         int64_t maxAlignedBytes = remainUbForIndices / DOUBLE_BUFFER;
         perLoopMaxIndicesElements = maxAlignedBytes / static_cast<int64_t>(sizeof(int32_t));
         perLoopMaxIndicesElements = perLoopMaxIndicesElements / int32ElementsPerBlock * int32ElementsPerBlock;
-        xBatchSize = 1;
 
         if (perLoopMaxIndicesElements > 0) {
             break;
@@ -2201,8 +2199,6 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
     tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
-
-    tilingData->xBatchSize = xBatchSize;
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
@@ -2227,10 +2223,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
 
     OP_LOGD(context_, "DropPad GatherOut Tiling: needCoreNum=%ld, perCoreIndicesElements=%ld, "
             "lastCoreIndicesElements=%ld, colsLoops=%ld, perLoopCols=%ld, perCoreIndicesLoops=%ld, "
-            "perCorePerLoopIndicesElements=%ld, xBatchSize=%ld",
+            "perCorePerLoopIndicesElements=%ld",
             needCoreNum, perCoreIndicesElements, lastCoreIndicesElements,
             tilingData->colsLoops, tilingData->perLoopCols, tilingData->perCoreIndicesLoops,
-            tilingData->perCorePerLoopIndicesElements, tilingData->xBatchSize);
+            tilingData->perCorePerLoopIndicesElements);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRoutingV3Arch35TilingClass,
