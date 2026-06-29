@@ -349,94 +349,17 @@ protected:
         return ACLNN_SUCCESS;
     }
 
-    bool IsTransposeLastTwoDimsByStride(const aclTensor *tensor) const
+    virtual void PrepareOriginalShapesBeforeContiguous()
     {
-        auto shape = tensor->GetViewShape();
-        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
-        if (dimNum < 2) {
-            return false;
-        }
-        auto strides = tensor->GetViewStrides();
-        int64_t lastDim = dimNum - 1;
-        int64_t secondLastDim = dimNum - 2;
-        if (strides[secondLastDim] != 1 || strides[lastDim] != shape.GetDim(secondLastDim)) {
-            return false;
-        }
-
-        int64_t expectedStride = shape.GetDim(lastDim) * shape.GetDim(secondLastDim);
-        for (int64_t batchDim = dimNum - 3; batchDim >= 0; --batchDim) {
-            if (strides[batchDim] != expectedStride) {
-                return false;
-            }
-            expectedStride *= shape.GetDim(batchDim);
-        }
-        return true;
-    }
-
-    op::Shape GetOriginalShapeForPrivateFormat(const aclTensor *tensor) const
-    {
-        auto viewShape = tensor->GetViewShape();
-        const uint32_t dimNum = viewShape.GetDimNum();
-        if (dimNum < 2 || !IsTransposeLastTwoDimsByStride(tensor)) {
-            return viewShape;
-        }
-
-        op::Shape originalShape;
-        originalShape.SetScalar();
-        for (uint32_t i = 0; i < dimNum - 2; ++i) {
-            originalShape.AppendDim(viewShape.GetDim(i));
-        }
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 2));
-        return originalShape;
-    }
-
-    bool IsMxScaleTransposeByStride(const aclTensor *tensor) const
-    {
-        auto shape = tensor->GetViewShape();
-        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
-        if (dimNum < 3) {
-            return false;
-        }
-        auto strides = tensor->GetViewStrides();
-        int64_t lastDim = dimNum - 1;
-        int64_t secondLastDim = dimNum - 2;
-        int64_t thirdLastDim = dimNum - 3;
-        return strides[lastDim] == 1 && strides[thirdLastDim] == shape.GetDim(lastDim) &&
-               strides[secondLastDim] == shape.GetDim(thirdLastDim) * shape.GetDim(lastDim);
-    }
-
-    op::Shape GetOriginalShapeForMxScale(const aclTensor *tensor) const
-    {
-        auto viewShape = tensor->GetViewShape();
-        const uint32_t dimNum = viewShape.GetDimNum();
-        if (dimNum < 3 || !IsMxScaleTransposeByStride(tensor)) {
-            return viewShape;
-        }
-
-        op::Shape originalShape;
-        originalShape.SetScalar();
-        for (uint32_t i = 0; i < dimNum - 3; ++i) {
-            originalShape.AppendDim(viewShape.GetDim(i));
-        }
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 2));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 3));
-        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
-        return originalShape;
-    }
-
-    void SetTensorListOriginalShapes(const aclTensorList *tensorList, const std::vector<op::Shape> &originalShapes) const
-    {
-        if (tensorList == nullptr || tensorList->Size() != originalShapes.size()) {
-            return;
-        }
-        for (size_t i = 0; i < tensorList->Size(); ++i) {
-            auto *tensor = (*tensorList)[i];
-            if (tensor != nullptr) {
-                tensor->SetOriginalShape(originalShapes[i]);
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            auto *w = (*gmmDsqParams_.weight)[i];
+            if (IsPrivateFormat(w->GetStorageFormat())) {
+                w->SetOriginalShape(w->GetViewShape());
             }
         }
     }
+
+    virtual void RestoreOriginalShapesAfterContiguous() {}
 
 public:
     void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
@@ -469,16 +392,7 @@ public:
                 return ACLNN_SUCCESS;
             }
         }
-        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
-            auto *w = (*gmmDsqParams_.weight)[i];
-            if (IsPrivateFormat(w->GetStorageFormat())) {
-                if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-                    w->SetOriginalShape(GetOriginalShapeForPrivateFormat(w));
-                } else {
-                    w->SetOriginalShape(w->GetViewShape());
-                }
-            }
-        }
+        PrepareOriginalShapesBeforeContiguous();
 
         // 空Tensor场景
         if (gmmDsqParams_.output->IsEmpty() || gmmDsqParams_.groupList->IsEmpty() || gmmDsqParams_.outputScale->IsEmpty()) {
@@ -487,16 +401,9 @@ public:
             return ACLNN_SUCCESS;
         }
 
-        std::vector<op::Shape> weightScaleOriginalShapes;
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); ++i) {
-                weightScaleOriginalShapes.emplace_back(GetOriginalShapeForMxScale((*gmmDsqParams_.weightScale)[i]));
-            }
-        }
-
         ret = CovertDataContiguous();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        SetTensorListOriginalShapes(gmmDsqParams_.weightScale, weightScaleOriginalShapes);
+        RestoreOriginalShapesAfterContiguous();
         auto ret0 = l0op::GroupedMatmulSwigluQuantV2(gmmDsqParams_.x, gmmDsqParams_.weight, gmmDsqParams_.weightScale,
                                                 gmmDsqParams_.xScale, gmmDsqParams_.weightAssistMatrix,
                                                 gmmDsqParams_.bias,

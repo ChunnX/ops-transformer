@@ -410,6 +410,81 @@ protected:
         return true;
     }
 
+    op::Shape GetOriginalShapeForTransposedLastTwoDims(const aclTensor *tensor) const
+    {
+        auto viewShape = tensor->GetViewShape();
+        const uint32_t dimNum = viewShape.GetDimNum();
+        if (dimNum < LAST_SECOND_DIM_INDEX || !IsTransposeLastTwoDims(tensor)) {
+            return viewShape;
+        }
+
+        op::Shape originalShape;
+        originalShape.SetScalar();
+        for (uint32_t i = 0; i < dimNum - LAST_SECOND_DIM_INDEX; ++i) {
+            originalShape.AppendDim(viewShape.GetDim(i));
+        }
+        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
+        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_SECOND_DIM_INDEX));
+        return originalShape;
+    }
+
+    op::Shape GetOriginalShapeForMxScale(const aclTensor *tensor) const
+    {
+        auto viewShape = tensor->GetViewShape();
+        const uint32_t dimNum = viewShape.GetDimNum();
+        if (dimNum < LAST_THIRD_DIM_INDEX || !IsTransposeForMxShape(tensor)) {
+            return viewShape;
+        }
+
+        op::Shape originalShape;
+        originalShape.SetScalar();
+        for (uint32_t i = 0; i < dimNum - LAST_THIRD_DIM_INDEX; ++i) {
+            originalShape.AppendDim(viewShape.GetDim(i));
+        }
+        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_SECOND_DIM_INDEX));
+        originalShape.AppendDim(viewShape.GetDim(dimNum - LAST_THIRD_DIM_INDEX));
+        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
+        return originalShape;
+    }
+
+    void SetTensorListOriginalShapes(const aclTensorList *tensorList, const std::vector<op::Shape> &originalShapes) const
+    {
+        if (tensorList == nullptr || tensorList->Size() != originalShapes.size()) {
+            return;
+        }
+        for (size_t i = 0; i < tensorList->Size(); ++i) {
+            auto *tensor = (*tensorList)[i];
+            if (tensor != nullptr) {
+                tensor->SetOriginalShape(originalShapes[i]);
+            }
+        }
+    }
+
+    void PrepareOriginalShapesBeforeContiguous() override
+    {
+        weightScaleOriginalShapes_.clear();
+        if (!IsMxWeightNzMultiTensorSupported()) {
+            GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
+            return;
+        }
+
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
+            auto *w = (*gmmDsqParams_.weight)[i];
+            if (w != nullptr && IsPrivateFormat(w->GetStorageFormat())) {
+                w->SetOriginalShape(GetOriginalShapeForTransposedLastTwoDims(w));
+            }
+        }
+        for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); ++i) {
+            weightScaleOriginalShapes_.emplace_back(GetOriginalShapeForMxScale((*gmmDsqParams_.weightScale)[i]));
+        }
+    }
+
+    void RestoreOriginalShapesAfterContiguous() override
+    {
+        SetTensorListOriginalShapes(gmmDsqParams_.weightScale, weightScaleOriginalShapes_);
+        weightScaleOriginalShapes_.clear();
+    }
+
     bool CheckPertokenTranspose()
     {
         bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
@@ -1030,6 +1105,8 @@ protected:
         GMM_SWIGLU_CHECK_FORMAT(gmmDsqParams_.outputScale, "outputScale", "ND", return false);
         return true;
     }
+
+    std::vector<op::Shape> weightScaleOriginalShapes_;
 };
 #undef GMM_SWIGLU_CHECK_FORMAT
 #undef GMM_SWIGLU_CHECK_TENSORNUM
