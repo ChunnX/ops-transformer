@@ -216,7 +216,7 @@ __aicore__ inline void CombineQuantizedTokensByUrma(
 template <uint8_t QuantMode, typename T, bool IsLayered = false>
 __aicore__ inline void CombineTokenGroup(
     uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
-    GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
+    GM_ADDR gmm2OutAddr, Params& params, LocalTensor<int32_t>& tripleTensor,
     int64_t ubTensorSize, int64_t offset, uint32_t quantTokenSizeBytes)
 {
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
