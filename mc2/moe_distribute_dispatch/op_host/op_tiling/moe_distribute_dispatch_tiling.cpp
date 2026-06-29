@@ -402,12 +402,8 @@ static ge::graphStatus CheckExpertScalesDtypeAndFormat(gert::TilingContext *cont
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_scales", dtypeStr.c_str(), "FLOAT");
         return ge::GRAPH_FAILED;
     }
-    auto expertScalesFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat()));
-    if (expertScalesFormat != ge::FORMAT_ND) {
-        std::string fmtStr = Ops::Base::ToString(expertScalesFormat);
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expert_scales", fmtStr.c_str(), "ND");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expert_scales format is invalid."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
