@@ -475,7 +475,7 @@ static ge::graphStatus SetWorkspace(
         return ge::GRAPH_FAILED);
 
     int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
-    workspace[0] = workspaceSize + 10UL *  1024 * 1024 * 1024; //todo: 10GB workspace
+    workspace[0] = workspaceSize + 2UL *  1024 * 1024 * 1024; //todo: 10GB workspace
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
     OP_LOGD(nodeName, "mega_moe_tiling workspaceSize: %ld \n", workspaceSize);
