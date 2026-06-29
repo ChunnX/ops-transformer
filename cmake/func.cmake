@@ -734,7 +734,8 @@ function(add_bin_compile_target)
             list(APPEND _BUILD_COMMAND export HI_PYTHON="python3" &&)
             list(APPEND _BUILD_COMMAND export TILINGKEY_PAR_COMPILE=1 &&)
             list(APPEND _BUILD_COMMAND export BIN_FILENAME_HASHED=1 &&)
-            list(APPEND _BUILD_COMMAND bash ${bin_script} ${OP_SRC_OUT_DIR}/${op_type}.py ${OP_BIN_OUT_DIR})
+            set(_timing_file ${ASCEND_BINARY_OUT_DIR}/${BINARY_COMPUTE_UNIT}/pypto_timing.log)
+            list(APPEND _BUILD_COMMAND bash ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_time.sh ${op_file} ${_timing_file} bash ${bin_script} ${OP_SRC_OUT_DIR}/${op_type}.py ${OP_BIN_OUT_DIR})
             if(CMAKE_GENERATOR MATCHES "Unix Makefiles")
                 list(APPEND _BUILD_COMMAND && echo $(MAKE))
             endif()
@@ -795,6 +796,14 @@ function(add_bin_compile_target)
                     DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
             )
         endif()
+
+        # PyPTO timing summary — runs after all kernel compiles finish.
+        set(_timing_file ${ASCEND_BINARY_OUT_DIR}/${BINARY_COMPUTE_UNIT}/pypto_timing.log)
+        add_custom_target(pypto_timing_summary_${BINARY_COMPUTE_UNIT}
+            COMMAND bash ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_time.sh summary ${BINARY_COMPUTE_UNIT} ${_timing_file}
+            DEPENDS ${_ops_target_list}
+        )
+        add_dependencies(ops_transformer_kernel pypto_timing_summary_${BINARY_COMPUTE_UNIT})
     endif ()
 endfunction()
 
