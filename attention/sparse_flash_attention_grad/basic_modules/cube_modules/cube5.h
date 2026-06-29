@@ -39,6 +39,9 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
     if (runInfo.isLastBasicBlock) {
         totalSel = totalSel - selectedBlockSize + runInfo.lastBlockSize;
     }
+
+    const bool useNonOptimizedSmallS2Path = !enableOptimizedScatter && runInfo.isSmallS2;
+    int64_t currentPGmOffset = useNonOptimizedSmallS2Path ? runInfo.mm345GmOffset : pGmOffset;
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
         LocalTensor<T1> current_l1_dy_tensor, l1_p_tensor;
         l1_p_tensor = l1_p_tensors[ping_pong_flag_l1_p_];
@@ -47,13 +50,14 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
         mmParam.singleM = min(selectedBlockSize * blockOffset, totalSel - (mIdx - blkCntOffset) * selectedBlockSize);
 
         int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
-        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
+        CopyGmToL1(l1_p_tensor, pWorkspaceGm[currentPGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             if (unlikely(reloadDy)) {
                 // last block reload dy
                 WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
                 current_l1_dy_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
-                int64_t currentDyGmOffset = runInfo.dyGmOffset + dIdx * perLoopDSize;
+                int64_t currentDyGmOffset = (useNonOptimizedSmallS2Path ? runInfo.dyGmOffset : dyGmOffset) +
+                    dIdx * perLoopDSize;
                 CopyGmToL1(current_l1_dy_tensor, attentionGradGm[currentDyGmOffset], dimG, perLoopDSize, dimDv);
             } else {
                 current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * dimGAlign];
@@ -62,7 +66,7 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
             
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            if constexpr (IS_DETERMINISTIC) {
+            if (!enableOptimizedScatter) {
                 int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
                 MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                         aL0TensorPingPong, bL0TensorPingPong,
