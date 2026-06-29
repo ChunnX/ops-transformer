@@ -11,11 +11,19 @@
 #ifndef MOE_EP_DISPATCH_EPILOGUE_TILING_H
 #define MOE_EP_DISPATCH_EPILOGUE_TILING_H
 
-#if __has_include("../moe_ep_dispatch/moe_ep_dispatch_tiling.h")
-#include "../moe_ep_dispatch/moe_ep_dispatch_tiling.h"
-#else
-#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
-#endif
+struct MoeEpCommonTilingData {
+    uint32_t epWorldSize;
+    uint32_t epRankId;
+    uint32_t numExperts;
+    uint32_t numLocalExperts;
+    uint32_t numTokens;
+    uint32_t hidden;
+    uint32_t topK;
+    uint32_t numMaxTokensPerRank;
+    uint32_t scalesBytes;
+    uint32_t perSlotBytes;
+    uint32_t expertAlignment;
+};
 
 struct MoeEpDispatchEpilogueInfo {
     MoeEpCommonTilingData cfg;

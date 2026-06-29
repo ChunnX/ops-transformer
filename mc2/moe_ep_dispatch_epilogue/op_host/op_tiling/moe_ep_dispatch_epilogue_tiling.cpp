@@ -28,7 +28,6 @@
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling_key.h"
-#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
 
 #ifndef ALIGN_UP
 #define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
@@ -413,7 +412,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
-    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
+    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
                                     2 * epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
