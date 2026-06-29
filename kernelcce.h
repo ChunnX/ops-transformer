@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_MX_H_
-#define FIA_KERNEL_FULLQUANT_MX_MX_H_
+#ifndef FIA_KERNEL_FULLQUANT_PA_WHILE_LOOP_P_L1_H_
+#define FIA_KERNEL_FULLQUANT_PA_WHILE_LOOP_P_L1_H_
 
 // #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
@@ -78,23 +78,15 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
-    // using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
     __ubuf__ void *mm1Res[2], *mm2Res;
     __cbuf__ void *p1[3];
     int bmm1_id{0};
     int bmm2_id{4};
-
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
-    __gm__ uint64_t *actualSeqLengthsGmQ = nullptr;
-    __gm__ uint64_t *actualSeqLengthsGm = nullptr;
-
-    // ConstInfoX constInfo;
 
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
-    // VecFdBlockType vecFdBlock;
 
     uint32_t createdTaskCount = 0U;
     uint32_t executedTaskCount = 0U;
@@ -111,26 +103,11 @@ public:
                                 __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace)
     {
-        // this->pipe = tPipe;
-        // this->tilingData = tiling;
-
-        // fiaMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)fiaMetaData,
-        //                               NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
-
         InitConstInfo();
 
         keyPtr = key;
         valuePtr = value;
-        actualSeqLengthsGmQ = (__gm__ uint64_t *)actualSeqLengths;
-        actualSeqLengthsGm = (__gm__ uint64_t *)actualSeqLengthsKv;
         InitMMResBuf();
-
-        if ASCEND_IS_AIV {
-            // vecFaBlock.InitVecBlock(actualSeqLengths, actualSeqLengthsKv, pScale, attenMask, softmaxLse,
-            //                         attentionOut, workspace);
-            vecFaBlock.InitVecBlock(actualSeqLengths, pScale, attenMask, attentionOut);
-            // vecFaBlock.ClearOutput();
-        }
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock(query, key, value, blockTable, queryRope, keyRope,
@@ -143,35 +120,20 @@ public:
     __aicore__ inline void InitMMResBuf()
     {
         constexpr uint32_t mm2LeftSize = 128 * 512  + 128 * 512 / 32;
-        // constexpr uint32_t pScaleSize = 128 * 512 / 32;
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         p1[0] = (__cbuf__ void *)get_imm(0);
         p1[1] = (__cbuf__ void *)get_imm(mm2LeftSize);
         p1[2] = (__cbuf__ void *)get_imm(mm2LeftSize * 2);
-        // pscale = (__cbuf__ void *)get_imm(mm2LeftSize * 3);
 
         constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
         mm1Res[0] = (__ubuf__ void *)get_imm(0); 
         mm1Res[1] = (__ubuf__ void *)get_imm(mm1ResultSize);
         mm2Res = (__ubuf__ void *)get_imm(mm1ResultSize * 2);
-
-        // if ASCEND_IS_AIC{
-        //     int64_t repeatBit = (static_cast<uint64_t>(128 * 512 / 32) << 16) |
-        //                     (static_cast<uint64_t>(0) << 32) | 1;
-        //     create_cbuf_matrix((__cbuf__ int16_t * )pscale, repeatBit, GetScalarBitcodeToHalf(0x7f7f));
-        // }
     }
 
     __aicore__ inline void InitConstInfo()
     {
-        // if ASCEND_IS_AIC {
-        //     constInfo.aicIdx = GetBlockIdx();
-        // } else {
-        //     constInfo.aivIdx = GetBlockIdx();
-        //     constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
-        //     constInfo.subBlockIdx = GetSubBlockIdx();
-        // }
 
         if ASCEND_IS_AIC {
             aicIdx = GetBlockIdx();
@@ -184,8 +146,6 @@ public:
         bN2End = 12 * (aicIdx + 1);//修改
 
     }
-
-
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
@@ -286,58 +246,31 @@ public:
             return;
         }
 
-        // RunInfoX taskRunInfo[3];
         uint32_t bN2Cur = bN2Start;
         uint32_t gS1Cur = gS1OStart;
         uint32_t s2Cur = s2OStart;
-        // prevBN2Idx = bN2Cur;
-        // prevGS1Idx = gS1Cur;
-
-        // uint32_t bIdx = 0, n2Idx = 0, gS1Idx = 0, s2Idx = 0, actMSize = 0, loopIdx = 0, mloopIdx = 0;
-        uint32_t s2Idxp[3], loopIdxp[3], mloopIdxp[3], vecMbaseIdxp[3];
-        uint32_t bIdxp[3], n2Idxp[3];
+        uint32_t s2Idxp[3], loopIdxp[3];
+        uint32_t bIdxp[3], n2Idxp[3], gS1Idxp[3];
         uint32_t curS2Loop[3];
-        bool isFirstS2Loop[3] = {false, false, false};
-        bool isLastS2Loop[3] = {false, false, false};
         bool runInfo[3] = {false, false, false};
 
         bool shouldDispatchTask = true;
-        bool shouldExecuteTask = false;
         bool shouldExecuteTask_MX = false;
-        uint32_t inner = 0, outer = 0;
-
 
         while (shouldDispatchTask || shouldExecuteTask_MX) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            // //set_mark(0x988773);
-            // //set_mark(shouldDispatchTask);
             if (shouldDispatchTask) {
-                // TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (s2Cur == 0 ) {
-                    mloop ++;
-                }
                 // if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
                     bIdxp[createdTaskCount % 3] = bN2Cur / n2Size;
                     n2Idxp[createdTaskCount % 3] = bN2Cur  % n2Size;
-                    // gS1Idxp[createdTaskCount % 3] = gS1Cur * mBaseSize;//0
+                    gS1Idxp[createdTaskCount % 3] = gS1Cur * mBaseSize;
                     s2Idxp[createdTaskCount % 3] = s2Cur * s2BaseSize;
-                    // actMSizexp[createdTaskCount % 3] = actSeqLensQ * gSize - gS1Cur * mBaseSize;//32
                     loopIdxp[createdTaskCount % 3] = createdTaskCount;
-                    mloopIdxp[createdTaskCount % 3] = mloop;
-                    runInfo[createdTaskCount % 3] = true;
-                    
                     curS2Loop[createdTaskCount % 3] = s2Cur;
-                    isFirstS2Loop[createdTaskCount % 3] = ((createdTaskCount == 0) || (s2Cur == curS2Start));
-                    isLastS2Loop[createdTaskCount % 3] = (s2Cur + 1 == curS2End);//(s2Cur + 1 == curS2End);
+                    runInfo[createdTaskCount % 3] = true;
 
-                    // actVecMSizexp[createdTaskCount % 3] = (actMSizexp[createdTaskCount % 3] + 1) >> 1;
-                    vecMbaseIdxp[createdTaskCount % 3] = 0;
-                    if (subBlockIdx == 1) {
-                        vecMbaseIdxp[createdTaskCount % 3] = 16;//(info.actMSizeAlign32 >> 1);
-                        // actVecMSizexp[createdTaskCount % 3] = actMSizexp[createdTaskCount % 3] - actVecMSizexp[createdTaskCount % 3];
-                    }
                     createdTaskCount++;
                     UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
                 // }
@@ -345,9 +278,7 @@ public:
             // 执行任务
             shouldExecuteTask_MX = ShouldExecuteTask_MX(runInfo);
             if (shouldExecuteTask_MX) {
-                ExecuteTask_MX(executedTaskCount, runInfo, bIdxp, n2Idxp, 
-                                            s2Idxp, 
-                                                    loopIdxp, mloopIdxp, vecMbaseIdxp, curS2Loop, isFirstS2Loop, isLastS2Loop);
+                ExecuteTask_MX(executedTaskCount, runInfo, bIdxp, n2Idxp, gS1Idxp, s2Idxp, loopIdxp, curS2Loop);
                 executedTaskCount++;//loop
             }
         }
@@ -368,32 +299,25 @@ public:
     }
 
     
-    __aicore__ inline void ExecuteTask_MX(uint64_t loop, bool runInfo[3], uint32_t bIdxp[3], uint32_t n2Idxp[3], 
-                                            uint32_t s2Idxp[3],
-                                                    uint32_t loopIdx[3], uint32_t mloopIdx[3], uint32_t vecMbaseIdxp[3], uint32_t curS2Loop[3], 
-                                                    bool isFirstS2Loop[3], bool isLastS2Loop[3])
+    __aicore__ inline void ExecuteTask_MX(uint64_t loop, bool runInfo[3], uint32_t bIdxp[3], uint32_t n2Idxp[3], uint32_t gS1Idxp[3],
+                                          uint32_t s2Idxp[3],
+                                                    uint32_t loopIdx[3], uint32_t curS2Loop[3])
     {
         if (runInfo[loop % 3]) {
             for (uint32_t subLoop = 0; subLoop < 2; ++subLoop) {
                 bmm1_id ++;
                 if ASCEND_IS_AIC {
-                    cubeBlock.IterateBmm1(mm1Res[subLoop], bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3], 
+                    cubeBlock.IterateBmm1(mm1Res[subLoop], bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3], gS1Idxp[loop % 3], 
                                     s2Idxp[loop % 3], curS2Loop[loop % 3], subLoop);
                 } else {
-                    vecFaBlock.ProcessVec1(p1[loop % 3], mm1Res[subLoop], bmm1_id % 2, loop % 3, bIdxp[loop % 3], s2Idxp[loop % 3],
-                                            loopIdx[loop % 3], mloopIdx[loop % 3], vecMbaseIdxp[loop % 3], curS2Loop[loop % 3], subLoop);
+                    vecFaBlock.ProcessVec1(p1[loop % 3], bmm1_id % 2, loop % 3, loopIdx[loop % 3], subLoop);
                 }
             }
         }
         if (loop >= PRELOAD_N) {
             if (runInfo[(loop - 2) % 3]) {
                 if ASCEND_IS_AIC {
-                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2Res, p1[(loop - 2) % 3], bmm2_id, 
-                                            bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3]);
-                } else {
-                    vecFaBlock.ProcessVec2(mm2Res, bmm2_id, loopIdx[(loop - 2) % 3], mloopIdx[(loop - 2) % 3], bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], 
-                                            vecMbaseIdxp[(loop - 2) % 3],
-                                            curS2Loop[(loop - 2) % 3]);
+                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2Res, p1[(loop - 2) % 3], bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3]);
                 }
                 runInfo[(loop - 2) % 3] = false;
             }
@@ -451,12 +375,6 @@ public:
             }
             CrossCoreBufferUnInit();
         }
-
-        // if constexpr (FLASH_DECODE) {
-        //     if ASCEND_IS_AIV {
-        //         FlashDecode();
-        //     }
-        // }
     }
 }; // FlashAttentionFullQuantMxKernel
 

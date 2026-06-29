@@ -12,8 +12,8 @@
  * \file fia_block_cube_fullquant_mx.h
  * \brief
  */
-#ifndef FIA_BLOCK_CUBE_FULLQUANT_MX_MX2_H_
-#define FIA_BLOCK_CUBE_FULLQUANT_MX_MX2_H_
+#ifndef FIA_BLOCK_CUBE_FULLQUANT_PA_WHILE_LOOP_P_L1_H_
+#define FIA_BLOCK_CUBE_FULLQUANT_PA_WHILE_LOOP_P_L1_H_
 // #include "../offset_calculator.h"
 // #include "../matmul.h"
 // #include "../FixpipeOut.h"
@@ -45,31 +45,22 @@ public:
     __gm__ uint8_t* queryGm = nullptr;
     __gm__ uint8_t *keyGm = nullptr;
     __gm__ uint8_t *valueGm = nullptr;
+    __gm__ int32_t *blockTableGm = nullptr;
     __gm__ uint64_t *actualSeqLengthsGmQ = nullptr;
-    __gm__ uint64_t *actualSeqLengthsGm = nullptr;
-    __gm__ uint8_t *deScaleQGm = nullptr;
+    __gm__ uint8_t* deScaleQGm = nullptr;
     __gm__ uint8_t *deScaleKGm = nullptr;
     __gm__ uint8_t *deScaleVGm = nullptr;
-    __gm__ int32_t *blockTableGm = nullptr;
-    __gm__ uint8_t *attenMaskGmInt = nullptr;
-    __gm__ uint32_t *fiaMetaDataGm = nullptr;
+
     __cbuf__ void *q1[2], *kv1[4];
-    __ubuf__ void *pv[2];
     int ikv{-1};
     int iq{-1};
     int iquse = -1;
-    int ipid{-1};
-    // int bmm1_id{0};
-    int bmm2_id{1};
-    int vec1_id{-1};
     __ca__ void * l0a[2];
     __cb__ void * l0b[2];
     __cc__ void * l0c[2];
     int l0a_id{-1};
     int l0c_id{-1};
-    // int mm1_id{-1};
 
-    // using ROPE_T = bfloat16_t;
     // using Q_T = INPUT_T;
     // using KV_T = INPUT_T;
     // using MM_T = T;
@@ -85,7 +76,7 @@ public:
     // static constexpr uint32_t n2Size = (uint32_t)8;
     static constexpr uint32_t realGSize = (uint32_t)8;
     static constexpr uint32_t maxBlockNumPerBatch = (uint32_t)20;//修改
-    static constexpr uint64_t gS1Idx = (uint64_t)0;
+    // static constexpr uint64_t gS1Idx = (uint64_t)0;
     static constexpr uint32_t FirstS2Loop = (uint32_t)0;
     static constexpr uint32_t LastS2Loop = (uint32_t)20;//修改
     static constexpr uint32_t actMSize = (uint32_t)32;
@@ -142,8 +133,6 @@ public:
         keyPtr = key;
         valuePtr = value;
         actualSeqLengthsGmQ = (__gm__ uint64_t *)actualSeqQlenAddr;
-        actualSeqLengthsGm = (__gm__ uint64_t *)actualSeqKvlenAddr;
-
         deScaleQGm = dequantScaleQuery;
         deScaleKGm = dequantScaleKey;
         deScaleVGm = dequantScaleValue;
@@ -162,64 +151,20 @@ public:
         return actualSeqLengthsGmQ[bIdx - 1];
     }
 
-    __aicore__ inline void gm_l1_q(uint64_t bIdx, uint64_t n2Idx, uint64_t q1use)
+    __aicore__ inline void gm_l1_q(uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx, uint32_t q1use)
     {
-        uint32_t s1IdxStart = gS1Idx / n2Size;
-        uint32_t gIdxStart = gS1Idx % n2Size;
-        uint32_t s1IdxEnd = (gS1Idx + actMSize) / n2Size;
-        uint32_t gIdxEnd = (gS1Idx + actMSize) % n2Size;
-        uint64_t tStride = n2Size * n2Size * dBaseSize;
-
         uint64_t tIdx = GetTBaseQ_MX(bIdx) + gS1Idx / gSize;
+        uint64_t tStride = n2Size * n2Size * dBaseSize;
         uint64_t gmQOffset = tIdx * n2Size * n2Size * dBaseSize +
                              n2Idx * n2Size * dBaseSize;
-
-        uint32_t headSize = 0;
-        if (s1IdxStart == s1IdxEnd) {
-            headSize = gIdxEnd - gIdxStart;
-        } else {
-            headSize = n2Size - gIdxStart;
-        }
-        // Nd2NzParams nd2nzPara;
-        // nd2nzPara.ndNum = 1;
-        // nd2nzPara.nValue = n2Size - gS1Idx % n2Size; // nd矩阵的行数
-        // nd2nzPara.dValue = dBaseSize;       // nd矩阵的列数
-        // nd2nzPara.srcDValue = dBaseSize; // 同一nd矩阵相邻行起始地址间的偏移
-        // nd2nzPara.dstNzC0Stride = (runInfo.actMSize + 31) >> 5 << 5;
-        // nd2nzPara.dstNzNStride = 1;
-        // nd2nzPara.srcNdMatrixStride = 0;
-        // nd2nzPara.dstNzMatrixStride = 0;
-        uint64_t mte2NzPara = static_cast<uint64_t>(0) << 48; // MTE2_NZ_PARA[63:48]
-        mte2NzPara |= static_cast<uint64_t>((actMSize + 31) >> 5 << 5) << 32;         // MTE2_NZ_PARA[47:32]
-        mte2NzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
-        mte2NzPara |= static_cast<uint64_t>(1);            // MTE2_NZ_PARA[15:0]
-        set_mte2_nz_para(mte2NzPara); // CCE: store parameters for ND2NZ DMA instructions
-        uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
-        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ int8_t*)((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + gIdxStart * dBaseSize),
-                                    (__gm__ int8_t*)((__gm__ float8_e4m3_t *)(queryGm + gmQOffset)), 0, dBaseSize, cacheMode, 
-                                    n2Size - gIdxStart, dBaseSize, 0, false);
-
-        gmQOffset +=  n2Size * n2Size * dBaseSize;
-        uint64_t mte2Q2NzPara = static_cast<uint64_t>(static_cast<uint16_t>(n2Size)) << 48; // MTE2_NZ_PARA[63:48]
+        int64_t mte2Q2NzPara = static_cast<uint64_t>(static_cast<uint16_t>(n2Size)) << 48; // MTE2_NZ_PARA[63:48]
         mte2Q2NzPara |= static_cast<uint64_t>((actMSize + 31) >> 5 << 5) << 32;         // MTE2_NZ_PARA[47:32]
         mte2Q2NzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
-        mte2Q2NzPara |= static_cast<uint64_t>(s1IdxEnd - s1IdxStart - 1);            // MTE2_NZ_PARA[15:0]
+        mte2Q2NzPara |= static_cast<uint64_t>(s1Size);            // MTE2_NZ_PARA[15:0]
         set_mte2_nz_para(mte2Q2NzPara); // CCE: store parameters for ND2NZ DMA instructions
-        cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
-        // copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + 8 * 32,
-        //                             (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 8 * 128 * 8, false);
-        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ int8_t*)((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + (n2Size - gIdxStart) * 32),
-                                    (__gm__ int8_t*)((__gm__ float8_e4m3_t *)(queryGm + gmQOffset)), 0, dBaseSize, cacheMode,
-                                    n2Size, dBaseSize, tStride, false);
-        // Nd2NzParams nd2nzPara;
-        // nd2nzPara.ndNum = s1IdxEnd - s1IdxStart - 1;
-        // nd2nzPara.nValue = n2Size; // nd矩阵的行数
-        // nd2nzPara.dValue = dBaseSize;       // nd矩阵的列数
-        // nd2nzPara.srcDValue = dBaseSize; // 同一nd矩阵相邻行起始地址间的偏移
-        // nd2nzPara.dstNzC0Stride = (runInfo.actMSize + 31) >> 5 << 5;
-        // nd2nzPara.dstNzNStride = 1;
-        // nd2nzPara.srcNdMatrixStride = tStride;
-        // nd2nzPara.dstNzMatrixStride = n2Size * 32;
+        uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)(__gm__ float8_e4m3_t *)(queryGm + gmQOffset)) >> 60);
+        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[q1use], (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, dBaseSize, cacheMode, 
+                                     n2Size, dBaseSize, tStride, false);
     }
 
     __aicore__ inline uint64_t GetTBaseQsacle_MX(uint32_t bIdx)
@@ -230,7 +175,7 @@ public:
         return (bIdx) * s1Size;
     }
 
-    __aicore__ inline void gm_l1_qscale(uint64_t bIdx, uint64_t n2Idx, uint64_t q1use)
+    __aicore__ inline void gm_l1_qscale(uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx, uint32_t q1use)
     {
         uint32_t qScaleOffset = ((actMSize + 31) >> 5 << 5) * dBaseSize;//((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;runInfo.actMSize=gs1=8*4
         uint32_t s1IdxStart = gS1Idx / n2Size;
@@ -240,28 +185,19 @@ public:
                                   n2Idx * bSize * s1Size * dBaseSize / MXFP_GROUP_SIZE * n2Size
                                   + gIdxStart * dBaseSize / MXFP_GROUP_SIZE;
 
-        // Dn2NzParams dn2nzPara;
-        // dn2nzPara.dnNum = 1;                 // ND矩阵的个数
-        // dn2nzPara.nValue = dBaseSize / MXFP_GROUP_SIZE / 2;       // 单个DN矩阵的实际列数，单位为元素个数
-        // dn2nzPara.dValue = actMSize;           // 单个DN矩阵的实际行数，单位为元素个数
-        // dn2nzPara.srcDnMatrixStride = 0;     // 相邻Dn矩阵起始地址之间的偏移， 单位为元素个数
-        // dn2nzPara.srcDValue = dBaseSize / MXFP_GROUP_SIZE / 2; // 同一个Dn矩阵中相邻行起始地址之间的偏移， 单位为元素个数
-        // dn2nzPara.dstNzC0Stride = dBaseSize / MXFP_GROUP_SIZE / 2;
-        // dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
-        // dn2nzPara.dstNzMatrixStride = dBaseSize / MXFP_GROUP_SIZE / 2;
-
         uint64_t mte2QScaleNzPara = static_cast<uint64_t>(dBaseSize / MXFP_GROUP_SIZE / 2 * 2 / 32) << 48; // MTE2_NZ_PARA[63:48]
         mte2QScaleNzPara |= static_cast<uint64_t>(dBaseSize / MXFP_GROUP_SIZE / 2) << 32;         // MTE2_NZ_PARA[47:32]
         mte2QScaleNzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
         mte2QScaleNzPara |= static_cast<uint64_t>(1);            // MTE2_NZ_PARA[15:0]
         set_mte2_nz_para(mte2QScaleNzPara); // CCE: store parameters for DN2NZ DMA instructions
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset));
+        
+        const uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset)) >> 60);
         copy_gm_to_cbuf_multi_dn2nz((__cbuf__ bfloat16_t *)((__cbuf__ float8_e8m0_t *)q1[q1use] + qScaleOffset), 
                                     (__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset),
                                     0, dBaseSize / MXFP_GROUP_SIZE / 2 * 2, cacheMode, dBaseSize / MXFP_GROUP_SIZE / 2, actMSize, 0, false);
     }
 
-    __aicore__ inline void gm_l1_k(uint64_t s2Idx, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
+    __aicore__ inline void gm_l1_k(uint32_t s2Idx, uint32_t bIdx, uint32_t n2Idx, uint32_t subLoop, int ivkuse)
     {
         // uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
         uint32_t s2Offset = (subLoop % 2 == 0) ? s2Idx : s2Idx + 256;
@@ -271,85 +207,27 @@ public:
             *(__gm__ int32_t *)(blockTableGm + bIdx * maxBlockNumPerBatch +
                                 blockIdxInBatch);
         uint64_t gmKOffset = blockId * n2Size * dBaseSize / 32 * 512 * 32 + n2Idx * dBaseSize / 32  * 512 * 32 + bsIdx * 32;
-
-        // set_mark(0x5544220);
-        // set_mark(gmKOffset);//0xf0000,0xf2000,0x170000,0x172000
-        // set_mark(s2Idx);//0,0,0x200,0x200
-        // set_mark(bIdx);//1
-        // set_mark(n2Idx);//7
-        // set_mark(bsIdx);
-        // set_mark(maxBlockNumPerBatch);//1,1,1,1
-        // set_mark(blockId);//1,1,2,2
-
-        // DataCopyParams intriParams;
-        // intriParams.blockCount = dBaseSize / 32;
-        // intriParams.blockLen = 256;
-        // intriParams.dstStride = 0;
-        // intriParams.srcStride = 256;
-        /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
-                                     leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(keyGm + gmKOffset));
+        const uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)(__gm__ float8_e4m3_t *)(keyGm + gmKOffset)) >> 60);
         copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)kv1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmKOffset), 0, dBaseSize / 32,
                                  256 * 32, 0, 0, true, cacheMode, 256 * 32 * 2, 256 * 32);
     }
 
-    __aicore__ inline void gm_l1_kscale(uint64_t s2Idx, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
+    __aicore__ inline void gm_l1_kscale(uint32_t s2Idx, uint32_t bIdx, uint32_t n2Idx, uint32_t subLoop, int ivkuse)
     {
-        // uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
         uint32_t s2Offset = (subLoop % 2 == 0) ? s2Idx : s2Idx + 256;
         uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
-        
-        // intriParams.blockCount = 16;修改成1
-        // intriParams.blockLen = dBaseSize / MXFP_GROUP_SIZE / 2;修改成32
-        // intriParams.dstStride = 0;
-        // intriParams.srcStride = 0;
-        // uint64_t blockKScaleId =
-        //     *((__gm__ int32_t *)(blockTableGm + bIdx * maxBlockNumPerBatch +
-        //                         s2Offset / 512));
         uint64_t blockKScaleId =
             *(__gm__ int32_t *)(blockTableGm + bIdx * maxBlockNumPerBatch +
                                 s2Offset / 512);
-        // uint64_t gmKScaleOffset = blockKScaleId * 8 * 32 * 2 * 32 + n2Idx * 32 * 2 * 32 + bsIdx / 16 * 2 * 32 + bsIdx % 16;
         uint64_t gmKScaleOffset = blockKScaleId * n2Size * 512 / 32 * MXFP_MULTI_BASE_SIZE * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 +
                                   n2Idx * 512 / 32 * MXFP_MULTI_BASE_SIZE * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 +
                                   bsIdx / 16 * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 + bsIdx % 16;
-        
-        set_mark(0x5544226);
-        set_mark(gmKScaleOffset);//0x7800,0x7c00
-        set_mark(s2Idx);//0
-        set_mark(bIdx);//1
-        set_mark(n2Idx);//7
-        set_mark(bsIdx);//0,0x100
-        set_mark(s2Offset);//0,0x100
-        set_mark(maxBlockNumPerBatch);//1
-        set_mark(blockKScaleId);//1
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset));
-        // copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * dBaseSize, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 16,
-        //                          dBaseSize / MXFP_GROUP_SIZE / 2 * 32, 0, 0, true, cacheMode, 0, dBaseSize / MXFP_GROUP_SIZE / 2 * 32);
+        const uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)(__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset)) >> 60);
         copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 1,
                                  32 * 32, 0, 0, true, cacheMode, 0, 32 * 32);
     }
-
     __aicore__ inline void mm1_l1_l0a_no_trans(int l0a_iduse)
     {
-        // loadData2DParamsA.mStartPosition = 0
-        // loadData2DParamsA.kStartPosition = 0
-        // loadData2DParamsA.ifTranspose = 0
-        // loadData2DParamsA.mStep = ((actMSize + 15) >> 4 << 4) >> 4
-        // loadData2DParamsA.kStep = 4
-        // loadData2DParamsA.srcStride = ((actMSize + 31) >> 5 << 5) >> 4
-        // loadData2DParamsA.dstStride = ((actMSize + 15) >> 4 << 4) >> 4
-
-        // loadData2DMxParamsA.xStartPosition = 0
-        // loadData2DMxParamsA.yStartPosition = 0
-        // loadData2DMxParamsA.xStep = ((actMSize + 15) >> 4 << 4) >> 4
-        // loadData2DMxParamsA.yStep = 2
-        // loadData2DMxParamsA.srcStride =2
-        // loadData2DMxParamsA.dstStride = 2
-        // LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
-        //              loadData2DMxParamsA);
-        set_mark(0x6636280);
-        set_mark(actMSize);
         load_cbuf_to_ca(reinterpret_cast<__ca__ float8_e4m3_t *>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse]),
                     (__cbuf__ float8_e4m3_t *)q1[iquse % 2],
                     0,
@@ -373,20 +251,6 @@ public:
     }
     __aicore__ inline void mm1_l1_l0b_no_trans(int ivkuse, int l0b_iduse)
     {
-         // loadData2DParamsB.mStartPosition = 0
-        // loadData2DParamsB.kStartPosition = 0
-        // loadData2DParamsB.ifTranspose = 0
-        // loadData2DParamsB.mStep = 16
-        // loadData2DParamsB.kStep = ((dBaseSize + 31) >> 5 << 5) >> 5
-        // loadData2DParamsB.srcStride = 16
-        // loadData2DParamsB.dstStride = 16
-
-        // loadData2DMxParamsB.xStartPosition = 0
-        // loadData2DMxParamsB.yStartPosition = 0
-        // loadData2DMxParamsB.xStep = 16
-        // loadData2DMxParamsB.yStep = (dBaseSize + 63)  >> 5 >> 1
-        // loadData2DMxParamsB.srcStride = (dBaseSize + 63)  >> 5 >> 1
-        // loadData2DMxParamsB.dstStride = (dBaseSize + 63)  >> 5 >> 1
         load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse]),
                     (__cbuf__ float8_e4m3_t *)kv1[ivkuse],
                     0,
@@ -411,13 +275,6 @@ public:
 
     __aicore__ inline void compute_mm1(int l0c_iduse, int l0a_iduse)
     {
-        // MmadParams mmadParams;
-        // mmadParams.m = actMSize;
-        // mmadParams.n = 256;
-        // mmadParams.k = dBaseSize;
-        // mmadParams.cmatrixInitVal =1;
-        // mmadParams.cmatrixSource = 0;
-        // mmadParams.unitFlag = 0;
         using AType = typename GetDstType<mx_fp8_e4m3_t>::Type;
         using BType = typename GetDstType<mx_fp8_e4m3_t>::Type;
         mad_mx((__cc__ float *)l0c[l0c_iduse], (__ca__ AType*)l0a[l0a_iduse], (__cb__ BType*)l0b[l0a_iduse],
@@ -426,17 +283,6 @@ public:
 
     __aicore__ inline void l0c_ub_mm1(__ubuf__ void *mm1Res, int l0c_iduse)
     {
-        /*
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = 256;
-        fixpipeParams.mSize = 32;  (runInfo.actMSize + 31) >> 5 << 5
-        fixpipeParams.srcStride = 32;  ((runInfo.actMSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = 256; 
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        */
         uint64_t loop3Para = static_cast<uint64_t>(0) << 32;  // LOOP3_PARA[63:32]
         loop3Para |= static_cast<uint64_t>(0) << 16;  // LOOP3_PARA[31:16]
         loop3Para |= static_cast<uint64_t>(1);              // LOOP3_PARA[15:0]
@@ -452,21 +298,16 @@ public:
         static_cast<uint64_t>(QuantMode_post::NoConv),
         0, false, false, 0, false, false, false, false, false, false);
     }
-
-    
-    __aicore__ inline void IterateBmm1(__ubuf__ void *mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void IterateBmm1(__ubuf__ void *mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx,
                                         uint32_t s2Idx, uint32_t curS2Loop, uint32_t subLoop)
     {
-        // q and qscale:gm->l1
-        // set_mark(0x3752330);
-        // set_mark(inner);
         if (curS2Loop == FirstS2Loop && subLoop == 0){
             iq ++;
-            uint64_t q1use = iq % 2;
+            uint32_t q1use = iq % 2;
             iquse =  4 + q1use;
             wait_flag(PIPE_MTE1, PIPE_MTE2, iquse);
-            gm_l1_q(bIdx, n2Idx, q1use);
-            gm_l1_qscale(bIdx, n2Idx, q1use);
+            gm_l1_q(bIdx, n2Idx, gS1Idx, q1use);
+            gm_l1_qscale(bIdx, n2Idx, gS1Idx, q1use);
             set_flag(PIPE_MTE2, PIPE_MTE1, iquse);
         } else {
             set_flag(PIPE_MTE2, PIPE_MTE1, iquse);
@@ -475,8 +316,10 @@ public:
         ikv++;
         int ivkuse = ikv % 4;
         wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
         gm_l1_k(s2Idx, bIdx, n2Idx, subLoop, ivkuse);
         gm_l1_kscale(s2Idx, bIdx, n2Idx, subLoop, ivkuse);
+
         set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, iquse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
@@ -504,9 +347,6 @@ public:
 
         set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
         wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
-
-        // outputBuf.WaitCrossCore();
-        // bmm1_id ++;
         int bmm1_idused = 6 + bmm1_id * 2;
         wait_intra_block(PIPE_FIX, 0 + bmm1_idused + 1);//9
         wait_intra_block(PIPE_FIX, 16 + bmm1_idused + 1);//15
@@ -514,13 +354,11 @@ public:
         l0c_ub_mm1(mm1Res, l0c_iduse);//fixp
         set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
 
-        // // outputBuf.SetCrossCore();
         set_intra_block(PIPE_FIX, 0 + bmm1_idused + 0);//8
         set_intra_block(PIPE_FIX, 16 + bmm1_idused + 0);//14
-
     }
 
-    __aicore__ inline void gm_l1_v(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
+    __aicore__ inline void gm_l1_v(uint32_t inner, uint32_t bIdx, uint32_t n2Idx, uint32_t k, int ivkuse)
     {
         uint32_t s2Offset = inner + k * 256;
         uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
@@ -529,26 +367,12 @@ public:
             *(__gm__ int32_t *)(blockTableGm + bIdx * maxBlockNumPerBatch +
                                 blockIdxInBatch);
         uint64_t gmVOffset = blockId * n2Size * dVBaseSize / 32 * 512 * 32 + n2Idx * dVBaseSize / 32  * 512 * 32 + bsIdx * 32;
-        // intriParams.blockCount = 4;
-        // intriParams.blockLen = 256;
-        // intriParams.dstStride = 0;
-        // intriParams.srcStride = 256;
-        /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
-                                 leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-        // set_mark(0x5544228);
-        // set_mark(gmOffset);//0x7800,0x7c00
-        // set_mark(inner);//0
-        // set_mark(bIdx);//1
-        // set_mark(n2Idx);//7
-        // set_mark(bsIdx);//0,0x100
-        // set_mark(s2Offset);//0,0x100
-        // set_mark(blockId);//1
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(valueGm + gmVOffset));
+        const uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)(__gm__ float8_e4m3_t *)(valueGm + gmVOffset)) >> 60);
         copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)kv1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmVOffset), 0, dVBaseSize / 32,
                                  256 * 32, 0, 0, true, cacheMode, 256 * 32 * 2, 256 * 32);
     }
 
-     __aicore__ inline void gm_l1_vscale(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
+    __aicore__ inline void gm_l1_vscale(uint32_t inner, uint32_t bIdx, uint32_t n2Idx, uint32_t k, int ivkuse)
     {
         uint32_t s2VscaleScaleOffset = (inner + k * 256) / MXFP_DIVISOR_SIZE;
         uint64_t blockVscaleIdxInBatch = s2VscaleScaleOffset / (dVBaseSize * MXFP_MULTI_BASE_SIZE / 32);  // 获取block table上的索引
@@ -556,40 +380,16 @@ public:
         uint64_t blockVscaleId =
             *(__gm__ int32_t *)(blockTableGm + bIdx * maxBlockNumPerBatch +
                                 blockVscaleIdxInBatch);
-        // uint64_t gmVScaleOffset = blockVscaleId * 8 * 512 / 64 * dVBaseSize * 2 / 32 * 32+ n2Idx * 512 / 64 * dVBaseSize * 2 / 32 * 32 + bsVscaleIdx * 32;
         uint64_t gmVScaleOffset = blockVscaleId * n2Size * dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 * 512 / MXFP_DIVISOR_SIZE * 32 +
                                   n2Idx * dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 * 512 / MXFP_DIVISOR_SIZE * 32 + bsVscaleIdx * 32;
-
-        //intriParams.blockCount = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32;
-        // intriParams.blockLen = 256 / MXFP_DIVISOR_SIZE;
-        // intriParams.dstStride = 0;
-        // intriParams.srcStride = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 - 256 / MXFP_DIVISOR_SIZE;
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset));
+        const uint8_t cacheMode = static_cast<uint8_t>(((uint64_t)(__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset)) >> L2_CACHE_OFFSET);
         copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * dVBaseSize, (__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset), 0, dVBaseSize * MXFP_MULTI_BASE_SIZE / 32,
                                  256 / MXFP_DIVISOR_SIZE * 32, 0, 0, true, 0, 256 / MXFP_DIVISOR_SIZE * 32 * 2, 4 * 32);
     }
 
     __aicore__ inline void mm2_l1_l0a_no_trans(__cbuf__ void *p1, uint32_t k, int ipuse, int l0a_iduse)
     {
-        // loadData2DParamsA.mStartPosition = 0
-        // loadData2DParamsA.kStartPosition = 0
-        // loadData2DParamsA.ifTranspose = 0
-        // loadData2DParamsA.mStep = 2   ((actMSize + 15) >> 4 << 4) >> 4
-        // loadData2DParamsA.kStep = 8  ((256 + 31) >> 5 << 5) >> 5
-        // loadData2DParamsA.srcStride = 8   ((128 + 31) >> 5 << 5) >> 4
-        // loadData2DParamsA.dstStride = 2 ((actMSize + 15) >> 4 << 4) >> 4
 
-        // loadData2DMxParamsA.xStartPosition = 0
-        // loadData2DMxParamsA.yStartPosition = 0
-        // loadData2DMxParamsA.xStep = 2 ((actMSize + 15) >> 4 << 4) >> 4
-        // loadData2DMxParamsA.yStep = 4
-        // loadData2DMxParamsA.srcStride = 4
-        // loadData2DMxParamsA.dstStride = 4
-        // LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
-        //              loadData2DMxParamsA);
-        //set_mark(0x7766880);
-        //set_mark(k);
-        //set_mark(k * 256 * 128);
         uint32_t pScaleOffset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）; // VScale在mm1B的偏移量（单位：元素）
 
         load_cbuf_to_ca(reinterpret_cast<__ca__ float8_e4m3_t *>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse]),
@@ -615,20 +415,6 @@ public:
     }
     __aicore__ inline void mm2_l1_l0b_trans(int ivkuse, int l0b_iduse)
     {
-         // loadData2DParamsB.mStartPosition = 0
-        // loadData2DParamsB.kStartPosition = 0
-        // loadData2DParamsB.ifTranspose = 1
-        // loadData2DParamsB.mStep = 16 
-        // loadData2DParamsB.kStep = 4 ((dVBaseSize + 31) >> 5 << 5) >> 5;
-        // loadData2DParamsB.srcStride = 16
-        // loadData2DParamsB.dstStride = 8  (dVBaseSize + 15) >> 4;
-
-        // loadData2DMxParamsB.xStartPosition = 0
-        // loadData2DMxParamsB.yStartPosition = 0
-        // loadData2DMxParamsB.xStep = 8  ((dVBaseSize + 15) >> 4 << 4) >> 4
-        // loadData2DMxParamsB.yStep = 4
-        // loadData2DMxParamsB.srcStride =4
-        // loadData2DMxParamsB.dstStride = 4
         load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse]),
                     (__cbuf__ float8_e4m3_t *)kv1[ivkuse],
                     0,
@@ -667,18 +453,6 @@ public:
 
     __aicore__ inline void l0c_ub_mm2(__ubuf__ void *mm2Res, int l0c_iduse)
     {
-
-        /*
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = 128;  (dVBaseSize + 7) >> 3 << 3
-        fixpipeParams.mSize = 32;   (runInfo.actMSize + 31) >> 5 << 5;
-        fixpipeParams.srcStride = 32;  ((runInfo.actMSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = 128; ((uint32_t)dVTemplateType + 15) >> 4 << 4;
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        */
         uint64_t loop3Para = static_cast<uint64_t>(0) << 32;  // LOOP3_PARA[63:32]
         loop3Para |= static_cast<uint64_t>(0) << 16;  // LOOP3_PARA[31:16]
         loop3Para |= static_cast<uint64_t>(1);              // LOOP3_PARA[15:0]
@@ -695,56 +469,43 @@ public:
                                     0, false, false, 0, false, false, false, false, false, false);
     }
 
-    __aicore__ inline void IterateBmm2(int ipuse, __ubuf__ void *mm2Res, __cbuf__ void *p1, int bmm2_id, uint32_t bIdx, uint32_t n2Idx,
-                                        uint32_t s2Idx)
+    __aicore__ inline void IterateBmm2(int ipuse, __ubuf__ void *mm2Res, __cbuf__ void *p1, uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx)
     {
-        // mm2A.WaitCrossCore();
         wait_intra_block(PIPE_MTE1, ipuse);
         wait_intra_block(PIPE_MTE1, ipuse + 16);
-
         l0c_id ++ ;
         int l0c_iduse = l0c_id % 2;
         wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
-
         for (uint32_t k = 0; k < 2; k++) {
             ikv++;
             int ivkuse = ikv % 4;
             wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
             gm_l1_v(s2Idx, bIdx, n2Idx, k, ivkuse);
             gm_l1_vscale(s2Idx, bIdx, n2Idx, k, ivkuse);
-            set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
 
+            set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
-            //mte1 start
+            // mte1 start
             l0a_id ++ ;
             int l0a_iduse = l0a_id % 2;
             wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
             mm2_l1_l0a_no_trans(p1, k, ipuse, l0a_iduse);
             mm2_l1_l0b_trans(ivkuse, l0a_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
+
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
 
             compute_mm2(l0c_iduse, l0a_iduse, k);
+
             set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
 
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
         }
         set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
         wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
-
-        // outputBuf.WaitCrossCore();
-        // wait_intra_block(PIPE_MTE1, bmm2_id + 1);
-        // wait_intra_block(PIPE_MTE1, bmm2_id + 1 + 16);
-
-        wait_intra_block(PIPE_FIX, bmm2_id + 1);
-        wait_intra_block(PIPE_FIX, bmm2_id + 1 + 16);
-
         l0c_ub_mm2(mm2Res, l0c_iduse);//fixp
-
         set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
-        // outputBuf.SetCrossCore();
-        set_intra_block(PIPE_FIX, bmm2_id);
-        set_intra_block(PIPE_FIX, bmm2_id + 16);
     }
 }; // FAFullQuantMxBlockCube
 
