@@ -641,9 +641,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         uint32_t senderIdx = blockIdx_ - senderCoreStart;
         for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
             targetServerForSender += senderCoreNum) {
-            if (targetServerForSender == serverId_) {
-                    continue;
-            }
+            // if (targetServerForSender == serverId_) {
+            //         continue;
+            // }
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
             int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
