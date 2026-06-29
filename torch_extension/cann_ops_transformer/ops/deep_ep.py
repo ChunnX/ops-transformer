@@ -18,13 +18,20 @@ from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .comm_context import CommContextManager
 
 
+def _empty_topk_weights_like(tensor):
+    return tensor.new_empty((0,), dtype=torch.float32)
+
+
 class MoeDistributeBuffer:
     def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0):
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend="kfc")
+        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend={
+            "Ascend910_93": "kfc",
+            "Ascend950": "channel"
+        })
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
@@ -129,12 +136,16 @@ class MoeDistributeBuffer:
                                              const_expert_num=const_expert_num)
         return expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales
 
-    def npu_low_latency_combine(self, x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *,
+    def npu_low_latency_combine(self, x, topk_idx, assist_info_for_combine, ep_send_counts, *,
+                            topk_weights=None,
                             num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None,
                             shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None,
                             const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
                             const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0,
                             num_max_dispatch_tokens_per_rank=0):
+        torch._check(assist_info_for_combine is not None, lambda: "assist_info_for_combine must be provided.")
+        torch._check(ep_send_counts is not None, lambda: "ep_send_counts must be provided.")
+        topk_weights = _empty_topk_weights_like(x) if topk_weights is None else topk_weights
         return torch.ops.cann_ops_transformer.npu_moe_distribute_combine(
                                              context=self.context,
                                              expand_x=x,
@@ -165,4 +176,3 @@ class MoeDistributeBuffer:
                                              comm_alg=comm_alg,
                                              comm_quant_mode=comm_quant_mode,
                                              global_bs=num_max_dispatch_tokens_per_rank * self.world_size)
-  
