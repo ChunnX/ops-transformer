@@ -43,23 +43,11 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-        // ===============================================================
-        //   合规组合表（供文档参考）：
-        //   ┌───────────┬───────────────────┬──────────────────────┐
-        //   │ QuantMode │ Weight1 / Weight2 │ 路径                  │
-        //   ├───────────┼───────────────────┼──────────────────────┤
-        //   │ E4M3      │ fp8 / fp8 or fp4  │ a8w8 or a8w4         │
-        //   │ E2M1      │ fp4 / fp4         │ a4w4                  │
-        //   │ E5M2      │ fp8 / fp8         │ generic               │
-        //   └───────────┴───────────────────┴──────────────────────┘
-        // ===============================================================
-        {
-            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
-                DispatchQuantOutType, CombineQuantOutType> op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                    scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
-            op.Process();
-        }
+    MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
+        DispatchQuantOutType, CombineQuantOutType> op;
+        op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
+                scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
+        op.Process();
     }
 #endif
 }
