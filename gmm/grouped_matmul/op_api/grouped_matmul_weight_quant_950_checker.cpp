@@ -96,8 +96,9 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup(const size_t i
     auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
     auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
     size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+    size_t pergroupDim = perchannelDim + 1;
     // pergroup场景比perchannel维度大
-    return antiquantScaleDimNum > perchannelDim;
+    return antiquantScaleDimNum == pergroupDim;
 }
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t xIdx, size_t yIdx, size_t wIdx) const
@@ -652,7 +653,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
 {
-    if (IsA16W4Pergroup(idx)) {
+    if (IsA16W4()) {
+        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
+        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+        if (antiquantScaleDimNum <= perchannelDim) {
+            return ACLNN_SUCCESS;
+        }
+
         CHECK_RET(CheckDimValueAllOne(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
 
