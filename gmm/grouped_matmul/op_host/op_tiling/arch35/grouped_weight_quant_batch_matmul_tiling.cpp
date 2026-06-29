@@ -110,7 +110,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
         OP_CHECK_IF(numX_ != 1 || numWeight_ < 1,
                     OP_LOGE_FOR_INVALID_LISTSIZE(
                         OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
-                        "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in single-multi-single mode, the size of x must be 1 and weight must be greater than or equal to 1"),
+                        "When x-weight is float8_e4m3fn-float4_e2m1/fp32 in single-multi-single mode, the size of x "
+                        "must be 1 and weight must be greater than or equal to 1"),
                     return false);
     } else {
         OP_CHECK_IF(numX_ != 1 || numWeight_ != 1,
@@ -697,7 +698,7 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     GetNumOfInputs(context);
     // 获取weight format和各参数类型
     OP_CHECK_IF(!AnalyzeInput(context), OP_LOGE(context->GetNodeName(), "Invalid Input param"), return false);
-    
+
     uint32_t singleWeightDim = weightNzFlag_ ? 5 : 3; // 3:单tensor ND时weight的维度为3
     isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
                        context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr &&
