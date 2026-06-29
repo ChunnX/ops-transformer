@@ -111,7 +111,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   该接口支持推理场景下使用。
 -   该接口支持静态图模式，`npu_low_latency_dispatch`和`npu_low_latency_combine`必须配套使用。
--   在不同产品型号、不同通信算法或不同版本中，`npu_low_latency_dispatch`的Tensor输出`assist_info_for_combine`、`ep_recv_counts`、`tp_recv_counts`、`expand_scales`中的元素值可能不同，使用时直接将上述Tensor传给`npu_low_latency_combine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
+-   在不同产品型号、不同通信算法或不同版本中，`npu_low_latency_dispatch`的Tensor输出`assist_info_for_combine`、`ep_recv_counts`、`expand_scales`中的元素值可能不同，使用时直接将上述Tensor传给`npu_low_latency_combine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 -   调用接口过程中使用的`num_experts`、`expert_shard_type`、`shared_expert_num`、`shared_expert_rank_num`、`num_max_dispatch_tokens_per_rank`参数取值所有卡需保持一致，`expert_shard_type`、`num_max_dispatch_tokens_per_rank`网络中不同层中也需保持一致，且和[npu\_low\_latency\_combine](npu_low_latency_combine.md)对应参数也保持一致。
 -   该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 -   num_experts + zero_expert_num + copy_expert_num + const_expert_num < MAX_INT32。
@@ -143,8 +143,6 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 -   通信域使用约束：
 
     -   一个模型中的`npu_low_latency_dispatch`和`npu_low_latency_combine`算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
-
-    -   一个模型中的`npu_low_latency_dispatch`和`npu_low_latency_combine`算子仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
     -   一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
@@ -184,8 +182,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     h = 7168  # 每个token的长度
     k = 8
     random_seed = 0
-    tp_world_size = 1
-    ep_world_size = int(world_size / tp_world_size)
+    ep_world_size = world_size
     moe_rank_num = ep_world_size - shared_expert_rank_num
     local_moe_expert_num = num_experts // moe_rank_num
     globalBS = bs * ep_world_size
@@ -212,21 +209,11 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def get_new_group(rank):
-        for i in range(tp_world_size):
-            # 如果tp_world_size = 2，ep_world_size = 8，则为[[0, 2, 4, 6, 8, 10, 12, 14], [1, 3, 5, 7, 9, 11, 13, 15]]
-            ep_ranks = [x * tp_world_size + i for x in range(ep_world_size)]
-            ep_group = dist.new_group(backend="hccl", ranks=ep_ranks)
-            if rank in ep_ranks:
-                ep_group_t = ep_group
-                print(f"rank:{rank} ep_ranks:{ep_ranks}")
-        for i in range(ep_world_size):
-            # 如果tp_world_size = 2，ep_world_size = 8，则为[[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15]]
-            tp_ranks = [x + tp_world_size * i for x in range(tp_world_size)]
-            tp_group = dist.new_group(backend="hccl", ranks=tp_ranks)
-            if rank in tp_ranks:
-                tp_group_t = tp_group
-                print(f"rank:{rank} tp_ranks:{tp_ranks}")
-        return ep_group_t, tp_group_t
+        ep_ranks = list(range(ep_world_size))
+        ep_group = dist.new_group(backend="hccl", ranks=ep_ranks)
+        if rank in ep_ranks:
+            print(f"rank:{rank} ep_ranks:{ep_ranks}")
+        return ep_group
 
 
     def get_hcomm_info(rank, comm_group):
@@ -238,7 +225,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def get_dispatch_kwargs_warmup(
-        x_warm_up, topk_idx_warm_up, group_ep, group_tp, ep_rank_id, tp_rank_id,
+        x_warm_up, topk_idx_warm_up,
     ):
         x_warm_up = x_warm_up.to(input_dtype).npu()
         topk_idx_warm_up = topk_idx_warm_up.to(torch.int32).npu()
@@ -258,9 +245,8 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         torch_npu.npu.set_device(rank)
         rank = rank + 16 * server_index
         dist.init_process_group(backend='hccl', rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:{port}')
-        ep_group, tp_group = get_new_group(rank)
+        ep_group = get_new_group(rank)
         ep_hcomm_info = get_hcomm_info(rank, ep_group)
-        tp_hcomm_info = get_hcomm_info(rank, tp_group)
 
         # 创建输入tensor
         x = torch.randn(bs, h, dtype=input_dtype).npu()
@@ -317,7 +303,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
                                                 zero_expert_num=zero_expert_num,
                                                 copy_expert_num=copy_expert_num,
                                                 const_expert_num=const_expert_num)
-        print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \n')
+        print(f'rank {rank} npu finished! \n')
 
 
     if __name__ == "__main__":
@@ -328,12 +314,8 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         print(f"k={k}")
         print(f"quant_mode={quant_mode}", flush=True)
         print(f"local_moe_expert_num={local_moe_expert_num}", flush=True)
-        print(f"tp_world_size={tp_world_size}", flush=True)
         print(f"ep_world_size={ep_world_size}", flush=True)
 
-        if tp_world_size != 1 and local_moe_expert_num > 1:
-            print("unSupported tp = 2 and local moe > 1")
-            exit(0)
         if shared_expert_rank_num > ep_world_size:
             print("shared_expert_rank_num不能大于ep_world_size")
             exit(0)
@@ -388,8 +370,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     h = 7168  # 每个token的长度
     k = 8
     random_seed = 0
-    tp_world_size = 1
-    ep_world_size = int(world_size / tp_world_size)
+    ep_world_size = world_size
     moe_rank_num = ep_world_size - shared_expert_rank_num
     local_moe_expert_num = num_experts // moe_rank_num
     globalBS = bs * ep_world_size
@@ -407,8 +388,8 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             self.group = group_ep
             self.distribute_buffer = MoeDistributeBuffer(group_ep)
 
-        def forward(self, x, topk_idx, group_ep, group_tp, ep_world_size, tp_world_size,
-                    ep_rank_id, tp_rank_id, expert_shard_type, shared_expert_rank_num, num_experts,
+        def forward(self, x, topk_idx, group_ep,
+                    ep_world_size, ep_rank_id, expert_shard_type, shared_expert_rank_num, num_experts,
                     scales, quant_mode, num_max_dispatch_tokens_per_rank, topk_weights, elastic_info, const_expert_alpha_1, const_expert_alpha_2, const_expert_v, zero_expert_num, copy_expert_num, const_expert_num):
             output_dispatch_npu = self.distribute_buffer.npu_low_latency_dispatch(
                 x=x,
@@ -466,19 +447,11 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def get_new_group(rank):
-        for i in range(tp_world_size):
-            ep_ranks = [x * tp_world_size + i for x in range(ep_world_size)]
-            ep_group = dist.new_group(backend="hccl", ranks=ep_ranks)
-            if rank in ep_ranks:
-                ep_group_t = ep_group
-                print(f"rank:{rank} ep_ranks:{ep_ranks}")
-        for i in range(ep_world_size):
-            tp_ranks = [x + tp_world_size * i for x in range(tp_world_size)]
-            tp_group = dist.new_group(backend="hccl", ranks=tp_ranks)
-            if rank in tp_ranks:
-                tp_group_t = tp_group
-                print(f"rank:{rank} tp_ranks:{tp_ranks}")
-        return ep_group_t, tp_group_t
+        ep_ranks = list(range(ep_world_size))
+        ep_group = dist.new_group(backend="hccl", ranks=ep_ranks)
+        if rank in ep_ranks:
+            print(f"rank:{rank} ep_ranks:{ep_ranks}")
+        return ep_group
 
 
     def get_hcomm_info(rank, comm_group):
@@ -490,7 +463,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 
     def get_dispatch_kwargs_warmup(
-        x_warm_up, topk_idx_warm_up, group_ep, group_tp, ep_rank_id, tp_rank_id,
+        x_warm_up, topk_idx_warm_up,
     ):
         x_warm_up = x_warm_up.to(input_dtype).npu()
         topk_idx_warm_up = topk_idx_warm_up.to(torch.int32).npu()
@@ -518,9 +491,8 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             world_size=world_size,
             init_method=f'tcp://{master_ip}:{port}'
         )
-        ep_group, tp_group = get_new_group(rank)
+        ep_group = get_new_group(rank)
         ep_hcomm_info = get_hcomm_info(rank, ep_group)
-        tp_hcomm_info = get_hcomm_info(rank, tp_group)
 
         # 创建输入tensor
         x = torch.randn(bs, h, dtype=input_dtype).npu()
@@ -552,13 +524,13 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         npu_backend = torchair.get_npu_backend()
         model = torch.compile(model, backend=npu_backend, dynamic=False)
         output = model.forward(
-            x, topk_idx, ep_hcomm_info, tp_hcomm_info, ep_world_size, tp_world_size,
-            rank // tp_world_size, rank % tp_world_size, 0, shared_expert_rank_num, num_experts, scales,
+            x, topk_idx, ep_hcomm_info, ep_world_size,
+            rank, 0, shared_expert_rank_num, num_experts, scales,
             quant_mode, globalBS, topk_weights, elastic_info, const_expert_alpha_1, const_expert_alpha_2, const_expert_v,
             zero_expert_num, copy_expert_num, const_expert_num
         )
         torch.npu.synchronize()
-        print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \n')
+        print(f'rank {rank} npu finished! \n')
 
         time.sleep(10)
 
@@ -571,12 +543,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         print(f"k={k}")
         print(f"quant_mode={quant_mode}", flush=True)
         print(f"local_moe_expert_num={local_moe_expert_num}", flush=True)
-        print(f"tp_world_size={tp_world_size}", flush=True)
         print(f"ep_world_size={ep_world_size}", flush=True)
-
-        if tp_world_size != 1 and local_moe_expert_num > 1:
-            print("unSupported tp = 2 and local moe > 1")
-            exit(0)
 
         if shared_expert_rank_num > ep_world_size:
             print("shared_expert_rank_num不能大于ep_world_size")
