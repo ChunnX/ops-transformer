@@ -57,50 +57,62 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         int64_t seqOff = 0;
         if (HAS_SEQOFFSET) seqOff = static_cast<int64_t>(seqOffset[i]) / blockSize;
 
-        uint64_t totalTokens = static_cast<uint64_t>(seqLen);
+        uint64_t totalK = static_cast<uint64_t>(seqLen) * static_cast<uint64_t>(tokenSizeK);
+        uint64_t totalV = static_cast<uint64_t>(seqLen) * static_cast<uint64_t>(tokenSizeV);
         int64_t outK = batchOffset * tokenSizeK;
         int64_t outV = batchOffset * tokenSizeV;
         int64_t blkKS = blockSize * tokenSizeK;
         int64_t blkVS = blockSize * tokenSizeV;
 
-        // Token-level grid-stride: each thread handles a token,
-        // computes blockId once, then copies both key and value bytes.
-        uint64_t start = static_cast<uint64_t>(blockIdx.x) * static_cast<uint64_t>(blockDim.x) +
-                         static_cast<uint64_t>(threadIdx.x);
-        uint64_t stride = static_cast<uint64_t>(gridDim.x) * static_cast<uint64_t>(blockDim.x);
-
-        for (uint64_t j = start; j < totalTokens; j += stride) {
-            // j % blockSize → off, j / blockSize → blk
+        // Key: byte-level grid-stride
+        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * static_cast<uint64_t>(blockDim.x) +
+                            static_cast<uint64_t>(threadIdx.x);
+             idx < totalK;
+             idx += static_cast<uint64_t>(gridDim.x) * static_cast<uint64_t>(blockDim.x)) {
+            uint64_t j   = idx / static_cast<uint64_t>(tokenSizeK);
+            uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeK);
             uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
             uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
 
-            // blockId lookup (once per token, shared for key and value)
             int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
+            bool zeroFill = (tableIdx < 0 || tableIdx >= numblkTabCol);
             int64_t blockIdVal = 0;
-            bool zeroFill = false;
-            if (tableIdx >= 0 && tableIdx < numblkTabCol) {
+            if (!zeroFill) {
                 blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
                 zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
-            } else {
-                zeroFill = true;
             }
 
-            // Key: copy tokenSizeK bytes
-            int64_t keyOutOff   = outK + static_cast<int64_t>(j) * tokenSizeK;
-            int64_t keyCacheOff = blockIdVal * blkKS + static_cast<int64_t>(off) * tokenSizeK;
             if (zeroFill) {
-                for (int32_t b = 0; b < tokenSizeK; b++) keyOut[keyOutOff + b] = 0;
+                keyOut[outK + static_cast<int64_t>(idx)] = 0;
             } else {
-                for (int32_t b = 0; b < tokenSizeK; b++) keyOut[keyOutOff + b] = keyCache[keyCacheOff + b];
+                keyOut[outK + static_cast<int64_t>(idx)] =
+                    keyCache[blockIdVal * blkKS + static_cast<int64_t>(off) * tokenSizeK + static_cast<int64_t>(sub)];
+            }
+        }
+
+        // Value: byte-level grid-stride
+        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * static_cast<uint64_t>(blockDim.x) +
+                            static_cast<uint64_t>(threadIdx.x);
+             idx < totalV;
+             idx += static_cast<uint64_t>(gridDim.x) * static_cast<uint64_t>(blockDim.x)) {
+            uint64_t j   = idx / static_cast<uint64_t>(tokenSizeV);
+            uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeV);
+            uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
+            uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
+
+            int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
+            bool zeroFill = (tableIdx < 0 || tableIdx >= numblkTabCol);
+            int64_t blockIdVal = 0;
+            if (!zeroFill) {
+                blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
+                zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
             }
 
-            // Value: copy tokenSizeV bytes
-            int64_t valOutOff   = outV + static_cast<int64_t>(j) * tokenSizeV;
-            int64_t valCacheOff = blockIdVal * blkVS + static_cast<int64_t>(off) * tokenSizeV;
             if (zeroFill) {
-                for (int32_t b = 0; b < tokenSizeV; b++) valueOut[valOutOff + b] = 0;
+                valueOut[outV + static_cast<int64_t>(idx)] = 0;
             } else {
-                for (int32_t b = 0; b < tokenSizeV; b++) valueOut[valOutOff + b] = valueCache[valCacheOff + b];
+                valueOut[outV + static_cast<int64_t>(idx)] =
+                    valueCache[blockIdVal * blkVS + static_cast<int64_t>(off) * tokenSizeV + static_cast<int64_t>(sub)];
             }
         }
 
