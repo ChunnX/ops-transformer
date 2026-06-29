@@ -42,7 +42,7 @@
 ## 函数原型
 
 ```python
-MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *, num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None, shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0, num_max_dispatch_tokens_per_rank=0) -> Tensor
+MoeDistributeBuffer.low_latency_combine(x, topk_idx, assist_info_for_combine, ep_send_counts, *, topk_weights=None, num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None, shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0, num_max_dispatch_tokens_per_rank=0) -> Tensor
 ```
 
 ## 参数说明
@@ -83,14 +83,6 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
         <td>(BS, K)</td>
     </tr>
     <tr>
-        <td>topk_weights</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，数据格式为ND。</td>
-        <td>float</td>
-        <td>(BS, K)</td>
-    </tr>
-    <tr>
         <td>assist_info_for_combine</td>
         <td>Tensor</td>
         <td>必选</td>
@@ -105,6 +97,14 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
         <td>表示本卡每个专家发给EP（Expert Parallelism）域每个卡的token数（token数以前缀和的形式表示），数据格式为ND。对应[low_latency_dispatch](low_latency_dispatch.md)的`ep_recv_counts`输出。</td>
         <td>int32</td>
         <td>(ep_world_size*local_expert_num, )</td>
+    </tr>
+    <tr>
+        <td>topk_weights</td>
+        <td>Tensor</td>
+        <td>可选</td>
+        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，数据格式为ND。默认值为None，传None时接口内部转为空Tensor。</td>
+        <td>float</td>
+        <td>(BS, K)</td>
     </tr>
     <tr>
         <td>num_experts</td>
@@ -656,9 +656,9 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
             output_combine_npu = self.distribute_buffer.low_latency_combine(
                 x=expand_x_npu,
                 topk_idx=topk_idx,
-                topk_weights=expert_scales,
                 assist_info_for_combine=assist_info_for_combine_npu,
                 ep_send_counts=ep_recv_counts_npu,
+                topk_weights=expert_scales,
                 shared_expert_num=0,
                 shared_expert_rank_num=shared_expert_rank_num,
                 num_experts=num_experts,
