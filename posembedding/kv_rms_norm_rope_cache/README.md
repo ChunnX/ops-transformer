@@ -17,10 +17,12 @@
 
 - 算子功能：融合了MLA（Multi-head Latent Attention）结构中RMSNorm归一化计算（对应$rms\_size$）与RoPE（Rotary Position Embedding）位置编码（对应$rope\_size$)，以及更新KVCache的ScatterUpdate操作。
 - 支持场景：
-  | 场景类型 | kv分量来源 | 说明 | 支持产品 |
-    | :------: | :------: | :------ | :------: |
-    |V1|rms_size=Dv=512<br>rope_size=Dk=64<br>vOptional=None|kv合轴模式：对输入张量kv的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。<li>与DeepSeekV3网络结构强相关，仅支持N=1的场景。<li>rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来，Dk、Dv大小需满足Dk+Dv=Dkv。|<term>Ascend 950PR/Ascend 950DT</term><br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term><br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term><br><term>Kirin X90 处理器系列产品</term><br><term>Kirin 9030 处理器系列产品</term>|
-    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到k_cache中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckv_cache中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term><br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|
+  | 场景类型 | kv分量来源 | 说明 |
+    | :------: | :------: | :------ |
+    |V1|rms_size=Dv=512<br>rope_size=Dk=64<br>vOptional=None|kv合轴模式：对输入张量kv的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。<li>与DeepSeekV3网络结构强相关，仅支持N=1的场景。<li>rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来，Dk、Dv大小需满足Dk+Dv=Dkv。|
+    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到k_cache中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckv_cache中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。|
+    * <term>Ascend 950PR/Ascend 950DT</term>：仅支持V1场景。
+    * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持V1和V2场景。
 
 - 计算公式：
 
@@ -259,53 +261,12 @@
   </tbody></table>
 
 * cache的数据类型支持:
-      <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-      <col style="width: 108px">
-      <col style="width: 256px">
-      <col style="width: 384px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>量化模式</th>
-          <th>产品</th>
-          <th>支持类型</th>
-        </tr></thead>
-      <tbody>
-        <tr>
-          <td rowspan="4">非量化模式</td>
-          <td>Ascend 950PR/Ascend 950DT</td>
-          <td rowspan="3">必须与kv保持一致：BFLOAT16、FLOAT16。</td>
-        </tr>
-        <tr>
-          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
-          <td>必须与kv保持一致：FLOAT16。</td>
-        </tr>
-        <tr>
-          <td rowspan="4">量化模式</td>
-          <td>Ascend 950PR/Ascend 950DT</td>
-          <td>INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
-        </tr>
-        <tr>
-          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-          <td rowspan="3">INT8</td>
-        </tr>
-        <tr>
-          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
-        </tr>
-      </tbody>
-    </table>
-
-    - Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 以及 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
+  * 非量化模式：cache类型必须与kv保持一致。
+    * <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：可支持BFLOAT16、FLOAT16。
+    * <term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持FLOAT16。
+  * 量化模式：
+    * <term>Ascend 950PR/Ascend 950DT</term>：可支持INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+    * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Kirin X90/Kirin 9030 处理器系列产品</term>: 仅支持INT8。
 
 ## 约束说明
   * 输入shape限制：
@@ -315,7 +276,9 @@
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），block_size需32B对齐。
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以block_size为例，若cache的数据类型为int8，则需block_size%32=0；若cache的数据类型为float16，则需block_size%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，block_size需同时满足block_size%32=0和block_size%16=0。
       * block_num为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
-      * 输入张量均不支持空Tensor。
+      * 量化参数项(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)需要满足shape约束：
+        * k_rope_scale, k_rope_offset: 合法shape可以为2维[N, Dk]，或者1维
+      * 所有输入张量均不支持空Tensor。
   * 参数说明：
     * 输入参数中kv, gamma, cos, sin, vOptional的数据类型必须完全一致。
     * k_cache和ckv_cache是<b>原地更新参数</b>，它们的数据类型取决于相应的输入分量，以及相应的scale和offset。详情见下：
@@ -346,7 +309,7 @@
       <thead>
         <tr>
           <th>量化模式说明<br>(scale和offset输入之间为'与'关系)</th>
-          <th>cache模式</th>
+          <th>支持的cache模式</th>
           <th>可用性说明</th>
         </tr></thead>
       <tbody>
@@ -370,11 +333,10 @@
       <tr>
           <td rowspan="5">静态量化模式<li>scale输入：k_rope_scale和c_kv_scale至少一个非空。<li>offset输入：仅限对应scale为非空时，offset输入合法。相应offset如果为空，则为<b>静态对称量化</b>；相应offset如果非空，则为<b>静态非对称量化</b>。</td>
           <td rowspan="1">Norm</td>
-          <td rowspan="1"><li>V1不支持。<li>仅限V2：<b>支持静态对称量化</b>和<b>静态非对称量化</b>，支持K和V独立选择不同量化模式。</td>
+          <td rowspan="5"><li><b>静态对称量化</b>和<b>静态非对称量化</b>，支持存在差异。<li>支持K和V独立选择不同量化模式。</td>
       </tr>
       <tr>
           <td>PA/PA_BNSD</td>
-          <td rowspan="4"><li>V1（Atlas A3系列 和 Atlas A2系列产品）：仅支持<b>静态对称量化</b>，即使传入合法的offset，输入仍按相应的静态对称量化处理。<li>V1（Ascend 950PR/Ascend 950DT产品）：支持<b>静态对称量化</b>和<b>静态非对称量化</b>。<li>V2：支持<b>静态对称量化</b>和<b>静态非对称量化</b>。<li>全场景支持：K和V独立选择不同量化模式。</td>
       </tr>
       <tr>
           <td>PA_NZ</td>
@@ -387,6 +349,10 @@
       </tr>
       </tbody>
     </table>
+
+    * 静态量化模式支持细节：
+      * Ascend 950PR/Ascend 950DT产品：仅支持V1场景，支持<b>静态对称量化</b>和<b>静态非对称量化</b>。
+      * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：V1场景仅支持<b>静态对称量化</b>；V2场景支持<b>静态对称量化</b>和<b>静态非对称量化</b>。
 
   * cache与index相关约束：
     | cachemode| k_cache 形状 | ckv_cache 形状 | index 形状 | 说明 |
@@ -410,10 +376,10 @@
     * 在cacheModeOptional为Norm时，仅在V2场景中使能量化模式时有效。
   * vOptional：
     * 该参数仅限aclnnKvRmsNormRopeCacheV2接口，aclnnKvRmsNormRopeCache接口不支持该参数！
-    * 该参数仅限<b>Atlas A3 训练系列产品/Atlas A3 推理系列产品 以及 Atlas A2 训练系列产品/Atlas A2 推理系列产品</b>。
+    * 该参数仅限<b>Atlas A3 训练系列产品/Atlas A3 推理系列产品</b>、<b>Atlas A2 训练系列产品/Atlas A2 推理系列产品</b>。
       * 该参数仅在<b>kv分离场景(V2)</b>中作为必须入参，在其他类型中会作为无效参数被忽略。
       * 当vOptional存在时，它的类型必须与kv一致，`[B, N, S]`维度也必须与kv一致。
-    * Ascend 950PR/Ascend 950DT产品不会拦截该参数，但实际功能不支持，也不会处理该参数。
+    * Ascend 950PR/Ascend 950DT：不会拦截该参数，但实际功能不支持，也不会处理该参数。
 
 ## 调用说明
 
