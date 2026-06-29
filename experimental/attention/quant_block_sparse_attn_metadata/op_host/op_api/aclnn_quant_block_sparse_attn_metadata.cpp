@@ -44,9 +44,9 @@ aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnQuantBlockSparseAttnMetadata,
                    DFX_IN(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                           batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
-                           maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
-                           layoutSparseIndicesOptional),
+                          batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
+                          maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
+                          layoutSparseIndicesOptional),
                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
