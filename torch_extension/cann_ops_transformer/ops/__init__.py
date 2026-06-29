@@ -35,4 +35,4 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
-from .mixed_quant_flash_attn_metadata import npu_mixed_quant_flash_attn_metadata
+from .mixed_quant_flash_attn_metadata import mixed_quant_flash_attn_metadata
