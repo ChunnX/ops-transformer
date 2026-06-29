@@ -58,7 +58,7 @@ public:
                    ge::DT_FLOAT8_E5M2,                        // fp8_e5m2
                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// fp8_e4m3fn (ND/NZ)
                    ge::DT_HIFLOAT8,                           // hifp8
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2      // fp4_e2m1 / fp4_e1m2 (ND)
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,     // fp4_e2m1 / fp4_e1m2 (ND)
 #ifdef ENABLE_FORMAT_NZ_C0_32
                    ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1      // fp4_e2m1 (NZ / NZ_C0_32)
 #endif
@@ -68,7 +68,7 @@ public:
                  ge::FORMAT_ND,                                 // ND for fp8_e5m2
                  ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,          // ND/NZ for fp8_e4m3fn
                  ge::FORMAT_ND,                                 // ND for hifp8
-                 ge::FORMAT_ND, ge::FORMAT_ND                   // ND for fp4_e2m1 / fp4_e1m2
+                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp4_e2m1 / fp4_e1m2
 #ifdef ENABLE_FORMAT_NZ_C0_32
                  ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32 // NZ / NZ_C0_32 for fp4_e2m1
 #endif
@@ -80,7 +80,7 @@ public:
                    ge::DT_FLOAT8_E5M2,                        // fp8_e5m2
                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// fp8_e4m3fn (ND/NZ)
                    ge::DT_HIFLOAT8,                           // hifp8
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2      // fp4_e2m1 / fp4_e1m2 (ND)
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,     // fp4_e2m1 / fp4_e1m2 (ND)
 #ifdef ENABLE_FORMAT_NZ_C0_32
                    ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1      // fp4_e2m1 (NZ_C0_32 / NZ_C0_32)
 #endif
@@ -90,7 +90,7 @@ public:
                  ge::FORMAT_ND,                                 // ND for fp8_e5m2
                  ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,          // ND/NZ for fp8_e4m3fn
                  ge::FORMAT_ND,                                 // ND for hifp8
-                 ge::FORMAT_ND, ge::FORMAT_ND                   // ND for fp4_e2m1 / fp4_e1m2
+                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp4_e2m1 / fp4_e1m2
 #ifdef ENABLE_FORMAT_NZ_C0_32
                  ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32 // NZ_C0_32 / NZ_C0_32 for fp4_e2m1
 #endif
