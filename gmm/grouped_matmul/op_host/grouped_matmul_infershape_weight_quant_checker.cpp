@@ -83,7 +83,7 @@ bool GroupedMatmulWeightQuantChecker::IsA16W4Pergroup(const ge::DataType xDtype,
         return false;
     }
     auto antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
-    return antiquantScaleDimNum == ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE
+    return antiquantScaleDimNum == ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE;
 }
 
 bool GroupedMatmulWeightQuantChecker::IsMultiTensorWeight(const gert::InferShapeContext *context) const
@@ -709,51 +709,6 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForWeightQuantParam(c
         OP_CHECK_IF(CheckShapeForTensorList(context, GMM_INDEX_IN_SCALE, "scale", gmmAttrs) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "CheckShapeForscale failed."), return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForWeightQuantParamAtIndex(const gert::InferShapeContext *context,
-                                                                               const GMMAttrs &gmmAttrs) const
-{
-    auto scaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0);
-    auto offsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_OFFSET, 0);
-    auto perTokenScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
-    auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
-    auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, 0);
-    OP_CHECK_IF(IsNonEmpty(antiquantOffsetShape) && (FP8_SUPPORT_SET.find(weightDtype_) != FP8_SUPPORT_SET.end() ||
-                                                     weightDtype_ == ge::DT_FLOAT4_E2M1 ||
-                                                     weightDtype_ == ge::DT_FLOAT || IsS8S4NZ(xDtype_, weightDtype_)),
-                OP_LOGE(context->GetNodeName(),
-                        "In weight quant case, only support antiquantOffset is none when weightDtype is fp8/hif8/fp4 "
-                        "or xDtype-weightDtype is int8-int4."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(IsNonEmpty(scaleShape) && !IsS8S4NZ(xDtype_, weightDtype_),
-                OP_LOGE(context->GetNodeName(), "In weight quant case, scale must be empty."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsNonEmpty(scaleShape) && IsS8S4NZ(xDtype_, weightDtype_),
-                OP_LOGE(context->GetNodeName(), "When xDtype-weightDtype is int8-int4, scale must not be empty."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(IsNonEmpty(offsetShape), OP_LOGE(context->GetNodeName(), "In weight quant case, offset must be empty."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        IsNonEmpty(perTokenScaleShape) && (!IsMxA8W4NZ(xDtype_, weightDtype_) && !IsS8S4NZ(xDtype_, weightDtype_)),
-        OP_LOGE(context->GetNodeName(),
-                "If xDtype-weightDtype is not fp8_e4m3-fp4_e2m1 or int8-int4, pertokenscale must be empty."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        !IsNonEmpty(perTokenScaleShape) && (IsMxA8W4NZ(xDtype_, weightDtype_) || IsS8S4NZ(xDtype_, weightDtype_)),
-        OP_LOGE(context->GetNodeName(),
-                "When xDtype-weightDtype is fp8_e4m3-fp4_e2m1 or int8-int4, pertokenscale must be not empty."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsNonEmpty(antiquantScaleShape),
-                OP_LOGE(context->GetNodeName(), "In weight quant case, antiquantScale must be not empty."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        CheckShapeForTensorList(context, GMM_INDEX_IN_ANTIQUANT_SCALE, "antiquantScale", gmmAttrs) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "CheckShapeForAntiquantScale failed."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckShapeForTensorList(context, GMM_INDEX_IN_ANTIQUANT_OFFSET, "antiquantOffset", gmmAttrs) !=
-                    ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "CheckShapeForAntiquantOffset failed."), return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
