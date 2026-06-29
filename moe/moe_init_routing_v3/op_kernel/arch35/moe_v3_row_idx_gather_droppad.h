@@ -172,10 +172,15 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             int32_t outOffset = inLocal.GetValue(idx);
             index = expertIdx * this->expertCapacity_ + this->tokenCount_;
             outLocal.SetValue(0, index);
-            outLocal.SetValue(1, outOffset / this->k_);
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
-            DataCopyPad(outputToSrcRowGm_[index], outLocal[1], copyParams);
+
+            // Reuse the 32B-aligned local base address for the compact map store.
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            outLocal.SetValue(0, outOffset / this->k_);
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyPad(outputToSrcRowGm_[index], outLocal, copyParams);
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
             this->tokenCount_++;
         }
     }
