@@ -16,32 +16,13 @@
 #ifndef FLASH_ATTN_METADATA_AICPU_H
 #define FLASH_ATTN_METADATA_AICPU_H
 
-#include <array>
 #include <string>
-#include <vector>
-#include <limits>
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "flash_attn_metadata.h"
 #include "../../common/op_kernel/load_balance/section_stream_k/section_stream_k.h"
-#include "../../common/op_kernel/aicpu_common.h"
-
-using namespace optiling;
-using namespace std;
-using namespace load_balance;
 
 namespace aicpu {
-
-static const int64_t NUM_8192 = 8192L;
-static const int64_t NUM_4096 = 4096L;
-static const int64_t NUM_2048 = 2048L;
-static const int64_t NUM_1024 = 1024L;
-static const int64_t NUM_512 = 512L;
-static const int64_t NUM_256 = 256L;
-static const int64_t NUM_128 = 128L;
-static const int64_t NUM_64 = 64L;
-static const int64_t NUM_32 = 32L;
 
 class FlashAttnMetadataCpuKernel : public CpuKernel {
 public:
@@ -51,15 +32,14 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    bool BalanceSchedule(SectionStreamKResult &splitRes);
-    bool GenMetadata(SectionStreamKResult &splitRes);
+    bool BalanceSchedule(load_balance::SectionStreamKResult &splitRes);
+    bool GenMetadata(load_balance::SectionStreamKResult &splitRes);
     bool ParamsInit();
     void InitDeviceInfo();
     void InitBaseInfo();
     void InitLoadBalanceParams();
     void LoadActualQuerySeq();
     void LoadActualKvSeq();
-    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -69,7 +49,7 @@ private:
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
     // output tensor
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
     // input attr
     int32_t batchSize_ = 0;
@@ -90,8 +70,8 @@ private:
 
     // SplitParams
     uint32_t groupSize_ = 0;
-    uint32_t mBaseSize_ = NUM_64;
-    uint32_t s2BaseSize_ = NUM_128;
+    uint32_t mBaseSize_ = 64;           // 64: default value
+    uint32_t s2BaseSize_ = 128;         // 128: default value
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;

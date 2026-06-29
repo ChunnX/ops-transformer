@@ -41,17 +41,17 @@ int Init(int32_t deviceId, aclrtStream *stream) {
     // Fixed writing method, AscendCL initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtSetDevice(deviceId);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtCreateStream(stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
         return ret;
     }
     return 0;
@@ -99,14 +99,14 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
         return ret;
     }
     // Call aclrtMemcpy to copy host side data to device side memory.
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -129,7 +129,7 @@ int main() {
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
+        LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -198,12 +198,12 @@ int main() {
     char socVersion[] = "ascend950";
     printf("start aclnnFlashAttnMetadata\n");
     ret = aclnnFlashAttnMetadataGetWorkspaceSize(
-        nullptr, nullptr, 
+        nullptr, nullptr,
         nullptr, nullptr,
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
-        headDim, sparseMode, preTokens, nextTokens, 
-        "BSND", "BSND", "BSND", 
+        headDim, sparseMode, preTokens, nextTokens,
+        "BSND", "BSND", "BSND",
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
@@ -232,7 +232,7 @@ int main() {
         printf("aclrtMemcpy %d\n", ret);
         return -1;
     }
-    
+
     DumpMeta(&metadataHostData[0]);
 
     aclDestroyTensor(metadataTensor);
