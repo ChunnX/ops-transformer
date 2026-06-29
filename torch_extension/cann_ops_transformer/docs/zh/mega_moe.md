@@ -1,4 +1,4 @@
-# mega\_moe
+# mega_moe
 
 ## 产品支持情况
 
@@ -11,8 +11,13 @@
 
 ## 功能说明
 
-- 接口功能：Mega MoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
-- 配套接口：调用mega\_moe接口之前，先调用get\_symm\_buffer\_for\_mega\_moe接口，完成专家并行通信域的资源创建和初始化，并且该接口在创建通信域后仅需调用一次，调用后返回的sym\_buffer被传递给mega\_moe作为入参。
+- 接口功能：
+
+    Mega MoE算子 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
+    该算子提供了mega_moe、get_mega_moe_ccl_buffer_size与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
+
+    - get_mega_moe_ccl_buffer_size：需与mega_moe配套使用，用于计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB）。
+    - get_symm_buffer_for_mega_moe：需与mega_moe配套使用，用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
 - 计算公式：
   - 输入：
@@ -454,11 +459,19 @@
 
 ## 函数原型
 
-调用mega\_moe接口之前，先调用get\_symm\_buffer\_for\_mega\_moe接口，完成专家并行通信域的资源创建和初始化。
+- get_mega_moe_ccl_buffer_size：
+
+```python
+get_mega_moe_ccl_buffer_size(ep_world_size, moe_expert_num, num_max_tokens_per_rank, num_topk, hidden, dispatch_quant_mode=0, dispatch_quant_out_dtype=28, combine_quant_mode=0, comm_alg="") -> int
+```
+
+- get_symm_buffer_for_mega_moe：
 
 ```python
 get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer
 ```
+
+- mega_moe：
 
 ```python
 mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None) -> (Tensor, Tensor)
@@ -466,797 +479,898 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 ## 参数说明
 
-### get\_symm\_buffer\_for\_mega\_moe
+### get_mega_moe_ccl_buffer_size
 
-<table>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>必选/可选</th>
-   <th>描述</th>
-   <th>类型</th>
-   <th>取值范围</th>
-  </tr>
- </thead>
- <tbody>
-  <tr>
-   <td>group</td>
-   <td>必选</td>
-   <td>分布式通信的进程组句柄</td>
-   <td>torch.distributed.ProcessGroup</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>num_experts</td>
-   <td>必选</td>
-   <td>MoE 模型的总专家数量。</td>
-   <td>int</td>
-   <td>[world_size, 1024]，且 num_experts % world_size == 0</td>
-  </tr>
-  <tr>
-   <td>num_max_tokens_per_rank</td>
-   <td>必选</td>
-   <td>每卡输入token数量上限</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
-        Ascend 950PR/Ascend 950DT：1 ≤ num_max_tokens_per_rank ≤ 512
-   </td>
-  </tr>
-  <tr>
-   <td>num_topk</td>
-   <td>必选</td>
-   <td>表示每个token选择的专家数。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Ascend 950PR/Ascend 950DT：num_topk 取值为 6 或 8
-    </td>
-  </tr>
-  <tr>
-   <td>hidden</td>
-   <td>必选</td>
-   <td>表示隐藏层维度，即每个 token 的特征向量长度。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
-        Ascend 950PR/Ascend 950DT：hidden 取值为 4096、5120 或 7168
-   </td>
-  </tr>
-  <tr>
-   <td>intermediate_hidden</td>
-   <td>必选</td>
-   <td>表示中间层投影维度。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
-        Ascend 950PR/Ascend 950DT：intermediate_hidden 取值为 1024、2048、3072、4096 或 7168
-   </td>
-  </tr>
-  <tr>
-   <td>max_recv_token_num</td>
-   <td>可选</td>
-   <td>每个Rank最大可接收token数，默认值为0表示按通信域能容纳最大的token数自动计算。</td>
-   <td>int</td>
-   <td>[0, num_max_tokens_per_rank × world_size × min(num_topk, num_experts_per_rank)]</td>
-  </tr>
-  <tr>
-   <td>dispatch_quant_mode</td>
-   <td>可选</td>
-   <td>dispatch通信前的token隐藏状态的量化模式。</td>
-   <td>int</td>
-   <td>0（非量化），2（pertoken量化），4（MX模式）</td>
-  </tr>
-  <tr>
-   <td>dispatch_quant_out_dtype</td>
-   <td>可选</td>
-   <td>dispatch通信前的token隐藏状态量化后的数据类型，默认值None表示非量化。</td>
-   <td>torch.dtype</td>
-   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn</td>
-  </tr>
-  <tr>
-   <td>combine_quant_mode</td>
-   <td>可选</td>
-   <td>预留参数，使用默认值即可。</td>
-   <td>-</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>comm_alg</td>
-   <td>可选</td>
-   <td>预留参数，使用默认值即可。</td>
-   <td>-</td>
-   <td>-</td>
-  </tr>
- </tbody>
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>ep_world_size</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>通信域的大小。取值范围[2,768]。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>moe_expert_num</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>MoE专家数量，取值范围[1,1024]。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>num_max_tokens_per_rank</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>每张卡上的token数量。当每个rank的BS不同时，为最大的BS大小。取值范围[1,512]。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>num_topk</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>选取topK个专家，目前仅支持6或8。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>hidden</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>hidden size隐藏层大小。目前仅支持4096、5120、7168。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>dispatch_quant_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>dispatch通信时量化模式，目前仅支持4（MX模式）。默认值为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>dispatch_quant_out_dtype</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。默认值为28。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>combine_quant_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>暂不支持该参数，使用默认值即可。默认值为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>comm_alg</td>
+        <td>str</td>
+        <td>可选</td>
+        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
+        <td>str</td>
+        <td>-</td>
+    </tr>
+</tbody>
 </table>
 
-### mega\_moe
-
-<table>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>必选/可选</th>
-      <th>描述</th>
-      <th>类型</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>list[Tensor]长度</th>
-      <th>是否转置</th>
-      <th>是否支持非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>x</td>
-      <td>必选</td>
-      <td>MoE层输入的token隐藏状态。</td>
-      <td>Tensor</td>
-      <td>BFLOAT16</td>
-      <td>ND</td>
-      <td>(num_tokens, hidden)</td>
-      <td>-</td>
-      <td>-</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>topk_ids</td>
-      <td>必选</td>
-      <td>专家索引矩阵，表示每个token选择的num_topk个专家。元素取值范围为<code>[0, num_experts)</code>，且同一token选择的num_topk个专家不能重复。</td>
-      <td>Tensor</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>(num_tokens, num_topk)</td>
-      <td>-</td>
-      <td>-</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>topk_weights</td>
-      <td>必选</td>
-      <td>表示MoE模型的专家门控网络为当前输入Token选出的num_topk个专家所对应的门控权重系数。</td>
-      <td>Tensor</td>
-      <td>BFLOAT16<sup>2</sup>、FLOAT32</td>
-      <td>ND</td>
-      <td>(num_tokens, num_topk)</td>
-      <td>-</td>
-      <td>-</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td rowspan="5">l1_weights</td>
-      <td rowspan="5">必选</td>
-      <td rowspan="5">专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
-      <td rowspan="5">list[Tensor]</td>
-      <td>BFLOAT16<sup>2</sup></td>
-      <td>ND</td>
-      <td>(hidden, 2 × intermediate_hidden)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td rowspan="5">-</td>
-    </tr>
-    <tr>
-      <td>INT8<sup>2</sup></td>
-      <td>FRACTAL_NZ</td>
-      <td>(hidden, 2 × intermediate_hidden)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>INT4(INT32)<sup>2</sup></td>
-      <td>FRACTAL_NZ</td>
-      <td>(hidden, 2 × intermediate_hidden // 8)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E5M2<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
-      <td>1</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E4M3FN<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
-      <td>1</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td rowspan="5">l2_weights</td>
-      <td rowspan="5">必选</td>
-      <td rowspan="5">专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
-      <td rowspan="5">list[Tensor]</td>
-      <td>BFLOAT16<sup>2</sup></td>
-      <td>ND</td>
-      <td>(intermediate_hidden, hidden)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td rowspan="5">-</td>
-    </tr>
-    <tr>
-      <td>INT8<sup>2</sup></td>
-      <td>FRACTAL_NZ</td>
-      <td>(intermediate_hidden, hidden)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>INT4<sup>2</sup></td>
-      <td>FRACTAL_NZ</td>
-      <td>(intermediate_hidden, hidden)</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E5M2<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
-      <td>1</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E4M3FN<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
-      <td>1</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>sym_buffer</td>
-      <td>必选</td>
-      <td>由get_symm_buffer_for_mega_moe接口创建的结构体</td>
-      <td>SymmBuffer</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td rowspan="2">l1_weights_sf</td>
-      <td rowspan="2">可选</td>
-      <td rowspan="2">专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-      <td rowspan="2">list[Tensor]</td>
-      <td>UINT64<sup>2</sup></td>
-      <td>ND</td>
-      <td>(2 × intermediate_hidden, )</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td rowspan="2">-</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E8M0<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
-      <td>1</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td rowspan="2">l2_weights_sf</td>
-      <td rowspan="2">可选</td>
-      <td rowspan="2">专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-      <td rowspan="2">list[Tensor]</td>
-      <td>UINT64<sup>2</sup></td>
-      <td>ND</td>
-      <td>(hidden, )</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td rowspan="2">-</td>
-    </tr>
-    <tr>
-      <td>FLOAT8_E8M0<sup>1</sup></td>
-      <td>ND</td>
-      <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
-      <td>1</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>l1_bias<sup>2</sup></td>
-      <td>可选</td>
-      <td>专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
-      <td>list[Tensor]</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>(2 × intermediate_hidden, )</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>l2_bias<sup>2</sup></td>
-      <td>可选</td>
-      <td>专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
-      <td>list[Tensor]</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>(hidden, )</td>
-      <td>num_experts_per_rank</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>x_active_mask<sup>2</sup></td>
-      <td>可选</td>
-      <td>表示token是否参与通信。</td>
-      <td>Tensor</td>
-      <td>INT8</td>
-      <td>ND</td>
-      <td>(num_tokens, )</td>
-      <td>-</td>
-      <td>-</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>activation</td>
-      <td>可选</td>
-      <td>激活函数类型，默认值为"swiglu"。当前仅支持"swiglu"。</td>
-      <td>str</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>activation_clamp</td>
-      <td>可选</td>
-      <td>激活函数输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0</td>
-      <td>float</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>weight1_type</td>
-      <td>可选</td>
-      <td>预留参数，使用默认值即可。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>weight2_type</td>
-      <td>可选</td>
-      <td>预留参数，使用默认值即可。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody>
-  <tfoot>
-    <tr>
-      <td colspan="10">上角标<sup>1</sup>表示Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品不支持，上角标<sup>2</sup>表示Ascend 950PR/Ascend 950DT不支持，产品不支持的参数使用默认值即可。</td>
-    </tr>
-    <tr>
-      <td colspan="10">表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = (<var>x</var> + <var>y</var> - 1) // <var>y</var></code></td>
-    </tr>
-    <tr>
-      <td colspan="10">表格中用T1(T2)表示数据类型T1在传入前要求重解释为另一个数据类型T2再传入，例如，INT4(INT32)表示实际INT4的数据，在传入需重解释为INT32传入，其shape为重解释后的shape</td>
-    </tr>
-  </tfoot>
-</table>
 ## 返回值说明
 
-### get\_symm\_buffer\_for\_mega\_moe
+### get_symm_buffer_for_mega_moe
 
-<table>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>描述</th>
-   <th>类型</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-   <th>维度(shape)</th>
-  </tr>
- </thead>
- <tbody>
-  <tr>
-   <td>sym_buffer</td>
-   <td>封装了通信域上下文和算子配置信息。需传递给mage_moe接口的对应参数。</td>
-   <td>SymmBuffer</td>
-   <td>-</td>
-   <td>-</td>
-   <td>-</td>
-  </tr>
- </tbody>
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>group</td>
+        <td>str</td>
+        <td>必选</td>
+        <td>EP通信域名称（专家并行通信域）。</td>
+        <td>str</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>num_experts</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>MoE模型的总专家数量。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>num_max_tokens_per_rank</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>每张卡上的token数量，当每个rank的BS不同时，为最大的BS大小。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>num_topk</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>每个token发送的专家数。预留参数，暂不支持。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>hidden</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>每个token大小。预留参数，暂不支持。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>intermediate_hidden</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>中间层投影维度。预留参数，暂不支持。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>max_recv_token_num</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>每个Rank最大可接收Token数，默认值为0表示自动计算。默认值为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>dispatch_quant_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>dispatch通信时量化模式，目前仅支持4（MX模式）。默认值为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>dispatch_quant_out_dtype</td>
+        <td>Optional[int]</td>
+        <td>可选</td>
+        <td>dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。默认值为None。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>combine_quant_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>暂不支持该参数，使用默认值即可。默认值为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>comm_alg</td>
+        <td>str</td>
+        <td>可选</td>
+        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
+        <td>str</td>
+        <td>-</td>
+    </tr>
+</tbody>
 </table>
 
-### mega\_moe
+### mega_moe
 
-<table>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>描述</th>
-   <th>类型</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-   <th>维度(shape)</th>
-  </tr>
- </thead>
- <tbody>
-  <tr>
-   <td>y</td>
-   <td>MoE层输出的token隐藏状态。</td>
-   <td>Tensor</td>
-   <td>BFLOAT16</td>
-   <td>ND</td>
-   <td>(num_tokens, hidden)</td>
-  </tr>
-  <tr>
-   <td>expert_token_nums</td>
-   <td>本卡每个专家实际收到的token数量。</td>
-   <td>Tensor</td>
-   <td>INT32</td>
-   <td>ND</td>
-   <td>(num_experts_per_rank, )</td>
-  </tr>
- </tbody>
+<table style="undefined;table-layout: fixed; width:1400px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 90px">
+<col style="width: 320px">
+<col style="width: 160px">
+<col style="width: 120px">
+<col style="width: 260px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>x</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>MoE层输入的token隐藏状态。</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>(num_tokens, hidden)</td>
+    </tr>
+    <tr>
+        <td>topk_ids</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>专家索引矩阵，表示每个token选择的num_topk个专家。元素取值范围为<code>[0, num_experts)</code>，且同一token选择的num_topk个专家不能重复。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>(num_tokens, num_topk)</td>
+    </tr>
+    <tr>
+        <td>topk_weights</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>表示MoE模型的专家门控网络为当前输入Token选出的num_topk个专家所对应的门控权重系数。</td>
+        <td>BFLOAT16<sup>2</sup>、FLOAT32</td>
+        <td>ND</td>
+        <td>(num_tokens, num_topk)</td>
+    </tr>
+    <tr>
+        <td rowspan="5">l1_weights</td>
+        <td rowspan="5">list[Tensor]</td>
+        <td rowspan="5">必选</td>
+        <td rowspan="5">专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+        <td>BFLOAT16<sup>2</sup></td>
+        <td>ND</td>
+        <td>(hidden, 2 × intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>INT8<sup>2</sup></td>
+        <td>FRACTAL_NZ</td>
+        <td>(hidden, 2 × intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>INT4(INT32)<sup>2</sup></td>
+        <td>FRACTAL_NZ</td>
+        <td>(hidden, 2 × intermediate_hidden // 8)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td rowspan="5">l2_weights</td>
+        <td rowspan="5">list[Tensor]</td>
+        <td rowspan="5">必选</td>
+        <td rowspan="5">专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+        <td>BFLOAT16<sup>2</sup></td>
+        <td>ND</td>
+        <td>(intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>INT8<sup>2</sup></td>
+        <td>FRACTAL_NZ</td>
+        <td>(intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>INT4<sup>2</sup></td>
+        <td>FRACTAL_NZ</td>
+        <td>(intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>sym_buffer</td>
+        <td>SymmBuffer</td>
+        <td>必选</td>
+        <td>由<a href="#get_symm_buffer_for_mega_moe">get_symm_buffer_for_mega_moe</a>接口创建的结构体</td>
+        <td>SymmBuffer</td>
+        <td>SymmBuffer</td>
+        <td>SymmBuffer</td>
+    </tr>
+    <tr>
+        <td rowspan="2">l1_weights_sf</td>
+        <td rowspan="2">list[Tensor]</td>
+        <td rowspan="2">可选</td>
+        <td rowspan="2">专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+        <td>UINT64<sup>2</sup></td>
+        <td>ND</td>
+        <td>(2 × intermediate_hidden, )</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+    </tr>
+    <tr>
+        <td rowspan="2">l2_weights_sf</td>
+        <td rowspan="2">list[Tensor]</td>
+        <td rowspan="2">可选</td>
+        <td rowspan="2">专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+        <td>UINT64<sup>2</sup></td>
+        <td>ND</td>
+        <td>(hidden, )</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+    </tr>
+    <tr>
+        <td>l1_bias<sup>2</sup></td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>(2 × intermediate_hidden, )</td>
+    </tr>
+    <tr>
+        <td>l2_bias<sup>2</sup></td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>(hidden, )</td>
+    </tr>
+    <tr>
+        <td>x_active_mask<sup>2</sup></td>
+        <td>Tensor</td>
+        <td>可选</td>
+        <td>表示token是否参与通信。</td>
+        <td>INT8</td>
+        <td>ND</td>
+        <td>(num_tokens, )</td>
+    </tr>
+    <tr>
+        <td>activation</td>
+        <td>str</td>
+        <td>可选</td>
+        <td>激活函数类型，默认值为"swiglu"。当前仅支持"swiglu"。</td>
+        <td>str</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+    <tr>
+        <td>activation_clamp</td>
+        <td>float</td>
+        <td>可选</td>
+        <td>激活函数输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0。</td>
+        <td>float</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+    <tr>
+        <td>weight1_type</td>
+        <td>预留参数</td>
+        <td>可选</td>
+        <td>预留参数，使用默认值即可。</td>
+        <td>预留参数</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+    <tr>
+        <td>weight2_type</td>
+        <td>预留参数</td>
+        <td>可选</td>
+        <td>预留参数，使用默认值即可。</td>
+        <td>预留参数</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+</tbody>
+<tfoot>
+<tr>
+    <td colspan="7">上角标<sup>1</sup>表示Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品不支持，上角标<sup>2</sup>表示Ascend 950PR/Ascend 950DT不支持，产品不支持的参数使用默认值即可。</td>
+</tr>
+<tr>
+    <td colspan="7">表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = ⌈<var>x</var> / <var>y</var>⌉ = ⌊(<var>x</var> + <var>y</var> - 1) / <var>y</var>⌋</code></td>
+</tr>
+<tr>
+    <td colspan="7">表格中用T1(T2)表示数据类型T1在传入前要求重解释为另一个数据类型T2再传入，例如，INT4(INT32)表示实际INT4的数据，在传入需重解释为INT32传入，其shape为重解释后的shape。</td>
+</tr>
+</tfoot>
+</table>
+
+## 返回值说明
+
+### get_mega_moe_ccl_buffer_size
+
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>ccl_buffer_size</td>
+        <td>int</td>
+        <td>必选</td>
+        <td>计算得到的ccl_buffer_size大小，单位为MB。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+</tbody>
+</table>
+
+### get_symm_buffer_for_mega_moe
+
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>sym_buffer</td>
+        <td>SymmBuffer</td>
+        <td>必选</td>
+        <td>用于封装输入参数并生成`context`、`ep_world_size`和`ccl_buffer_size`。</td>
+        <td>SymmBuffer</td>
+        <td>-</td>
+    </tr>
+</tbody>
+</table>
+
+### mega_moe
+
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数名</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>维度(shape)</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>y</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>本卡收到的token数据，对应公式中的Y，数据类型与输入`x`保持一致。要求为2维张量，数据格式为ND，支持非连续的Tensor。</td>
+        <td>bfloat16</td>
+        <td>(BS,H)</td>
+    </tr>
+    <tr>
+        <td>expert_token_nums</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>本卡每个专家实际收到的token数量。要求为1维张量，数据格式为ND，支持非连续的Tensor。</td>
+        <td>int32</td>
+        <td>(local_expert_num,)</td>
+    </tr>
+</tbody>
 </table>
 
 ## 约束说明
 
+- 该接口支持训练、推理场景下使用。
+- 该接口支持单算子模式调用。
+- get_mega_moe_ccl_buffer_size、get_symm_buffer_for_mega_moe、mega_moe必须配套使用。
+- get_mega_moe_ccl_buffer_size接口公式中的“/”表示整除。
+
+- Shape变量定义：
+  - BS：x的第0维（x.dim0），表示本卡token数量。
+  - H：x的第1维（x.dim1），表示hidden size隐藏层大小。
+  - K：topk_ids的第1维（topkIds.dim1），表示每个token选取的topK个专家。
+  - expertPerRank：weight1的第0维（weight1.dim0），表示每个Rank的专家数，expertPerRank = moeExpertNum / epWorldSize。
+  - N：weight1的第1维（weight1.dim1），表示中间层维度。
+  - num_experts：MoE模型的总专家数量。
+  - epWorldSize：专家并行通信域大小。
+  - local_expert_num：本卡专家数量，等于moeExpertNum / epWorldSize。
+
+- 各张量参数的list[Tensor]长度、是否转置、是否支持非连续Tensor约束如下：
+
+    <table style="undefined;table-layout: fixed; width:1000px"><colgroup>
+    <col style="width: 160px">
+    <col style="width: 320px">
+    <col style="width: 160px">
+    <col style="width: 220px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>参数名</th>
+        <th>list[Tensor]长度</th>
+        <th>是否转置</th>
+        <th>是否支持非连续Tensor</th>
+    </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>x</td>
+            <td>不涉及</td>
+            <td>否</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>topk_ids</td>
+            <td>不涉及</td>
+            <td>否</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>topk_weights</td>
+            <td>不涉及</td>
+            <td>否</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>l1_weights</td>
+            <td>num_experts_per_rank（BFLOAT16/INT8/INT4场景）或1（FLOAT8_E5M2/FLOAT8_E4M3FN场景）</td>
+            <td>否（BFLOAT16/INT8/INT4场景）/是（FLOAT8_E5M2/FLOAT8_E4M3FN场景）</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>l2_weights</td>
+            <td>num_experts_per_rank（BFLOAT16/INT8/INT4场景）或1（FLOAT8_E5M2/FLOAT8_E4M3FN场景）</td>
+            <td>否（BFLOAT16/INT8/INT4场景）/是（FLOAT8_E5M2/FLOAT8_E4M3FN场景）</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>l1_weights_sf</td>
+            <td>num_experts_per_rank（UINT64场景）或1（FLOAT8_E8M0场景）</td>
+            <td>否</td>
+            <td>不支持</td>
+        </tr>
+        <tr>
+            <td>l2_weights_sf</td>
+            <td>num_experts_per_rank（UINT64场景）或1（FLOAT8_E8M0场景）</td>
+            <td>否</td>
+            <td>不支持</td>
+        </tr>
+        <tr>
+            <td>l1_bias</td>
+            <td>num_experts_per_rank</td>
+            <td>否</td>
+            <td>不支持</td>
+        </tr>
+        <tr>
+            <td>l2_bias</td>
+            <td>num_experts_per_rank</td>
+            <td>否</td>
+            <td>不支持</td>
+        </tr>
+        <tr>
+            <td>x_active_mask</td>
+            <td>不涉及</td>
+            <td>否</td>
+            <td>支持</td>
+        </tr>
+    </tbody>
+    </table>
+
 - **参数一致性约束**：
-  - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 num_experts、hidden、intermediate_hidden 等）保持一致。
-  - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`参数取值和通信域缓存区大小需保持一致
-  - mega_moe 支持四种计算场景（A16W16、A8W8-INT、A8W4-INT、A8W8-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
-
-    <table>
-      <thead>
-        <tr>
-          <th>场景</th>
-          <th>x</th>
-          <th>l1_weights</th>
-          <th>l2_weights</th>
-          <th>l1_weights_sf</th>
-          <th>l2_weights_sf</th>
-          <th>l1_bias</th>
-          <th>l2_bias</th>
-          <th>y</th>
-          <th>dispatch_quant_mode</th>
-          <th>dispatch_quant_out_dtype</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>A16W16</strong></td>
-          <td>BFLOAT16</td>
-          <td>BFLOAT16</td>
-          <td>BFLOAT16</td>
-          <td>–</td>
-          <td>–</td>
-          <td>–</td>
-          <td>–</td>
-          <td>BFLOAT16</td>
-          <td>0</td>
-          <td>–</td>
-        </tr>
-        <tr>
-          <td><strong>A8W8-INT</strong></td>
-          <td>BFLOAT16</td>
-          <td>INT8</td>
-          <td>INT8</td>
-          <td>UINT64</td>
-          <td>UINT64</td>
-          <td>–</td>
-          <td>–</td>
-          <td>BFLOAT16</td>
-          <td>2</td>
-          <td>torch.int8</td>
-        </tr>
-        <tr>
-          <td><strong>A8W4-INT</strong></td>
-          <td>BFLOAT16</td>
-          <td>INT4</td>
-          <td>INT4</td>
-          <td>UINT64</td>
-          <td>UINT64</td>
-          <td>FLOAT32</td>
-          <td>FLOAT32</td>
-          <td>BFLOAT16</td>
-          <td>2</td>
-          <td>torch.int8</td>
-        </tr>
-        <tr>
-          <td><strong>A8W8-FP</strong></td>
-          <td>BFLOAT16</td>
-          <td>FLOAT8_E5M2</td>
-          <td>FLOAT8_E5M2</td>
-          <td>FLOAT8_E8M0</td>
-          <td>FLOAT8_E8M0</td>
-          <td>–</td>
-          <td>–</td>
-          <td>BFLOAT16</td>
-          <td>4</td>
-          <td>torch.float8_e5m2</td>
-        </tr>
-        <tr>
-          <td><strong>A8W8-FP</strong></td>
-          <td>BFLOAT16</td>
-          <td>FLOAT8_E4M3FN</td>
-          <td>FLOAT8_E4M3FN</td>
-          <td>FLOAT8_E8M0</td>
-          <td>FLOAT8_E8M0</td>
-          <td>–</td>
-          <td>–</td>
-          <td>BFLOAT16</td>
-          <td>4</td>
-          <td>torch.float8_e4m3fn</td>
-        </tr>
-      </tbody>
-      <tfoot>
-          <tr>
-            <td colspan="11">“–” 表示该场景下<strong>不需要</strong>提供该参数，传入 <code>None</code> 或保持默认即可。</td>
-          </tr>
-          <tr>
-            <td colspan="11">直接填写数据类型（如 <code>UINT64</code>）表示该场景下该参数为<strong>必选</strong>，且必须使用该数据类型</td>
-          </tr>
-      </tfoot>
-    </table>
-
-- **get\_symm\_buffer\_for\_mega\_moe参数相关属性**：
-
-    <table>
-     <thead>
-      <tr>
-       <th>变量名</th>
-       <th>描述</th>
-       <th>取值范围</th>
-      </tr>
-     </thead>
-     <tbody>
-      <tr>
-       <td>num_tokens</td>
-       <td>当前卡输入的token个数</td>
-       <td>1 ≤ num_tokens ≤ num_max_tokens_per_rank</td>
-      </tr>
-      <tr>
-       <td>world_size</td>
-       <td>专家并行通信域大小，即world_size = torch.distributed.get_world_size(group)</td>
-       <td>
-            Atlas A2 训练系列产品/Atlas A2 推理系列产品：world_size取值为2、4、8、16、32<br>
-            Atlas A3 训练系列产品/Atlas A3 推理系列产品：world_size取值为2、4、8、16、32<br>
-            Ascend 950PR/Ascend 950DT：2 ≤ world_size ≤ 768
-       </td>
-      </tr>
-      <tr>
-       <td>num_experts_per_rank</td>
-       <td>每卡部署的专家数，即num_experts_per_rank = num_experts // world_size</td>
-       <td>
-            Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
-            Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
-            Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 16
-       </td>
-      </tr>
-     </tbody>
-    </table>
+    - 调用算子过程中使用的`epWorldSize`、`globalBs`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
-  - 各卡的通信域缓存区大小（`HCCL_BUFFSIZE`）应当一致。
-  - 通信域各节点的驱动版本应当相同。
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
+    - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
+    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`参数取值需保持一致。
+    - 各卡的通信域缓存区大小（`HCCL_BUFFSIZE`）应当一致。
+    - 通信域各节点的驱动版本应当相同。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
+    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
+
+- **参数约束**：
+    - BS（x.dim0）范围 [1, 512]。
+    - H（x.dim1）仅支持4096、5120、7168。
+    - topK（topkIds.dim1）仅支持6或8。
+    - expertPerRank（weight1.dim0）范围 [1, 16]。
+    - N（weight1.dim1）仅支持1024、2048、3072、4096、7168。
+    - epWorldSize范围 [2, 768]。
+    - moeExpertNum范围 [epWorldSize, 1024]，且moeExpertNum % epWorldSize == 0。
+    - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。
+    - dispatchQuantOutType仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）。
+    - globalBs为0或满足BS × epWorldSize <= globalBs且globalBs % epWorldSize == 0。
+    - 当前版本仅支持MXFP量化模式（dispatchQuantMode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
+    - xActiveMask和scales参数当前版本必须传入空指针，不支持非空输入。
+    - combineQuantMode必须为0，commAlg必须为空字符串""。
+    - y的数据类型与x相同。
+    - weight1的dim1（N）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从N减半为N/2。
+    - weightScales1和weightScales2不可为空指针。
+    - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 16] 范围内。
+    - weightScales1和weightScales2不可为空指针。
+
+- **MXFP量化场景约束**：
+    - weight1 shape为(expertPerRank, N, H)，weight2 shape为(expertPerRank, H, N/2)。
+    - weightScales1 shape为(expertPerRank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = ⌈H / 64⌉ = ⌊(H + 63) / 64⌋。
+    - weightScales2 shape为(expertPerRank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = ⌈(N/2) / 64⌉ = ⌊(N/2 + 63) / 64⌋。
+    - weightScales1的dim3和weightScales2的dim3必须等于2。
+    - MXFP场景下，dispatchQuantOutType=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutType=24时必须为FLOAT8_E4M3FN。
+    - xActiveMask和scales必须为空指针。
+
+## 确定性计算
+
+默认支持确定性计算。
 
 ## 调用示例
 
-- 单算子模式调用
+- 单算子模式调用：
 
-    ```python
-    import os
-    import torch
-    import torch_npu
-    from torch.multiprocessing import Process, Manager
-    import torch.distributed as dist
-    from torch.distributed import ReduceOp
-    import torch.multiprocessing as mp
-    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
-    import torchair
+  下面示例将三个接口按调用顺序串联：先用 get_mega_moe_ccl_buffer_size 计算 HCCL 通信 buffer 大小并设置 HCCL_BUFFSIZE，再用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
 
-    E = 4
-    BS = 256
-    H = 4096
-    N = 1024
-    topK = 6
-    num_experts = 8
-    server_num = 1
-    rank_per_dev = 2
-    world_size = server_num * rank_per_dev
-    ep_ranks_list = [list(range(tp_id, world_size, 1)) for tp_id in range(1)]
-    server_index = 0
+  ```python
+  import os
+  import torch
+  import torch_npu
+  from torch.multiprocessing import Process, Manager
+  import torch.distributed as dist
+  from torch.distributed import ReduceOp
+  import torch.multiprocessing as mp
+  from cann_ops_transformer.ops import get_mega_moe_ccl_buffer_size, get_symm_buffer_for_mega_moe, mega_moe
+  import torchair
 
-    def ceil(a, b):
-        return (a + b - 1) // b
-    
-    def set_device(rank):
-        torch_npu.npu.set_device(rank % rank_per_dev)
-        print(f"current device set: {torch_npu.npu.current_device()}")
-    
-    def init_hccl_comm(rank):
-        print(f'[INFO] device_{rank} 创建HCCL通信链路')
-        master_ip = '127.0.0.1'
-        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
-        print(f"device_{rank} init_process_group success")
-    
-        print(f"device {rank} 初始化EP域")
-        for ep_ranks in ep_ranks_list:
-            tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks)
-            if rank in ep_ranks:
-                ep_group = tmp_group
-    
-        ep_hcomm_info = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-    
-        return ep_hcomm_info, ep_group
-    
-    def get_megamoe_kwargs(
-        x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
-    ):
-        x = x.to(torch.bfloat16).npu()
-        expert_ids = expert_ids.to(torch.int32).npu()
-        weights1 = weights1.to(torch.float8_e5m2).npu()
-        weights_scales1 = weights_scales1.to(torch.float8_e8m0fnu).npu()
-        weights2 = weights2.to(torch.float8_e5m2).npu()
-        weights_scales2 = weights_scales2.to(torch.float8_e8m0fnu).npu()
-        expert_scales = expert_scales.to(torch.bfloat16).npu()
-    
-        return {
-            'x': x,
-            'topk_ids': expert_ids,
-            'topk_weights': expert_scales,
-            'l1_weights': [weights1],
-            'l1_weights_sf': [weights_scales1],
-            'l2_weights': [weights2],
-            'l2_weights_sf': [weights_scales2],
-        }
-    
-    def run_megamoe_npu(
-        queue, rank, x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
-    ):
-        print(f"{os.getpid()=}{rank=}")
-        set_device(rank)
-        ep_hcomm_info, ep_group = init_hccl_comm(rank)
-        print(f'[INFO] device_{rank} 构造megamoe算子输入数据')
-        megamoe_kwargs = get_megamoe_kwargs(
-            x=x,
-            expert_ids=expert_ids,
-            weights1=weights1,
-            weights_scales1=weights_scales1,
-            weights2=weights2,
-            weights_scales2=weights_scales2,
-            expert_scales=expert_scales,
-        )
-        # 构造distribute_buffer
-        distribute_buffer = get_symm_buffer_for_mega_moe(
-            ep_group, num_experts=num_experts,
-            num_max_tokens_per_rank=0, num_topk=topK,
-            hidden=H, intermediate_hidden=N,
-            dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
-        )
-        # 运行mega_moe
-        y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
-    
-        torch.npu.synchronize()
-        print(f"[INFO] device_{rank} finish\n")
-        dist.destroy_process_group()
-        print(f'rank {rank} epid {rank} npu finished! \n')
-    
-        queue.put([
-            rank,
-            [
-                y.cpu(), expert_token_nums.cpu()
-            ]
-        ])
-    
-    def gen_npu(target_func, **server_kwargs):
-        def parse_rank_input(target_func, result_queue, rank, server_kwargs):
-            
-            ep_id = rank // 1
-    
-            if target_func == run_megamoe_npu:
-                return {
-                    "queue": result_queue,
-                    "rank": rank,
-                    "x": server_kwargs["x_list"][ep_id],
-                    "expert_ids": server_kwargs["expert_ids_list"][ep_id],
-                    "weights1": server_kwargs["weights1_list"][ep_id],
-                    "weights_scales1": server_kwargs["weights_scales1_list"][ep_id],
-                    "weights2": server_kwargs["weights2_list"][ep_id],
-                    "weights_scales2": server_kwargs["weights_scales2_list"][ep_id],
-                    "expert_scales": server_kwargs["expert_scales_list"][ep_id]
-                }
+  E = 4
+  BS = 256
+  H = 4096
+  N = 1024
+  topK = 6
+  num_experts = 8
 
-        print("single_server scene!!!!!")
-        rank_list = list(range(world_size))
-        print(f"rank list is: {rank_list}")
-    
-        proc_list = []
-        manager = Manager()
-        result_queue = manager.Queue()
-        mp.set_start_method("forkserver", force=True)
-        for rank in rank_list:
-            rank_kwargs = parse_rank_input(target_func, result_queue, rank, server_kwargs)
-            proc = Process(target=target_func, kwargs=rank_kwargs)
-            proc.start()
-            proc_list.append(proc)
+  server_num = 1
+  rank_per_dev = 2
+  world_size = server_num * rank_per_dev
+  ep_ranks_list = [list(range(tp_id, world_size, 1)) for tp_id in range(1)]
+  server_index = 0
 
-        rank_outputs = [None] * rank_per_dev
-        for proc in proc_list:
-            rank_id, rank_output = result_queue.get()
-            local_rank_id = rank_id - server_index * rank_per_dev
-            rank_outputs[local_rank_id] = rank_output
 
-        for proc in proc_list:
-            proc.join()
-    
-        if None in rank_outputs:
-            print("[ERROR] Task failed! Please check the detailed error logs printed by the subprocesses.")
-            exit(1)
-    
-        # 将各类输出放入同一个列表中，category_outputs存储各类输出的列表
-        category_outputs = []
-        category_num = len(rank_outputs[0])
-        for category_id in range(category_num):
-            specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
-            category_outputs.append(specific_category_output)
-    
-        return category_outputs
-    
-    if __name__ == "__main__":
-        x_shape = [BS, H]
-        expert_idx_shape = [BS, topK]
-        weight_shape = [E, N, H]
-        weight_scale_shape = [E, N, ceil(H, 64), 2]
-        output_shape = [BS, N//2]
-        weight2_shape = [E, H, N//2]
-        weight2_scale_shape = [E, H, ceil(N//2, 64), 2]
-        expert_scales_shape = [BS, topK]
-        x = torch.randn(x_shape, dtype=torch.bfloat16)
-        expert_scales = torch.randn(expert_scales_shape, dtype=torch.bfloat16)
-        expert_ids = torch.stack(
-            [torch.randperm(num_experts)[:topK] for _ in range(BS)]
-        ).to(torch.int32)
-        weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
-        weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
-        weight2 = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
-        weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
-    
-        golden_x_list = [x.clone() for _ in range(rank_per_dev)]
-        golden_expert_ids_list = [expert_ids.clone() for _ in range(rank_per_dev)]
-        golden_weights1_list = [weight1.clone() for _ in range(rank_per_dev)]
-        golden_weights_scales1_list = [weight_scales1.clone() for _ in range(rank_per_dev)]
-        golden_weights2_list = [weight2.clone() for _ in range(rank_per_dev)]
-        golden_weights_scales2_list = [weight_scales2.clone() for _ in range(rank_per_dev)]
-        golden_expert_scales_list = [expert_scales.clone() for _ in range(rank_per_dev)]
-    
-        [y, expert_token_nums] = gen_npu(
-            run_megamoe_npu,
-            x_list=golden_x_list,
-            expert_ids_list=golden_expert_ids_list,
-            weights1_list=golden_weights1_list,
-            weights_scales1_list=golden_weights_scales1_list,
-            weights2_list=golden_weights2_list,
-            weights_scales2_list=golden_weights_scales2_list,
-            expert_scales_list=golden_expert_scales_list,
-        )
-    ```
+  def ceil(a, b):
+      return (a + b - 1) // b
+
+  def set_device(rank):
+      torch_npu.npu.set_device(rank % rank_per_dev)
+      print(f"current device set: {torch_npu.npu.current_device()}")
+
+  def init_hccl_comm(rank):
+      # 创建HCCL通信链路并初始化EP域
+      print(f'[INFO] device_{rank} 创建HCCL通信链路')
+      master_ip = '127.0.0.1'
+      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
+      print(f"device_{rank} init_process_group success")
+
+      print(f"device {rank} 初始化EP域")
+      for ep_ranks in ep_ranks_list:
+          tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks)
+          if rank in ep_ranks:
+              ep_group = tmp_group
+
+      ep_hcomm_info = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+
+      return ep_hcomm_info, ep_group
+
+  def get_megamoe_kwargs(
+      x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
+  ):
+      x = x.to(torch.bfloat16).npu()
+      expert_ids = expert_ids.to(torch.int32).npu()
+      weights1 = weights1.to(torch.float8_e5m2).npu()
+      weights_scales1 = weights_scales1.to(torch.float8_e8m0fnu).npu()
+      weights2 = weights2.to(torch.float8_e5m2).npu()
+      weights_scales2 = weights_scales2.to(torch.float8_e8m0fnu).npu()
+      expert_scales = expert_scales.to(torch.bfloat16).npu()
+
+      return {
+          'x': x,
+          'topk_ids': expert_ids,
+          'topk_weights': expert_scales,
+          'l1_weights': [weights1],
+          'l1_weights_sf': [weights_scales1],
+          'l2_weights': [weights2],
+          'l2_weights_sf': [weights_scales2],
+      }
+
+  def run_megamoe_npu(
+      queue, rank, x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
+  ):
+      print(f"{os.getpid()=}{rank=}")
+      set_device(rank)
+      ep_hcomm_info, ep_group = init_hccl_comm(rank)
+      print(f'[INFO] device_{rank} 构造megamoe算子输入数据')
+      megamoe_kwargs = get_megamoe_kwargs(
+          x=x,
+          expert_ids=expert_ids,
+          weights1=weights1,
+          weights_scales1=weights_scales1,
+          weights2=weights2,
+          weights_scales2=weights_scales2,
+          expert_scales=expert_scales,
+      )
+      # 步骤1：计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB），并设置HCCL_BUFFSIZE环境变量
+      buffer_size = get_mega_moe_ccl_buffer_size(
+          world_size, num_experts, BS, topK, H,
+          dispatch_quant_mode=4, dispatch_quant_out_dtype=23
+      )
+      os.environ['HCCL_BUFFSIZE'] = f'{buffer_size}'
+      print(f"[INFO] device_{rank} buffer_size is {buffer_size}")
+      # 步骤2：构造distribute_buffer（SymmBuffer结构体）
+      distribute_buffer = get_symm_buffer_for_mega_moe(
+          ep_group, num_experts=num_experts,
+          num_max_tokens_per_rank=0, num_topk=topK,
+          hidden=H, intermediate_hidden=0,
+          dispatch_quant_mode=4, dispatch_quant_out_dtype=23
+      )
+      # 步骤3：运行mega_moe，传入上一步构造的sym_buffer
+      y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
+
+      torch.npu.synchronize()
+      print(f"[INFO] device_{rank} finish\n")
+      dist.destroy_process_group()
+      print(f'rank {rank} epid {rank} npu finished! \n')
+
+      queue.put([
+          rank,
+          [
+              y.cpu(), expert_token_nums.cpu()
+          ]
+      ])
+
+  def gen_npu(target_func, **server_kwargs):
+      def parse_rank_input(target_func, result_queue, rank, server_kwargs):
+
+          ep_id = rank // 1
+
+          if target_func == run_megamoe_npu:
+              return {
+                  "queue": result_queue,
+                  "rank": rank,
+                  "x": server_kwargs["x_list"][ep_id],
+                  "expert_ids": server_kwargs["expert_ids_list"][ep_id],
+                  "weights1": server_kwargs["weights1_list"][ep_id],
+                  "weights_scales1": server_kwargs["weights_scales1_list"][ep_id],
+                  "weights2": server_kwargs["weights2_list"][ep_id],
+                  "weights_scales2": server_kwargs["weights_scales2_list"][ep_id],
+                  "expert_scales": server_kwargs["expert_scales_list"][ep_id]
+              }
+
+
+      print("single_server scene!!!!!")
+      rank_list = list(range(world_size))
+      print(f"rank list is: {rank_list}")
+
+      proc_list = []
+      manager = Manager()
+      result_queue = manager.Queue()
+      mp.set_start_method("forkserver", force=True)
+      for rank in rank_list:
+          rank_kwargs = parse_rank_input(target_func, result_queue, rank, server_kwargs)
+          proc = Process(target=target_func, kwargs=rank_kwargs)
+          proc.start()
+          proc_list.append(proc)
+
+
+      rank_outputs = [None] * rank_per_dev
+      for proc in proc_list:
+          rank_id, rank_output = result_queue.get()
+          local_rank_id = rank_id - server_index * rank_per_dev
+          rank_outputs[local_rank_id] = rank_output
+
+
+      for proc in proc_list:
+          proc.join()
+
+      if None in rank_outputs:
+          print("[ERROR] Task failed! Please check the detailed error logs printed by the subprocesses.")
+          exit(1)
+
+      # 将各类输出放入同一个列表中，category_outputs存储各类输出的列表
+      category_outputs = []
+      category_num = len(rank_outputs[0])
+      for category_id in range(category_num):
+          specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
+          category_outputs.append(specific_category_output)
+
+      return category_outputs
+
+  if __name__ == "__main__":
+      x_shape = [BS, H]
+      expert_idx_shape = [BS, topK]
+      weight_shape = [E, N, H]
+      weight_scale_shape = [E, N, ceil(H, 64), 2]
+      output_shape = [BS, N//2]
+      weight2_shape = [E, H, N//2]
+      weight2_scale_shape = [E, H, ceil(N//2, 64), 2]
+      expert_scales_shape = [BS, topK]
+      # 构造输入
+      x = torch.randn(x_shape, dtype=torch.bfloat16)
+      expert_scales = torch.randn(expert_scales_shape, dtype=torch.bfloat16)
+      expert_ids = torch.stack(
+          [torch.randperm(num_experts)[:topK] for _ in range(BS)]
+      ).to(torch.int32)
+      weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
+      weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+      weight2 = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
+      weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+
+      golden_x_list = [x.clone() for _ in range(rank_per_dev)]
+      golden_expert_ids_list = [expert_ids.clone() for _ in range(rank_per_dev)]
+      golden_weights1_list = [weight1.clone() for _ in range(rank_per_dev)]
+      golden_weights_scales1_list = [weight_scales1.clone() for _ in range(rank_per_dev)]
+      golden_weights2_list = [weight2.clone() for _ in range(rank_per_dev)]
+      golden_weights_scales2_list = [weight_scales2.clone() for _ in range(rank_per_dev)]
+      golden_expert_scales_list = [expert_scales.clone() for _ in range(rank_per_dev)]
+
+      [y, expert_token_nums] = gen_npu(
+          run_megamoe_npu,
+          x_list=golden_x_list,
+          expert_ids_list=golden_expert_ids_list,
+          weights1_list=golden_weights1_list,
+          weights_scales1_list=golden_weights_scales1_list,
+          weights2_list=golden_weights2_list,
+          weights_scales2_list=golden_weights_scales2_list,
+          expert_scales_list=golden_expert_scales_list,
+      )
+  ```
