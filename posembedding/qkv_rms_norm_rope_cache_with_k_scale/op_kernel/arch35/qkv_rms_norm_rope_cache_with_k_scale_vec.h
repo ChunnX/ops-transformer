@@ -148,7 +148,6 @@ private:
     static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS = QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
     static constexpr uint32_t QK_PREPROCESS_UB_NZ_ROW_STRIDE = QKV_RRC_HEAD_DIM_D128;
     static constexpr uint32_t QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS = QKV_RRC_HEAD_DIM_D128 + QKV_RRC_HEAD_DIM_D128 / 2U;
-    static constexpr float QKV_RRC_HEAD_DIM_D128_RECIP = 1.0F / static_cast<float>(QKV_RRC_HEAD_DIM_D128);
     static constexpr bool IS_TND = INPUT_LAYOUT == QKV_RRC_LAYOUT_TND;
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
@@ -287,39 +286,19 @@ private:
         const LocalTensor<float> cosSin = cosSinDbPoolUb_[inputBufferId * QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS];
         const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
-        if constexpr (IS_TND) {
-            const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
-                (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
-                (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
-                static_cast<uint32_t>(qHeadNum_), QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE, 1U,
-                static_cast<uint32_t>(qHeadNum_), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
-                (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
-                (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
-                (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
-                QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE, 1U, static_cast<uint32_t>(kvHeadNum_),
-                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-        } else {
-            const uint32_t tokenCapacity = static_cast<uint32_t>(tile.cubeHalfTokenSize);
-            const uint32_t qkvUbStrideN = static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE;
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
-                (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
-                (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
-                static_cast<uint32_t>(qHeadNum_), qkvUbStrideN, QKV_RRC_D128_FULL_SIZE, tokenCapacity, 1U,
-                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
-                (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
-                (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
-                (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
-                qkvUbStrideN, QKV_RRC_D128_FULL_SIZE, tokenCapacity, 1U, QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-        }
+        const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
+        const uint32_t tokenCapacity = static_cast<uint32_t>(tile.cubeHalfTokenSize);
+        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl<IS_TND>>(
+            (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
+            (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
+            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
+            static_cast<uint32_t>(qHeadNum_), qkvHeadNum, tokenCapacity, epsilon_);
+        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl<IS_TND>>(
+            (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
+            (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
+            (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
+            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+            static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_), qkvHeadNum, tokenCapacity, epsilon_);
     }
 
     __aicore__ inline void BuildRopeNzScatterIndex()
