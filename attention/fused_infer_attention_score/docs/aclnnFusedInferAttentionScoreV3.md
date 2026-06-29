@@ -808,7 +808,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - queryRope配置时要求query的s为1-16、n为1、2、4、8、16、32、64、128，queryRope的shape中d为64，其余维度与query一致；
         - keyRope配置时要求key的n为1，d为512，keyRope的shape中d为64，其余维度与key一致；
         - sparse：Q_S等于1时只支持sparse=0且attenMask为nullptr，Q_S大于1时只支持sparse=3且传入mask；
-        - key&value&keyRope支持ND和NZ（NZ是数据的逻辑排布，而非数据格式）输入，当输入NZ时，输入格式为[blockNum, N, D/16, blockSize, 16]；
+        - key&value&keyRope支持ND和NZ（NZ在此特指数据的逻辑排布，而非数据格式）输入，当输入NZ时，输入格式为[blockNum, N, D/16, blockSize, 16]；
         - inputLayout：BSH、BSND、BNSD、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND、TND_NTD，其中NZ输入不支持BNSD、BNSD_NBSD；
         - 必须开启page attention：blockSize支持16、128，其中NZ输入不支持配置16；
         - 不支持左padding、tensorlist、pse、prefix、伪量化、全量化、后量化；
