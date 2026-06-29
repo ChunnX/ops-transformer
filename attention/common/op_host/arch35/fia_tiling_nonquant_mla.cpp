@@ -161,16 +161,18 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::SetPlatMemoryInfo()
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
-    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
-    platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
-    platformInfo_.coreNum = platformInfo_.aivNum;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
+
+    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+    platformInfo_.coreNum = platformInfo_.aivNum;
+    platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
 
     platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     OP_LOGI(fiaInfo_->opName, "AIV:%u AIC:%u L0A:%lu L0B:%lu L0C:%lu UB:%lu L1:%lu L2:%lu", platformInfo_.aivNum,
@@ -198,23 +200,23 @@ int64_t GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout lay
 
 void FiaTilingNonQuantMlaArch35::InitImplParam()
 {
-    const gert::Tensor *actSeqLenQ = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor;
     const gert::Tensor *actSeqLenKV = fiaInfo_->opParamInfo.actualSeqLengths.tensor;
     const gert::Tensor *actSharedPrefixLen = fiaInfo_->opParamInfo.actualSharedPrefixLen.tensor;
-    uint32_t actSeqLenQDims = 0;
+    const gert::Tensor *actSeqLenQ = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor;
     uint32_t actSeqLenKVDims = 0;
     uint32_t actSharedPrefixLenDims = 0;
+    uint32_t actSeqLenQDims = 0;
     if (fiaInfo_->isMaxWorkspace) {
-        actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
+        actualSeqLenQFlag_ = false;
     } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
         actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
         actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
-        actualSeqLenQFlag_ =
-            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
+        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
         actualSeqLenKVFlag_ =
             !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
+        actualSeqLenQFlag_ =
+            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
     }
 
     if (!fiaInfo_->sysPrefixFlag) {
@@ -225,18 +227,18 @@ void FiaTilingNonQuantMlaArch35::InitImplParam()
     }
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
-        if (actualSeqLenQFlag_) {
-            actualSeqLengthsQ_.push_back(GetActSeqLenMla(actSeqLenQ, actSeqLenQDims, fiaInfo_->qLayout, bIdx));
-        } else {
-            actualSeqLengthsQ_.push_back(fiaInfo_->s1Size);
-        }
-
         if (actualSeqLenKVFlag_) {
             actualSeqLengthsKV_.push_back(GetActSeqLenMla(actSeqLenKV, actSeqLenKVDims, fiaInfo_->kvLayout, bIdx));
         } else if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
             actualSeqLengthsKV_.push_back(fiaInfo_->kvListSeqLens[bIdx]);
         } else {
             actualSeqLengthsKV_.push_back(fiaInfo_->s2Size);
+        }
+
+        if (actualSeqLenQFlag_) {
+            actualSeqLengthsQ_.push_back(GetActSeqLenMla(actSeqLenQ, actSeqLenQDims, fiaInfo_->qLayout, bIdx));
+        } else {
+            actualSeqLengthsQ_.push_back(fiaInfo_->s1Size);
         }
     }
 }
@@ -460,44 +462,35 @@ void FiaTilingNonQuantMlaArch35::SetPageAttentionLayoutTilingData()
 
 void FiaTilingNonQuantMlaArch35::SetFATilingData()
 {
-    tilingData_.baseTiling.fiaBaseParams.bSize = fiaInfo_->bSize;
-    tilingData_.baseTiling.fiaBaseParams.t1Size = fiaInfo_->qTSize;
-    tilingData_.baseTiling.fiaBaseParams.t2Size = fiaInfo_->kTSize;
-    tilingData_.baseTiling.fiaBaseParams.n2Size = fiaInfo_->n2Size;
-    tilingData_.baseTiling.fiaBaseParams.gSize = fiaInfo_->gSize;
-    tilingData_.baseTiling.fiaBaseParams.s1Size = fiaInfo_->s1Size;
-    tilingData_.baseTiling.fiaBaseParams.s2Size = fiaInfo_->s2Size;
-    tilingData_.baseTiling.fiaBaseParams.dSize = fiaInfo_->qkHeadDim;
-    tilingData_.baseTiling.fiaBaseParams.dSizeV = fiaInfo_->vHeadDim;
-    tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
-    tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
-    tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
-    tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
-
-    tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;
-
+    tilingData_.baseTiling.fiaPseParams.pseShiftByBatch = fiaInfo_->pseShiftByBatch;
     tilingData_.baseTiling.fiaPseParams.pseS1Size = fiaInfo_->pseShiftS1;
     tilingData_.baseTiling.fiaPseParams.pseS2Size = fiaInfo_->pseShiftS2;
-    tilingData_.baseTiling.fiaPseParams.pseShiftByBatch = fiaInfo_->pseShiftByBatch;
 
-    tilingData_.baseTiling.fiaLeftPaddingParams.isQHasLeftPadding = fiaInfo_->qPaddingSizeFlag;
-    tilingData_.baseTiling.fiaLeftPaddingParams.isKVHasLeftPadding = fiaInfo_->kvPaddingSizeFlag;
-    tilingData_.baseTiling.fiaPageAttentionParams.blockSize = fiaInfo_->blockSize;
-    uint32_t maxBlockNumPerBatch = 0;
-    if (fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        maxBlockNumPerBatch = fiaInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
-    }
-    tilingData_.baseTiling.fiaPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-
-    tilingData_.baseTiling.fiaPostQuantParams.isPostQuantPerChnl = fiaInfo_->isOutQuantPerChnOut;
     tilingData_.baseTiling.fiaPostQuantParams.isPostQuantBF16 = fiaInfo_->isOutQuantTypeBf16;
+    tilingData_.baseTiling.fiaPostQuantParams.isPostQuantPerChnl = fiaInfo_->isOutQuantPerChnOut;
 
-    tilingData_.baseTiling.fiaSystemPrefixParams.prefixSeqInnerSize = fiaInfo_->systemPrefixMaxLen;
+    tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
+    tilingData_.baseTiling.fiaBaseParams.bSize = fiaInfo_->bSize;
+    tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
+    tilingData_.baseTiling.fiaBaseParams.t1Size = fiaInfo_->qTSize;
+    tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
+    tilingData_.baseTiling.fiaBaseParams.t2Size = fiaInfo_->kTSize;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
+    tilingData_.baseTiling.fiaBaseParams.n2Size = fiaInfo_->n2Size;
+    tilingData_.baseTiling.fiaBaseParams.dSizeV = fiaInfo_->vHeadDim;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
+    tilingData_.baseTiling.fiaBaseParams.gSize = fiaInfo_->gSize;
+    tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
+    tilingData_.baseTiling.fiaBaseParams.s1Size = fiaInfo_->s1Size;
+    tilingData_.baseTiling.fiaBaseParams.dSize = fiaInfo_->qkHeadDim;
+    tilingData_.baseTiling.fiaBaseParams.s2Size = fiaInfo_->s2Size;
+
     tilingData_.baseTiling.fiaSystemPrefixParams.isActualSharedPrefixLenNull = !actualSharedPrefixLenFlag_;
+    tilingData_.baseTiling.fiaSystemPrefixParams.prefixSeqInnerSize = fiaInfo_->systemPrefixMaxLen;
+
+    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;
+    tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
+    tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
 
     int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize =
@@ -506,10 +499,20 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     if (fiaInfo_->isOutQuantEnable) {
         singleCoreSize = ((singleCoreSize + 1) / 2) * 2;
     }
-    tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
-    tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
+    tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
+    tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
+
+    tilingData_.baseTiling.fiaPageAttentionParams.blockSize = fiaInfo_->blockSize;
+    tilingData_.baseTiling.fiaLeftPaddingParams.isKVHasLeftPadding = fiaInfo_->kvPaddingSizeFlag;
+    tilingData_.baseTiling.fiaLeftPaddingParams.isQHasLeftPadding = fiaInfo_->qPaddingSizeFlag;
+
+    uint32_t maxBlockNumPerBatch = 0;
+    if (fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+        maxBlockNumPerBatch = fiaInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
+    }
+    tilingData_.baseTiling.fiaPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
 }
 
 void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
@@ -613,10 +616,9 @@ void FiaTilingNonQuantMlaArch35::CalcScheduleMode()
 
 void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
 {
-    size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
-
-    uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
     uint32_t dSize = fiaInfo_->vHeadDim;
+    uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
+    size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
     uint32_t dVBasicBlock = 0;
     if (dSize <= DSIZE_64) {
         dVBasicBlock = DSIZE_64;
@@ -630,8 +632,8 @@ void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
+    int64_t bmm2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
     if (dVBasicBlock > DSIZE_256) {
         bmm2ResBlockSize = DSIZE_512;
@@ -650,11 +652,11 @@ void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
     }
 
     if (flashDecodeFlag_) {
-        uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dSize; // 每个核最多有2次写到workspace
         uint32_t fatmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
+        uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dSize; // 每个核最多有2次写到workspace
         workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
-        tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = faTmpAttenGmSize;
         tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+        tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = faTmpAttenGmSize;
     }
 
     OP_LOGI(fiaInfo_->opName, "workspaceSize: %lu.", workspaceSize_);
@@ -805,9 +807,10 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::DoOpTiling()
         CalcMaxWorkspaceSize();
         CalcNumBlocks(platformInfo_.aicNum);
 
-        if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+        if ((SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS) ||
             (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-            (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
+            (SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
+            (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -820,9 +823,11 @@ ge::graphStatus FiaTilingNonQuantMlaArch35::DoOpTiling()
     CalcWorkspaceSize();
     GenTilingKey();
 
-    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
-        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
-        (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
+    if ((SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+        (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
+        (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS) ||
+        (SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
 
