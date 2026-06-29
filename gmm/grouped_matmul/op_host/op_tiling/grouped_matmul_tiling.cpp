@@ -2223,7 +2223,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
             uint32_t isA8W4MSDPreNZ = 0;
 
             // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
-            if (isWorkspaceValid && k % kNZInt4Alignment  == 0) {
+            if (isWorkspaceValid && k % kNZInt4Alignment  == 0 && withOffset == 0) {
                 isA8W4MSDPreNZ = 1;
                 workspaces[0] += preProcessWorkspaceSize ;                
             }
