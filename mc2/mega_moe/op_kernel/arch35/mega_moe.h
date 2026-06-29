@@ -221,7 +221,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     cumsumInfoGlobalTensor_.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
-        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
+        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
+        tilingData->clampLimit});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr -
         params_.peermemInfo.rankSyncInWorldPtr);
@@ -287,8 +288,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块大小为 TOKEN_SCALE_SIZE=9KB, 容纳token+scale，一共开设54K。
-    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;
+    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+        static_cast<int64_t>(ALIGN_32));
+    uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
@@ -967,8 +971,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
     uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
 
+    uint32_t coreIdForGrouping = aivCoreIdx_;
+    uint32_t totalCoresForGrouping = blockAivNum_;
+    if constexpr (ENABLE_A8W4) {
+        if (subBlockIdx_ != 1) {
+            return;
+        }
+        coreIdForGrouping = aivCoreIdx_ / 2;
+        totalCoresForGrouping = blockAivNum_ / 2;
+    }
+
     uint32_t myGroup, myIdxInGrp, myGrpSize;
-    MegaMoeImpl::ComputeCoreGrouping(aivCoreIdx_, tokenGroupsThisExpert, blockAivNum_,
+    MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
         myGroup, myIdxInGrp, myGrpSize);
 
     if (myGroup >= tokenGroupsThisExpert) {
@@ -1174,14 +1188,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
 {
     if constexpr (ENABLE_A8W4) {
+        // A8W4: fp8 activation × fp4_e2m1 weight (ZN), W4→W8 prologue + MMAD
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
             QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
             epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
     } else {
         if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+                // A8W8_NZ: fp8 activation × fp8 weight in NZ format
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>(
+                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            } else {
+                // Generic: fp8 activation × fp8 weight in ND format
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            }
         }
     }
 }
@@ -1196,17 +1219,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (ENABLE_A8W4) {
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            MegaMoeImpl::GroupMatmul2CombineA8W4<
-                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_);
-        }
-        // A8W4 GMM2 only implements the non-quantized combine path.
+        MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
+            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+            state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType>(
+        // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
+        if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+                QuantScaleOutType, QuantScaleOutType, true>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
@@ -1214,11 +1235,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
                 QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-
-            if constexpr (g_coreType == AIV) {
-                ProcessCombine(gmmAddrInfo, state, expertIdx);
-            }
         }
+    }
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+        ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
 }
 
