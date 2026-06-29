@@ -212,8 +212,8 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
                                tokens->GetDataType() == DataType::DT_INT8;
     if (useMoeInitRoutingV3) {
         CHECK_RET(MoeTokenPermuteCheck::CheckDtypeValidInt8Regbase(
-                      tokens, indices, permuteTokensOut, sortedIndicesOut),
-                  ACLNN_ERR_PARAM_INVALID);
+            tokens, indices, permuteTokensOut, sortedIndicesOut),
+            ACLNN_ERR_PARAM_INVALID);
         return BuildMoeInitRoutingV3Executor(
             tokens, indices, permuteTokensOut, sortedIndicesOut, workspaceSize, executor);
     }
