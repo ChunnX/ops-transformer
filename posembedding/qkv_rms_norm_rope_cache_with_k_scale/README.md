@@ -98,8 +98,8 @@
 | k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`，支持连续和符合约束的非连续Tensor。 | FLOAT | ND |
 | cu_seq_len | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
 | actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
-| rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。接口定义为可选输入，当前仅支持传入非空Tensor。 | BFLOAT16 | ND |
-| v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。接口定义为可选输入，当前仅支持传入非空Tensor。 | FLOAT | ND |
+| rotation | 输入 | Q/K共享矩阵乘权重，shape为`[D, D]`，当前必须传入非空Tensor。 | BFLOAT16 | ND |
+| v_scale | 输入 | V分支量化缩放因子，shape为`[Nv]`，当前必须传入非空Tensor。 | FLOAT | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
 | qkv_layout | 属性 | `qkv`、`q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
@@ -116,14 +116,14 @@
   - `qkv_layout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
   - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
 - `cu_seq_len`表示当前调用内token的batch前缀和，`cu_seq_len[0]`应为0，`cu_seq_len[Batch]`应等于`T`。
-- `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + i`得到；调用方需保证`cos_sin`覆盖对应位置。
+- `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + i`得到；调用方需保证`actual_seq_lens[b] >= cu_seq_len[b+1] - cu_seq_len[b]`且`cos_sin`覆盖对应位置。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
 - `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
-- `rotation`和`v_scale`在算子IR中为可选输入，但当前仅支持传入非空Tensor。
+- `rotation`和`v_scale`当前必须传入非空Tensor。
 - 输入和输出均为ND格式，不支持私有格式；不支持空Tensor。
-- Cache Tensor支持连续Tensor，也支持非连续Tensor；非连续场景需满足：
-  - `k_cache`和`v_cache`均为4维正stride，最后一维stride为1。
+- `k_cache`、`v_cache`和`k_scale_cache`支持连续Tensor，也支持符合以下约束的非连续Tensor：
+  - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1。
   - `k_cache`和`v_cache`前三维stride必须一致。
-  - `k_scale_cache`为4维正stride，最后一维stride为1。
+  - `k_scale_cache`前三维stride作为block/head/token写回stride使用，输入和原地更新后的Tensor必须保持同一组前三维stride。
 - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用说明

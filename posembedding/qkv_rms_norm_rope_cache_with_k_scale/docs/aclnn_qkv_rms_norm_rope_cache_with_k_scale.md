@@ -103,8 +103,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 | kScaleCacheRef | 输入/输出 | 必选 | K动态量化scale cache，接口原地更新，输出与输入复用同一Tensor，支持连续和符合约束的非连续Tensor。 | FLOAT | `[BlockNum, Nk, BlockSize, 1]` |
 | cuSeqLen | 输入 | 必选 | 当前调用内各batch token数的前缀和，`cuSeqLen[0]`应为0，`cuSeqLen[Batch]`应为`T`。 | INT32 | `[Batch+1]` |
 | actualSeqLens | 输入 | 必选 | 每个batch追加本次token后的实际序列长度，用于计算RoPE位置历史偏移。 | INT32 | `[Batch]` |
-| rotationOptional | 输入 | 可选 | Q/K共享矩阵乘权重。接口定义为可选输入，当前仅支持传入非空Tensor。 | BFLOAT16 | `[D, D]` |
-| vScaleOptional | 输入 | 可选 | V分支量化缩放因子。接口定义为可选输入，当前仅支持传入非空Tensor。 | FLOAT | `[Nv]` |
+| rotationOptional | 输入 | 必选 | Q/K共享矩阵乘权重，当前必须传入非空Tensor。 | BFLOAT16 | `[D, D]` |
+| vScaleOptional | 输入 | 必选 | V分支量化缩放因子，当前必须传入非空Tensor。 | FLOAT | `[Nv]` |
 | headNums | 属性 | 必选 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | 长度为3 |
 | qkvLayout | 属性 | 必选 | `qkv`、`qOut`和`qScale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | CHAR* | - |
 | epsilon | 属性 | 可选 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
@@ -142,14 +142,14 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
   - `qkvLayout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
   - `qkvLayout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
 - `cosSin`第二维必须等于`D`。调用方需保证`cosSin`覆盖所有RoPE位置，即`actualSeqLens`对应的位置索引不超过`MaxSeqLen-1`。
-- `cuSeqLen`为当前调用内token的前缀和；`actualSeqLens[b]`表示第`b`个batch追加当前token后的实际序列长度。推荐满足`actualSeqLens[b] >= cuSeqLen[b+1] - cuSeqLen[b]`。
+- `cuSeqLen`为当前调用内token的前缀和；`actualSeqLens[b]`表示第`b`个batch追加当前token后的实际序列长度，必须满足`actualSeqLens[b] >= cuSeqLen[b+1] - cuSeqLen[b]`。若`actualSeqLens[b]`小于该batch本次调用的token数，行为未定义。
 - `slotMapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
-- `rotationOptional`和`vScaleOptional`在算子IR中为可选输入，但当前仅支持传入非空Tensor。
+- `rotationOptional`和`vScaleOptional`当前必须传入非空Tensor。
 - 输入和输出均为ND格式，不支持私有格式；不支持空Tensor。
-- Cache Tensor支持连续Tensor，也支持非连续Tensor；非连续场景需满足：
-  - `kCacheRef`和`vCacheRef`均为4维正stride，最后一维stride为1。
+- `kCacheRef`、`vCacheRef`和`kScaleCacheRef`支持连续Tensor，也支持符合以下约束的非连续Tensor：
+  - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1。
   - `kCacheRef`和`vCacheRef`前三维stride必须一致。
-  - `kScaleCacheRef`为4维正stride，最后一维stride为1。
+  - `kScaleCacheRef`前三维stride作为block/head/token写回stride使用，输入和原地更新后的Tensor必须保持同一组前三维stride。
 - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用示例
