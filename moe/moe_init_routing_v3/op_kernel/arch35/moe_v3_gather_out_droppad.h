@@ -281,6 +281,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                             static_cast<uint32_t>((localRowStride - curLoopCols) * sizeof(T) / BLOCK_BYTES), 0};
                         LocalTensor<T> multiRowXLocal = multiRowXBuf_.Get<T>();
                         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                         if constexpr (IsSameType<T, hifloat8_t>::value) {
                             DataCopyPadExtParams<uint8_t> batchPadParams{false, 0, 0, 0};
                             DataCopyPad(multiRowXLocal.template ReinterpretCast<uint8_t>(),
@@ -291,7 +292,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                             DataCopyPad(multiRowXLocal, xGm_[batchStart * cols_ + colsLoopOffset],
                                         batchCopyParams, batchPadParams);
                         }
-                        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
                         for (int64_t b = 0; b < batchRows; b++) {
                             int64_t row = batchStart + b;
