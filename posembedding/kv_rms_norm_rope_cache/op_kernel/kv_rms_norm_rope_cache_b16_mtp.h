@@ -144,8 +144,7 @@ public:
                     // Process K
                     LocalTensor<KV_DTYPE> xB16Local = this->inQueueX.template AllocTensor<KV_DTYPE>();
                     DataCopyExtParams copyXParams{
-                    static_cast<uint16_t>(this->rowsPerBlock),
-                    static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
+                    static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
                     static_cast<uint32_t>(
                         ((this->tilingData_->seqLength - 1) * this->RMS_NORM_LENGTH +
                         (this->tilingData_->numHead - 1) * this->tilingData_->seqLength * this->RMS_NORM_LENGTH) * sizeof(KV_DTYPE)),
@@ -366,8 +365,8 @@ public:
 
         Mul(bufFp32, imagLocalFp32, sinLocalFp32, mask, this->rowsPerBlock,
             {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
-        Mul(bufFp32[this->ROPE_LENGTH_HALF], realLocalFp32, sinLocalFp32[this->ROPE_LENGTH_HALF], mask,
-            this->rowsPerBlock, {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
+        Mul(bufFp32[this->ROPE_LENGTH_HALF], realLocalFp32, sinLocalFp32[this->ROPE_LENGTH_HALF], mask, this->rowsPerBlock,
+            {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
         PipeBarrier<PIPE_V>();
 
         Add(outLocalFp32, outLocalFp32, bufFp32, this->rowsPerBlock * this->ROPE_LENGTH);
