@@ -135,10 +135,10 @@ bool CheckDynamicInputDesc(const gert::TilingContext& context, uint32_t inputInd
 {
     const auto *desc = context.GetDynamicInputDesc(inputIndex, tensorIndex);
     OP_CHECK_IF(desc == nullptr,
-        OP_LOGE(&context, "Dynamic input desc of %s[%u] is nullptr.", inputName, tensorIndex),
+        OP_LOGE(OP_NAME, "Dynamic input desc of %s[%u] is nullptr.", inputName, tensorIndex),
         return false);
     OP_CHECK_IF(desc->GetDataType() != expectedDtype,
-        OP_LOGE(&context, "%s[%u] dtype must be %s, got %s.", inputName, tensorIndex,
+        OP_LOGE(OP_NAME, "%s[%u] dtype must be %s, got %s.", inputName, tensorIndex,
             ge::TypeUtils::DataTypeToSerialString(expectedDtype).c_str(),
             ge::TypeUtils::DataTypeToSerialString(desc->GetDataType()).c_str()),
         return false);
@@ -181,7 +181,7 @@ bool CheckWeightAndScaleListSize(const gert::TilingContext& context, GMMSQWeight
     uint32_t weightScaleListSize = GetDynamicInputTensorListSize(context, WEIGHT_SCALE_INDEX);
     params.isSingleMultiSingle = weightListSize > 1;
     OP_CHECK_IF((weightListSize > 1 || weightScaleListSize > 1) && weightListSize != weightScaleListSize,
-        OP_LOGE(&context, "weight and weightScale tensor list size should be equal, got %u and %u.",
+        OP_LOGE(OP_NAME, "weight and weightScale tensor list size should be equal, got %u and %u.",
             weightListSize, weightScaleListSize),
         return false);
     params.groupNum = params.isSingleMultiSingle ? static_cast<int64_t>(weightListSize) : params.groupNum;
@@ -400,7 +400,7 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     auto xShapeLen = xShape.GetDimNum();
     auto wShapeLen = wShape.GetDimNum();
     OP_CHECK_IF(!CheckWeightAndScaleListSize(context, params),
-        OP_LOGE(&context, "Check weight and weightScale tensor list size failed."), return false);
+        OP_LOGE(OP_NAME, "Check weight and weightScale tensor list size failed."), return false);
     OP_CHECK_IF(xShape.GetShapeSize() == 0,
         OP_LOGE(OP_NAME, "Not yet support empty tensor for x"), return false);
     if (unlikely(xShapeLen != DIM_NUM_X)) {
