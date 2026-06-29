@@ -390,12 +390,12 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_sel2;
     RegTensor<float> vreg_sel3;
     RegTensor<float> vreg_sel4;
-    RegTensor<float> vreg_sel3_new;
-    RegTensor<float> vreg_sel4_new;
     RegTensor<float> vreg_input_x1;
     RegTensor<float> vreg_input_x2;
     RegTensor<float> vreg_input_x3;
     RegTensor<float> vreg_input_x4;
+    RegTensor<float> vreg_sel3_new;
+    RegTensor<float> vreg_sel4_new;
     RegTensor<float> vreg_input_x3_new;
     RegTensor<float> vreg_input_x4_new;
     RegTensor<float> vreg_max_tmp1;
@@ -405,47 +405,47 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_exp_max;
     RegTensor<float> vreg_max_brc;
     RegTensor<float> vreg_zero;
-    RegTensor<float> vreg_exp_sum1;
-    RegTensor<float> vreg_exp_sum2;
-    RegTensor<float> vreg_exp_sum3;
-    RegTensor<float> vreg_exp_sum_brc;
     RegTensor<float> vreg_exp_even1;
     RegTensor<float> vreg_exp_odd1;
     RegTensor<float> vreg_exp_even2;
     RegTensor<float> vreg_exp_odd2;
-    RegTensor<float> vreg_pse1;
-    RegTensor<float> vreg_pse2;
-    RegTensor<float> vreg_pse3;
-    RegTensor<float> vreg_pse4;
+    RegTensor<float> vreg_exp_sum1;
+    RegTensor<float> vreg_exp_sum2;
+    RegTensor<float> vreg_exp_sum3;
+    RegTensor<float> vreg_exp_sum_brc;
     RegTensor<float> vreg_alibi1;
     RegTensor<float> vreg_alibi2;
     RegTensor<float> vreg_alibi3;
     RegTensor<float> vreg_alibi4;
+    RegTensor<float> vreg_pse1;
+    RegTensor<float> vreg_pse2;
+    RegTensor<float> vreg_pse3;
+    RegTensor<float> vreg_pse4;
     RegTensor<float> vreg_sel_drop;
     RegTensor<float> vreg_sel_drop2;
     RegTensor<float> vreg_sink_input;
     // bfloat16_t
-    RegTensor<bfloat16_t> vreg_exp_even1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even2_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd2_bf16;
     RegTensor<bfloat16_t> vreg_exp1_bf16;
     RegTensor<bfloat16_t> vreg_exp2_bf16;
     RegTensor<bfloat16_t> vreg_pse_bf16_src1;
     RegTensor<bfloat16_t> vreg_pse_bf16_src2;
+    RegTensor<bfloat16_t> vreg_exp_even1_bf16;
+    RegTensor<bfloat16_t> vreg_exp_odd1_bf16;
+    RegTensor<bfloat16_t> vreg_exp_even2_bf16;
+    RegTensor<bfloat16_t> vreg_exp_odd2_bf16;
     RegTensor<bfloat16_t> vreg_pse1_bf16;
     RegTensor<bfloat16_t> vreg_pse2_bf16;
     RegTensor<bfloat16_t> vreg_pse3_bf16;
     RegTensor<bfloat16_t> vreg_pse4_bf16;
     // half
-    RegTensor<half> vreg_exp_even1_f16;
-    RegTensor<half> vreg_exp_odd1_f16;
-    RegTensor<half> vreg_exp_even2_f16;
-    RegTensor<half> vreg_exp_odd2_f16;
     RegTensor<half> vreg_exp1_f16;
     RegTensor<half> vreg_exp2_f16;
     RegTensor<half> vreg_pse_f16_src1;
     RegTensor<half> vreg_pse_f16_src2;
+    RegTensor<half> vreg_exp_even1_f16;
+    RegTensor<half> vreg_exp_odd1_f16;
+    RegTensor<half> vreg_exp_even2_f16;
+    RegTensor<half> vreg_exp_odd2_f16;
     RegTensor<half> vreg_pse1_f16;
     RegTensor<half> vreg_pse2_f16;
     RegTensor<half> vreg_pse3_f16;
@@ -495,7 +495,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         Duplicate(vreg_sink_input, sinkValue);
     }
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) { // alibi
         Arange(vreg_alibi1, posShift);
         Arange(vreg_alibi2, posShift + floatRepSize);
         Arange(vreg_alibi3, posShift + floatRepSize * 2);
@@ -507,14 +507,16 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
         LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all); // Muls(scale)
+            // Muls(scale)
+            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
             Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
             Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
             Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
         } else {
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                           IsSameType<T2, hifloat8_t>::value) {
-                Muls(vreg_input_x1, vreg_input_x1, dScaleQK, preg_all); // Muls(dScaleQK)
+                // Muls(dScaleQK)
+                Muls(vreg_input_x1, vreg_input_x1, dScaleQK, preg_all);
                 Muls(vreg_input_x2, vreg_input_x2, dScaleQK, preg_all);
                 Muls(vreg_input_x3, vreg_input_x3, dScaleQK, preg_all);
                 Muls(vreg_input_x4, vreg_input_x4, dScaleQK, preg_all);
