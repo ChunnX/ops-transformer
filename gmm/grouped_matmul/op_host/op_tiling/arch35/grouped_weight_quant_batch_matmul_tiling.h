@@ -67,6 +67,10 @@ constexpr uint32_t MX_GROUP_SIZE = 32;
 
 constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
 
+constexpr uint32_t S8S4_BASEK_MULTIPLIER = 2;       // S8S4场景MAD采用S8类型，baseK需放大2倍
+constexpr uint64_t FP4_PER_FP32 = 8;                 // 1个float32/int32表示8个fp4/int4
+constexpr uint64_t DEFAULT_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;  // 16MB默认workspace大小
+
 struct TailBlockResplitParam {
     uint32_t mainBlockSize = 0;
     uint64_t mainBlockCount = 0;
@@ -271,6 +275,8 @@ protected:
     bool DeriveGroupSizeSingle(const gert::TilingContext *context);
     bool DeriveGroupSizeMulti(const gert::TilingContext *context);
     bool CheckMultiA16W4PerChannelShape(const gert::TilingContext *context) const;
+    bool CheckAntiquantOffsetMatchScale(const gert::TilingContext *context, uint16_t idx,
+                                        const gert::Shape &scaleShape) const;
     bool CheckGroupSize() const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
     void CalcFullNumBlocksResplitTiling(uint64_t c0Size);

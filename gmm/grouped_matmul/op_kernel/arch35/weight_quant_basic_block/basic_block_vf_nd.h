@@ -32,6 +32,13 @@ using AscendC::MicroAPI::RegTensor;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
+constexpr uint16_t PERGROUP_SIZE_32 = 32;
+constexpr uint16_t PERGROUP_SIZE_64 = 64;
+constexpr uint16_t PERGROUP_SIZE_128 = 128;
+constexpr uint16_t PERGROUP_SIZE_256 = 256;
+constexpr uint32_t SELECT_LEN_HALF = 32;   // Select拼接: 前32个元素取第一个操作数
+constexpr uint32_t SELECT_LEN_3Q = 96;     // Select拼接: 后96个元素取第二个操作数
+
 template <typename xType, typename wType>
 struct LocalAddressParam {
     __local_mem__ xType *antiQuantScaleBasePhyAddr;
@@ -682,7 +689,7 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQ
                                                                   MicroAPI::MaskMergeMode::ZEROING,
                                                                   AscendC::RoundMode::UNKNOWN};
 
-        constexpr uint16_t GROUP_SIZE = 128;
+        constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_128;
         constexpr uint16_t INNER_STRIDE_WEIGHT = GROUP_SIZE >> 1;
         uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
         uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
@@ -749,7 +756,7 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQ
                                                                    MicroAPI::MaskMergeMode::ZEROING,
                                                                    AscendC::RoundMode::UNKNOWN};
 
-        constexpr uint16_t GROUP_SIZE = 256;
+        constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_256;
         uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
         uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize) >> 1;
         uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
@@ -825,7 +832,7 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQu
                                                                    MicroAPI::MaskMergeMode::ZEROING,
                                                                    AscendC::RoundMode::UNKNOWN};
 
-        constexpr uint16_t GROUP_SIZE = 64;
+        constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_64;
         constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
         constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
         constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
@@ -926,15 +933,15 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQu
 
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg maskRegSelectH = MicroAPI::CreateMask<xType, MicroAPI::MaskPattern::H>();
-        uint32_t selectLen32 = 32;
-        uint32_t selectLen96 = 96;
+        uint32_t selectLen32 = SELECT_LEN_HALF;
+        uint32_t selectLen96 = SELECT_LEN_3Q;
         MicroAPI::MaskReg maskRegSelect32 = MicroAPI::UpdateMask<xType>(selectLen32);
         MicroAPI::MaskReg maskRegSelect96 = MicroAPI::UpdateMask<xType>(selectLen96);
         static constexpr MicroAPI::CastTrait castS4ToF16Trait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                                    MicroAPI::MaskMergeMode::ZEROING,
                                                                    AscendC::RoundMode::UNKNOWN};
 
-        constexpr uint16_t GROUP_SIZE = 32;
+        constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_32;
         constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
         constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
         constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
@@ -1006,19 +1013,19 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNk(__local_mem__ xType *antiQuantS
                                                   __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
                                                   uint16_t groupSize, uint16_t bubKLen)
 {
-    if (groupSize == 32) {
+    if (groupSize == PERGROUP_SIZE_32) {
         AntiQuantInt4PerGroupNdNkGs32<xType, wType, wqmmConfig, vecConfig>(
             antiQuantScaleBasePhyAddr, antiQuantOffsetBasePhyAddr,
             weightLowBitPhyAddr0, weightF16PhyAddr0, bubNLen, bubKLen);
-    } else if (groupSize == 64) {
+    } else if (groupSize == PERGROUP_SIZE_64) {
         AntiQuantInt4PerGroupNdNkGs64<xType, wType, wqmmConfig, vecConfig>(
             antiQuantScaleBasePhyAddr, antiQuantOffsetBasePhyAddr,
             weightLowBitPhyAddr0, weightF16PhyAddr0, bubNLen, bubKLen);
-    } else if (groupSize == 128) {
+    } else if (groupSize == PERGROUP_SIZE_128) {
         AntiQuantInt4PerGroupNdNkGs128<xType, wType, wqmmConfig, vecConfig>(
             antiQuantScaleBasePhyAddr, antiQuantOffsetBasePhyAddr,
             weightLowBitPhyAddr0, weightF16PhyAddr0, bubNLen, bubKLen);
-    } else if (groupSize == 256) {
+    } else if (groupSize == PERGROUP_SIZE_256) {
         AntiQuantInt4PerGroupNdNkGs256<xType, wType, wqmmConfig, vecConfig>(
             antiQuantScaleBasePhyAddr, antiQuantOffsetBasePhyAddr,
             weightLowBitPhyAddr0, weightF16PhyAddr0, bubNLen, bubKLen);

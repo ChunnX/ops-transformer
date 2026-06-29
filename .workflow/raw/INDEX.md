@@ -41,6 +41,7 @@ raw/
 | [development/gmm_a16w4_pergroup_nd_stc.md](development/gmm_a16w4_pergroup_nd_stc.md) | STC 用例设计方案文档：测试策略、用例设计方法论、数量统计（162 个） | 需要了解用例设计方案时 |
 | [development/gmm_a16w4_pergroup_nd_srs.md](development/gmm_a16w4_pergroup_nd_srs.md) | SRS 算子实现方案文档：tiling 切分 SVG、buffer 分配 SVG、软件算法到硬件映射 SVG、计算流程伪代码、关键修改点 | 需要向他人介绍算子实现方案时 |
 | [development/wqbmmv2_pergroup_dequant_research.md](development/wqbmmv2_pergroup_dequant_research.md) | wqbmmv2 PerGroup反量化实现方案分析、GMM A16W4 PerGroup ND反量化迁移方案 | 需要了解反量化实现方案时 |
+| [development/code_review_report.md](development/code_review_report.md) | GMM A16W4 PerGroup ND 代码检视报告：26 个问题（2 高/21 中/3 低），含安全/性能/API/风格/重复代码检查 | 需要查看代码检视结果、修复优先级时 |
 
 ## design/ — 设计文档
 
