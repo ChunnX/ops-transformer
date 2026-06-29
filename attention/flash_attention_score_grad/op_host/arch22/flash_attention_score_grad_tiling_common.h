@@ -373,7 +373,7 @@ TILING_DATA_FIELD_DEF(int64_t, d);
 TILING_DATA_FIELD_DEF(int64_t, rope_d);
 TILING_DATA_FIELD_DEF(int64_t, value_d);
 TILING_DATA_FIELD_DEF(uint64_t, dsinksumWorkSpaceOffset);
-TILING_DATA_FIELD_DEF(uint32_t, baseMN);
+TILING_DATA_FIELD_DEF(int64_t, baseMN);
 TILING_DATA_FIELD_DEF(int64_t, t1);
 TILING_DATA_FIELD_DEF(int64_t, t2);
 
