@@ -50,10 +50,18 @@ private:
     ge::graphStatus CheckFP8GQAFullQuant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckSparseModeTree(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckIFADim2D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+        uint32_t minAttenMaskSize, const std::string &layoutStr) const;
+    ge::graphStatus CheckIFADim3D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+        uint32_t minAttenMaskSize) const;
+    ge::graphStatus CheckIFADim4D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+        uint32_t minAttenMaskSize) const;
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckMaskShapeValidation(const FiaTilingInfo &fiaInfo, const MaskInfo &maskInfo) const;
     ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo) const;
 private:
     bool enableIFAMLA = false;

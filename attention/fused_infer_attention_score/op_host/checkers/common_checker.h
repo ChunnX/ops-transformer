@@ -48,17 +48,26 @@ private:
     bool CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo);
     bool CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo);
     bool CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo);
+    bool CheckKeyRopeTensorListBSHConsistency(const FiaTilingInfo &fiaInfo, int64_t &keyRopeS, int64_t tmpIdx);
+    bool CheckSingleKVPairBSH(const FiaTilingInfo &fiaInfo, int64_t tmpIdx, int64_t standardKH, int64_t standardVH);
     ge::graphStatus CheckTensorList(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiDtype(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAxis(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAxisIfaMla(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAxisIsQKVDiff(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAxisTND(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryOutConsistency(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckQueryOutDimsConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyValueConsistency(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckKeyValueDimsConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckValueOutDConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyDVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKVContiguous(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKVContiguousBnBsH(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKVContiguousBnNBsDNZ(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQueryKeyConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiAttr(const FiaTilingInfo &fiaInfo);
@@ -71,11 +80,18 @@ private:
     ge::graphStatus CheckDimNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckHeadNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputLayout(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckInputLayoutGQA(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
+    ge::graphStatus CheckInputLayoutDecodeMLA(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
     ge::graphStatus ValidateNoRopeLayoutDim(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
+    ge::graphStatus CheckNoRopeBNSDBSNDLayoutDim(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
+    ge::graphStatus CheckNoRopeLayoutDimC(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
+    ge::graphStatus CheckNoRopeLayoutDimD(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
     ge::graphStatus CheckInnerPrecise(const FiaTilingInfo &fiaInfo);
     bool CheckTNDLayoutCrossover(const FiaTilingInfo &fiaInfo);
     bool CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo);
+    bool CheckTransposeLayoutBsNsdCrossover(const FiaTilingInfo &fiaInfo, const std::string &layoutStr, bool isGqa);
+    bool CheckTransposeLayoutBnsdBsndCrossover(const FiaTilingInfo &fiaInfo, const std::string &layoutStr, bool isGqa);
 
 private:
 };

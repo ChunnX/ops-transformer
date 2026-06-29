@@ -197,6 +197,35 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
 }
 
 // PA场景 除D轴外 keyRope其余轴需和key一致
+void RopeChecker::GetPAKeyRopeShapeDims(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape,
+    const gert::Shape &keyRopeShape, uint32_t &keyBlockNum, uint32_t &keyRopeBlockNum,
+    uint32_t &keyBlockSize, uint32_t &keyRopeBlockSize, uint32_t &keyN, uint32_t &keyRopeN) const
+{
+    const uint32_t keyDimNum = keyShape.GetDimNum();
+    if (keyDimNum == DIM_NUM_3) {
+        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
+        keyBlockSize = keyShape.GetDim(DIM_NUM_1);
+        keyN = keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim;
+        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
+        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2) / fiaInfo.ropeHeadDim;
+    } else if (keyDimNum == DIM_NUM_4) {
+        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
+        keyN = keyShape.GetDim(DIM_NUM_1);
+        keyBlockSize = keyShape.GetDim(DIM_NUM_2);
+        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_2);
+    } else {
+        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
+        keyN = keyShape.GetDim(DIM_NUM_1);
+        keyBlockSize = keyShape.GetDim(DIM_NUM_3);
+        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_3);
+    }
+}
+
 ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
     const gert::Shape &keyShape, const gert::Shape &keyRopeShape) const
 {
@@ -219,29 +248,8 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     uint32_t keyRopeBlockSize = 0;
     uint32_t keyN = 0;
     uint32_t keyRopeN = 0;
-
-    if (keyDimNum == DIM_NUM_3) { // BBH
-        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
-        keyBlockSize = keyShape.GetDim(DIM_NUM_1);
-        keyN = keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim;
-        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
-        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_1);
-        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2) / fiaInfo.ropeHeadDim;
-    } else if (keyDimNum == DIM_NUM_4) { // BNBD
-        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
-        keyN = keyShape.GetDim(DIM_NUM_1);
-        keyBlockSize = keyShape.GetDim(DIM_NUM_2);
-        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
-        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
-        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_2);
-    } else { // BND1BD0
-        keyBlockNum = keyShape.GetDim(DIM_NUM_0);
-        keyN = keyShape.GetDim(DIM_NUM_1);
-        keyBlockSize = keyShape.GetDim(DIM_NUM_3);
-        keyRopeBlockNum = keyRopeShape.GetDim(DIM_NUM_0);
-        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
-        keyRopeBlockSize = keyRopeShape.GetDim(DIM_NUM_3);
-    }
+    GetPAKeyRopeShapeDims(fiaInfo, keyShape, keyRopeShape, keyBlockNum, keyRopeBlockNum,
+        keyBlockSize, keyRopeBlockSize, keyN, keyRopeN);
 
     OP_CHECK_IF(keyBlockNum != keyRopeBlockNum,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
