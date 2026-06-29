@@ -87,6 +87,47 @@ static constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
 static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
+
+static int64_t GetShapeDimForLog(const op::Shape &shape, size_t idx)
+{
+    return idx < shape.GetDimNum() ? shape.GetDim(idx) : -1;
+}
+
+static void ZzzLogTensorForGmmPrototype(const char *name, const aclTensor *tensor, size_t idx)
+{
+    if (tensor == nullptr) {
+        OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s[%zu]: nullptr", name, idx);
+        return;
+    }
+    const auto viewShape = tensor->GetViewShape();
+    const auto storageShape = tensor->GetStorageShape();
+    OP_LOGI("GroupedMatmul",
+            "zzzlog gmm prototype %s[%zu]: dtype=%s storageFormat=%s viewDimNum=%zu "
+            "viewDims=[%ld,%ld,%ld,%ld] storageDimNum=%zu storageDims=[%ld,%ld,%ld,%ld] transLastTwo=%d",
+            name, idx, op::ToString(tensor->GetDataType()).GetString(),
+            op::ToString(tensor->GetStorageFormat()).GetString(), static_cast<size_t>(viewShape.GetDimNum()),
+            GetShapeDimForLog(viewShape, 0), GetShapeDimForLog(viewShape, 1), GetShapeDimForLog(viewShape, 2),
+            GetShapeDimForLog(viewShape, 3), static_cast<size_t>(storageShape.GetDimNum()),
+            GetShapeDimForLog(storageShape, 0), GetShapeDimForLog(storageShape, 1),
+            GetShapeDimForLog(storageShape, 2), GetShapeDimForLog(storageShape, 3),
+            gmm::IsTransposeLastTwoDims(tensor));
+}
+
+static void ZzzLogTensorListForGmmPrototype(const char *name, const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr) {
+        OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s: nullptr", name);
+        return;
+    }
+    const size_t tensorNum = tensorList->Size();
+    OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s size=%zu", name, tensorNum);
+    for (size_t i = 0; i < tensorNum; ++i) {
+        if (i < 4 || i + 1 == tensorNum) {
+            ZzzLogTensorForGmmPrototype(name, (*tensorList)[i], i);
+        }
+    }
+}
+
 static bool IsFormatNZWithC0(const aclTensor *tensor)
 {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
@@ -2811,6 +2852,22 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
     }
     auto perTokenScaleOptional =
         (*params.perTokenScaleOptional)[0]->IsEmpty() ? nullptr : (*params.perTokenScaleOptional)[0];
+    OP_LOGI("GroupedMatmul",
+            "zzzlog gmm prototype attrs: apiVersion=%d splitItem=%ld groupType=%ld groupListType=%ld "
+            "transposeWeight=%d transposeX=%d ySize=%zu outDtype=%s",
+            static_cast<int>(params.apiVersion), params.splitItem, params.groupType, params.groupListType,
+            params.transposeWeight, params.transposeX, params.y->Size(),
+            op::ToString((*params.y)[0]->GetDataType()).GetString());
+    ZzzLogTensorListForGmmPrototype("x", params.x);
+    ZzzLogTensorListForGmmPrototype("weight", params.weight);
+    ZzzLogTensorListForGmmPrototype("bias", params.biasOptional);
+    ZzzLogTensorListForGmmPrototype("scale", params.scaleOptional);
+    ZzzLogTensorListForGmmPrototype("offset", params.offsetOptional);
+    ZzzLogTensorListForGmmPrototype("antiquantScale", params.antiquantScaleOptional);
+    ZzzLogTensorListForGmmPrototype("antiquantOffset", params.antiquantOffsetOptional);
+    ZzzLogTensorListForGmmPrototype("perTokenScaleList", params.perTokenScaleOptional);
+    ZzzLogTensorForGmmPrototype("perTokenScaleArg", perTokenScaleOptional, 0);
+    ZzzLogTensorForGmmPrototype("groupTensor", params.groupTensorOptional, 0);
     // Invoke l0 operator GroupedMatmul for calculation.
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,
