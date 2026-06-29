@@ -71,7 +71,8 @@ private:
     ge::graphStatus CheckGroupAntiS(const gert::Shape *tensorShape, const gert::InferShapeContext *context,
                                     const std::string &tensorType) const;
     ge::graphStatus CheckPertokenScaleForA8W4(const gert::InferShapeContext *context) const;
-    ge::graphStatus CheckGroupSize(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs) const;
+    ge::graphStatus CheckGroupSize(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                                   const size_t tensorIdx) const;
     bool IsA16MxFp4NZ(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsMxA8W4NZ(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsS8S4NZ(const ge::DataType xDtype, const ge::DataType weightDtype) const;
