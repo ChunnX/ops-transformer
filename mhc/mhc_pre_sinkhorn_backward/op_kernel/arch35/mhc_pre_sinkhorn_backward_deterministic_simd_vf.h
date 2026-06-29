@@ -27,11 +27,9 @@ constexpr uint64_t DOUBLE_BUFFER = 2;
 struct Process1Info {
     int64_t bsLen = 0;
     int64_t cLen = 0; 
-    int64_t n = 0;
     int64_t cLenXTAlign = 0;
     int64_t cLenUAlign = 0;
     int64_t cLenGRADHINTAlign = 0;
-    int64_t vRegSize = 0;
 };
 
 constexpr static AscendC::MicroAPI::CastTrait castTrait16ToFloat = {

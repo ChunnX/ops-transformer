@@ -399,11 +399,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U> gradBiasSumLocal = gradBiasQue_.DeQue<U>();
     LocalTensor<U> gradAlphaSumLocal = gradAlphaSumQue_.DeQue<U>();
     CopyOut(gradAlphaGm_[gmAlphaOft], gradAlphaSumLocal, 1, 1, 0, 0);
-    SetAtomicAdd<U>();
-    for (int i = 0; i < usedAivNum_; i++) {
-        CopyOut(gradBiasGm_[gmBiasOft], gradBiasSumLocal[i * biasAlignFp32], 1, biasLen, 0, 0);
+    for (int i = 1; i < usedAivNum_; i++) {
+        Add(gradBiasSumLocal, gradBiasSumLocal, gradBiasSumLocal[i * biasAlignFp32], biasLen);
     }
-    SetAtomicNone();
+    event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+    CopyOut(gradBiasGm_[gmBiasOft], gradBiasSumLocal, 1, biasLen, 0, 0);
     gradBiasQue_.FreeTensor(gradBiasSumLocal);
     gradAlphaSumQue_.FreeTensor(gradAlphaSumLocal);
 }
@@ -493,8 +495,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 
     Process1Info info;
     info.bsLen = bsLen;
-    info.n = n_;
-    info.vRegSize = V_REG_SIZE;
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
         auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
         int64_t cLenXTAlign = Ops::Base::CeilAlign(int64_t(cLen * xTypeSize_), blockSize_) / xTypeSize_;
@@ -623,7 +623,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     __local_mem__ U* hPreAddr = (__ubuf__ U*)hPreLocal.GetPhyAddr();
     __local_mem__ U* gradXFromHinAddr = (__ubuf__ U*)gradXFromHinLocal.GetPhyAddr();
 
-    uint32_t vfLen = info.vRegSize / uTypeSize_;
+    uint32_t vfLen = V_REG_SIZE / uTypeSize_;
     uint16_t loopCnt = (info.cLen + vfLen - 1) / vfLen;
     __VEC_SCOPE__
     {
@@ -645,9 +645,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
                 AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
-                for (uint16_t k = 0; k < static_cast<uint16_t>(info.n); k++) {
+                for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
                     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::SCALAR_LOAD>();
-                    U hPre = *(hPreAddr + i * info.n + k);
+                    U hPre = *(hPreAddr + i * n_ + k);
                     U gradHPre = *(gradHPreStart + k);
                     auto xCastStart = xCastAddr + (i * n_ + k) * info.cLenUAlign + j * vfLen;
                     auto xAddrStart = xAddr + (i * n_ + k) * info.cLenXTAlign + j * vfLen;
