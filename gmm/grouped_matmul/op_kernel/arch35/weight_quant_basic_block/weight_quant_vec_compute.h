@@ -54,6 +54,10 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 constexpr uint32_t MX_TRANS_ID_CHECK_SIZE = 256;       // MX transId buffer OOM检查大小
 constexpr uint32_t MX_TRANS_ID_COPY_BLOCK_LEN = 8;     // MX transId DataCopy blockLen(8个32B块)
 constexpr uint64_t NZ_SCALE_INNER_SIZE = 128UL;        // NZ场景scale内轴固定对齐到128
+constexpr uint16_t PERGROUP_SIZE_32 = 32;
+constexpr uint16_t PERGROUP_SIZE_64 = 64;
+constexpr uint16_t PERGROUP_SIZE_128 = 128;
+constexpr uint16_t PERGROUP_SIZE_256 = 256;
 
 #define GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM                                                        \
     template <typename xType, typename wType, typename antiQuantScaleType, typename biasType, typename yType,          \
@@ -1068,13 +1072,29 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
 {
     if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
         if constexpr (wqmmConfig.bTrans) {
-            AntiQuantInt4PerGroupNdNk<xType, wType, wqmmConfig, vecConfig>(
-                addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
-                addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0,
-                static_cast<uint16_t>(vfExternalRealLen), antiQuantGroupSize_,
-                static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
+            if (antiQuantGroupSize_ == PERGROUP_SIZE_32) {
+                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs32<xType, wType, wqmmConfig, vecConfig>>(
+                    addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
+                    addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
+                    static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
+            } else if (antiQuantGroupSize_ == PERGROUP_SIZE_64) {
+                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs32<xType, wType, wqmmConfig, vecConfig>>(
+                    addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
+                    addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
+                    static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
+            } else if (antiQuantGroupSize_ == PERGROUP_SIZE_128) {
+                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs128<xType, wType, wqmmConfig, vecConfig>>(
+                    addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
+                    addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
+                    static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
+            } else if (antiQuantGroupSize_ == PERGROUP_SIZE_256) {
+                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs256<xType, wType, wqmmConfig, vecConfig>>(
+                    addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
+                    addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
+                    static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
+            }
         } else {
-            AntiQuantInt4PerGroupNdKn<xType, wType, wqmmConfig, vecConfig>(
+            AscendC::VF_CALL<AntiQuantInt4PerGroupNdKn<xType, wType, wqmmConfig, vecConfig>>(
                 addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
                 addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0,
                 static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(vfInnerRealLen), antiQuantGroupSize_,
