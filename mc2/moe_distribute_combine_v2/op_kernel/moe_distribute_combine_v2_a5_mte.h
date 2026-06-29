@@ -281,6 +281,7 @@ private:
     bool hasSharedExpertX_ = false;
     bool hasElasticInfoFlag_ = false;
     bool isPerformanceFlag_ = false;
+    bool hasExpertScalesFlag_ = false;
     bool isScalingDownFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool enableSpecialExpert_ = false;
@@ -410,6 +411,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTi
     globalBS_ = tilingData->moeDistributeCombineV2Info.globalBs;
     hasElasticInfoFlag_ = tilingData->moeDistributeCombineV2Info.hasElasticInfo;
     isPerformanceFlag_ = tilingData->moeDistributeCombineV2Info.isPerformance;
+    hasExpertScalesFlag_ = tilingData->moeDistributeCombineV2Info.hasExpertScales;
     epWorldSizeOriginal_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     epRankId_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epRankIdOriginal_ = tilingData->moeDistributeCombineV2Info.epRankId;
@@ -1330,12 +1332,17 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     }
     tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
     expertScalesLocal_ = expertScalesBuf_.Get<float>();
-    const DataCopyExtParams tokenScaleParams{1U, static_cast<uint32_t>(expertScaleCntPerCore
-        * sizeof(float)), 0U, 0U, 0U};
-    const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_],
-        tokenScaleParams, copyPadFloatParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    if (hasExpertScalesFlag_) {
+        const DataCopyExtParams tokenScaleParams{1U, static_cast<uint32_t>(expertScaleCntPerCore
+            * sizeof(float)), 0U, 0U, 0U};
+        const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
+        DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_],
+            tokenScaleParams, copyPadFloatParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+    } else {
+        Duplicate(expertScalesLocal_, static_cast<float>(1), expertScaleCntPerCore);
+        SyncFunc<AscendC::HardEvent::V_S>();
+    }
 }
 
 template <A5MteCombineTypeClass>

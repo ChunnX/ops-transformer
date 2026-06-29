@@ -71,11 +71,20 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        def get_dispatch_dynamic_scales_dtype(x, scales, quant_mode):
+        def has_tensor(tensor):
+            return tensor is not None
+
+        def get_dtype_from_enum(dtype):
+            return TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP[dtype]
+
+        def is_packed_float4(dtype):
+            return dtype in (296, 297)
+
+        def get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode):
             dynamic_scales_dtype = torch.float32
             if quant_mode == 0:
                 if x.dtype != torch.bfloat16 and x.dtype != torch.float16 and scales is not None:
-                    dynamic_scales_dtype = scales.dtype
+                    dynamic_scales_dtype = get_dtype_from_enum(scales_dtype) if scales_dtype is not None else scales.dtype
             elif quant_mode == 4:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
             return dynamic_scales_dtype
@@ -183,10 +192,16 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num
             if quant_mode == 0:
                 out_dtype = x.dtype
+            if y_dtype is not None:
+                out_dtype = get_dtype_from_enum(y_dtype)
 
             assist_info_for_combine_shape = max(bs * k, a * 128)
-            expand_x = x.new_empty(tuple([max(a, a * tp_world_size), h]), dtype=out_dtype)
-            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, quant_mode)
+            expand_x_shape = tuple([max(a, a * tp_world_size), h])
+            if y_dtype is not None and is_packed_float4(y_dtype) and scales is None:
+                torch._check((h % 2) == 0, lambda: "h must be divisible by 2 when y_dtype is packed float4.")
+                expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
+            expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
+            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode)
             if tp_world_size == 0:
                 dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
             elif tp_world_size == 1:
@@ -198,7 +213,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
             tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
             expand_scales = x.new_empty((0), dtype=torch.float32)
-            if expert_scales is not None:
+            if has_tensor(expert_scales):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num + global_bs_real * 2 * k * (ep_world_size // 8)
                 ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
                 expand_scales = x.new_empty((a), dtype=torch.float32)
