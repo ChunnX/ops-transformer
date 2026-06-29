@@ -296,10 +296,14 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
                     scaleLocal = scaleCopyInQueue_.DeQue<float>();
                 }
 
+                SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
                 int64_t outputRow = outputRowOffset + idx;
                 DataCopyPad(expandedXGm_[outputRow * cols_ + colsLoopOffset], xLocal, copyXParams);
                 if (isInputScale_ == 1 && colsLoop == 0) {
                     DataCopyPad(expandedScaleGm_[outputRow], scaleLocal, copyScaleParams);
+                }
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+                if (isInputScale_ == 1 && colsLoop == 0) {
                     scaleCopyInQueue_.FreeTensor(scaleLocal);
                 }
                 xCopyInQueue_.FreeTensor(xLocal);
