@@ -244,7 +244,7 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
         return -1;
     }
     int64_t realkeyOffset = 0;
-    if constexpr (IS_PA) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
@@ -415,7 +415,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         keyGm = cmpKVGm;
         cuSeqlensKvGm = cuSeqlensCmpKvGm;
         sparseIndicesGm = cmpSparseIndicesGm;
-        if constexpr (IS_PA) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             blockTableGm = cmpBlockTableGm;
             blockSize = constInfo.cmpBlockSize;
             maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
