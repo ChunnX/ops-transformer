@@ -52,13 +52,13 @@ extern "C" __global__ __aicore__ void kv_rms_norm_rope_cache(
     if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
         const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
-        KernelKvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
+        KvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM_MTP)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
         const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
-        KernelKvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
+        KvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM_QUANT)) {
@@ -76,13 +76,13 @@ extern "C" __global__ __aicore__ void kv_rms_norm_rope_cache(
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
         const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
-        KernelKvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
+        KvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_MTP)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
         const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
-        KernelKvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
+        KvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_B1SD_NORM)) {
