@@ -107,25 +107,19 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
-    MaskReg preg_tail_n1 = UpdateMask<float>(pltTailN1);
+    MaskReg preg_tail_n1 = UpdateMask<float>(pltTailN1); // tail
     MaskReg preg_ori_tail_n1 = UpdateMask<float>(pltOriTailN1);
     MaskReg preg_tail_n2 = UpdateMask<float>(pltTailN2);
     MaskReg preg_ori_tail_n2 = UpdateMask<float>(pltOriTailN2);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
     MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
 
-    MaskReg preg_compare1;
-    MaskReg preg_compare2;
-    MaskReg preg_compare3;
-    MaskReg preg_compare4;
+    MaskReg preg_compare1, preg_compare2, preg_compare3, preg_compare4;
 
     MaskReg preg1;
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
 
-    MaskReg preg3;
-    MaskReg preg4;
-    MaskReg preg5;
-    MaskReg preg6;
+    MaskReg preg3, preg4, preg5, preg6;
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -230,6 +224,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
             Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
             Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
+            // tail
             Select(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
             Select(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel1,
@@ -273,7 +268,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
-    if constexpr (hasDrop == 1) {
+    if constexpr (hasDrop == 1) { // dropmask
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_zero, 0.0f, preg_all);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -289,15 +284,14 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         ExpSub(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all);
         ExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all);
 
-        // x_sum = sum(x_exp, axis=-1, keepdims=True)
-        Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
+        Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all); // x_sum = sum(x_exp, axis=-1, keepdims=True)
         Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
         Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
         Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3,
                                                                                           preg_all);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum3,
                                                                      ureg_exp_sum, 1);
-        // dropmask compute
+        // dropmask
         if constexpr (hasDrop == 1) {
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_US>(
                 preg1, (__ubuf__ uint32_t *&)dropMaskUb1, s2BaseSize >> 3);
@@ -337,6 +331,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb2), vreg_exp2_bf16, blockStride, repeatStride, preg_all_b16);
         } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
+            // Declare FP8 registers
             RegTensor<fp8_e4m3fn_t> vreg_exp_even_f8e4m3_1;
             RegTensor<fp8_e4m3fn_t> vreg_exp_even_f8e4m3_2;
             RegTensor<fp8_e4m3fn_t> vreg_exp_odd_f8e4m3_1;
@@ -346,8 +341,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_1;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
             RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
-            // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-            uint32_t maskLen = 128;
+
+            uint32_t maskLen = 128; // fp8
             MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
