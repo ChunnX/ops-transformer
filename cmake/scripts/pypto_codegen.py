@@ -63,6 +63,14 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    stamp = out_dir / ".codegen.done"
+    if stamp.is_file():
+        py_mtime = py_file.stat().st_mtime
+        stamp_mtime = stamp.stat().st_mtime
+        if py_mtime <= stamp_mtime:
+            print(f"[pypto_codegen] {args.op_file}: skipped (up-to-date)")
+            return
+    
     fe, kernels = _load_kernels(py_file)
     if not kernels:
         raise SystemExit(f"[pypto_codegen] no @fe.jit kernel found in {py_file}")
@@ -89,7 +97,7 @@ def main():
             print(f"[pypto-timing] {_l}", file=sys.stderr)
 
     print(f"[pypto_codegen] {args.op_file}: generated {sorted(set(copied))} into {out_dir}")
-
+    stamp.touch()
 
 if __name__ == "__main__":
     main()
