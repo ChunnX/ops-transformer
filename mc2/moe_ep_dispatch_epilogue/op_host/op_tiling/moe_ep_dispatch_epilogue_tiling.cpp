@@ -458,6 +458,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
     const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
+    OP_TILING_CHECK(dstBufferSlotIdxShape == nullptr,
+        OP_LOGE(nodeName, "dstBufferSlotIdxShape is nullptr."), return ge::GRAPH_FAILED);
     info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
@@ -468,7 +470,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
 
-    ge::DataType recvXDtype = context->GetOutputDesc(OUT_RECV_X_INDEX)->GetDataType();
+    auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);
+    OP_TILING_CHECK(recvXDesc == nullptr, OP_LOGE(nodeName, "recvXDesc is nullptr."),
+        return ge::GRAPH_FAILED);
+    ge::DataType recvXDtype = recvXDesc->GetDataType();
     bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
     uint32_t recvXDtypeSize = isFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
     uint32_t hAlign32 = ((info.cfg.hidden * recvXDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
