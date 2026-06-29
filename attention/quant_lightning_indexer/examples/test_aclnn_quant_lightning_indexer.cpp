@@ -126,9 +126,9 @@ int InitializeTensors(TensorResources& resources) {
 
     std::vector<int8_t> queryHostData(queryShapeSize, 1);
     std::vector<int8_t> keyHostData(keyShapeSize, 1);
-    std::vector<uint16_t> weightsHostData(weightsShapeSize, 0x3F00);
-    std::vector<float> queryDequantScaleHostData(queryDequantScaleShapeSize, 1.0f);
-    std::vector<float> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
+    std::vector<uint16_t> weightsHostData(weightsShapeSize, 0x3C00);
+    std::vector<aclFloat16> queryDequantScaleHostData(queryDequantScaleShapeSize, 1.0f);
+    std::vector<aclFloat16> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
     std::vector<int32_t> actualSeqLengthsKeyHostData = {256, 512};
     std::vector<int32_t> blockTableHostData(blockTableShapeSize, 0);
     for (int32_t i = 0; i < 32; i++) {
