@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
@@ -37,3 +38,4 @@ from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer
 from .grouped_matmul_activation_quant import npu_grouped_matmul_activation_quant
+
