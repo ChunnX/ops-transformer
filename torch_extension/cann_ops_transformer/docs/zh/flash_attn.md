@@ -1,4 +1,4 @@
-# flash_attn<a name="ZH-CN_TOPIC_0000002309174912"></a>
+# flash_attn <a name="ZH-CN_TOPIC_0000002309174912"></a>
 
 ## 产品支持情况
 
@@ -206,7 +206,7 @@ cann_ops_transformer.ops.flash_attn(
 |      公共参数组      |         q         |      INPUT      |   Tensor   |
 |                      |          k          |      INPUT      | Tensor |
 |                      |         v         |      INPUT      | Tensor |
-|                      |         metadata        |      INPUT(Optional)      | Tensor |
+|                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
 |                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
@@ -248,8 +248,6 @@ cann_ops_transformer.ops.flash_attn(
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
--metdata校验
-    - metdata当前不支持不传入，未传入metdata的用例将发出拦截报警。
 
 - q、k、v、attn_out校验
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
@@ -388,6 +386,41 @@ layout匹配关系表：
         <td>(Q_N, Q_T)</td>
     </tr>
 </tbody>
+</table>
+
+metadata校验
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>metadata</td>
+            <td>
+                <ul>
+                    <li>tensor_type仅支持INT32</li>
+                    <li>shape由flash_attn_metadata动态计算</li>
+                    <li>当前不支持不传入，未传入将发出拦截报警</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>传入时需与flash_attn_metadata生成的结果一致</td>
+        </tr>
+    </tbody>
 </table>
 
 #### Mask参数组
@@ -629,36 +662,6 @@ mask_mode参数解释
             <td> 可选参数 </td>
             <td> 无 </td>
             <td> 暂不支持 </td>
-        </tr>
-    </tbody>
-</table>
-
-#### Metadata参数组
-
-<table style="undefined;table-layout: fixed; width:1625px">
-    <colgroup>
-        <col style="width: 147px">
-        <col style="width: 232px">
-        <col style="width: 232px">
-        <col style="width: 293px">
-        <col style="width: 185px">
-    </colgroup>
-    <thead>
-        <tr>
-            <th>参数</th>
-            <th>单参数校验</th>
-            <th>存在性校验</th>
-            <th>一致性校验</th>
-            <th>特性交叉校验</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>metadata</td>
-            <td>tensor_type仅支持INT32；shape由flash_attn_metadata动态计算</td>
-            <td>可选参数</td>
-            <td>无</td>
-            <td>传入时需与flash_attn_metadata生成的结果一致</td>
         </tr>
     </tbody>
 </table>
