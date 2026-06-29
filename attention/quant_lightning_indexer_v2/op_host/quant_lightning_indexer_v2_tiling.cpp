@@ -933,7 +933,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             }
         }
     }
-    if (!keyDequantScaleStridesVec_.empty() && opParamInfo_.key_dequant_scale.shape != nullptr) {
+    if ((*opParamInfo_.quantMode != 4) && !keyDequantScaleStridesVec_.empty() && opParamInfo_.key_dequant_scale.shape != nullptr) {
         auto &shape = opParamInfo_.key_dequant_scale.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
