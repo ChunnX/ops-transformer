@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
@@ -34,7 +35,5 @@ from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
-from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
-from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
-from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
-from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .causal_conv1d_fn import causal_conv1d_fn
+from .causal_conv1d_update import causal_conv1d_update
