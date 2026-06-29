@@ -209,6 +209,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
+    rankPerServer_ /= 2;
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankPerServer_);
     serverId_ = rankId_ / rankPerServer_;
     rankInServer_ = rankId_ % rankPerServer_;
