@@ -26,7 +26,7 @@ from torchair.ge import attr
 # 为自定义算子注册converter，用于torch.compile 场景成图
 # 注意： meta_outputs形参名为固定写法，若写错会影响ge节点的输出dtype与shape推导
 @register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attn.default)
-def convert_npu_quant_block_sparse_attn(  # pylint: disable=huawei-too-many-arguments
+def convert_npu_quant_block_sparse_attn(
     query: Tensor,
     key: Tensor,
     value: Tensor,
