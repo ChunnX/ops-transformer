@@ -232,7 +232,7 @@ public:
             LayoutO gmOLayout(qSeqlen, strideQO);
             LayoutLse gmLseLayout(qSeqlen, qHeads_);
 #endif
-
+            kvSLoopNum = (kvSLoopNum == 1) ? 2 : kvSLoopNum;
             for (uint32_t kvBlockIdx = 0; kvBlockIdx < kvSLoopNum + PRE_LAUNCH; kvBlockIdx++) {
                 // === Stage 1+2: QK Matmul & Online Softmax ===
                 if (kvBlockIdx < kvSLoopNum) {
