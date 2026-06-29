@@ -1,92 +1,124 @@
-# Compressor
+# compressor
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Atlas A3 推理系列产品</term>   | √  |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
--   API功能：Compressor是推理场景下SAS和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。
-
--   计算公式：
-  
-    压缩阶段：
-    1. 计算矩阵乘法：
-        - C4A: $\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];$ 
-        - C128A: $\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]$
-    2. 计算分组加法：
-        - C4A: $score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};$ 
-        - C128A: $score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};$
-    3. 计算分组Softmax：
-        - C4A: $S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};$ 
-        - C128A: $S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};$
-    4. 计算Hadamard乘积：
-        - C4A: $(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ; kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};$
-        - C128A: $S_H = S_i^\prime \odot kv\_state;$
-    5. 沿着压缩轴分组求和：
-        - C4A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};$
-        - C128A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};$
-
--   主要计算过程为：
+- 接口功能：Compressor是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
     3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
 
+- 计算公式：
+
+    1. 计算矩阵乘法：
+
+    $$
+    C4A：\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];
+    $$
+
+    $$
+    C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
+    $$
+
+    2. 计算分组加法：
+
+    $$
+    C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
+    $$
+
+    $$
+    C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
+    $$
+
+    3. 计算分组Softmax：
+
+    $$
+    C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
+    $$
+
+    $$
+    C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
+    $$
+
+    4. 计算Hadamard乘积：
+
+    $$
+    C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
+    $$
+
+    $$
+    C128A：S_H = S_i^\prime \odot kv\_state;
+    $$
+
+    5. 沿着压缩轴分组求和：
+
+    $$
+    C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
+    $$
+
+    $$
+     C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
+    $$
+
 ## 函数原型
 
+```python
+cann_ops_transformer.compressor(
+    x,
+    wkv,
+    wgate,
+    state_cache,
+    ape,
+    cmp_ratio,
+    *,
+    state_block_table=None,
+    cu_seqlens=None,
+    seqused=None,
+    start_pos=None,
+    coff=1,
+    cache_mode=1) -> Tensor
 ```
-custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_table = None, cu_seqlens = None, seqused = None, start_pos = None, coff = 1, cache_mode = 1) -> (Tensor)
-```
-- Transformer Compressor算子实现参考: [Compressor](https://gitcode.com/cann/ops-transformer/tree/master/attention/compressor)
 
 ## 参数说明
 
->**说明：**<br> 
->
->- x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
-
--   **x**（`Tensor`）：必选参数，表示原始不经压缩的数据，对应公式中的$X$。不支持非连续，数据格式支持ND，数据类型支持`bfloat16`、`float16`。支持输入shape[B,S,H]、[T,H]。
-    
--   **wkv**（`Tensor`）：必选参数，表示kv压缩权重，对应公式中的$W^{KV}$。不支持非连续，数据格式支持ND，数据类型支持`bfloat16`、`float16`。支持输入shape[coff* D,H]。
-    
--   **wgate**（`Tensor`）：必选参数，表示gate压缩权重，对应公式中的$W^{Gate}$。不支持非连续，数据格式支持ND，数据类型支持`bfloat16`、`float16`。支持输入shape[coff* D,H]。
-
--   **state\_cache**（`Tensor`）：必选参数，表示kv\_state和score\_state的历史数据，对应公式中的$\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND，数据类型支持`float32`。支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
-
--   **ape**（`Tensor`）：必选参数，表示positional biases，对应公式中的$Ape$。不支持非连续，数据格式支持ND，数据类型支持`float32`。支持输入shape[cmp_ratio,coff* D]。
-
--   **cmp\_ratio**（`int`）：必选参数，表示数据压缩率。
-
-- <strong>*</strong>：代表其之前的参数是位置相关的，必须按照顺序输入；之后的参数是可选参数，位置无关，不赋值会使用默认值。
-
--   **state\_block\_table**（`Tensor`）：可选参数，表示state\_cache存储使用的block映射表。不支持非连续，数据格式支持ND，数据类型支持`int32`。支持输入shape[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length。当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。
-
--   **cu\_seqlens**（`Tensor`）：可选参数，表示不同Batch上的有效token数。不支持非连续，数据格式支持ND，数据类型支持`int32`。当x的shape为[B,S,H]时，参数必须为空。当x的shape为[T,H]时，输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
-
--   **seqused**（`Tensor`）：可选参数，表示不同Batch中实际参与压缩的token数。不支持非连续，数据格式支持ND，数据类型支持`int32`。支持输入shape[B,]。如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
-
--   **start\_pos**（`Tensor`）：可选参数，表示计算起始位置。不支持非连续，数据格式支持ND，数据类型支持`int32`。支持输入shape[B,]。当输入为None时，表示从0开始进行计算。
-
--   **coff**（`int`）：可选参数，默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。
-
--   **cache\_mode**（`int`）：可选参数，表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。
-
->**说明：**<br> 
->
->- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cacheMode不支持输入2。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度（shape） |
+| ---- | ---- | ---- | ---- | ---- | ---- |
+| x | Tensor | 必选 | 原始不经压缩的数据，对应公式中的 $X$。不支持非连续，数据格式支持ND。 | bfloat16、float16 | [B,S,H]、[T,H] |
+| wkv | Tensor | 必选 | kv压缩权重，对应公式中的 $W^{KV}$。不支持非连续，数据格式支持ND。 | bfloat16、float16 | [coff* D,H] |
+| wgate | Tensor | 必选 | gate压缩权重，对应公式中的 $W^{Gate}$。不支持非连续，数据格式支持ND。 | bfloat16、float16 | [coff* D,H] |
+| state_cache | Tensor | 必选 | kv_state和score_state的历史数据，对应公式中的 $\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND。 | float32 | [block_num,block_size,2* coff* D]，要求block_num>0 |
+| ape | Tensor | 必选 | positional biases，对应公式中的 $Ape$。不支持非连续，数据格式支持ND。 | float32 | [cmp_ratio,coff* D] |
+| cmp_ratio | int | 必选 | 数据压缩率。默认值为4. | - | - |
+| state_block_table | Tensor | 可选 | state_cache存储使用的block映射表。不支持非连续，数据格式支持ND。 | int32 | cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作 |
+| cu_seqlens | Tensor | 可选 | 不同Batch上的有效token数。不支持非连续，数据格式支持ND。<br>当x的shape为[B,S,H]时，参数必须为空。<br>当x的shape为[T,H]时，输入shape必须为[B+1,]，该参数为前缀和数组，后一个元素≥前一个元素，第一位必须为0。 | int32 | [B+1,] |
+| seqused | Tensor | 可选 | 不同Batch中实际参与压缩的token数。不支持非连续，数据格式支持ND。<br>指定为None时，数值等于每个Batch上的Sequence Length。<br>[B,S,H]场景：0 ≤ seqused[n] ≤ S<br>[T,H]场景：0 ≤ seqused[n] ≤ cu_seqlens[n+1] - cu_seqlens[n]。 | int32 | [B,] |
+| start_pos | Tensor | 可选 | 计算起始位置。不支持非连续，数据格式支持ND，输入为None时从0开始计算 | int32 | [B,] |
+| coff | int | 可选 | 默认值1，仅支持1/2。<br>coff=1：无需进行overlap数据重排<br>coff=2：需要进行overlap数据重排。 | int32 | - |
+| cache_mode | int | 可选 | state_cache的存储模式。<br>1：连续buffer<br>2：循环buffer<br>默认值1。 | int32 | - |
+| state_cache_stride_dim0 | int | 可选 |表示state_cache的0轴stride，默认值为0。| int32          |-|
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>： cache_mode不支持输入2，且不支持0轴非连续。
 
 ## 返回值说明
 
--   **cmp\_kv**（`Tensor`）：必选输出，表示压缩后的数据。不支持非连续，数据格式支持ND。数据类型支持`bfloat16`、`float16`。当x的shape为[B,S,H]时，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) +  (<batch1>compressed_tokens+pad1) + ... +  (<batchN>compressed_tokens+padN)；当x的shape为[T,H]时，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度（shape） |
+| ---- | ---- | ---- | ---- | ---- | ---- |
+| cmp_kv | Tensor | 必选 | 压缩后的数据。不支持非连续，数据格式支持ND；<br>当x的shape为[B,S,H]时，输出拼接：(<batch0>compressed_tokens+pad0) +  (<batch1>compressed_tokens+pad1) + ... +  (<batchN>compressed_tokens+padN)；<br>当x的shape为[T,H]时，输出拼接：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。 | bfloat16、float16 | x=[B,S,H]：[B,ceil(S/cmp_ratio),D]<br>x=[T,H]：[min(T,T//cmp_ratio+B),D] |
 
 ## 约束说明
-
--   该接口支持B、S泛化，且存在如下场景限制：
-    -   只支持B、S为0。
-    -   部分长序列场景下，如果计算量过大可能会导致出现超过NPU内存的报错，注：这里计算量会受x输入shape的影响，值越大计算量越大。典型的长序列（即B、S的乘积或T较大）场景包括但不限于：
+- 该接口支持推理场景下使用。
+- 该接口支持单算子模式和TorchAir图模式调用。
+- x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
+- 该接口支持B、S泛化，且存在如下场景限制：
+    - 只支持B、S为0。
+    - 部分长序列场景下，如果计算量过大可能会导致出现超过NPU内存的报错，注：这里计算量会受x输入shape的影响，值越大计算量越大。典型的长序列（即B、S的乘积或T较大）场景包括但不限于：
     <div style="overflow-x: auto;">
     <table style="undefined;table-layout: fixed; width: 400px"><colgroup>
     <col style="width: 100px">
@@ -121,25 +153,28 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
     </tbody>
     </table>
     </div>
--   支持D为128/512。
--   支持H为1K~10K，512对齐。
--   支持cmp_ratio为2、4、8、16、32、64、128。
--   当cmp_ratio为4/128时，支持如下三种情况：
-    -   C4A: D=512, coff=2, cmp_ratio=4;
-    -   C4Li: D=128, coff=2, cmp_ratio=4;
-    -   C128A: D=512, coff=1, cmp_ratio=128。
--   该接口支持aclgraph模式。
+- 支持D为128/512。
+- 支持H为1K~10K，512对齐。
+- 支持block_size为1~1024。
+- 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
+    - C4A: D=512, coff=2, cmp_ratio=4;
+    - C4Li: D=128, coff=2, cmp_ratio=4;
+    - C128A: D=512, coff=1, cmp_ratio=128。
+- 该接口支持aclgraph模式。
+- 该接口不支持GE图模式。
+
+## 确定性计算
+- 默认支持确定性计算。
 
 ## 调用说明
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 示例代码如下
 
-  - 单算子模式调用
+  - 单算子模式调用：
 
     ```python
     import torch
     import torch_npu
     import numpy as np
-    import custom_ops
+    from cann_ops_transformer.ops import compressor
     import torch.nn as nn
     import math
 
@@ -240,13 +275,13 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        block_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
         if B==0:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -285,7 +320,7 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
         seqused = torch.tensor(seqused).to(torch.int32).npu()
 
     cmp_kv = (
-        torch.ops.custom.compressor(
+        compressor(
             x,
             wkv,
             wgate,
@@ -301,7 +336,7 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
         )
     )
     ```
-  - aclgraph调用
+  - TorchAir图模式调用：
 
     ```python
     import torch
@@ -309,7 +344,7 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
     import numpy as np
     import torch.nn as nn
     import torchair
-    import custom_ops
+    from cann_ops_transformer.ops import compressor
     import math
 
     def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
@@ -409,13 +444,13 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        block_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
         if B==0:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -460,7 +495,7 @@ custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_tab
         def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None, 
                     seqused = None, start_pos = None, coff = 1, cache_mode = 1):
             cmp_kv = (
-                torch.ops.custom.compressor(
+                compressor(
                     x,
                     wkv,
                     wgate,
