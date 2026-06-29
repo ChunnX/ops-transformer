@@ -120,13 +120,13 @@ def _infer_weight_layout(weight, weight_scale, e, k):
     non_trans_weight_shape = (e, k, non_trans_n)
     non_trans_weight_scale_shape = (e, math.ceil(k / 64), non_trans_n, 2)
     if weight_shape == non_trans_weight_shape and weight_scale_shape == non_trans_weight_scale_shape:
-        return non_trans_n
+        return non_trans_n, False
 
     trans_n = weight_scale.shape[1]
     trans_weight_shape = (e, trans_n, k)
     trans_weight_scale_shape = (e, trans_n, math.ceil(k / 64), 2)
     if weight_shape == trans_weight_shape and weight_scale_shape == trans_weight_scale_shape:
-        return trans_n
+        return trans_n, True
 
     raise AssertionError(
         "weight and weight_scale shape must match one of the supported WeightNz layouts: "
@@ -179,7 +179,7 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
             m = x.shape[0]
             k = x.shape[1]
             e = group_list.shape[0]
-            n = _infer_weight_layout(weight[0], weight_scale[0], e, k)
+            n, _ = _infer_weight_layout(weight[0], weight_scale[0], e, k)
 
             y_dtype_value = _to_torch_dtype(_resolve_y_dtype(y_dtype, x, x_dtype))
             y = torch.empty((m, n), dtype=y_dtype_value, device="meta")
