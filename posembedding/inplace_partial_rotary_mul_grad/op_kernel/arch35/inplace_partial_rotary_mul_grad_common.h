@@ -131,6 +131,14 @@ __aicore__ inline void BatchInterleaveModeGradVF(__local_mem__ TDY *in, __local_
                                                  uint16_t bLength, uint16_t nLength, int64_t dLen, int64_t dAlignDy,
                                                  int64_t dAlignCos, int64_t ubFactorS, int64_t ubFactorN)
 {
+    AscendC::printf("BatchInterleaveModeGradVF: TDY_size=%u TCOS_size=%u IsBroadCast=%d\n",
+                    static_cast<uint32_t>(sizeof(TDY)), static_cast<uint32_t>(sizeof(TCOS)),
+                    static_cast<int32_t>(IsBroadCast));
+    AscendC::printf("  sLength=%u bLength=%u nLength=%u dLen=%ld\n",
+                    static_cast<uint32_t>(sLength), static_cast<uint32_t>(bLength),
+                    static_cast<uint32_t>(nLength), dLen);
+    AscendC::printf("  dAlignDy=%ld dAlignCos=%ld ubFactorS=%ld ubFactorN=%ld\n",
+                    dAlignDy, dAlignCos, ubFactorS, ubFactorN);
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint16_t dLoopCount = (dLen + loopSize - 1) / loopSize;
 
