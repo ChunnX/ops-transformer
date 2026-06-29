@@ -134,7 +134,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, isCrossServer, yOut, expertTokenNumsOut,
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, false, yOut, expertTokenNumsOut,
         workspaceSize, executor);
 
     return getWorkspaceSizesRes;
