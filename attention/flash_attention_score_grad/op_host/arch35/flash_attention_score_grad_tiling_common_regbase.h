@@ -487,7 +487,8 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     bool isNzOut = false;
 };
 
-inline int64_t CeilCommon(int64_t num1, int64_t num2)
+template <typename T>
+inline T CeilDiv(T num1, T num2)
 {
     if (num2 == 0) {
         return 0;
