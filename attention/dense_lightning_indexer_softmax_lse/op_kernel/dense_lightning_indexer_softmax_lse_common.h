@@ -75,7 +75,7 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-    static constexpr uint32_t MAX_KEY_SEQ_LENGTH = 128 * 1024;
+    static constexpr uint32_t MAX_KEY_SEQ_LENGTH = 1024 * 1024;
 
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
