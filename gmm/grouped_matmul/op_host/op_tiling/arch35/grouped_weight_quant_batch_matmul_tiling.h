@@ -43,6 +43,10 @@ constexpr size_t ANTIQUANT_SCALE_DIM_NUM = 4; // MX格式antiquantScale维度数
 constexpr size_t PENULTIMATE_DIM = 2;         // 倒数第2维
 constexpr size_t ANTEPENULTIMATE_DIM = 3;     // 倒数第3维
 constexpr int64_t MX_GROUP_FACTOR = 2;        // MX格式groupNum计算因子
+constexpr int64_t A16W4_SINGLE_PER_CHANNEL_DIM = 2; // 单单单: scale/offset [E, N]
+constexpr int64_t A16W4_SINGLE_PER_GROUP_DIM = 3;   // 单单单: scale/offset [E, G, N]
+constexpr int64_t A16W4_MULTI_PER_CHANNEL_DIM = 1;  // 多多多: scale/offset [N_i]
+constexpr int64_t A16W4_MULTI_PER_GROUP_DIM = 2;    // 多多多: scale/offset [G_i, N_i]
 
 constexpr uint32_t BASIC_BLOCK_BASE_M = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
@@ -66,6 +70,10 @@ constexpr int32_t B8_DATA_SIZE = 1;
 constexpr uint32_t MX_GROUP_SIZE = 32;
 
 constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
+
+constexpr uint32_t S8S4_BASEK_MULTIPLIER = 2;       // S8S4场景MAD采用S8类型，baseK需放大2倍
+constexpr uint64_t FP4_PER_FP32 = 8;                 // 1个float32/int32表示8个fp4/int4
+constexpr uint64_t DEFAULT_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;  // 16MB默认workspace大小
 
 struct TailBlockResplitParam {
     uint32_t mainBlockSize = 0;
@@ -164,6 +172,7 @@ enum class Mte2Configuration : uint8_t {
     MTE2_INNER_SIZE_256_BUF_NUM_4 = 3,
     MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT = 4,  // w8 w4在非性能场景下复用一组设置
     MTE2_INNER_SIZE_384_BUF_NUM_3 = 5,
+    MTE2_INNER_SIZE_256_BUF_NUM_2 = 6,
     MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 = 15, // MXA8W4 NZ场景，K轴长度动态调整
 };
 
@@ -270,6 +279,7 @@ protected:
     void SetTilingKey(gert::TilingContext *context);
     bool SetCustomParam(gert::TilingContext *context);
     bool IsA16W4ND() const;
+    bool IsA16W4NDPergroup() const;
     bool IsMxA8W4() const;
     bool CheckPerTokenScale(const gert::TilingContext* context) const;
     bool CheckUnsupportDataFlow() const;
@@ -283,6 +293,16 @@ protected:
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
+    bool DeriveGroupSizeSingle(const gert::TilingContext *context);
+    bool DeriveGroupSizeMulti(const gert::TilingContext *context);
+    bool GetA16W4MultiScaleShape(const gert::TilingContext *context, uint16_t idx, gert::Shape &scaleShape) const;
+    bool DeriveA16W4MultiPergroupSizeFromScale(const gert::Shape &scaleShape, int64_t kSize, uint16_t idx,
+                                               uint32_t &groupSize) const;
+    bool CheckA16W4MultiPergroupScaleShape(const gert::TilingContext *context, uint16_t idx,
+                                           int64_t expectedDimNum, uint32_t expectedGroupSize) const;
+    bool CheckMultiA16W4PerChannelShape(const gert::TilingContext *context) const;
+    bool CheckAntiquantOffsetMatchScale(const gert::TilingContext *context, uint16_t idx,
+                                        const gert::Shape &scaleShape) const;
     bool CheckGroupSize() const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
     void CalcFullNumBlocksResplitTiling(uint64_t c0Size);
