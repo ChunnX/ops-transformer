@@ -82,7 +82,7 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     auto valueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(value->GetStorageFormat()));
     auto blockSparseMaskFormat = ge::FORMAT_ND;
     if (blockSparseMaskOptional != nullptr) {
-        blockSparseMaskFormat = 
+        blockSparseMaskFormat =
             static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
     }
     auto attenMaskFormat = ge::FORMAT_ND;
