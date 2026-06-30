@@ -588,7 +588,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
     faWithFdConfig.costLimit = bestResultWithFd.maxCost;
 
     auto coreRange = CalcCoreRange(sectionIdx, computeContext);
-    for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
+    for (uint32_t i = NumToIndex(coreRange.first); i < coreRange.second; ++i) {
         faNoFdConfig.coreNum = i;
         faWithFdConfig.coreNum = i;
 
