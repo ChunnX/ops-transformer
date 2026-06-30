@@ -13,7 +13,17 @@
 
 ## 功能说明
 
-- 接口功能：`SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持C1A（Sliding Window Attention，SWA）、C4A（Compressed Sparse Attention，CSA）、C128A（Heavily Compressed Attention，HCA）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+- 接口功能：
+
+  `SparseFlashMlaMetadata`接口用于生成一个任务列表`metadata`，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseFlashMla`算子使用。主算子必须传入该`metadata`。
+
+  `SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`MixedQuantSparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`MixedQuantSparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
@@ -25,7 +35,7 @@
 
   - 滑动窗口部分（oriKv）：对第$i_{S1}$个Query token，其因果对角线位置为$\text{ori\_threshold} = S2_{act} - S1_{act} + i_{S1} + 1$，窗口范围为$[\max(\text{ori\_threshold} - \text{ori\_win\_left} - 1, 0), \text{ori\_threshold} + \text{ori\_win\_right})$。
 
-  - 压缩KV部分（cmpKv）：因果边界阈值为$\text{cmp\_threshold} = \lfloor \frac{\text{ori\_threshold}}{\text{cmp\_ratio}} \rfloor$。C128A场景取$[0, \text{cmp\_threshold})$内的连续压缩KV；C4A场景通过TopK索引从压缩KV中按需收集，仅保留$\text{begin\_idx} < \text{cmp\_threshold}$的块。
+  - 压缩KV部分（cmpKv）：因果边界阈值为$\text{cmp\_threshold} = \lfloor \frac{\text{ori\_threshold}}{\text{cmp\_ratio}} \rfloor$。HCA场景取$[0, \text{cmp\_threshold})$内的连续压缩KV；CSA场景通过TopK索引从压缩KV中按需收集，仅保留$\text{begin\_idx} < \text{cmp\_threshold}$的块。
 
   注意力计算采用Online Softmax（Flash Attention V2），S2方向按512分块循环，sinks作为每行softmax的初始最大值：
 
@@ -166,7 +176,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>C1A/C4A/C128A场景必须传入。</td>
+      <td>SWA/CSA/HCA场景必须传入。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
@@ -175,7 +185,7 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
-        N2仅支持1，D仅支持512。
+        N2仅支持1，D仅支持512，由nope(448)和rope(64)拼接而成。
       </td>
       <td>√</td>
     </tr>
@@ -183,7 +193,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>C4A/C128A场景必须传入，C1A场景不传入。</td>
+      <td>CSA/HCA场景必须传入，SWA场景不传入。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
@@ -192,7 +202,7 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
-        N2仅支持1，D仅支持512。
+        N2仅支持1，D仅支持512，由nope(448)和rope(64)拼接而成。
       </td>
       <td>√</td>
     </tr>
@@ -210,7 +220,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>C4A场景必须传入，C1A/C128A场景不传入。</td>
+      <td>CSA场景必须传入，SWA/HCA场景不传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -236,7 +246,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpBlockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>C4A/C128A场景且layoutKv为PA_BBND时必须传入。</td>
+      <td>CSA/HCA场景且layoutKv为PA_BBND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, cmp_max_block_num_per_batch)</td>
@@ -306,7 +316,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在CSA/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -366,7 +376,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A场景传4，C128A场景传128。</td>
+      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，CSA场景支持传4，HCA场景支持传128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -386,7 +396,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。C1A场景下该参数不生效。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。SWA场景下该参数不生效。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -416,7 +426,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -426,7 +436,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>标识输入oriKvOptional和cmpKvOptional的数据排布格式。</td>
-      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -446,7 +456,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>returnSoftmaxLse（bool）</td>
       <td>输入</td>
       <td>是否返回softmaxLse。</td>
-      <td>支持true或false，默认值为false。</td>
+      <td>支持true或false。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -545,7 +555,7 @@ aclnnStatus aclnnSparseFlashMla(
         <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
       </tr>
       <tr>
-        <td>C1A场景cmpRatio不为1，或cmpRatio与C4A/C128A场景不匹配。</td>
+        <td>SWA场景cmpRatio不为1，或cmpRatio与CSA/HCA场景不匹配。</td>
       </tr>
       <tr>
         <td>oriWinLeft不为127，或oriWinRight不为0。</td>
@@ -662,9 +672,9 @@ aclnnStatus aclnnSparseFlashMla(
 
   | 场景 | oriKvOptional | cmpKvOptional | cmpSparseIndicesOptional | 说明 |
   | :--- | :----- | :----- | :----------------- | :--- |
-  | C1A   | 必须传入 | 不传入 | 不传入 | 仅滑动窗口注意力 |
-  | C4A   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
-  | C128A | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
+  | SWA   | 必须传入 | 不传入 | 不传入 | 仅滑动窗口注意力 |
+  | CSA   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
+  | HCA | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
 
 - Layout约束
 
