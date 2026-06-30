@@ -397,7 +397,7 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
                    "gradHpost dim num should be 3 for 4D format, but got %zu", gradHpostDimNum);
         CHECK_COND(CheckShape4D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 4D format");
     }
-
+ 
     return ACLNN_SUCCESS;
 }
 
