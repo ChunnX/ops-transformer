@@ -148,10 +148,10 @@ def check_param_valid(
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
-# V scope 2: cast dQueryIndex FP32→FP16
+# V scope 3: cast dQueryIndex FP32→FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[17, 18, 19, 20],
+    out_idx=[-6, -5, -4, -3],
     workspace_idx=[6, 7, 8, 12, 13, 14, 15, 16, 21],
     pass_configs=pass_configs,
 )
@@ -178,13 +178,13 @@ def tilelang_grad_kl_loss_single_kernel(
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),              # 0
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),          # 1
-        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 2
-        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 3
-        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 4
-        QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 5
-        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 6  workspace
-        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 7  workspace
-        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 8 workspace
+        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 2  raw key (was GatherKey)
+        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 3  raw key_rope (was GatherKeyRope)
+        QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 4
+        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 5  raw key_index (was GatherKeyIndex)
+        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 6  workspace (was GatherKeyIndexT)
+        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 7  workspace (new)
+        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 8 workspace (new)
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 9
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 10
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 11
@@ -198,7 +198,7 @@ def tilelang_grad_kl_loss_single_kernel(
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 19 OUT
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 20 OUT
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 21
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),             # 22  int32 at end
+        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 22  int32 at END
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -216,7 +216,7 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 key_row_ub = T.alloc_ub((1, DQuery), input_dtype)
                 ki_row_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
-                kr_row_ub = T.alloc_ub((1, max(d_rope, 1)), input_dtype)  # min size 1 for d_rope=0
+                kr_row_ub = T.alloc_ub((1, max(d_rope, 1)), input_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     for k_id in T.serial(k_start, k_end):
@@ -474,7 +474,7 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
             # reluGrad @ GatherKeyIndex_ws → dQueryIndex_ws
-            # (Reads from GatherKeyIndex_ws directly, no transpose needed)
+            # (Reads from GatherKeyIndex_ws directly, not transposed)
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
@@ -683,34 +683,27 @@ def sparse_lightning_indexer_grad_kl_loss(
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
 
-        # Convert softmax_max/softmax_sum to float32 if needed (kernel expects calc_dtype=float32)
-        softmax_max_orig = softmax_max
-        softmax_sum_orig = softmax_sum
-        if softmax_max.dtype != torch.float32:
-            softmax_max = softmax_max.float()
-        if softmax_sum.dtype != torch.float32:
-            softmax_sum = softmax_sum.float()
-
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
         if _PROFILE:
             _t_prep_start = torch.npu.Event(enable_timing=True)
             _t_prep_end = torch.npu.Event(enable_timing=True)
+            _t_kernel_start = torch.npu.Event(enable_timing=True)
+            _t_kernel_end = torch.npu.Event(enable_timing=True)
             _t_reduce_start = torch.npu.Event(enable_timing=True)
             _t_reduce_end = torch.npu.Event(enable_timing=True)
+            _t_scatter_start = torch.npu.Event(enable_timing=True)
+            _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_prep_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         # Gather moved into kernel V0 scope — no host-side preprocess needed
 
-        # Handle no-RoPE case: create dummy zero-sized tensors
+
+        # Pad rope dims to k_block alignment, and handle None
+        d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
         if query_rope is None:
             query_rope = torch.zeros(B, S1, N1, 0, dtype=input_dtype, device=query.device)
         if key_rope is None:
             key_rope = torch.zeros(B, S2_pad, N2, 0, dtype=input_dtype, device=query.device)
-
-        # Pad rope dims to k_block alignment to avoid partial T.copy in kernel
-        d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
-        query_rope_orig = query_rope
-        key_rope_orig = key_rope
         if d_rope > d_rope_orig and d_rope_orig > 0:
             pad_len = d_rope - d_rope_orig
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
@@ -753,27 +746,22 @@ def sparse_lightning_indexer_grad_kl_loss(
                                         bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
                                         d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
 
-        # Zero workspaces before each call (gather_ws will be filled by V0 scope)
+        # Zero workspaces before each call (gather_ws filled by V0 scope)
         d_query_index_ws.zero_()
-
-        # Debug: verify input dtypes match kernel expectations
-        assert softmax_max.dtype == torch.float32, f"softmax_max dtype mismatch: expected float32, got {softmax_max.dtype}"
-        assert softmax_sum.dtype == torch.float32, f"softmax_sum dtype mismatch: expected float32, got {softmax_sum.dtype}"
 
         if _PROFILE:
             _t_prep_end.record()
-            _t_kernel_start = torch.npu.Event(enable_timing=True)
-            _t_kernel_end = torch.npu.Event(enable_timing=True)
             _t_kernel_start.record()
         results = func(
-            query, query_rope, key, key_rope, key_index,
-            query_index, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
+            query, query_rope, key, key_rope,
+            query_index, key_index,
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
             weights, softmax_max, softmax_sum,
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
             d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
             d_query_index_ws,
-            sparse_indices,  # int32 at position 22 (end)
+            sparse_indices,
         )
         if _PROFILE:
             _t_kernel_end.record()
