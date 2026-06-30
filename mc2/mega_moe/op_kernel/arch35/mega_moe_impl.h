@@ -960,6 +960,7 @@ __aicore__ inline void SharedExpertGmm2Kernel(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutC = MakeLayoutC{}(m, n);
+    auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1u, n);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -977,8 +978,7 @@ __aicore__ inline void SharedExpertGmm2Kernel(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(aScaleAddr)), layoutScaleA);
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(bScaleAddr)), layoutScaleB);
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)),
-        Te::NDExtLayoutPtn{}(1U, n));
+    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
     auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(cAddr)), layoutC);
 
     BlockScheduler scheduler(

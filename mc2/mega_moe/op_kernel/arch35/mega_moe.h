@@ -1216,10 +1216,11 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpert()
 {
     if constexpr (g_coreType == AIC) {
-        __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
+        GlobalTensor<int32_t> quantDoneFlagTensor;
+        quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-            quantDoneFlag[blockIdx_]);
-        while (ReadGmByPassDCache(quantDoneFlag + blockIdx_) != int32_t(2)) {
+            quantDoneFlagTensor[blockIdx_]);
+        while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
             AscendC::Nop<200>();
         }
     }
@@ -1228,10 +1229,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpert()
     // GMM2 维度: A(m×hiddenDim/2) × B(k×hiddenDim/2)^T → C(m×k)
     uint64_t bStridePerExpert = static_cast<uint64_t>(hiddenDim_) * k_ / B_ELEMS_PER_BYTE;
     uint64_t bScaleStridePerExpert = static_cast<uint64_t>(hiddenDim_) *
-        Ops::Base::CeilDiv(k_, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Ops::Base::CeilDiv(static_cast<uint64_t>(k_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     uint64_t b2StridePerExpert = static_cast<uint64_t>(k_) * hiddenDim_ / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
     uint64_t b2ScaleStridePerExpert = static_cast<uint64_t>(k_) *
-        Ops::Base::CeilDiv(hiddenDim_ / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
+        Ops::Base::CeilDiv(static_cast<uint64_t>(hiddenDim_ / SWIGLU_N_HALF), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
         * MXFP_MULTI_BASE_SIZE;
 
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
