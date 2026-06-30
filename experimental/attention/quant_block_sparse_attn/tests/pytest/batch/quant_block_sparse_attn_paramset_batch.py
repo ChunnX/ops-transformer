@@ -26,7 +26,7 @@ EXCEL_COLUMNS = [
 
 PA_BLOCK_PADDING_BYTES = 0
 
-EXCEL_FILENAME = "cases.xlsx"
+EXCEL_FILENAME = "cases.csv"
 
 _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "sparse_q_block_size", "sparse_kv_block_size",
