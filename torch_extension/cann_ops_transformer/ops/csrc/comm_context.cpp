@@ -245,7 +245,7 @@ public:
             return;
         }
 
-        ASCEND_LOGI("start CheckProtocolSupport, layerNum is %d", layerNum);
+        ASCEND_LOGI("start CheckProtocolSupport, layerNum is %u", layerNum);
         CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
 
         ASCEND_LOGI("CheckProtocolSupport success!");
@@ -262,7 +262,7 @@ public:
         protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP; // 检查是否跨超节点
         layerMap_ = {}; // 清空layerMap，准备重新检查
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+            ASCEND_LOGI("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
             
             // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
             auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex],
@@ -281,12 +281,10 @@ public:
                             "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    ASCEND_LOGI("Layer %d does not support URMA with rank %d, break loop",
-                                layerList[layerIndex], rankIdLists[rankIdx]);
+                    ASCEND_LOGI("Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
+                                layerList[layerIndex], rankIdLists[rankIdx], srcRankId);
                     // 若不支持，则跳出循环
                     allSupportUrma = false;
-                    ASCEND_LOGE("Layer %d does not support URMA with rank %d, break loop",
-                                layerList[layerIndex], rankIdLists[rankIdx]);
                     return;
                 }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
@@ -309,16 +307,16 @@ public:
 
         auto hcclRet = HcclGetRankIdFunc(commHandle, &srcRankId);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "CheckProtocolSupport Get rank ID failed, ret: ", hcclRet);
-        ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+        ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
 
         // 先获取整个通信域的卡数ranksize
         uint32_t rankSize = 0;
         hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
-        ASCEND_LOGI("Get rank size success, rankSize is: %d", rankSize);
+        ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+            ASCEND_LOGI("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
             hcclRet =
                 HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
@@ -334,7 +332,7 @@ public:
                             "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    ASCEND_LOGI("Layer %d does not support UB_MEM with rank %d, break loop",
+                    ASCEND_LOGI("Layer %u does not support UB_MEM with rank %u, break loop",
                                 layerList[layerIndex], rankIdLists[layerIndex]);
                     // 若不支持，则跳出循环
                     allSupportUbMem = false;
@@ -346,7 +344,7 @@ public:
                 break;
             }
             rankNumPerUbDomain_ = rankNumInLayer;
-            ASCEND_LOGI("Layer %d all support UB_MEM, rankNumPerUbDomain_: %d",
+            ASCEND_LOGI("Layer %u all support UB_MEM, rankNumPerUbDomain_: %u",
                         layerList[layerIndex], rankNumPerUbDomain_);
         }
         // 判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
@@ -434,7 +432,7 @@ public:
 
         uint32_t rankSizePerServer = 0;
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, commContextStruct);
-        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %zu", rankSize - 1);
+        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %d", rankSize - 1);
 
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
