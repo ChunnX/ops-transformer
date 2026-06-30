@@ -417,8 +417,9 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::ProcessLse(const RunInfo &info, c
 template <typename SMLAT>
 __aicore__ inline void
 SMLAVectorBlock<SMLAT>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                            LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
-                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                            LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+                                            uint32_t startRow, uint32_t dealRowCount,
+                                            uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
     LocalTensor<T> inMaxTensor;
