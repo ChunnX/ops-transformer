@@ -99,7 +99,7 @@ public:
     using BlockEpilogueParams = typename BlockEpilogue::Params;
     using DataTypeOut = typename BlockEpilogue::DataTypeOut;
     using L1Params = typename BlockMmad::L1Params;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using MmShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
@@ -310,7 +310,7 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        TupleShape resProblemShape{m, n, k, 0};
+        TupleShape resProblemShape{m, n, k};
         bs.UpdateNextProblem(resProblemShape);
         epilogueOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
