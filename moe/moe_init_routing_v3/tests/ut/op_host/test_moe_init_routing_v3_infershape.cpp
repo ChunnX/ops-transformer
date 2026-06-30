@@ -1587,6 +1587,8 @@ constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17LL;
 constexpr int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 // arch35可选rowIdxType
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0LL;
@@ -1597,6 +1599,8 @@ const static std::unordered_map<int64_t, ge::DataType> QUANT_DST_TYPE_MAP = {
     {QUANT_MODE_DYNAMIC, ge::DT_INT8},
     {QUANT_MODE_MXFP8_E5M2, ge::DT_FLOAT8_E5M2},
     {QUANT_MODE_MXFP8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
+    {QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2, ge::DT_FLOAT8_E5M2},
+    {QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN, ge::DT_FLOAT8_E4M3FN},
     {QUANT_MODE_INT4_DYNAMIC, ge::DT_INT4},
     {QUANT_MODE_FP8_GROUP_E5M2, ge::DT_FLOAT8_E5M2},
     {QUANT_MODE_FP8_GROUP_E4M3FN, ge::DT_FLOAT8_E4M3FN},
@@ -1613,7 +1617,9 @@ void RunSuccessTestcaseInferShape(ShapeList xShape, ge::DataType xDtype, ShapeLi
                                   ShapeList expectOutShape1, ShapeList expectOutShape2, ShapeList expectOutShape3)
 {
     ge::DataType expandedXDtype = (quantMode == QUANT_MODE_UNQUANT) ? xDtype : QUANT_DST_TYPE_MAP.at(quantMode);
-    ge::DataType expandedScaleDtype = (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN) ?
+    ge::DataType expandedScaleDtype = (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
+                                       quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+                                       quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN) ?
                                           ge::DT_FLOAT8_E8M0 :
                                           ge::DT_FLOAT;
 
@@ -1692,6 +1698,24 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_mxquant_6)
     RunSuccessTestcaseInferShape({-1, -1}, ge::DT_FLOAT16, {-1, -1}, {-1}, -1, EXPERT_CAPACITY, 128, DROP_PAD_MODE,
                                  EXPERT_TOKENS_TYPE_KEY_VALUE, EXPERT_TOKENS_NUM_FLAG, QUANT_MODE_MXFP8_E4M3FN,
                                  {16, 32}, ROW_IDX_TYPE_GATHER, {-1, -1}, {-1}, {128, 2}, {-1, -1});
+}
+
+// TokensCount模式+MXFP8 RoundScale Amax E5M2量化+h不为32倍数
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_mxquant_roundscale_amax_e5m2)
+{
+    RunSuccessTestcaseInferShape({32, 65}, ge::DT_FLOAT16, {32, 8}, {32}, 256, EXPERT_CAPACITY, 32, DROP_PAD_MODE,
+                                 EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2, {16, 32}, ROW_IDX_TYPE_GATHER, {256, 65},
+                                 {256}, {16}, {256, 4});
+}
+
+// TokensKV模式+MXFP8 RoundScale Amax E4M3量化+h不为32倍数
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_mxquant_roundscale_amax_e4m3)
+{
+    RunSuccessTestcaseInferShape({32, 97}, ge::DT_BF16, {32, 8}, {32}, 256, EXPERT_CAPACITY, 128, DROP_PAD_MODE,
+                                 EXPERT_TOKENS_TYPE_KEY_VALUE, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN, {0, 32}, ROW_IDX_TYPE_GATHER, {256, 97},
+                                 {256}, {128, 2}, {256, 4});
 }
 
 // INT4动态量化+scale为(1,H)
@@ -1784,7 +1808,9 @@ void RunTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode, ge::graphS
 void RunSuccessTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode)
 {
     ge::DataType expandedXDtype = (quantMode == QUANT_MODE_UNQUANT) ? xDtype : QUANT_DST_TYPE_MAP.at(quantMode);
-    ge::DataType expandedScaleDtype = (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN) ?
+    ge::DataType expandedScaleDtype = (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
+                                       quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+                                       quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN) ?
                                           ge::DT_FLOAT8_E8M0 :
                                           ge::DT_FLOAT;
     RunTestcaseInferDataType(xDtype, quantMode, ge::GRAPH_SUCCESS, expandedXDtype, expandedScaleDtype);
@@ -1812,6 +1838,18 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_3)
 TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_4)
 {
     RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_MXFP8_E4M3FN);
+}
+
+// FP16+MXFP8 RoundScale Amax E5M2量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_roundscale_amax_e5m2)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2);
+}
+
+// BF16+MXFP8 RoundScale Amax E4M3量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_roundscale_amax_e4m3)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN);
 }
 
 // FP32+INT4动态量化
@@ -1901,10 +1939,12 @@ ge::DataType GetExpandedXDtype(ge::DataType xDtype, int64_t quantMode)
         case QUANT_MODE_INT4_DYNAMIC:
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
         case QUANT_MODE_FP8_GROUP_E5M2:
         case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
         case QUANT_MODE_FP8_GROUP_E4M3FN:
         case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
@@ -1924,6 +1964,8 @@ ge::DataType GetExpandedXDtype(ge::DataType xDtype, int64_t quantMode)
 ge::DataType GetExpandedScaleDtype(int64_t quantMode)
 {
     if (quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
+        quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+        quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode == QUANT_MODE_MXFP4_E2M1) {
         return ge::DT_FLOAT8_E8M0;
     }
