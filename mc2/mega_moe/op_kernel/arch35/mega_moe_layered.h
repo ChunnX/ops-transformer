@@ -90,6 +90,7 @@ private:
         uint32_t expertIdx);
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
 
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
@@ -226,6 +227,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
+    params_.peermemInfoUrma = PeermemInfoUrma(urmaRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     expertRevNumsGlobalTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
@@ -341,7 +343,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     }
     // Tensor用处：SendMaskCal 函数中搬运本卡的 topkIds；
     // Tensor大小：该Tensor在进行CompareScalar时，compareCount_要求256B对齐，申请大小256字节对齐；
-    uint32_t topkIdsTensorAddr = 0;
+    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+    hcomm_.Init(hcommTensor_, ALIGN_512);
+    uint32_t topkIdsTensorAddr = ALIGN_512;
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
@@ -474,7 +478,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     if constexpr(g_coreType == AIC) {
         return;
     }
-
     // Phase 1: 加载本卡 topk 到 topkIdsTensor_ (compareCount_ 个 int, 尾部补 0)
     GlobalTensor<int32_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
@@ -487,43 +490,60 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
     // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
-    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID0, EVENT_ID1};
+    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID1, EVENT_ID2};
     for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
         SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
-    int32_t totalExperts = static_cast<int32_t>(worldSize_ * expertPerRank_);
+    int32_t totalExperts = static_cast<int32_t>(worldSize_);
     uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize_) / sizeof(int32_t);  // count 在槽内 int32 偏移
     DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(maskSlotSize_), 0U, 0U, 0U};
     int32_t iter = 0;
     GlobalTensor<uint8_t> dstGlobalTensor;
-    for (int32_t curExpertId = aivCoreIdx_; curExpertId < totalExperts; curExpertId += blockAivNum_, ++iter) {
-        int32_t dstRank = curExpertId / static_cast<int32_t>(expertPerRank_);
-        int32_t expertNumPer = curExpertId % static_cast<int32_t>(expertPerRank_);
-        TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-        LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-        LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
-        LocalTensor<int32_t> maskBufI32 = maskBuf.template ReinterpretCast<int32_t>();
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
+        for(uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
+            int32_t curExpertId = curRankId * expertPerRank_ + expertIdIndex;
+            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
+            LocalTensor<int32_t> maskBufI32 = maskBuf.template ReinterpretCast<int32_t>();
+            WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);  // 等本 buffer 上一轮 MTE3 推送完成
+            CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, compareCount_);
+            // 同步算 count: GatherMask 对 mask 取 set-bit 数(mask=sendTotalNum_ 跳过尾部 padding)。
+            uint64_t sendCnt = 0;
+            GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
+                static_cast<uint32_t>(sendTotalNum_), {1, 1, 0, 0}, sendCnt);
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();   // count 标量就绪
+            maskBufI32.SetValue(countWordIdx, static_cast<int32_t>(sendCnt));  // 写入槽内 count
+            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>(); // count 对 MTE3 可见(V 已被 V_S 排空)
 
-        WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);  // 等本 buffer 上一轮 MTE3 推送完成
-        CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, compareCount_);
-        // 同步算 count: GatherMask 对 mask 取 set-bit 数(mask=sendTotalNum_ 跳过尾部 padding)。
-        uint64_t sendCnt = 0;
-        GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
-            static_cast<uint32_t>(sendTotalNum_), {1, 1, 0, 0}, sendCnt);
-        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();   // count 标量就绪
-        maskBufI32.SetValue(countWordIdx, static_cast<int32_t>(sendCnt));  // 写入槽内 count
-        SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>(); // count 对 MTE3 可见(V 已被 V_S 排空)
-
-        uint64_t dstOffset = maskWinOffset_ +
-            static_cast<uint64_t>(expertNumPer * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
-            static_cast<uint64_t>(maskSlotSize_);
-        dstGlobalTensor.SetGlobalBuffer(
-            (__gm__ uint8_t*)GetRankWinAddrWithOffset(dstRank, dstOffset,0));
-        DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
-        SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
+            uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) + 
+                                 static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
+                            static_cast<uint64_t>(maskSlotSize_);
+            dstGlobalTensor.SetGlobalBuffer(
+                (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
+            if (curRankId == rankId_) {
+                dstGlobalTensor.SetGlobalBuffer(
+                    (__gm__ uint8_t*)(GetRankWinAddrWithOffset(rankId_, dstOffset,1)));
+            }
+            DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
+            PipeBarrier<PIPE_ALL>();
+            if (curRankId != rankId_) {
+                GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset,1);
+                GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+            }
+            SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
+        }
     }
     for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
+    }
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
+        if (curRankId == rankId_) {
+            continue;
+        }
+        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
     }
 }
 
@@ -606,7 +626,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfoUrma.maskRecvPtr +
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 

@@ -123,6 +123,7 @@ struct Params {
     GM_ADDR expertTokenNumsOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
+    PeermemInfoUrma peermemInfoUrma;
     MegaMoeTilingData *tilingData;
 };
 
@@ -211,6 +212,13 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
         }
     } while (true);
 }
+
+__aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext* mc2Context_, uint32_t rankId, uint32_t epRankId)
+{
+    uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
+    return mc2Context_->hcommHandle[index];
+}
+
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 inline GM_ADDR urmaRankAddr_[HCCL_MAX_RANK_SIZE];

@@ -119,6 +119,8 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
 
+    GM_ADDR maskSlotPtr; // urma发送mask临时GM
+
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -198,6 +200,18 @@ struct WorkspaceInfo {
             int64_t stridePerExpert = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
+        }
+
+        if (tilingData->commMode == COMM_MODE_CROSS_SERVER) {
+            maskSlotPtr = base + workspaceSize;
+            int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+            int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
+                                                        (int64_t)sizeof(int32_t);
+            int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+            int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
+            
+            workspaceSize += Ops::Base::CeilAlign(
+                (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
         }
     }
 };
