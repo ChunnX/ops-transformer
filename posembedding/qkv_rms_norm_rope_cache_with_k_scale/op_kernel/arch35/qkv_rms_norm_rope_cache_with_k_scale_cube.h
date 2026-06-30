@@ -45,10 +45,10 @@ public:
 
     __aicore__ inline void PrepareRotationBeforeLoop()
     {
-        CopyRotationGmToL1Nz(rotationL1Nz_, rotationGm_);
+        CopyRotationGmToL1Nz();
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-        LoadRotationToL0(l0b_, rotationL1Nz_);
+        LoadRotationToL0();
         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
     }
@@ -60,10 +60,9 @@ public:
             static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
-        const uint64_t qL0cOffset = 0U;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
-        ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, qL0cOffset, kL0cOffset);
-        FixpipePreprocessedSegmentToAivUb(tile, qRows, true, l0cBufferId, qL0cOffset, qkAfterCubeUb);
+        ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
+        FixpipePreprocessedSegmentToAivUb(tile, qRows, true, l0cBufferId, 0U, qkAfterCubeUb);
         FixpipePreprocessedSegmentToAivUb(tile, kRows, false, l0cBufferId, kL0cOffset, qkAfterCubeUb);
     }
 
@@ -103,8 +102,7 @@ private:
     static_assert(EVT_MMAD_TO_MTE1_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIC MMAD->MTE1 L0 events exceed event id range.");
 
-    __aicore__ inline void CopyRotationGmToL1Nz(const LocalTensor<bfloat16_t> &rotationL1Nz,
-                                                const GlobalTensor<bfloat16_t> &rotationGm)
+    __aicore__ inline void CopyRotationGmToL1Nz()
     {
         Nd2NzParams nd2nzParams;
         nd2nzParams.ndNum = 1U;
@@ -115,11 +113,10 @@ private:
         nd2nzParams.dstNzC0Stride = QKV_RRC_HEAD_DIM_D128;
         nd2nzParams.dstNzNStride = 1U;
         nd2nzParams.dstNzMatrixStride = 0U;
-        DataCopy(rotationL1Nz, rotationGm, nd2nzParams);
+        DataCopy(rotationL1Nz_, rotationGm_, nd2nzParams);
     }
 
-    __aicore__ inline void LoadRotationToL0(const LocalTensor<bfloat16_t> &rotationL0b,
-                                            const LocalTensor<bfloat16_t> &rotationL1Nz)
+    __aicore__ inline void LoadRotationToL0()
     {
         LoadData2DParamsV2 loadDataParams;
         loadDataParams.mStartPosition = 0U;
@@ -130,12 +127,11 @@ private:
         loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(QKV_RRC_HEAD_DIM_D128, QKV_RRC_NZ_C0));
         loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(QKV_RRC_HEAD_DIM_D128, QKV_RRC_NZ_C0));
         loadDataParams.ifTranspose = true;
-        LoadData(rotationL0b, rotationL1Nz, loadDataParams);
+        LoadData(l0b_, rotationL1Nz_, loadDataParams);
     }
 
     __aicore__ inline void ComputePreprocessedQkToL0C(const LocalTensor<bfloat16_t> &aRotL1Nz, uint64_t qRows,
-                                                      uint64_t kRows, uint32_t bufferId, uint64_t qL0cOffset,
-                                                      uint64_t kL0cOffset)
+                                                      uint64_t kRows, uint32_t bufferId, uint64_t kL0cOffset)
     {
         if (qRows == 0U && kRows == 0U) {
             return;
@@ -143,13 +139,12 @@ private:
 
         const LocalTensor<bfloat16_t> kSegmentL1Nz = aRotL1Nz[NzMatrixElements(qRows)];
         uint32_t l0aDbIter = 0U;
-        ComputeSegmentToL0C(qRows, aRotL1Nz, l0b_, bufferId, qL0cOffset, l0aDbIter);
-        ComputeSegmentToL0C(kRows, kSegmentL1Nz, l0b_, bufferId, kL0cOffset, l0aDbIter);
+        ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aDbIter);
+        ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aDbIter);
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
-                                               const LocalTensor<bfloat16_t> &rotationL0b, uint32_t l0cBufferId,
-                                               uint64_t l0cOffset, uint32_t &l0aDbIter)
+                                               uint32_t l0cBufferId, uint64_t l0cOffset, uint32_t &l0aDbIter)
     {
         if (segmentRows == 0U) {
             return;
@@ -167,7 +162,7 @@ private:
             SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             ComputeMmad(segmentRows, dSize, isFirstD, isLastD, l0aBufferId, l0cBufferId,
-                        RotationKChunk(rotationL0b, dStart), l0cOffset);
+                        RotationKChunk(dStart), l0cOffset);
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
             ++l0aDbIter;
         }
@@ -215,7 +210,7 @@ private:
 
     __aicore__ inline void ComputeMmad(uint64_t mSize, uint64_t dSize, bool initC, bool updateUnitFlag,
                                        uint32_t l0aBufferId, uint32_t l0cBufferId,
-                                       const LocalTensor<bfloat16_t> &rotationL0b, uint64_t l0cOffset)
+                                       const LocalTensor<bfloat16_t> &rotationL0bChunk, uint64_t l0cOffset)
     {
         if (mSize == 0U) {
             return;
@@ -229,13 +224,12 @@ private:
         params.cmatrixInitVal = initC;
         params.cmatrixSource = false;
         Mmad(l0c_[l0cBufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + l0cOffset],
-             l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], rotationL0b, params);
+             l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], rotationL0bChunk, params);
     }
 
-    __aicore__ inline LocalTensor<bfloat16_t> RotationKChunk(const LocalTensor<bfloat16_t> &rotationL0b,
-                                                            uint64_t dStart)
+    __aicore__ inline LocalTensor<bfloat16_t> RotationKChunk(uint64_t dStart)
     {
-        return rotationL0b[dStart * QKV_RRC_HEAD_DIM_D128];
+        return l0b_[dStart * QKV_RRC_HEAD_DIM_D128];
     }
 
     __aicore__ inline void FixpipeSegmentToAivUb(uint64_t segmentRows, uint64_t dstBaseRow, uint32_t bufferId,

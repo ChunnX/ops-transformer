@@ -25,9 +25,9 @@ namespace QkvRmsNormRopeCacheWithKScale {
 using AscendC::CO2Layout;
 using AscendC::DataCopy;
 using AscendC::DataCopyExtParams;
-using AscendC::DataCopyParams;
 using AscendC::DataCopyPad;
 using AscendC::DataCopyPadExtParams;
+using AscendC::DataCopyParams;
 using AscendC::Fixpipe;
 using AscendC::FixpipeConfig;
 using AscendC::FixpipeParamsC310;
@@ -102,8 +102,7 @@ constexpr uint32_t QKV_RRC_SLOT_MAPPING_DB_POOL_ELEMENTS =
     QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;
 constexpr uint32_t QKV_RRC_V_SCALE_UB_ELEMENTS = QKV_RRC_V_SCALE_UB_BYTES / sizeof(float);
 constexpr uint32_t QKV_RRC_QK_SCALE_UB_ELEMENTS =
-    QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / (QKV_RRC_HEAD_DIM_D128 * sizeof(float)) *
-    QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+    QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / (QKV_RRC_HEAD_DIM_D128 * sizeof(float)) * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
 constexpr uint32_t QKV_RRC_QK_NZ_SCATTER_INDEX_UB_ELEMENTS = QKV_RRC_QK_NZ_SCATTER_INDEX_UB_BYTES / sizeof(uint16_t);
 constexpr uint32_t QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS = QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t);
 constexpr uint32_t QKV_RRC_V_OUT_DB_POOL_ELEMENTS = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS;
@@ -180,8 +179,8 @@ __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 }
 
 template <typename T>
-__aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
-                                        uint64_t rowCount, uint64_t colCount, uint64_t srcStride)
+__aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint64_t rowCount,
+                                        uint64_t colCount, uint64_t srcStride)
 {
     if (rowCount == 0U || colCount == 0U) {
         return;
@@ -204,9 +203,8 @@ __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalT
 }
 
 template <typename T>
-__aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src,
-                                        uint64_t rowCount, uint64_t colCount, uint64_t srcStride,
-                                        uint64_t dstStride)
+__aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src, uint64_t rowCount,
+                                        uint64_t colCount, uint64_t srcStride, uint64_t dstStride)
 {
     if (rowCount == 0U || colCount == 0U) {
         return;
@@ -215,8 +213,8 @@ __aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalT
     DataCopyExtParams params;
     params.blockCount = static_cast<uint16_t>(rowCount);
     params.blockLen = static_cast<uint32_t>(colCount * sizeof(T));
-    params.srcStride = static_cast<decltype(params.srcStride)>((srcStride - colCount) * sizeof(T) /
-                                                               QKV_RRC_BLOCK_BYTES);
+    params.srcStride =
+        static_cast<decltype(params.srcStride)>((srcStride - colCount) * sizeof(T) / QKV_RRC_BLOCK_BYTES);
     params.dstStride = static_cast<decltype(params.dstStride)>((dstStride - colCount) * sizeof(T));
     params.rsv = 0U;
     DataCopyPad(dst, src, params);

@@ -38,8 +38,8 @@ public:
         TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
         basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
-                        tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize, tilingData->kvCacheStrideBlock,
-                        tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
+                        tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize,
+                        tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
                         tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
                         tilingData->kScaleCacheStrideToken, tilingData->epsilon);
         basicBlock.PrepareBeforeLoop();
@@ -101,8 +101,7 @@ private:
     {
         tile.aivBlockTokenOffset = aivLocalId * tile.cubeHalfTokenSize;
         tile.aivTokenOffset = tile.tokenOffset + tile.aivBlockTokenOffset;
-        tile.aivTokenSize =
-            aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
+        tile.aivTokenSize = aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
     }
 
     __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> &basicBlock,
