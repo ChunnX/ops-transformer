@@ -55,7 +55,7 @@ cann_ops_transformer.causal_conv1d_update(
 | activation | str | 可选 | 激活函数类型，"silu"或"none"。默认值为"silu"。 | - | - |
 | conv_state_indices | Tensor | 可选 | 缓存索引，指定每个序列对应的缓存状态在conv_state中的索引。默认None使用恒等映射。 | int32 | [batch] |
 | num_accepted_tokens | Tensor | 可选 | 投机解码中每个batch已接受的token数，仅kW=4支持。默认None。 | int32 | [batch] |
-| query_start_loc | Tensor | 可选 | 变长序列起始位置索引。默认None。 | int32 | [batch+1] |
+| query_start_loc | Tensor | 可选 | 变长序列起始位置索引。默认None。提供时，batch大小由query_start_loc.size(0)-1决定，而非由x的shape推导。 | int32 | [batch+1] |
 | max_query_len | int | 可选 | 最大查询长度，-1表示不限制。默认值为-1。 | - | - |
 | null_block_id | int | 可选 | 无效缓存槽位标记ID，conv_state_indices[i]==null_block_id时跳过该序列并输出填零。默认值为0。 | - | - |
 | block_idx_last_scheduled_token | Tensor | 可选 | 最后调度token块索引。 | int32 | [batch] |

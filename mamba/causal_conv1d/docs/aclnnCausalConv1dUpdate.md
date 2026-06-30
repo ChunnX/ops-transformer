@@ -167,7 +167,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
     <tr>
       <td>queryStartLocOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。变长序列场景必须提供。</td>
+      <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。变长序列场景必须提供。提供时，batch大小由queryStartLoc.size(0)-1决定，而非由x的shape推导。</td>
       <td>shape为[batch+1]。queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen，值必须非递减。</td>
       <td>INT32</td>
       <td>ND</td>
