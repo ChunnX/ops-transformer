@@ -105,23 +105,30 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutRange(int64_t startIn
         GlobalTensor<uint8_t> zeroGm;
         zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXUint8Gm_.GetPhyAddr() + startIndex * this->cols_,
                                rowCount * this->cols_);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
     } else {
         GlobalTensor<T> zeroGm;
         zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startIndex * this->cols_,
                                rowCount * this->cols_);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
     }
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
     if (this->isInputScale_ == 1) {
         GlobalTensor<float> scaleZeroGm;
         scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startIndex, rowCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(scaleZeroGm, rowCount, static_cast<float>(0));
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     }
 
     GlobalTensor<int32_t> sourceRowGm;
     sourceRowGm.SetGlobalBuffer((__gm__ int32_t *)outputToSrcRowGm_.GetPhyAddr() + startIndex, rowCount);
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     InitGlobalMemory(sourceRowGm, rowCount, static_cast<int32_t>(-1));
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 }
 
 template <typename T>
