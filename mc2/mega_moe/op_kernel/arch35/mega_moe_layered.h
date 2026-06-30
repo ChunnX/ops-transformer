@@ -1288,7 +1288,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
         if (GetSubBlockIdx() == 1) {
-            CombineSendTokenToRemote(params_);
+            MegaMoeCombineImpl::CombineSendTokenToRemote(params_);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
