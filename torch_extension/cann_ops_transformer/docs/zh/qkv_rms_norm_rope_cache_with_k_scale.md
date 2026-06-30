@@ -115,8 +115,8 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 | actual_seq_lens | Tensor | 必选 | 每个batch追加当前token后的实际序列长度，用于计算RoPE位置历史偏移。 | torch.int32 | `(Batch,)` |
 | head_nums | List[int] | 必选 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | int | 长度为3 |
 | qkv_layout | str | 必选 | `qkv`、`q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | str | - |
-| rotation | Tensor | 必选 | Q/K共享矩阵乘权重，当前必须传入非空Tensor。 | torch.bfloat16 | `(D, D)` |
-| v_scale | Tensor | 必选 | V分支量化缩放因子，当前必须传入非空Tensor。 | torch.float32 | `(Nv,)` |
+| rotation | Tensor | 必选 | Q/K共享矩阵乘权重，当前不支持不传或空Tensor。 | torch.bfloat16 | `(D, D)` |
+| v_scale | Tensor | 必选 | V分支量化缩放因子，当前不支持不传或空Tensor。 | torch.float32 | `(Nv,)` |
 | epsilon | float | 可选 | RMSNorm防除零参数，默认值为`1e-6`。 | float | - |
 
 ## 输出说明
@@ -152,7 +152,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 - `cu_seq_len[0]`应为0，`cu_seq_len[-1]`应等于`T`。`actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。
 - 对第`b`个batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + i`计算；调用方需保证`actual_seq_lens[b] >= cu_seq_len[b+1] - cu_seq_len[b]`且`cos_sin`覆盖所有位置。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
 - `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
-- `rotation`和`v_scale`当前必须传入非空Tensor。
+- `rotation`和`v_scale`为可选输入，当前不支持不传或空Tensor。
 - `k_cache`、`v_cache`和`k_scale_cache`支持连续Tensor，也支持符合以下约束的非连续Tensor：
     - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1。
     - `k_cache`和`v_cache`前三维stride必须一致。
