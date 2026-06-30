@@ -109,6 +109,8 @@ struct WorkspaceInfo {
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
+    GM_ADDR sharedExpertResultPtr;
+    GM_ADDR quantDoneFlagPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -182,6 +184,20 @@ struct WorkspaceInfo {
             int64_t stridePerExpert = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
+        }
+
+        // Shared expert workspace buffers
+        sharedExpertResultPtr = nullptr;
+        quantDoneFlagPtr = nullptr;
+        if (tilingData->sharedExpertNum > 0) {
+            // sharedExpertResult: GMM2 output for shared experts [bs × sharedExpertNum × h]
+            // 临时存储，Unpermute 阶段读取后累加到最终输出
+            sharedExpertResultPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h;
+            // quantDoneFlag: AIV writes (AtomicAdd, 2 per block), AIC polls [aicNum × sizeof(int32_t)]
+            quantDoneFlagPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
         }
     }
 };
