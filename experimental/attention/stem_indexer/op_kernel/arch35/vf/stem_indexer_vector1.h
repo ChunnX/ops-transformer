@@ -138,6 +138,183 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<ty
     AscendC::MicroAPI::Xor(outKey1, outKey1, regMask[1], maskAll);
 }
 
+__simd_callee__ inline void PadMrgRowRangeVFCore(__ubuf__ uint32_t* rowBuf,
+                                                const uint32_t padStart,
+                                                const uint32_t padEnd)
+{
+    constexpr uint32_t VF_U32_ELEMS = 64U;
+    const uint32_t blockStart = (padStart / VF_U32_ELEMS) * VF_U32_ELEMS;
+    const uint32_t blockEnd = ((padEnd + VF_U32_ELEMS - 1U) / VF_U32_ELEMS) * VF_U32_ELEMS;
+
+    MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskGeStart;
+    MicroAPI::MaskReg maskLtEnd;
+    MicroAPI::MaskReg maskPad;
+    MicroAPI::RegTensor<int32_t> regIdx;
+    MicroAPI::RegTensor<uint32_t> regOldValue;
+    MicroAPI::RegTensor<uint32_t> regZero;
+    MicroAPI::RegTensor<uint32_t> regOutValue;
+    MicroAPI::Duplicate(regZero, 0U, maskAll);
+
+    for (uint32_t blockBase = blockStart; blockBase < blockEnd; blockBase += VF_U32_ELEMS) {
+        MicroAPI::Arange(regIdx, static_cast<int32_t>(blockBase));
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(regOldValue, rowBuf + blockBase);
+        MicroAPI::Compares<uint32_t, CMPMODE::GE>(maskGeStart, (MicroAPI::RegTensor<uint32_t>&)regIdx,
+                                                  padStart, maskAll);
+        MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskLtEnd, (MicroAPI::RegTensor<uint32_t>&)regIdx,
+                                                  padEnd, maskAll);
+        MicroAPI::And(maskPad, maskGeStart, maskLtEnd, maskAll);
+        MicroAPI::Select(regOutValue, regZero, regOldValue, maskPad);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(rowBuf + blockBase, regOutValue, maskAll);
+    }
+}
+
+__simd_callee__ inline uint32_t PadMrgAlignUp(const uint32_t value, const uint32_t align)
+{
+    return ((value + align - 1U) / align) * align;
+}
+
+__simd_vf__ inline void PadMrgSingleRowRangeVFImpl(__ubuf__ uint32_t* rowBuf,
+                                                  const uint32_t padStart,
+                                                  const uint32_t padEnd)
+{
+    PadMrgRowRangeVFCore(rowBuf, padStart, padEnd);
+}
+
+__simd_vf__ inline void PadMrgFourRowsFirstS2RangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
+                                                        __ubuf__ uint32_t* topkNumBuf,
+                                                        __ubuf__ uint32_t* s2BlockValidLenBuf,
+                                                        __ubuf__ uint32_t* initBlockLenBuf,
+                                                        const uint32_t mBaseIdx,
+                                                        const uint32_t batchRowNum,
+                                                        const uint32_t rowStride,
+                                                        const uint32_t trunkLen)
+{
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+        const uint32_t topkSelectNum = topkNumBuf[mInnerIdx];
+        const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+        const uint32_t s2BlockValidLen = s2BlockValidLenBuf[mInnerIdx];
+        const uint32_t s2BlockValidLenAlign = PadMrgAlignUp(s2BlockValidLen, trunkLen);
+        const uint32_t initBlockLen = initBlockLenBuf[mInnerIdx];
+        __ubuf__ uint32_t* rowBuf = mrgValueBuf + mInnerIdx * rowStride;
+
+        PadMrgRowRangeVFCore(rowBuf,
+                             topkSelectNumAlign + s2BlockValidLen,
+                             topkSelectNumAlign + s2BlockValidLenAlign);
+        PadMrgRowRangeVFCore(rowBuf, topkSelectNumAlign, topkSelectNumAlign + initBlockLen);
+    }
+}
+
+__simd_vf__ inline void PadMrgFourRowsNotFirstS2RangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
+                                                           __ubuf__ uint32_t* topkNumBuf,
+                                                           __ubuf__ uint32_t* s2BlockValidLenBuf,
+                                                           const uint32_t mBaseIdx,
+                                                           const uint32_t batchRowNum,
+                                                           const uint32_t rowStride,
+                                                           const uint32_t trunkLen)
+{
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+        const uint32_t topkSelectNum = topkNumBuf[mInnerIdx];
+        const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+        const uint32_t s2BlockValidLen = s2BlockValidLenBuf[mInnerIdx];
+        const uint32_t s2BlockValidLenAlign = PadMrgAlignUp(s2BlockValidLen, trunkLen);
+        __ubuf__ uint32_t* rowBuf = mrgValueBuf + mInnerIdx * rowStride;
+
+        PadMrgRowRangeVFCore(rowBuf, topkSelectNum, topkSelectNumAlign);
+        PadMrgRowRangeVFCore(rowBuf,
+                             topkSelectNumAlign + s2BlockValidLen,
+                             topkSelectNumAlign + s2BlockValidLenAlign);
+    }
+}
+
+__simd_vf__ inline void PadMrgRowsRangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
+                                             const uint32_t rowStride,
+                                             const uint32_t actS1Size,
+                                             const uint32_t s1Idx,
+                                             const uint32_t validGSize,
+                                             const uint32_t padStart,
+                                             const uint32_t padEnd)
+{
+    for (uint32_t gIdx = 0; gIdx < validGSize; gIdx++) {
+        const uint32_t mInnerIdx = gIdx * actS1Size + s1Idx;
+        PadMrgRowRangeVFCore(mrgValueBuf + mInnerIdx * rowStride, padStart, padEnd);
+    }
+}
+
+__aicore__ inline void PadMrgSingleRowRangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                             const uint32_t rowOffset,
+                                             const uint32_t padStart,
+                                             const uint32_t padEnd)
+{
+    if (padEnd <= padStart) {
+        return;
+    }
+
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    PadMrgSingleRowRangeVFImpl(mrgValueBuf + rowOffset, padStart, padEnd);
+}
+
+__aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                                   const LocalTensor<uint32_t> &topkNumLocal,
+                                                   const LocalTensor<uint32_t> &s2BlockValidLenLocal,
+                                                   const LocalTensor<uint32_t> &initBlockLenLocal,
+                                                   const uint32_t mBaseIdx,
+                                                   const uint32_t batchRowNum,
+                                                   const uint32_t rowStride,
+                                                   const uint32_t trunkLen)
+{
+    if (batchRowNum == 0U) {
+        return;
+    }
+
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    __ubuf__ uint32_t *topkNumBuf = (__ubuf__ uint32_t *)topkNumLocal.GetPhyAddr();
+    __ubuf__ uint32_t *s2BlockValidLenBuf = (__ubuf__ uint32_t *)s2BlockValidLenLocal.GetPhyAddr();
+    __ubuf__ uint32_t *initBlockLenBuf = (__ubuf__ uint32_t *)initBlockLenLocal.GetPhyAddr();
+    PadMrgFourRowsFirstS2RangeVFImpl(mrgValueBuf, topkNumBuf, s2BlockValidLenBuf, initBlockLenBuf,
+                                     mBaseIdx, batchRowNum, rowStride, trunkLen);
+}
+
+__aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                                      const LocalTensor<uint32_t> &topkNumLocal,
+                                                      const LocalTensor<uint32_t> &s2BlockValidLenLocal,
+                                                      const uint32_t mBaseIdx,
+                                                      const uint32_t batchRowNum,
+                                                      const uint32_t rowStride,
+                                                      const uint32_t trunkLen)
+{
+    if (batchRowNum == 0U) {
+        return;
+    }
+
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    __ubuf__ uint32_t *topkNumBuf = (__ubuf__ uint32_t *)topkNumLocal.GetPhyAddr();
+    __ubuf__ uint32_t *s2BlockValidLenBuf = (__ubuf__ uint32_t *)s2BlockValidLenLocal.GetPhyAddr();
+    PadMrgFourRowsNotFirstS2RangeVFImpl(mrgValueBuf, topkNumBuf, s2BlockValidLenBuf,
+                                        mBaseIdx, batchRowNum, rowStride, trunkLen);
+}
+
+__aicore__ inline void PadMrgRowsRangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                        const uint32_t rowStride,
+                                        const uint32_t actS1Size,
+                                        const uint32_t s1Idx,
+                                        const uint32_t curAivGS1ProcNum,
+                                        const uint32_t curAivGSize,
+                                        const uint32_t padStart,
+                                        const uint32_t padEnd)
+{
+    if (padEnd <= padStart || s1Idx >= curAivGS1ProcNum) {
+        return;
+    }
+
+    const uint32_t s1ValidGSize = CeilDiv(curAivGS1ProcNum - s1Idx, actS1Size);
+    const uint32_t validGSize = (curAivGSize < s1ValidGSize) ? curAivGSize : s1ValidGSize;
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    PadMrgRowsRangeVFImpl(mrgValueBuf, rowStride, actS1Size, s1Idx, validGSize, padStart, padEnd);
+}
+
 // float in uint32 out
 template <typename QK_T>
 __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
