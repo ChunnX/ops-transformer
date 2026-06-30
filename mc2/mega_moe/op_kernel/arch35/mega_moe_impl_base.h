@@ -15,6 +15,11 @@
 
 #ifndef MEGA_MOE_IMP_BASE_H
 #define MEGA_MOE_IMP_BASE_H
+#include "tensor_api/tensor.h"
+#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_scheduler_swizzle.h"
+#include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
+#include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 constexpr uint32_t ALIGN32 = 32U;

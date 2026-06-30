@@ -23,14 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
-
-#include "tensor_api/tensor.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "blaze/gemm/block/block_scheduler_swizzle.h"
-#include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
-#include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 #include "mega_moe_impl_base.h"
-
 #include "mega_moe_combine_send.h"
 
 namespace MegaMoeImpl {
