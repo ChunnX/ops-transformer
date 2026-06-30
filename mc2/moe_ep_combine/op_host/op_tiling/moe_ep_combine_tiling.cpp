@@ -27,7 +27,6 @@
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_combine_tiling.h"
 #include "../../op_kernel/moe_ep_combine_tiling_key.h"
-#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
 
 using namespace AscendC;
 using namespace ge;
