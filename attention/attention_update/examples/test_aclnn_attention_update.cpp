@@ -143,7 +143,7 @@ int main() {
                       out_size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
-    for (int64_t i = 0; i < out_size && i < out_size; i++) {
+    for (int64_t i = 0; i < local_out_feat && i < out_size; i++) {
         LOG_PRINT("out[%ld]: %f\n", i, outData[i]);
     }
 
