@@ -48,65 +48,65 @@ __aicore__ inline void CombineTokens(
     }
 }
 
-template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void CombineTokensWithUrma(
-    uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
-    LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
-{
-    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
-    uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
-    //每个 token 含数据+三元组(32B)
-    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, 130 * 1024, ALIGN_32 / sizeof(int32_t));
-    AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
-    AscendC::GlobalTensor<int32_t> gmLocalDTriple;
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = actualDataLength;
-    DumpTensor(l0cOutUbGMM2, 5, actualDataLength);
+// template <typename ElementMMadOut2, typename BlockShape>
+// __aicore__ inline void CombineTokensWithUrma(
+//     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
+//     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
+// {
+//     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+//     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
+//     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+//     //每个 token 含数据+三元组(32B)
+//     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+//     LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, 130 * 1024, ALIGN_32 / sizeof(int32_t));
+//     AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
+//     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
+//     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+//     ub2GmParams.blockCount = 1;
+//     ub2GmParams.blockLen = actualDataLength;
+//     DumpTensor(l0cOutUbGMM2, 5, actualDataLength);
 
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
-        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
-        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
-        if (toRankId == params.rankId) {
-            uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-            GM_ADDR localAddr = (GM_ADDR)(params.peermemInfo.combineSendPtr + gmDstOffset * sizeof(ElementMMadOut2));
-            gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(localAddr));
-            AscendC::DataCopyPad(gmLocalD,
-                l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-            AscendC::PipeBarrier<PIPE_ALL>();
-            continue; // 本地 rank 不处理三元组
-        }
-        tripleTempTensor.SetValue(0, toRankId);
-        tripleTempTensor.SetValue(1, tokenIdx);
-        tripleTempTensor.SetValue(2, topkIdx);
-        tripleTempTensor.SetValue(3, nLoc);
-        tripleTempTensor.SetValue(4, n);
-        tripleTempTensor.SetValue(5, actualDataLength);
-        tripleTempTensor.SetValue(7, 1); // 标记为已处理
-        __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr + toRankId * sizeof(int32_t));
-        GM_ADDR dataAddr = params.workspaceInfo.combineCommPtr +
-                        static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
-        int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
-        //printf("CombineTokensWithUrma  rankId=%d, processRankId=%d, cnt=%d\n", params.rankId, toRankId, cnt);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
-        gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
-            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
-        AscendC::DataCopyPad(gmLocalD,
-            l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        // 三元组区: 紧跟数据之后
-        gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
-        AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
-        AscendC::PipeBarrier<PIPE_ALL>();
-    }
-}
+//     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+//     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+//     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
+//         uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
+//         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
+//         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+//         if (toRankId == params.rankId) {
+//             uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+//             GM_ADDR localAddr = (GM_ADDR)(params.peermemInfo.combineSendPtr + gmDstOffset * sizeof(ElementMMadOut2));
+//             gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(localAddr));
+//             AscendC::DataCopyPad(gmLocalD,
+//                 l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+//             AscendC::PipeBarrier<PIPE_ALL>();
+//             continue; // 本地 rank 不处理三元组
+//         }
+//         tripleTempTensor.SetValue(0, toRankId);
+//         tripleTempTensor.SetValue(1, tokenIdx);
+//         tripleTempTensor.SetValue(2, topkIdx);
+//         tripleTempTensor.SetValue(3, nLoc);
+//         tripleTempTensor.SetValue(4, n);
+//         tripleTempTensor.SetValue(5, actualDataLength);
+//         tripleTempTensor.SetValue(7, 1); // 标记为已处理
+//         __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr + toRankId * sizeof(int32_t));
+//         GM_ADDR dataAddr = params.workspaceInfo.combineCommPtr +
+//                         static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
+//         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
+//         //printf("CombineTokensWithUrma  rankId=%d, processRankId=%d, cnt=%d\n", params.rankId, toRankId, cnt);
+//         AscendC::PipeBarrier<PIPE_ALL>();
+//         // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
+//         gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
+//             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
+//         AscendC::DataCopyPad(gmLocalD,
+//             l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+//         AscendC::PipeBarrier<PIPE_ALL>();
+//         // 三元组区: 紧跟数据之后
+//         gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+//             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
+//         AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
+//         AscendC::PipeBarrier<PIPE_ALL>();
+//     }
+// }
 
 // =============================================
 // QuantMxFp8：将 bf16 数据量化为 MXFP8 格式
