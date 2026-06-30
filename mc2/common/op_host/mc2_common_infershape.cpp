@@ -49,8 +49,17 @@ ge::graphStatus CommonParamCheck(
     }
 
     if (*rankSizeAttr <= 0) {
+#if defined(ENABLE_BUILT_IN)
+        uint32_t rankNum = 0;
+        if (Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(groupStr, &rankNum) != HCCL_SUCCESS || rankNum == 0) {
+            OP_LOGE(context->GetNodeName(), "Get rank size failed, group [%s], rankSize [%u]", groupStr, rankNum);
+            return ge::GRAPH_FAILED;
+        }
+        commParas.rankSize = static_cast<int64_t>(rankNum);
+#else
         OP_LOGE(context->GetNodeName(), "Get rank size failed, rankSize [%lld]", *rankSizeAttr);
         return ge::GRAPH_FAILED;
+#endif
     } else {
         commParas.rankSize = *rankSizeAttr;
     }
