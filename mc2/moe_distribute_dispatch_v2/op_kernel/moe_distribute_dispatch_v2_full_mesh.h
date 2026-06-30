@@ -53,7 +53,8 @@ constexpr uint32_t AIV_STATE_SIZE = 64U;
 constexpr uint32_t SFFVALUE_SIZE = 64U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t CUMSUM_MAX_CORE_NUM = 32U;
+constexpr uint32_t DATA_TO_CNT_TIME_RATIO = 4U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
@@ -413,7 +414,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理32个专家cnt发送
+    aivUsedCumSum_ = aivNum_ - ((axisBS_ * axisK_ * DATA_TO_CNT_TIME_RATIO * aivNum_) /
+                        (axisBS_ * axisK_ * DATA_TO_CNT_TIME_RATIO  + totalExpertNum_));
 #else
     aivUsedCumSum_ = totalExpertNum_ / 32; // 单核处理32个专家cnt发送
 #endif
