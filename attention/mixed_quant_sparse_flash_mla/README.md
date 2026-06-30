@@ -170,7 +170,7 @@
     <tr>
       <td>quant_mode</td>
       <td>可选属性</td>
-      <td>表示量化模式。1表示K、V nope为per-token-group量化，kv依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；2表示K、V nope为per-token-group量化，kv依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成，scale类型为float8_e8m0。默认值为None。</td>
+      <td>表示量化模式。1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。默认值为None。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -198,14 +198,14 @@
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。默认值为0。</td>
+      <td>表示q和ori_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。<br/>默认值为0。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和cmp_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。默认值为0。</td>
+      <td>表示q和cmp_kv计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>默认值为0。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
