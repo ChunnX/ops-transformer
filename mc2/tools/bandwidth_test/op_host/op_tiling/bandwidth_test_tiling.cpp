@@ -202,8 +202,8 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
                 return ge::GRAPH_FAILED);
 
-    tilingData.max_bs = static_cast<int32_t>(xDim0);
-    tilingData.data_size = static_cast<int32_t>(xDim1);
+    tilingData.maxBs = static_cast<int32_t>(xDim0);
+    tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
     OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
@@ -225,9 +225,9 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
 static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
-    int64_t worldSize = static_cast<int64_t>(tilingData.world_size);
-    int64_t maxBs = static_cast<int64_t>(tilingData.max_bs);
-    int64_t dataSize = static_cast<int64_t>(tilingData.data_size);
+    int64_t worldSize = static_cast<int64_t>(tilingData.worldSize);
+    int64_t maxBs = static_cast<int64_t>(tilingData.maxBs);
+    int64_t dataSize = static_cast<int64_t>(tilingData.dataSize);
 
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yStorageShape == nullptr,
