@@ -262,41 +262,41 @@ public:
             constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
-        constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
-        constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
-        constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;
-        constInfo.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
-        constInfo.gSize = this->tilingData->flashAttnBaseParams.gSize;
-        constInfo.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
-        constInfo.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfo.dSize = this->tilingData->flashAttnBaseParams.dSize;
-        constInfo.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
-        constInfo.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
-        constInfo.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
-        constInfo.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
-        constInfo.seqUsedKvSize = this->tilingData->flashAttnBaseParams.seqUsedKvSize;
-        constInfo.scaleValue = this->tilingData->flashAttnBaseParams.scaleValue;
-        constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
-        constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfo.outputLayout = this->tilingData->flashAttnBaseParams.outputLayout;
-        constInfo.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
+        constInfo.bSize = this->tilingData->mixedQuantFlashAttnBaseParams.bSize;
+        constInfo.t1Size = this->tilingData->mixedQuantFlashAttnBaseParams.t1Size;
+        constInfo.t2Size = this->tilingData->mixedQuantFlashAttnBaseParams.t2Size;
+        constInfo.n2Size = this->tilingData->mixedQuantFlashAttnBaseParams.n2Size;
+        constInfo.gSize = this->tilingData->mixedQuantFlashAttnBaseParams.gSize;
+        constInfo.s1Size = this->tilingData->mixedQuantFlashAttnBaseParams.s1Size;
+        constInfo.s2Size = this->tilingData->mixedQuantFlashAttnBaseParams.s2Size;
+        constInfo.dSize = this->tilingData->mixedQuantFlashAttnBaseParams.dSize;
+        constInfo.dSizeV = this->tilingData->mixedQuantFlashAttnBaseParams.dSizeV;
+        constInfo.cuSeqLensQSize = this->tilingData->mixedQuantFlashAttnBaseParams.cuSeqLensQSize;
+        constInfo.cuSeqLensKVSize = this->tilingData->mixedQuantFlashAttnBaseParams.cuSeqLensKVSize;
+        constInfo.seqUsedQSize = this->tilingData->mixedQuantFlashAttnBaseParams.seqUsedQSize;
+        constInfo.seqUsedKvSize = this->tilingData->mixedQuantFlashAttnBaseParams.seqUsedKvSize;
+        constInfo.scaleValue = this->tilingData->mixedQuantFlashAttnBaseParams.scaleValue;
+        constInfo.isKvContinuous = this->tilingData->mixedQuantFlashAttnBaseParams.isKvContinuous != 0;
+        constInfo.coreNum = this->tilingData->mixedQuantFlashAttnBaseParams.coreNum;
+        constInfo.outputLayout = this->tilingData->mixedQuantFlashAttnBaseParams.outputLayout;
+        constInfo.needInitOutput = this->tilingData->mixedQuantFlashAttnBaseParams.needInitOutput;
 
-        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
-        constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
-        constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
-        constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
-        constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
-        constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
+        constInfo.sparseMode = this->tilingData->mixedQuantFlashAttnAttenMaskParams.sparseMode;
+        constInfo.preTokens = this->tilingData->mixedQuantFlashAttnAttenMaskParams.winLefts;
+        constInfo.nextTokens = this->tilingData->mixedQuantFlashAttnAttenMaskParams.winRights;
+        constInfo.attenMaskBatch = this->tilingData->mixedQuantFlashAttnAttenMaskParams.attenMaskBatch;
+        constInfo.attenMaskS1Size = this->tilingData->mixedQuantFlashAttnAttenMaskParams.attenMaskS1Size;
+        constInfo.attenMaskS2Size = this->tilingData->mixedQuantFlashAttnAttenMaskParams.attenMaskS2Size;
+        constInfo.isExistRowInvalid = this->tilingData->mixedQuantFlashAttnAttenMaskParams.isExistRowInvalid;
 
-        constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
-        constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
+        constInfo.accumOutSize = this->tilingData->mixedQuantFlashAttnWorkspaceParams.accumOutSize;
+        constInfo.logSumExpSize = this->tilingData->mixedQuantFlashAttnWorkspaceParams.logSumExpSize;
 
-        constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-        constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
-        constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
+        constInfo.maxBlockNumPerBatch = this->tilingData->mixedQuantFlashAttnPageAttentionParams.maxBlockNumPerBatch;
+        constInfo.blockSize = this->tilingData->mixedQuantFlashAttnPageAttentionParams.blockSize;
+        constInfo.paLayoutType = this->tilingData->mixedQuantFlashAttnPageAttentionParams.paLayoutType;
 
-        constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
+        constInfo.isSoftmaxLseEnable = this->tilingData->mixedQuantFlashAttnBaseParams.isSoftMaxLseEnable;
 
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }

@@ -43,7 +43,7 @@ ASCENDC_TPL_ARGS_DECL(MixedQuantFlashAttn,
                        // kv存储类型 (8-bit)
                        //    1: PA_BBND (PA_BBH)
                        //    2: PA_BNBD
-                       ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
+                       ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 1, 2),
 
                        // hasAttenMask (1-bit)
                        //    0: false
@@ -52,11 +52,11 @@ ASCENDC_TPL_ARGS_DECL(MixedQuantFlashAttn,
 
                        // config (3-bit)
                        //    config=0: sOuter=64, sInner=256, D=128
-                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),
+                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 0),
 
                        // quantMode (4-bit)
                        //    1: per-Token-head-group (AntiquantMode_PER_TOKEN_HEAD_GROUP)
-                       ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 5),);
+                       ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_RANGE, 1, 1, 1),);
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
                                                            InOutLayoutType_BNSD, InOutLayoutType_TND),
