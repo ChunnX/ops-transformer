@@ -611,7 +611,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGD(context->GetNodeName(),
-                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr.c_str());
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -619,7 +619,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else {
             OP_LOGD(context->GetNodeName(),
-                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr.c_str());
+                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
             return ge::GRAPH_FAILED;
         }
     }
