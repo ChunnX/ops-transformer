@@ -180,6 +180,7 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_UB_BYTES = 8U * 1024U;
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
+    static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     int64_t dispatchWinOffset_ = 0;
 
 
@@ -374,7 +375,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于量化计算中间区域；
     // Tensor大小：参考 mega_moe.h，当前申请2K；
     uint32_t mxTempTensorAddr = sendDedupMaskTensorAddr + SEND_DEDUP_MASK_UB_BYTES;
-    uint32_t mxTempTensorSize = 2 * 1024;
+    uint32_t mxTempTensorSize = MX_QUANT_TEMP_UB_BYTES;
     mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr,
         mxTempTensorSize / sizeof(uint16_t));
     // Tensor用处：QuantTokenToWorkspaceRecord 函数中用于存储量化输出结果和 32B meta；
