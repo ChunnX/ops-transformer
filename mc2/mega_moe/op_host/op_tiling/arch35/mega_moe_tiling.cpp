@@ -390,13 +390,21 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
-    } else if ((opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E5M2 ||
-                opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) &&
+    } else if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
                weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
                static_cast<ge::Format>(ge::GetPrimaryFormat(
                    weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        // A8W8_NZ: fp8 activation × fp8 weight in NZ format, LayoutB = ZNLayoutPtn
+        // A8W8_NZ: fp8_e4m3fn activation × fp8_e4m3fn weight in NZ format (E5M2 not supported)
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
+    } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+               opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
+        // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
+        if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
+        } else {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
+        }
     } else {
         // Generic: fp8 activation × fp8 weight in ND format
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;

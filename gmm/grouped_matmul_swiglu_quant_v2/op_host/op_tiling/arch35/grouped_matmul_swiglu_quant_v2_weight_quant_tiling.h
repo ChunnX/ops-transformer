@@ -43,6 +43,7 @@ struct GMMSQWeightQuantInputParams {
     int64_t kSize = -1;
     int64_t nSize = -1;
     int64_t groupNum = -1;
+    bool isSingleMultiSingle = false;
 };
 
 class GroupedMatmulSwigluQuantV2WeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {

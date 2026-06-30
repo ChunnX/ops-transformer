@@ -88,7 +88,6 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
         Cast(xFp32Local, inputLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    LocalTensor<C> rmsnormShareUB = xFp32Local[rmsNormParams.col];
     SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 

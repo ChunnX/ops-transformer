@@ -63,7 +63,6 @@ public:
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
-
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
 
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
@@ -193,7 +192,6 @@ public:
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
         
-
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
@@ -573,10 +571,10 @@ public:
         }
 
         // 3. trans index of token to index of block
-        uint32_t s2StartWithSparse = 0U;
-        uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
+        uint32_t s2StartWithSparse = 0U;
+        uint32_t s2EndWithSparse = 0U;
         // no valid token
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
@@ -819,7 +817,6 @@ public:
             fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
         fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
-
 
     __aicore__ inline void Process()
     {

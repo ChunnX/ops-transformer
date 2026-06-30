@@ -205,11 +205,8 @@ public:
             pipe->InitBuffer(fdReduceBuf, BUFFER_SIZE_BYTE_16K);
             // OutQue, SYNC_FDOUTPUT_BUF_FLAG
             pipe->InitBuffer(fdOutputBuf, BUFFER_SIZE_BYTE_16K);
-
             pipe->InitBuffer(fdLseMaxUbBuf1, BUFFER_SIZE_BYTE_256B);
-            // pipe->InitBuffer(fdLseSumUbBuf1, BUFFER_SIZE_BYTE_256B);
             pipe->InitBuffer(fdLseMaxUbBuf2, BUFFER_SIZE_BYTE_256B);
-            // pipe->InitBuffer(fdLseSumUbBuf2, BUFFER_SIZE_BYTE_256B);
             // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
             pipe->InitBuffer(fdLseUbBuf, BUFFER_SIZE_BYTE_256B);
 
