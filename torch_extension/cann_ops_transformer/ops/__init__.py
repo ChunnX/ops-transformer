@@ -35,4 +35,8 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .qkv_rms_norm_rope_cache_with_k_scale import (
+    qkv_rms_norm_rope_cache_with_k_scale,
+    qkv_rms_norm_rope_cache_with_k_scale_functional
+)
 from .elastic_buffer import ElasticBuffer, EPHandle
