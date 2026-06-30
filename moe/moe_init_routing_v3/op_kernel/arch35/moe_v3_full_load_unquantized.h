@@ -40,6 +40,7 @@ protected:
     __aicore__ inline void GatherOutScale();
     __aicore__ inline void ZeroOutX();
     __aicore__ inline void ZeroOutScale();
+    __aicore__ inline void ZeroOutAllOutput();
 
 private:
     TQue<QuePosition::VECIN, 1> xCopyInQueue_;
@@ -131,6 +132,11 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
 {
+    ZeroOutAllOutput();
+#ifndef __CCE_KT_TEST__
+    AscendC::SyncAll();
+#endif
+
     if (this->blockIdx_ < this->needCoreNum_) {
         this->CopyIn();
         this->SortCompute();
@@ -143,15 +149,11 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
             this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
         }
-
-        this->ZeroOutX();
-        if (this->isInputScale_) {
-            this->ZeroOutScale();
-        }
     }
 #ifndef __CCE_KT_TEST__
     AscendC::SyncAll();
 #endif
+
     if (this->blockIdx_ < this->needCoreNum_) {
         this->GatherOutX();
         if (this->isInputScale_) {
@@ -372,6 +374,34 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
     GlobalTensor<float> scaleZeroGm;
     scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
     InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutAllOutput()
+{
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
+    int64_t rowCount = endRow - startRow;
+    if (rowCount <= 0) {
+        return;
+    }
+
+
+    GlobalTensor<T> zeroGm;
+    zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                            rowCount * this->cols_);
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+
+    if (this->isInputScale_) {
+        GlobalTensor<float> scaleZeroGm;
+        scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        InitGlobalMemory(scaleZeroGm, rowCount, static_cast<float>(0));
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
 }
 
 } // namespace MoeInitRoutingV3
