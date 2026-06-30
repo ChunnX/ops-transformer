@@ -36,3 +36,7 @@ from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer
+
+
+
+from .mixed_quant_flash_attn_metadata import mixed_quant_flash_attn_metadata
