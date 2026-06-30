@@ -863,6 +863,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
         return;
     }
+    PRINTF("Level1DispatchUrma: localExpertId=%d", localExpertId);
     uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
     uint32_t senderCoreStart = blockNum_ - senderCoreNum;
