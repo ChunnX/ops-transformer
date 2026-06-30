@@ -6,19 +6,19 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
- * \file sparse_flash_mla_scfa_kernel.h
+ * \file sparse_flash_mla_csa_kernel.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_MLA_SCFA_KERNEL_H
-#define SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#ifndef SPARSE_FLASH_MLA_CSA_KERNEL_H
+#define SPARSE_FLASH_MLA_CSA_KERNEL_H
 #include "sparse_flash_mla_common_arch35.h"
 #include "sparse_flash_mla_kvcache.h"
-#include "sparse_flash_mla_scfa_block_cube.h"
-#include "sparse_flash_mla_scfa_block_vector.h"
+#include "sparse_flash_mla_csa_block_cube.h"
+#include "sparse_flash_mla_csa_block_vector.h"
 #include "kernel_operator.h"
 #include "../sparse_flash_mla_metadata.h"
 
@@ -49,10 +49,10 @@ using namespace regbaseutil;
 
 namespace SMLAKernel {
 template <typename CubeBlockType, typename VecBlockType>
-class SparseFlashMlaScfaKernel {
+class SparseFlashMlaCsaKernel {
 public:
     ARGS_TRAITS;
-    __aicore__ inline SparseFlashMlaScfaKernel() {};
+    __aicore__ inline SparseFlashMlaCsaKernel() {};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
@@ -135,7 +135,7 @@ private:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Init(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
@@ -184,7 +184,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::GetSeqLen(
+__aicore__ inline int64_t SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::GetSeqLen(
     int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
     GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize)
 {
@@ -198,7 +198,7 @@ __aicore__ inline int64_t SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>:
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ParseTilingData(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ParseTilingData(
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv,
     __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
     __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV)
@@ -307,7 +307,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
@@ -323,7 +323,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ uint8_t *workspace)
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ uint8_t *workspace)
 {
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
@@ -362,7 +362,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
         bmm1Buffers.Get().SetCrossCore();
     }
     if constexpr (IS_SPLIT_G || \
-        TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
+        TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
         int64_t v0ResTotalOffset;
         if constexpr (IS_SPLIT_G) {
@@ -382,13 +382,13 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::InitLocalBuffer()
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ComputeConstexpr()
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
     // 计算轴的乘积
     
@@ -427,7 +427,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Process()
 {
     // SyncAll Cube和Vector都需要调用
     if (this->constInfo.needInit) {
@@ -437,7 +437,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
     int64_t maxS2LoopCnt = 0;
@@ -521,7 +521,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
+                if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
                     if (notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
@@ -580,7 +580,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
     int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
@@ -593,7 +593,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId,
     int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
@@ -630,14 +630,14 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Se
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
     RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
@@ -661,4 +661,4 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
     }
 }
 }
-#endif // SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#endif // SPARSE_FLASH_MLA_CSA_KERNEL_H

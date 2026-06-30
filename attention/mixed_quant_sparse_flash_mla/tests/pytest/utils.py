@@ -47,7 +47,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             block_size2 = block_size1 if block_size2 is None else block_size2
             block_num2 = 0 if block_num2 is None else block_num2
         else:
-            template_run_mode = "CFA"
+            template_run_mode = "HCA"
             cmp_ratio = int(cmp_ratio)
             cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
             K = 0
@@ -55,7 +55,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             cmp_mask_mode = int(cmp_mask_mode) if cmp_mask_mode is not None else 3
             block_num2 = block_num2  # 后续计算
     else:
-        template_run_mode = "SCFA"
+        template_run_mode = "CSA"
         K = int(K)
         cmp_ratio = int(cmp_ratio)
         cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type

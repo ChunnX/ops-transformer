@@ -16,7 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "mixed_quant_sparse_flash_mla_template_tiling_key.h"
-#include "arch35/mixed_quant_sparse_flash_mla_scfa_kernel.h"
+#include "arch35/mixed_quant_sparse_flash_mla_csa_kernel.h"
 #include "mixed_quant_sparse_flash_mla_common.h"
 
 using namespace AscendC;
@@ -24,9 +24,9 @@ using namespace AscendC;
 #define QSMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                        \
     do {                                                                                          \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,               \
-            BaseApi::SCFABlockCube<__VA_ARGS__>, BaseApi::SCFABlockCubeDummy<__VA_ARGS__>>::type; \
+            BaseApi::CSABlockCube<__VA_ARGS__>, BaseApi::CSABlockCubeDummy<__VA_ARGS__>>::type; \
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                \
-            BaseApi::SCFABlockVecDummy<__VA_ARGS__>, BaseApi::SCFABlockVec<__VA_ARGS__>>::type;   \
+            BaseApi::CSABlockVecDummy<__VA_ARGS__>, BaseApi::CSABlockVec<__VA_ARGS__>>::type;   \
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
@@ -53,13 +53,13 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
-        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
             static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
     } else {
-        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
