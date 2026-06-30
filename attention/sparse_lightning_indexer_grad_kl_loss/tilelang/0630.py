@@ -748,6 +748,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Zero workspaces before each call (gather_ws will be filled by V0 scope)
         d_query_index_ws.zero_()
 
+        # Debug: verify input dtypes match kernel expectations
+        assert softmax_max.dtype == torch.float32, f"softmax_max dtype mismatch: expected float32, got {softmax_max.dtype}"
+        assert softmax_sum.dtype == torch.float32, f"softmax_sum dtype mismatch: expected float32, got {softmax_sum.dtype}"
+
         if _PROFILE:
             _t_prep_end.record()
             _t_kernel_start = torch.npu.Event(enable_timing=True)
