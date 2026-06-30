@@ -53,7 +53,7 @@ inline bool IsA5Smla(const char *socVersion)
     return socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr;
 }
 
-inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
+inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t, int64_t cmpRatio)
 {
     if (!hasCmpKv) {
         return cmpRatio == 1;
@@ -61,7 +61,7 @@ inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int
     if (isA5) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
     }
-    return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
+    return cmpRatio == 4 || cmpRatio == 128;
 }
 
 inline bool IsTensorExistSmla(const aclTensor *tensor)
@@ -241,8 +241,17 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                         SMLA_A5_PLATFORM_LOG.c_str(), cmpRatio);
             } else {
                 int64_t expectedCmpRatio = (cmpTopk > 0) ? 4 : 128;
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be %lld on %s, but got %lld",
-                        expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                if (cmpTopk > 0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is non-zero(C4A/CSA with "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                } else {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is 0(C128A/HCA without "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                }
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
