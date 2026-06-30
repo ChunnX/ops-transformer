@@ -412,7 +412,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr.c_str());
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
