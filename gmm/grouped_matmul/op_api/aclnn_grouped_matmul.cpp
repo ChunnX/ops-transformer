@@ -2594,14 +2594,20 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
   }
   if (params.transposeWeight) {
     std::vector<aclTensor *> weightTensorList;
-    auto nZShape = (*params.weight)[0]->GetStorageShape();
+    std::vector<op::Shape> nZShapes;
+    nZShapes.reserve(params.weight->Size());
+    for (size_t i = 0; i < params.weight->Size(); ++i) {
+        nZShapes.emplace_back((*params.weight)[i]->GetStorageShape());
+    }
     gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr);
     params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(params.xDtype, weightDtype) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(nZShape);
+        for (size_t i = 0; i < params.weight->Size() && i < nZShapes.size(); ++i) {
+            (*params.weight)[i]->SetStorageShape(nZShapes[i]);
+        }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
   }
@@ -2755,14 +2761,16 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &s
     return formatTensor;
 }
 
-static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, op::Shape wqbmmNzShape)
+static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::vector<op::Shape> &wqbmmNzShapes)
 {
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(wqbmmNzShape);
+        for (size_t i = 0; i < params.weight->Size() && i < wqbmmNzShapes.size(); ++i) {
+            (*params.weight)[i]->SetStorageShape(wqbmmNzShapes[i]);
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -2794,20 +2802,22 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
         }
     }
 
-    op::Shape nzShape = (*params.weight)[0]->GetStorageShape();
     if (params.apiVersion == gmm::GMMApiVersion::WeightNz ||
         (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
         CHECK_COND(ParamsWeightNzDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when weight format is FRACTAL_NZ, data type check failed.", opName);
         std::vector<const aclTensor *> tensorsVec;
+        std::vector<op::Shape> nzShapes;
+        nzShapes.reserve(params.weight->Size());
         for (size_t i = 0; i < params.weight->Size(); ++i) {
             const aclTensor *tensor = (*params.weight)[i];
+            nzShapes.emplace_back(tensor->GetStorageShape());
             op::Shape weightNzShape = tensor->GetViewShape();
             tensor = SetTensorToNZFormat(tensor, weightNzShape, executorPtr);
             tensorsVec.push_back(tensor);
         }
         params.weight = executorPtr->AllocTensorList(tensorsVec.data(), tensorsVec.size());
-        SetStorageShape(params, nzShape);
+        SetStorageShape(params, nzShapes);
     }
     CHECK_COND(TransWeightToNz(params, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "TransWeightToNz failed.");
