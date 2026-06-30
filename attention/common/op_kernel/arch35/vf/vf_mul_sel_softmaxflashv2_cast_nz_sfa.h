@@ -39,58 +39,98 @@ enum class OriginNRange {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128,
     OriginNRange oriNRange = OriginNRange::EQ_128_SFA>
 __aicore__ inline void ProcessVec1NoUpdate(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<T>& sharedTmpBuffer,
+    TBuf<> *vselrIndexesBuf, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
     if constexpr (oriNRange == OriginNRange::EQ_128_SFA) {
-        ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+        }
+        ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
+                                                                  inMaxTensor, sharedTmpBuffer, indexesTensor, m,
+                                                                  originN, scale, minValue);
     } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SFA) {
-        ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
+        }
+        ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
+                                                                 inMaxTensor, sharedTmpBuffer, indexesTensor, m,
+                                                                 originN, scale, minValue);
     } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SFA) {
-        ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+        }
+        ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
+                                                                         inMaxTensor, sharedTmpBuffer, indexesTensor, m,
+                                                                         originN, scale, minValue);
     }
 }
 
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128,
     OriginNRange oriNRange = OriginNRange::EQ_128_SFA>
 __aicore__ inline void ProcessVec1Update(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<T>& sharedTmpBuffer,
+    TBuf<> *vselrIndexesBuf, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
     if constexpr (oriNRange == OriginNRange::EQ_128_SFA) {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+        }
         ProcessVec1UpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, indexesTensor, m, originN, scale, minValue);
     } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SFA) {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
+        }
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, indexesTensor, m, originN, scale, minValue);
     } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SFA) {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                      IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor =
+                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+        }
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
-            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+            dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, indexesTensor, m, originN, scale, minValue);
     }
 }
 
 template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128,
     OriginNRange oriNRange = OriginNRange::EQ_128_SFA>
 __aicore__ inline void ProcessVec1Vf(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<T>& sharedTmpBuffer,
+    TBuf<> *vselrIndexesBuf, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
     static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
-    static_assert((IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value),
-        "VF mul_sel_softmaxflashv2_cast_nz, T2 must be half or bfloat16");
+    static_assert(
+        (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, hifloat8_t>::value),
+        "VF mul_sel_softmaxflashv2_cast_nz, T2 must be half, bfloat16 or hifloat8");
 
     if constexpr (!isUpdate) {
-        ProcessVec1NoUpdate<T, T2, s1BaseSize, s2BaseSize, oriNRange>(
-            dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+        ProcessVec1NoUpdate<T, T2, s1BaseSize, s2BaseSize, oriNRange>(dstTensor, srcTensor, expSumTensor, maxTensor,
+            inMaxTensor, sharedTmpBuffer, vselrIndexesBuf, m, originN, scale, minValue);
     } else {
-        ProcessVec1Update<T, T2, s1BaseSize, s2BaseSize, oriNRange>(
-            dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
+        ProcessVec1Update<T, T2, s1BaseSize, s2BaseSize, oriNRange>(dstTensor, srcTensor, expSumTensor, maxTensor,
+            inMaxTensor, sharedTmpBuffer, vselrIndexesBuf, m, originN, scale, minValue);
     }
 }
 

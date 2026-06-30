@@ -23,9 +23,8 @@ namespace FaVectorApi {
 
 template<typename T, typename T2>
 __simd_callee__ inline void CastStoreExp64(
-    RegTensor<float> &vreg_exp, __ubuf__ T2 *&expUb,
-    const uint32_t blockStride, const uint32_t repeatStride,
-    MaskReg &preg_all_b16, MaskReg &storeMask)
+    RegTensor<float> &vreg_exp, __ubuf__ T2 *&expUb, const uint32_t blockStride, const uint32_t repeatStride,
+    MaskReg &preg_all, MaskReg &preg_all_b16, MaskReg &storeMask, __ubuf__ uint8_t * indexesUb)
 {
     RegTensor<bfloat16_t> vreg_exp_bf16;
     RegTensor<bfloat16_t> vreg_dst_even_bf16;
@@ -33,6 +32,9 @@ __simd_callee__ inline void CastStoreExp64(
     RegTensor<half> vreg_exp_fp16;
     RegTensor<half> vreg_dst_even_fp16;
     RegTensor<half> vreg_dst_odd_fp16;
+    if constexpr (IsSameType<T2, hifloat8_t>::value) {  // T2 == hifp8 为全量化
+        AscendC::MicroAPI::Muls(vreg_exp, vreg_exp, hifp8ScaleValue, preg_all);
+    }
     if constexpr (IsSameType<T2, bfloat16_t>::value) {
         Cast<T2, T, castTraitZero>(vreg_exp_bf16, vreg_exp, preg_all_b16);
         DeInterleave(vreg_dst_even_bf16, vreg_dst_odd_bf16, vreg_exp_bf16, vreg_exp_bf16);
@@ -43,6 +45,17 @@ __simd_callee__ inline void CastStoreExp64(
         DeInterleave(vreg_dst_even_fp16, vreg_dst_odd_fp16, vreg_exp_fp16, vreg_exp_fp16);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)expUb), vreg_dst_even_fp16, blockStride, repeatStride, storeMask);
+    } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
+        RegTensor<hifloat8_t> vreg_exp_hifp8;
+        RegTensor<uint8_t> vreg_exp_merge_hifp8_indexes;
+        RegTensor<hifloat8_t> vreg_exp_merge_hifp8;
+        uint32_t maskLen = 128;
+        MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+        Cast<T2, T, castTraitZero>(vreg_exp_hifp8, vreg_exp, preg_all);
+        LoadAlign(vreg_exp_merge_hifp8_indexes, indexesUb);
+        Gather(vreg_exp_merge_hifp8, vreg_exp_hifp8, vreg_exp_merge_hifp8_indexes);
+        StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)expUb), vreg_exp_merge_hifp8, blockStride, repeatStride, preg_all_b8_128);
     }
 }
 
