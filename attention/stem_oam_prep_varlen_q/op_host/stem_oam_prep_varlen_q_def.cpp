@@ -24,6 +24,7 @@ class StemOamPrepVarlenQ : public OpDef {
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
         .Format({ge::FORMAT_ND})
+        .ValueDepend(OPTIONAL)
         .AutoContiguous();
     this->Input("cuSeqLensQ")
         .ParamType(REQUIRED)
@@ -39,7 +40,8 @@ class StemOamPrepVarlenQ : public OpDef {
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16})
         .Format({ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND});
+        .UnknownShapeFormat({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Attr("stemBlockSize")
         .AttrType(OPTIONAL)
         .Int(128);
@@ -53,7 +55,9 @@ class StemOamPrepVarlenQ : public OpDef {
         .DynamicShapeSupportFlag(true)
         .NeedCheckSupportFlag(false)
         .PrecisionReduceFlag(true)
-        .ExtendCfgInfo("opFile.value", "stem_oam_prep_varlen_q_apt");
+        .ExtendCfgInfo("opFile.value", "stem_oam_prep_varlen_q_apt")
+        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+        .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
     this->AICore().AddConfig("ascend950", aicore_config);
   }
 };
