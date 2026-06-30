@@ -247,10 +247,15 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
-    } else {
-        // 910B和910_93只支持默认通信引擎
-        if (strncmp(commModeStr, "", maxLength) != 0) {
-            OP_LOGI("The commMode is illegal, will use default communication engine.");
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ai_cpu\"");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        if (strncmp(commModeStr, "aiv", maxLength) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"aiv\"");
+            return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
