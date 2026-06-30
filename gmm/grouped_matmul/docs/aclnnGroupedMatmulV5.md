@@ -716,15 +716,13 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
 | 场景 | 设备 | 示例文件 | 说明 |
 |------|:---:|------|------|
 | 非量化 | 公共 | [test_aclnn_grouped_matmul.cpp](../examples/test_aclnn_grouped_matmul.cpp) | 非量化基础示例（涵盖通用调用流程） |
-| 全量化-A8W8 | 公共 | [test_aclnn_grouped_matmul_v5_a8w8.cpp](../examples/test_aclnn_grouped_matmul_v5_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, out=BF16 |
+| 全量化-A8W8 / 静态量化 | 公共 | [test_aclnn_grouped_matmul_v5_a8w8.cpp](../examples/test_aclnn_grouped_matmul_v5_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
 | 伪量化-A16W8 | 公共 | [test_aclnn_grouped_matmul_v5_a16w8.cpp](../examples/test_aclnn_grouped_matmul_v5_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
 | 伪量化-A16W4 | 公共 | [test_aclnn_grouped_matmul_v5_a16w4.cpp](../examples/test_aclnn_grouped_matmul_v5_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
-| 非量化 | A5 | [examples/arch35/test_aclnn_grouped_matmul_v5_noquant.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_noquant.cpp) | A5 非量化示例 |
-| 伪量化（weight NZ） | A5 | [examples/arch35/test_aclnn_grouped_matmul_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_weight_nz.cpp) | A5 伪量化 NZ 格式示例 |
-| 伪量化（V5 NZ） | A5 | [examples/arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp) | A5 V5 伪量化 NZ 示例 |
-| MX 量化 | A5 | [examples/arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp) | A5 MX 量化示例 |
-| 全量化（静态） | A5 | [examples/arch35/test_aclnn_grouped_matmul_v5_quant_static.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_static.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=nullptr |
-| 全量化（动态 K-C） | A5 | [examples/arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
-| G-B 量化 | A5 | [examples/arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
-| 全量化-A4W4 | A2/A3 | [test_aclnn_grouped_matmul_v5_a4w4.cpp](../examples/test_aclnn_grouped_matmul_v5_a4w4.cpp) | x=INT4, weight=INT4, scale=UINT64, out=FP16 |
-| 伪量化-A8W4 | A2/A3 | [test_aclnn_grouped_matmul_v5_a8w4.cpp](../examples/test_aclnn_grouped_matmul_v5_a8w4.cpp) | x=INT8, weight=INT4, scale=UINT64, perTokenScale=FLOAT |
+| 伪量化（weight NZ） | A5 | [arch35/test_aclnn_grouped_matmul_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_weight_nz.cpp) | A5 伪量化 NZ 格式示例 |
+| 伪量化（V5 NZ） | A5 | [arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp) | A5 V5 伪量化 NZ 示例 |
+| MX 量化 | A5 | [arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp) | A5 MX 量化示例 |
+| 全量化（动态 K-C） | A5 | [arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
+| G-B 量化 | A5 | [arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
+| 全量化-A4W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_v5_a4w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_v5_a4w4.cpp) | x=INT4, weight=INT4, scale=UINT64, out=FP16 |
+| 伪量化-A8W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_v5_a8w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_v5_a8w4.cpp) | x=INT8, weight=INT4, scale=UINT64, perTokenScale=FLOAT |
