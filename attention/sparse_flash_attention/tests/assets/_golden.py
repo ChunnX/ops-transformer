@@ -14,14 +14,147 @@ import math
 import os
 import torch
 import copy
+import numpy as np
 
-# The standalone pytest generator depends on generate_tensor_data. TTK only
-# calls the CPU formula below, so provide a lightweight stub for import-time
-# compatibility when this golden is loaded by TTK.
-import sys
-import types
-sys.modules.setdefault("generate_tensor_data", types.SimpleNamespace())
-import generate_tensor_data
+
+_INVALID_GENERATED_VALUE = -1
+_SHAPE_KEY_TO_INDEX = {
+    "query": 0,
+    "key": 1,
+    "value": 2,
+    "sparse_indices": 3,
+    "block_table": 4,
+    "query_rope": 5,
+    "key_rope": 6,
+}
+
+
+def _get_generated_np_dtype(type_str):
+    """Return the numpy dtype used by the embedded legacy tensor generator."""
+    type_dict = {
+        "fp32": np.float32,
+        "float32": np.float32,
+        "fp16": np.float16,
+        "float16": np.float16,
+        "bf16": np.float32,
+        "bfloat16": np.float32,
+        "int32": np.int32,
+        "int8": np.int8,
+        "uint8": np.uint8,
+    }
+    return type_dict[type_str]
+
+
+def _generated_np_to_torch(np_array, gen_dtype):
+    if np_array is None:
+        return torch.empty(0)
+    if gen_dtype in ("bf16", "bfloat16"):
+        return torch.from_numpy(np.array(np_array, dtype=np.float32)).to(torch.bfloat16)
+    torch_dtype_map = {
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "int8": torch.int8,
+        "int32": torch.int32,
+        "uint8": torch.uint8,
+    }
+    torch_dtype = torch_dtype_map.get(gen_dtype)
+    if torch_dtype is not None:
+        return torch.from_numpy(np.array(np_array)).to(torch_dtype)
+    return torch.from_numpy(np.array(np_array))
+
+
+def _gen_tensor_data(params, key):
+    """Embedded tensor generator used by legacy standalone helpers."""
+    index = _SHAPE_KEY_TO_INDEX.get(key, 0)
+    shape_input = params["shape_input"][key]
+    gen_dtype = params["dtype_input"][key]
+    dtype_input = _get_generated_np_dtype(gen_dtype)
+
+    input_i_data = None
+    is_fix_value = False
+    for param_key in params.keys():
+        if f"tensor_data_{index}" in param_key and "required_" not in param_key:
+            input_i_data = np.array(params[param_key]).reshape(shape_input).astype(dtype_input)
+            is_fix_value = True
+
+    if not is_fix_value:
+        range_input = params["range_input"][key]
+        if len(range_input) == 1:
+            input_i_data = _gen_boundary_tensor_data(shape_input, range_input, dtype_input)
+        else:
+            input_i_data = _gen_nonbound_tensor_data(shape_input, range_input, dtype_input)
+
+    return _generated_np_to_torch(input_i_data, gen_dtype)
+
+
+def _gen_boundary_tensor_data(shape_input, input_range, dtype_input):
+    if input_range[0] == "null":
+        return np.array([], dtype=dtype_input)
+    if input_range[0] == "nan":
+        return np.full(shape_input, np.nan, dtype=dtype_input)
+    if input_range[0] == "inf":
+        return np.full(shape_input, np.inf, dtype=dtype_input)
+    if input_range[0] == "-inf":
+        return np.full(shape_input, -np.inf, dtype=dtype_input)
+    if input_range[0] == "default":
+        return None
+    return np.full(shape_input, input_range[0], dtype=dtype_input)
+
+
+def _gen_nonbound_tensor_data(data_shape, range_input, dtype, hash_seed=-1):
+    try:
+        if isinstance(range_input, dict):
+            return _INVALID_GENERATED_VALUE
+        min_value, max_value = range_input
+        if min_value == "-inf" and max_value == "inf":
+            if dtype in (np.float32, np.float64, np.float16):
+                min_value = np.finfo(dtype).min
+                max_value = np.finfo(dtype).max
+            elif dtype in (np.int8, np.int16, np.int32, np.uint8):
+                min_value = np.iinfo(dtype).min
+                max_value = np.iinfo(dtype).max
+            else:
+                min_value = False
+                max_value = True
+            data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
+            if data_shape == []:
+                return _gen_uniform_data(data_shape, -1, 1, dtype, hash_seed)
+            shape_len = int(np.prod(data_shape))
+            if shape_len == 0:
+                return _gen_uniform_data(data_shape, 0, 4, dtype, hash_seed)
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            if num_change:
+                data[np.unravel_index(np.random.choice(shape_len, num_change), data_shape)] = min_value
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            if num_change:
+                data[np.unravel_index(np.random.choice(shape_len, num_change), data_shape)] = max_value
+            return data
+        if min_value == "nan":
+            return np.full(data_shape, np.nan, dtype=dtype)
+        if min_value == "inf":
+            return np.full(data_shape, np.inf, dtype=dtype)
+        if min_value == "-inf":
+            return np.full(data_shape, -np.inf, dtype=dtype)
+        if min_value == "default":
+            return None
+        if min_value == "null":
+            return np.array([], dtype=dtype)
+        return _gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed)
+    except MemoryError:
+        print("[ERROR] MemoryError.")
+        return _INVALID_GENERATED_VALUE
+
+
+def _gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed=-1):
+    if min_value == 0 and max_value == 0:
+        return np.zeros(data_shape, dtype=dtype)
+    if hash_seed > 0:
+        np.random.seed(hash_seed)
+    if dtype == np.bool_:
+        return np.random.choice([True, False], size=data_shape)
+    return np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
 
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
@@ -287,7 +420,7 @@ def generate_input_tensors(params):
                    "query_rope", "key_rope"]
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
+        raw[key] = _gen_tensor_data(params, key).to("npu")
 
     result = {
         "query": raw["query"],
@@ -996,6 +1129,7 @@ def npu_sparse_flash_attention(query, key, value, sparse_indices, scale_value, *
                                sparse_block_size=1, layout_query="BSND", layout_kv="BSND",
                                sparse_mode=0, pre_tokens=(1 << 63) - 1, next_tokens=(1 << 63) - 1,
                                attention_mode=2, return_softmax_lse=False, **kwargs):
+    """Golden reference implementation for sparse flash attention with block-level sparse selection."""
     del pre_tokens, next_tokens  # The vendored CPU formula models mode 0/3 sparse block selection.
 
     original_query_dtype = query.dtype if torch.is_tensor(query) else torch.float16

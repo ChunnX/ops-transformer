@@ -1,5 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 __input__ = {
     "e2e": {
         "torch_npu.npu_lightning_indexer": "generate_li_inputs"
@@ -33,6 +43,7 @@ def generate_li_inputs(query, key, weights, *,
                         block_table=None,
                         layout_query="BSND", layout_key="BSND",
                         sparse_count=2048, sparse_mode=3, **kwargs):
+    """Generate and preprocess NPU inputs for LightningIndexer, handling BSND/TND/PA_BSND layouts."""
     _fill_tensor_from_value(actual_seq_lengths_query, actual_seq_lengths_query)
     _fill_tensor_from_value(actual_seq_lengths_key, actual_seq_lengths_key)
     _fill_tensor_from_value(block_table, block_table)

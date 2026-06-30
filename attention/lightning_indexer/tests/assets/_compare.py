@@ -1,5 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """TopK compare helpers for LightningIndexer TestSpec adapters."""
 
 import numpy as np
@@ -214,6 +224,7 @@ def _value_compare(npu_out, golden_out, scores=None):
 
 
 def compare(*outputs, scores=None):
+    """Compare NPU outputs against golden references using TopK index and value tolerance policies."""
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {"pass": False, "precision": "invalid", "error_info": "compare expects NPU outputs followed by golden outputs"}
     half = len(outputs) // 2

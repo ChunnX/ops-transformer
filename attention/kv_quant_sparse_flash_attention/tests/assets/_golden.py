@@ -10,16 +10,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# TTK assets_v2 keeps the pytest golden implementation in this file.
-# Add the pytest directory to sys.path so original helper imports stay intact.
-import sys as _sys
-from pathlib import Path as _Path
-_pytest_dir = _Path(__file__).resolve().parents[1] / "pytest"
-_assets_dir = _Path(__file__).resolve().parent
-for _p in (str(_assets_dir), str(_pytest_dir)):
-    if _p not in _sys.path:
-        _sys.path.insert(0, _p)
-
 import math
 import os
 import re
@@ -28,7 +18,263 @@ import copy
 import time
 import numpy as np
 
-import generate_tensor_data
+
+_INVALID_GENERATED_VALUE = -1
+_SHAPE_KEY_TO_INDEX = {
+    "query": 0,
+    "key": 1,
+    "value": 2,
+    "sparse_indices": 3,
+    "block_table": 4,
+    "query_cache": 5,
+    "key_cache": 6,
+    "value_cache": 7,
+    "query_rope": 8,
+    "key_rope": 9,
+    "dequant_scale": 10,
+    "v_dequant_scale": 11,
+}
+
+
+def _get_generated_np_dtype(type_str):
+    """Return the numpy dtype used by the embedded legacy tensor generator."""
+    if type_str in ("bf16", "bfloat16", "hifloat8", "float8_e4m3fn"):
+        return np.float32
+    type_dict = {
+        "fp32": np.float32,
+        "float32": np.float32,
+        "fp16": np.float16,
+        "float16": np.float16,
+        "int32": np.int32,
+        "int8": np.int8,
+        "uint8": np.uint8,
+    }
+    return type_dict[type_str]
+
+
+def _generated_np_to_torch(np_array, gen_dtype):
+    if np_array is None:
+        return torch.empty(0)
+    if gen_dtype in ("bf16", "bfloat16"):
+        return torch.from_numpy(np.array(np_array, dtype=np.float32)).to(torch.bfloat16)
+    if gen_dtype == "float8_e4m3fn":
+        return torch.from_numpy(np.array(np_array, dtype=np.float32)).to(torch.float8_e4m3fn)
+    if gen_dtype == "hifloat8":
+        return torch.from_numpy(np.array(np_array, dtype=np.uint8)).to(torch.uint8)
+    torch_dtype_map = {
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "int8": torch.int8,
+        "int32": torch.int32,
+        "uint8": torch.uint8,
+    }
+    torch_dtype = torch_dtype_map.get(gen_dtype)
+    if torch_dtype is not None:
+        return torch.from_numpy(np.array(np_array)).to(torch_dtype)
+    return torch.from_numpy(np.array(np_array))
+
+
+def _gen_tensor_data(params, key):
+    """Embedded tensor generator used by legacy standalone helpers."""
+    index = _SHAPE_KEY_TO_INDEX.get(key, 0)
+    shape_input = params["shape_input"][key]
+    gen_dtype = params["dtype_input"][key]
+    dtype_input = _get_generated_np_dtype(gen_dtype)
+
+    input_i_data = None
+    is_fix_value = False
+    for param_key in params.keys():
+        if f"tensor_data_{index}" in param_key and "required_" not in param_key:
+            input_i_data = np.array(params[param_key], dtype=dtype_input).reshape(shape_input)
+            is_fix_value = True
+
+    if not is_fix_value:
+        range_input = params["range_input"][key]
+        if len(range_input) == 1:
+            input_i_data = _gen_boundary_tensor_data(shape_input, range_input, dtype_input)
+        else:
+            input_i_data = _gen_nonbound_tensor_data(shape_input, range_input, dtype_input)
+
+    if gen_dtype == "hifloat8":
+        input_i_data = _trans_np_float_tensor_to_hifuint8(input_i_data, round_mode="hybrid", over_mode=True)
+    return _generated_np_to_torch(input_i_data, gen_dtype)
+
+
+def _gen_boundary_tensor_data(shape_input, input_range, dtype_input):
+    if input_range[0] == "null":
+        return np.array([], dtype=dtype_input)
+    if input_range[0] == "nan":
+        return np.full(shape_input, np.nan, dtype=dtype_input)
+    if input_range[0] == "inf":
+        return np.full(shape_input, np.inf, dtype=dtype_input)
+    if input_range[0] == "-inf":
+        return np.full(shape_input, -np.inf, dtype=dtype_input)
+    if input_range[0] == "default":
+        return None
+    return np.full(shape_input, input_range[0], dtype=dtype_input)
+
+
+def _gen_nonbound_tensor_data(data_shape, range_input, dtype, hash_seed=-1):
+    try:
+        if isinstance(range_input, dict):
+            return _INVALID_GENERATED_VALUE
+        min_value, max_value = range_input
+        if min_value == "-inf" and max_value == "inf":
+            if dtype in (np.float32, np.float64, np.float16):
+                min_value = np.finfo(dtype).min
+                max_value = np.finfo(dtype).max
+            elif dtype in (np.int8, np.int16, np.int32, np.uint8):
+                min_value = np.iinfo(dtype).min
+                max_value = np.iinfo(dtype).max
+            else:
+                min_value = False
+                max_value = True
+            data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
+            if data_shape == []:
+                return _gen_uniform_data(data_shape, -1, 1, dtype, hash_seed)
+            shape_len = int(np.prod(data_shape))
+            if shape_len == 0:
+                return _gen_uniform_data(data_shape, 0, 4, dtype, hash_seed)
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            if num_change:
+                data[np.unravel_index(np.random.choice(shape_len, num_change), data_shape)] = min_value
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            if num_change:
+                data[np.unravel_index(np.random.choice(shape_len, num_change), data_shape)] = max_value
+            return data
+        if min_value == "nan":
+            return np.full(data_shape, np.nan, dtype=dtype)
+        if min_value == "inf":
+            return np.full(data_shape, np.inf, dtype=dtype)
+        if min_value == "-inf":
+            return np.full(data_shape, -np.inf, dtype=dtype)
+        if min_value == "default":
+            return None
+        if min_value == "null":
+            return np.array([], dtype=dtype)
+        return _gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed)
+    except MemoryError:
+        print("[ERROR] MemoryError.")
+        return _INVALID_GENERATED_VALUE
+
+
+def _gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed=-1):
+    if min_value == 0 and max_value == 0:
+        return np.zeros(data_shape, dtype=dtype)
+    if hash_seed > 0:
+        np.random.seed(hash_seed)
+    if dtype == np.bool_:
+        return np.random.choice([True, False], size=data_shape)
+    return np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
+
+
+def _trans_np_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
+    in_tensor = np.array(in_tensor, dtype=np.float32)
+    shape_tensor = in_tensor.shape
+    out_tensor = np.zeros(int(np.prod(shape_tensor)) if shape_tensor else 1)
+    flat = in_tensor.reshape(-1)
+    for i, value in enumerate(flat):
+        out_tensor[i] = _cvt_float32_to_hifuint8(value, round_mode, over_mode)
+    return out_tensor.astype(np.uint8).reshape(shape_tensor)
+
+
+def _get_hif8_fraction_bits_number(exponent):
+    if exponent < -22:
+        return -1, 3, 0
+    if -22 <= exponent < -15:
+        return 0, 3, 0
+    if exponent == 0:
+        return 1, 0, 3
+    if abs(exponent) == 1:
+        return 2, 1, 3
+    if 2 <= abs(exponent) <= 3:
+        return 4, 2, 3
+    if 4 <= abs(exponent) <= 7:
+        return 8, 3, 2
+    if 8 <= abs(exponent) <= 15:
+        return 12, 4, 1
+    return 12, 4, -1
+
+
+def _fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    t14_mask = 16383
+    if exponent == -23:
+        f14_values = (fraction32_int >> 10) + 8192
+        t14_values = fraction32_int & t14_mask
+        hif8_value = 0
+    else:
+        hif8_value = fraction32_int >> (23 - hif8_bits_num)
+        f14_t14 = fraction32_int - (hif8_value << (23 - hif8_bits_num))
+        f14_values = f14_t14 >> (23 - hif8_bits_num - 14)
+        t14_values = f14_t14 & t14_mask
+    if f14_values >= t14_values:
+        if hif8_value == pow(2, hif8_bits_num) - 1:
+            return True, 0
+        return False, hif8_value + 1
+    return False, hif8_value
+
+
+def _fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    if exponent == -23:
+        return True, 0
+    hif8_value_tmp = fraction32_int >> (23 - (hif8_bits_num + 1))
+    if hif8_value_tmp == pow(2, hif8_bits_num + 1) - 1:
+        return True, 0
+    if hif8_value_tmp == 0:
+        return False, 0
+    if hif8_value_tmp % 2 == 1:
+        hif8_value_tmp += 1
+    return False, hif8_value_tmp >> 1
+
+
+def _cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
+    sign = x < 0.0
+    sign_int_value = 128 if sign else 0
+    x_abs = math.fabs(float(x))
+    over_value = 1.25 * pow(2.0, 15)
+    if np.isinf(x) or x_abs >= over_value:
+        if sign:
+            return 239 if over_mode else 238
+        return 111 if over_mode else 110
+    if np.isnan(x):
+        return 128 if over_mode else 0
+    if x_abs == 0.0:
+        return 0
+    exponent = math.floor(math.log2(x_abs))
+    if round_mode == "hybrid":
+        cut_bit_type = "TA" if abs(exponent) < 4 else "SSR"
+    elif round_mode == "storound":
+        cut_bit_type = "SSR"
+    else:
+        cut_bit_type = "TA"
+    fraction_int = int(x_abs * pow(2, 23) * pow(2, -exponent) - pow(2, 23))
+    dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = _get_hif8_fraction_bits_number(exponent)
+    if cut_bit_type == "TA":
+        carry_exp_status, hif8_frac_value = _fp32_ta_round_to_hif8(
+            fraction_int, fraction_hif8_bits, exponent
+        )
+    else:
+        carry_exp_status, hif8_frac_value = _fp32_ssr_round_to_hif8(
+            fraction_int, fraction_hif8_bits, exponent
+        )
+    if carry_exp_status:
+        exponent += 1
+        dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = _get_hif8_fraction_bits_number(exponent)
+    if exponent < -23:
+        return 0
+    sig_exp = 1 if exponent < 0 else 0
+    if dot_hif8_value <= 0:
+        return 0 if exponent <= -23 else sign_int_value + exponent + 23
+    if dot_hif8_value == 1:
+        return sign_int_value + (dot_hif8_value << 3) + hif8_frac_value
+    abs_exponent = abs(exponent) - pow(2, exponent_hif8_bits - 1)
+    exponent_int_value = abs_exponent << fraction_hif8_bits
+    sig_exp = sig_exp << (exponent_hif8_bits - 1 + fraction_hif8_bits)
+    dot_int_value = dot_hif8_value << 3
+    return sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
+
 
 def trans_np_hifuint8_tensor_to_float32(in_tensor):
     shape_tensor = in_tensor.shape
@@ -473,7 +719,7 @@ def generate_input_tensors(params):
                    "query_rope", "key_rope", "dequant_scale"]
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
+        raw[key] = _gen_tensor_data(params, key).to("npu")
 
     return {
         "query": raw["query"],
@@ -979,10 +1225,8 @@ def _save_test_case(input_data, output_dir):
      return filepath
 
 # ========================= TTK e2e adapter =========================
-# The implementation above is copied from tests/pytest/kv_quant_sparse_flash_attention_golden.py.
-# TTK execution must compare NPU with the same API tensors provided by the caller, so
-# compute_golden has a ttk_use_provided_inputs branch that consumes packed query/key/value,
-# sparse_indices and block_table directly instead of regenerating them.
+# The CPU reference above is bundled in assets so TTK e2e does not depend on tests/pytest.
+# TTK execution consumes the API tensors supplied by the caller instead of regenerating inputs.
 __golden__ = {
     "e2e": {
         "torch_npu.npu_kv_quant_sparse_flash_attention": "npu_kv_quant_sparse_flash_attention"
@@ -1313,6 +1557,7 @@ def npu_kv_quant_sparse_flash_attention(query, key, value, sparse_indices, scale
                                          attention_mode=0, quant_scale_repo_mode=1,
                                          tile_size=128, rope_head_dim=64,
                                          key_dtype=None, value_dtype=None, **kwargs):
+    """Golden reference implementation for KV-quantized sparse flash attention with MLA-absorb support."""
     input_tensor_dict = {
         "query_cache": query,
         "key_cache": key,

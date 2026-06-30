@@ -10,28 +10,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# TTK assets_v2 keeps the pytest golden implementation in this file.
-# Some pytest-only modules are optional when the file is imported by TTK.
-import sys as _sys
-import types as _types
-for _mod_name in ('test', 'torch_npu', 'pytest', 'npu_ops_transformer'):
-    if _mod_name not in _sys.modules:
-        try:
-            __import__(_mod_name)
-        except Exception:
-            _sys.modules[_mod_name] = _types.ModuleType(_mod_name)
-
-import test
+# Standalone assets golden: TTK uses the CPU reference below directly and does
+# not depend on tests/pytest modules being present in source distributions.
 import torch
-import torch_npu
-import pytest
 import random
 import numpy as np
 import math
 import ctypes
 import copy
-import npu_ops_transformer
-
 class GeneralizedQLI:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode, key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode):
         self.batch_size = batch_size
@@ -558,6 +544,7 @@ def trans_prefix_actseq(self,list):
         return list_new
 
 def qli_output_single(params):
+    import npu_ops_transformer
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, \
     layout_query, layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
@@ -690,8 +677,8 @@ def qli_output_single(params):
     return cpu_result, npu_result, topk_value
 
 # ========================= TTK e2e adapter =========================
-# The implementation above is copied from tests/pytest/quant_lightning_indexer_golden.py.
-# The adapter below maps TTK API-style tensors to the pytest GeneralizedQLI object.
+# The CPU reference above is bundled in assets so TTK e2e does not depend on tests/pytest.
+# The adapter below maps TTK API-style tensors to the GeneralizedQLI object.
 _TTK_V3_TOPK_SCORES = None
 
 
@@ -777,6 +764,7 @@ def npu_quant_lightning_indexer(query, key, weights, query_dequant_scale,
                                 sparse_mode=3, pre_tokens=(1 << 63) - 1,
                                 next_tokens=(1 << 63) - 1, query_dtype=None,
                                 key_dtype=None, **kwargs):
+    """Golden reference implementation for quantized LightningIndexer attention with TopK scoring."""
     clear_topk_scores()
     q_shape = list(query.shape)
     k_shape = list(key.shape)
