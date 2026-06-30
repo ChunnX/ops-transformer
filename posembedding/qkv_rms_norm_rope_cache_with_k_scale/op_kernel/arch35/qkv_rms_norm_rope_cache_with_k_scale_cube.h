@@ -60,10 +60,11 @@ public:
             static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
+        const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
-        FixpipePreprocessedSegmentToAivUb(tile, qRows, true, l0cBufferId, 0U, qkAfterCubeUb);
-        FixpipePreprocessedSegmentToAivUb(tile, kRows, false, l0cBufferId, kL0cOffset, qkAfterCubeUb);
+        FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
+        FixpipeSegmentToAivUb(kRows, qRowsPerAiv, l0cBufferId, kL0cOffset, qkAfterCubeUb);
     }
 
 private:
@@ -75,7 +76,6 @@ private:
     static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = 256U * QKV_RRC_KIB / sizeof(float);
     static constexpr uint32_t AIC_L0A_ONE_BUFFER_ELEMENTS = AIC_L0A_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
     static constexpr uint32_t AIC_L0A_ONE_BUFFER_ROWS = AIC_L0A_ONE_BUFFER_ELEMENTS / QKV_RRC_HEAD_DIM_D128;
-    static constexpr uint32_t AIC_L0A_SPLIT_D_TILE = 64U;
     static constexpr uint32_t AIC_L0B_ONE_BUFFER_ELEMENTS = AIC_L0B_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
     static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / QKV_RRC_DOUBLE_BUFFER_NUM;
     static constexpr uint8_t AIC_UNIT_FLAG_CHECK_ONLY = 0b10;
@@ -91,8 +91,6 @@ private:
                   "QkvRmsNormRopeCacheWithKScale each L0A pingpong buffer must hold one D128 A tile.");
     static_assert(AIC_L0A_ONE_BUFFER_ROWS == AIC_M_L0_TILE,
                   "QkvRmsNormRopeCacheWithKScale L0A row capacity must match the D128 A tile size.");
-    static_assert(AIC_L0A_SPLIT_D_TILE % QKV_RRC_NZ_C0 == 0U,
-                  "QkvRmsNormRopeCacheWithKScale L0A split D tile must be aligned to C0.");
     static_assert(EVT_MTE2_TO_MTE1_ROTATION_READY <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIC rotation MTE2->MTE1 event exceeds event id range.");
     static_assert(EVT_MTE1_TO_MMAD_ROTATION_READY <= INTRA_EVENT_ID_MAX,
@@ -150,7 +148,11 @@ private:
             return;
         }
 
-        const uint64_t dTile = CalcSegmentL0aDTile(segmentRows);
+        // Keep M intact so L0C keeps one continuous segment layout for the single L0C->UB Fixpipe.
+        // Splitting by M would make each MMAD tile use its own M stride in L0C, so the segment is non-contiguous.
+        const uint64_t alignedRows = AlignUp(segmentRows, QKV_RRC_NZ_C0);
+        const uint64_t maxDByL0a = (AIC_L0A_ONE_BUFFER_ELEMENTS / alignedRows / QKV_RRC_NZ_C0) * QKV_RRC_NZ_C0;
+        const uint64_t dTile = MinU64(QKV_RRC_HEAD_DIM_D128, maxDByL0a);
         for (uint64_t dStart = 0U; dStart < QKV_RRC_HEAD_DIM_D128; dStart += dTile) {
             const uint64_t dSize = MinU64(dTile, QKV_RRC_HEAD_DIM_D128 - dStart);
             const bool isFirstD = (dStart == 0U);
@@ -162,29 +164,10 @@ private:
             SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             ComputeMmad(segmentRows, dSize, isFirstD, isLastD, l0aBufferId, l0cBufferId,
-                        RotationKChunk(dStart), l0cOffset);
+                        l0b_[dStart * QKV_RRC_HEAD_DIM_D128], l0cOffset);
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
             ++l0aDbIter;
         }
-    }
-
-    __aicore__ inline uint64_t CalcSegmentL0aDTile(uint64_t segmentRows) const
-    {
-        const uint64_t fullDRequiredElements = NzMatrixElements(segmentRows);
-        return fullDRequiredElements <= AIC_L0A_ONE_BUFFER_ELEMENTS ? QKV_RRC_HEAD_DIM_D128 : AIC_L0A_SPLIT_D_TILE;
-    }
-
-    __aicore__ inline void FixpipePreprocessedSegmentToAivUb(const TileParam &tile, uint64_t segmentRows,
-                                                             bool isQSegment, uint32_t bufferId, uint64_t l0cBaseOffset,
-                                                             LocalTensor<float> qkAfterCubeUb)
-    {
-        if (segmentRows == 0U) {
-            return;
-        }
-
-        const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
-        const uint64_t dstBaseRow = isQSegment ? 0U : qRowsPerAiv;
-        FixpipeSegmentToAivUb(segmentRows, dstBaseRow, bufferId, l0cBaseOffset, qkAfterCubeUb);
     }
 
     __aicore__ inline void LoadAToL0(uint64_t segmentRows, uint64_t mSize, uint64_t dStart, uint64_t dSize,
@@ -227,14 +210,13 @@ private:
              l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], rotationL0bChunk, params);
     }
 
-    __aicore__ inline LocalTensor<bfloat16_t> RotationKChunk(uint64_t dStart)
-    {
-        return l0b_[dStart * QKV_RRC_HEAD_DIM_D128];
-    }
-
     __aicore__ inline void FixpipeSegmentToAivUb(uint64_t segmentRows, uint64_t dstBaseRow, uint32_t bufferId,
                                                  uint64_t l0cBaseOffset, LocalTensor<float> qkAfterCubeUb)
     {
+        if (segmentRows == 0U) {
+            return;
+        }
+
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128);
         fixpipeParams.mSize = static_cast<uint16_t>(AlignUp(segmentRows, QKV_RRC_MIX_AIV_PER_AIC));
