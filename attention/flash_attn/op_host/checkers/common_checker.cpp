@@ -419,6 +419,64 @@ ge::graphStatus CommonChecker::CheckShapeConsistency(const FaTilingInfo &faInfo)
 // MultiPara — combined
 // ============================================================================
 
+ge::graphStatus CommonChecker::CheckKVContiguous(const FaTilingInfo &faInfo) const
+{
+    // tensorv1(老版本opbase)无view信息, key/value必然连续, 直接放过
+    if (faInfo.isTensorV1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape &keyShape = faInfo.opParamInfo.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = faInfo.opParamInfo.value.shape->GetStorageShape();
+    uint32_t keyDimNum = keyShape.GetDimNum();
+    uint32_t valueDimNum = valueShape.GetDimNum();
+    int32_t dimIndex = 0;
+
+    if (!faInfo.pageAttentionFlag) {
+        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape, faInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+                        (CheckTensorContiguous(valueDimNum, valueShape, faInfo.valueStrides, dimIndex) !=
+                            ge::GRAPH_SUCCESS),
+                    OP_LOGE(faInfo.opName, "In non-PA scenarios, key/value tensors must be contiguous."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (faInfo.kvLayout == FaLayout::PA_BBND) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyShape, faInfo.keyStrides, dimIndex)) &&
+                        (dimIndex != 0)),
+                    OP_LOGE(faInfo.opName,
+                            "In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            ((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueShape, faInfo.valueStrides, dimIndex)) &&
+                (dimIndex != 0)),
+            OP_LOGE(faInfo.opName,
+                    "In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
+                    "but the first non-contiguous dimension is index %d.",
+                    dimIndex),
+            return ge::GRAPH_FAILED);
+    } else if (faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyShape, faInfo.keyStrides, dimIndex)) &&
+                        (dimIndex != 0 && dimIndex != 1)),
+                    OP_LOGE(faInfo.opName,
+                            "In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            ((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueShape, faInfo.valueStrides, dimIndex)) &&
+                (dimIndex != 0 && dimIndex != 1)),
+            OP_LOGE(faInfo.opName,
+                    "In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
+                    "but the first non-contiguous dimension is index %d.",
+                    dimIndex),
+            return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     if (CheckMultiParaLayout(faInfo) != ge::GRAPH_SUCCESS) {
@@ -437,6 +495,9 @@ ge::graphStatus CommonChecker::CheckMultiPara(const FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     if (CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckKVContiguous(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
