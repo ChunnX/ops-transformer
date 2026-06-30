@@ -457,7 +457,8 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化auto ret = aclInit(nullptr);
+    // 固定写法，AscendCL初始化
+    auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
@@ -512,7 +513,8 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. device/stream初始化int32_t deviceId = 0;
+    // 1. device/stream初始化
+    int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
@@ -527,7 +529,8 @@ int main() {
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
 
-    // 块数量计算int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
+    // 块数量计算
+    int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
     int32_t ceilK = (kSeqlen + blockShapeY - 1) / blockShapeY;
 
     // 3. 构建张量Shape
@@ -535,7 +538,8 @@ int main() {
     std::vector<int64_t> kShape = {batch, numKHeads, kSeqlen, headDim};
     std::vector<int64_t> maskShape = {batch, numHeads, ceilQ, ceilK};
 
-    // 4. 分配并初始化Host数据int64_t qSize = GetShapeSize(qShape);
+    // 4. 分配并初始化Host数据
+    int64_t qSize = GetShapeSize(qShape);
     int64_t kSize = GetShapeSize(kShape);
 
     std::vector<op::fp16_t> qData(qSize, 0.1f);
@@ -552,15 +556,12 @@ int main() {
     CreateAclTensor(kData, kShape, &kAddr, aclDataType::ACL_FLOAT16, &kTensor);
     CreateAclTensor(maskOutData, maskShape, &maskAddr, aclDataType::ACL_INT8, &maskTensor);
 
-    // 5. 创建aclIntArray属性参数std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
+    // 5. 创建aclIntArray属性参数
+    std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
-    
-    std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
-    std::vector<int64_t> kSeqLenVec(batch, static_cast<int64_t>(kSeqlen));
-    aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
-    aclIntArray *kSeqLenArr = aclCreateIntArray(kSeqLenVec.data(), batch);
 
-    // 6. 标量与字符串参数配置char queryLayoutBuffer[16] = "BNSD";
+    // 6. 标量与字符串参数配置
+    char queryLayoutBuffer[16] = "BNSD";
     char keyLayoutBuffer[16] = "BNSD";
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
     double sparsity = 0.5;
@@ -573,11 +574,12 @@ int main() {
     ret = aclnnBSASelectBlockMaskGetWorkspaceSize(
         qTensor, 
         kTensor, 
-        blockShapeArr, 
-        nullptr,                    // postBlockShape必须为空qSeqLenArr, 
-        kSeqLenArr,
-        nullptr,                    // actualBlockLenQuery 为空, 完整压缩
-        nullptr,                    // actualBlockLenKey 为空, 完整压缩
+        blockShapeArr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
         queryLayoutBuffer,
         keyLayoutBuffer,
         static_cast<int64_t>(numKHeads),
@@ -599,11 +601,13 @@ int main() {
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    // 9. 调用第二段接口: 执行计算LOG_PRINT("Calling aclnnBSASelectBlockMask...\n");
+    // 9. 调用第二段接口: 执行计算
+    LOG_PRINT("Calling aclnnBSASelectBlockMask...\n");
     ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBSASelectBlockMask failed. ERROR: %d\n", ret); return ret);
 
-    // 10. 同步Stream，等待任务执行结束ret = aclrtSynchronizeStream(stream);
+    // 10. 同步Stream，等待任务执行结束
+    ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret); 
 
     // 11. 将结果拷贝回Host侧打印 (blockSparseMaskOut)
@@ -617,7 +621,9 @@ int main() {
         LOG_PRINT("  mask index %ld: %u\n", i, static_cast<unsigned int>(maskOutData[i]));
     }
 
-    // 12. 释放所有资源LOG_PRINT("Cleaning up resources...\n");
+    // 12. 释放所有资源
+    LOG_PRINT("Cleaning up resources...\n");
+
     if (workspaceAddr) {
       aclrtFree(workspaceAddr);
     }
@@ -631,8 +637,6 @@ int main() {
     aclDestroyTensor(maskTensor);
     
     aclDestroyIntArray(blockShapeArr);
-    aclDestroyIntArray(qSeqLenArr);
-    aclDestroyIntArray(kSeqLenArr);
 
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
