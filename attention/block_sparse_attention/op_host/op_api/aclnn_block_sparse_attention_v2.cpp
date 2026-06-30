@@ -343,7 +343,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV2Ge
         return ret;
     }
     ret = CheckNDFormat(query, key, value, blockSparseMask, attenMaskOptional,
-                        blockTableOptional, qDequantScaleOptional, kDequantScaleOptional, 
+                        blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
                         vDequantScaleOptional, attentionOut, softmaxLseOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
