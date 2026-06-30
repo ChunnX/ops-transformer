@@ -115,7 +115,7 @@ private:
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
         LocalTensor<uint32_t> &gatherTmpTensor, LocalTensor<float> &statusSumOutTensor);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    __aicore__ inline void WaitStatusA5(LocalTensor<float> &statusSumOutTensor);
+    __aicore__ inline void WaitStatusA5();
 #else
     __aicore__ inline void WaitStatus(LocalTensor<float> &gatherMaskOutTensor,
         LocalTensor<float> &statusSumOutTensor);
@@ -1105,21 +1105,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::WaitDispatchClearStatus()
-{
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-    DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
-    uint64_t duplicateMask[2] = { 0x101010101010101, 0 }; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0
-    LocalTensor<int32_t> cleanStateTensor = waitStatusBuf_.Get<int32_t>();
-    SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(recStatusNumPerCore_, 8), 1, 8);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
-             cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-}
-
-template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::PerformanceInfoPerRank(
     uint64_t performanceTimeStart, bool isCompactStatus)
 {
@@ -1157,16 +1142,13 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Perf
 // A5用Compact只轮询flag字段；A3不支持compact搬运，回退普通DataCopy+ReduceSum
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::WaitStatusA5(
-    LocalTensor<float> &statusSumOutTensor)
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::WaitStatusA5()
 {
     float compareTarget = sumTarget_ * recStatusNumPerCore_;
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(recStatusNumPerCore_), sizeof(float),
         STATE_OFFSET - sizeof(float), 0U, 0U};
     DataCopyPadExtParams<float> flagCopyPadParams{false, 0U, 0U, 0.0f};
-    uint32_t flagSumInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
-    SumParams flagSumParams{1, flagSumInner, recStatusNumPerCore_};
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
     SyncFunc<AscendC::HardEvent::S_V>();
     while (sumOfFlag != compareTarget) {
@@ -1177,17 +1159,13 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
             PerformanceInfoPerRank(performanceTimeStart, true);
         }
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Sum(statusSumOutTensor, statusFp32Tensor_, flagSumParams);
+        ReduceSum(statusFp32Tensor_, statusFp32Tensor_, statusFp32Tensor_, recStatusNumPerCore_);
         SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor.GetValue(0);
+        sumOfFlag = statusFp32Tensor_.GetValue(0);
     }
     if (isPerformanceFlag_) {
         PerformanceInfoCopyOut();
     }
-    // 清状态仍按完整32B block回写，需要先补搬完整status以保留count字段。
-    DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
-    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET], intriParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
 }
 #else
 template <TemplateDispatchV2TypeClass>
@@ -1219,6 +1197,22 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
 #endif
 
 template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::WaitDispatchClearStatus()
+{
+    uint64_t duplicateMask[2] = { 0x101010101010101, 0 }; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0
+    LocalTensor<int32_t> cleanStateTensor = waitStatusBuf_.Get<int32_t>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(recStatusNumPerCore_, 8), 1, 8);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    uint32_t flagSize = static_cast<uint32_t>(sizeof(float));
+    uint32_t flagStrideInGM = stateOffset_ - static_cast<uint32_t>(sizeof(float));
+    DataCopyExtParams clearStatusParam{static_cast<uint16_t>(recStatusNumPerCore_), flagSize, 0U, flagStrideInGM, 0U};
+    DataCopyPad(windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+             cleanStateTensor.ReinterpretCast<float>(), clearStatusParam);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::WaitDispatch()
 {
     BufferInit();
@@ -1233,24 +1227,22 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
     LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
     LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
     gatherTmpTensor.SetValue(0, 1);
-#endif
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
+#endif
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    WaitStatusA5(statusSumOutTensor);
+    WaitStatusA5();
 #else
     WaitStatus(gatherMaskOutTensor, statusSumOutTensor);
 #endif
     // 清状态
     WaitDispatchClearStatus();
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    // A5不需要考虑避免同地址访问, 跳过SyncCntOnCore
-#else
-    // 核间同步token cnt
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
+    // A3需要避免同地址读, 核间同步token cnt
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
 #endif
     SyncAll<true>();
