@@ -238,8 +238,9 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-                    OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
-                            tempBlockSize, fiaInfo.blockSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+                        ("When page attention is enabled, blockSize of " + inputName +
+                         " must be " + std::to_string(fiaInfo.blockSize)).c_str()),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(tempD != compareD,
@@ -489,10 +490,9 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         OP_CHECK_IF(
             fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD &&
             fiaInfo.blockSize != NUM_128,
-            OP_LOGE(fiaInfo.opName,
-                    "In FP8 GQA fullquant scenario, when page attention enable, "
-                    "blockSize(%d) should be %u.",
-                    fiaInfo.blockSize, NUM_128),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
+                std::to_string(fiaInfo.blockSize).c_str(),
+                "In FP8 GQA fullquant scenario, when page attention is enabled, block_size must be 128"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -509,9 +509,10 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
             return ge::GRAPH_FAILED);
     } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
-        OP_CHECK_IF(dimNum != DIM_NUM_4, OP_LOGE(fiaInfo.opName,
-                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
-                    "PA BnBsH and NZ are not supported."),
+        OP_CHECK_IF(dimNum != DIM_NUM_4,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key", std::to_string(dimNum).c_str(),
+                        "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
+                        "PA BnBsH and NZ are not supported"),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
