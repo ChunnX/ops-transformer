@@ -55,7 +55,7 @@ public:
         // Rows before the current expert, kept per cursor for dispatch/GMM prefetch state split.
         uint32_t expertBeforeCnt = 0;
     };
-    __aicore__ inline MegaMoe() {};
+    __aicore__ inline MegaMoeLayered() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
         GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
