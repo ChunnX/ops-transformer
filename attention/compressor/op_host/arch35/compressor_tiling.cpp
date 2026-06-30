@@ -388,7 +388,6 @@ ge::graphStatus CompressorTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
         ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCacheMode()) {
         return ge::GRAPH_FAILED;
@@ -640,14 +639,6 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio()const
-{
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CompressorTiling::CheckSingleParaCoff() const
 {
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
@@ -740,6 +731,10 @@ ge::graphStatus CompressorTiling::CheckFeature() const
         pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
         OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u", pageAttentionParams_->blockSize),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(baseParams_->cmpRatio > MAX_CMPRATIO_SIZE || baseParams_->cmpRatio < MIN_CMPRATIO_SIZE,
+                OP_LOGE(context_->opName, "cmpRatio should be whthin [2, 128], but got %u",
+                        baseParams_->cmpRatio),
+                return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)) {
         OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
                     OP_LOGE(context_->opName,
