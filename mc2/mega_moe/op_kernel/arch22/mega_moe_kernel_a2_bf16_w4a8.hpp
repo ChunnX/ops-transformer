@@ -1195,7 +1195,7 @@ private:
                         gmRemoteDstA[gmDstOffset], gmSrcA[gmSrcOffset],
                         static_cast<int32_t>(rows), params.problemShape.k(),
                         dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params,
-                        static_cast<uint64_t>(rowStart * params.problemShape.k()));
+                        static_cast<uint64_t>(rowStart) * params.problemShape.k());
                 }
                 prevGroupSum1Arr[arrIdx] += currentMSend;
             }
@@ -1219,7 +1219,7 @@ private:
                     RecvTokensV3<ElementABefore>(
                         static_cast<int32_t>(rows2), static_cast<int32_t>(rowStart2),
                         params.problemShape.k(), srcEpIdx, groupIdx, params,
-                        static_cast<uint64_t>(rowStart2 * params.problemShape.k()));
+                        static_cast<uint64_t>(rowStart2) * params.problemShape.k());
                 }
             }
             AscendC::SyncAll<true>();
