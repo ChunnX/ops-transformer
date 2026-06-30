@@ -63,8 +63,6 @@ __global__ __aicore__ void quant_block_sparse_attn(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // TODO: 待实现 - 以下 BSA 专有输入暂未接入 InitBaseAPI（其形参无对应位），随 sparse 流水后续接入：
-
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)RETURN_SOFTMAX_LSE;
 
@@ -76,7 +74,6 @@ __global__ __aicore__ void quant_block_sparse_attn(
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
-    // TODO: 是否新增模板参数
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                 S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,

@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_block_sparse_attn_infershape.cpp
- * \brief TODO: 待实现
+ * \brief QuantBlockSparseAttn infer shape and data type.
  */
 
 #include <graph/utils/type_utils.h>

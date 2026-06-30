@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_block_sparse_attn_def.cpp
- * \brief QuantBlockSparseAttn op prototype. TODO: 待实现 - 补齐最终 aclnn 接口约束与 shape 值域校验。
+ * \brief QuantBlockSparseAttn op prototype.
  */
 
 #include "register/op_def_registry.h"
