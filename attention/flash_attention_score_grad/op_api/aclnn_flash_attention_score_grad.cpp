@@ -430,12 +430,14 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         if (!(isLayoutBNSD || isLayoutBSND)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "inputLayout",
                 fagShape.inputLayoutStr.c_str(), "The value of inputLayout must be BNSD or BSND or BSH or SBH or TND");
+            return ACLNN_ERR_PARAM_INVALID;
         }
         // query dim > 3
         fagShape.dDim = queryShape.GetDim(3); // 3:d
         fagShape.dkDim = keyShape.GetDim(3); // key Head-dim
         fagShape.dvDim = valueShape.GetDim(3); // value Head-dim
     } else {
+        // query dimNum <= 3 and layout is not BSH/SBH/TND
         if (!(isLayoutBNSD || isLayoutBSND)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "inputLayout",
                 fagShape.inputLayoutStr.c_str(), "The value of inputLayout must be BNSD or BSND or BSH or SBH or TND");
