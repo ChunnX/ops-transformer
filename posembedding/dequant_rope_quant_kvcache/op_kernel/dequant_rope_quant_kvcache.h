@@ -214,6 +214,7 @@ public:
         pipe.InitBuffer(vCacheOutQueue, BUFFER_NUM, kvDataNum * sizeof(int8_t));
 
         eventIdMTE2ToS = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_S>());
+        eventIdSToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::S_MTE2>());
         eventIdVToMTE3V = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
         eventIdVToMTE3K = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
         eventIdMTE3ToMTE2K = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
@@ -302,9 +303,12 @@ public:
             dataCopyParamsIndice_ = {1, static_cast<uint32_t>(OnceUBMaxS * sizeof(int32_t)), 0, 0, 0};
         }
 
+        // Prime S_MTE2 so the first computeQKV can proceed without waiting for a prior S read.
+        SetFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
         for (uint32_t ubLoopIndex = 0; ubLoopIndex < coreCalcSLoop - 1; ubLoopIndex++) {
             computeQKV(OnceUBMaxS);
         }
+        WaitFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
 
         dataCopyParamsK_ = {
             (uint16_t)coreCalcSLastNum, static_cast<uint32_t>(this->kHiddenSize * sizeof(XTYPE)),
@@ -324,12 +328,15 @@ public:
         } else {
             dataCopyParamsIndice_ = {1, static_cast<uint32_t>(coreCalcSLastNum * sizeof(int32_t)), 0, 0, 0};
         }
+        SetFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
         computeQKV(coreCalcSLastNum);
+        WaitFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
         if (this->ifKVout == true) {
             WaitFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2K);
             WaitFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2V);
         }
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_S>(eventIdMTE2ToS);
+        GetTPipePtr()->ReleaseEventID<HardEvent::S_MTE2>(eventIdSToMTE2);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3V);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3K);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2K);
@@ -381,7 +388,9 @@ private:
 
         indiceUb = indiceQueue.AllocTensor<int32_t>();
         bOffset = GetDiv(sCoreOffset, seqlen);
-
+        
+        // Wait until the previous iteration's PIPE_S reads on indiceUb have finished.
+        WaitFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
         DataCopyPad(indiceUb, indiceGm[bOffset], dataCopyParamsIndice_, padParamsIndice_);
         SetFlag<HardEvent::MTE2_S>(eventIdMTE2ToS);
 
@@ -762,6 +771,9 @@ private:
             copyOutcache(seqLoop + 1, lastStepSeq, 0, sIndexUb, vOut, kOut);
         }
 
+        // Signal that PIPE_S reads on indiceUb are done; safe for the next MTE2 write.
+        SetFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
+
         indiceQueue.FreeTensor(indiceUb);
         kCacheOutQueue.FreeTensor(kOut);
         vCacheOutQueue.FreeTensor(vOut);
@@ -937,6 +949,7 @@ private:
     int64_t indicesArray[INDICES_MAX__NUM];
 
     event_t eventIdMTE2ToS;
+    event_t eventIdSToMTE2;
     event_t eventIdVToMTE3K;
     event_t eventIdMTE3ToMTE2K;
     event_t eventIdMTE2ToMTE3V;
