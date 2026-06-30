@@ -416,7 +416,24 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::GetWorkspaceSize()
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::PostTiling()
 {
-    return SaveTilingDataToContext(tilingData_);
+    auto ret = SaveTilingDataToContext(tilingData_);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "SaveTilingDataToContext failed."),
+                return ret);
+
+    uint64_t mCnt = GroupedMatmul::CeilDiv(static_cast<uint64_t>(tilingData_.mmTilingData.m),
+                                           static_cast<uint64_t>(tilingData_.mmTilingData.baseM));
+    uint64_t nCnt = GroupedMatmul::CeilDiv(static_cast<uint64_t>(tilingData_.mmTilingData.n),
+                                           static_cast<uint64_t>(tilingData_.mmTilingData.baseN));
+    uint64_t totalBlockCnt = std::max<uint64_t>(1UL, mCnt * nCnt * tilingData_.gmmActivationQuantParams.groupNum);
+    uint32_t usedCoreNum = static_cast<uint32_t>(std::min<uint64_t>(totalBlockCnt, aicoreParams_.aicNum));
+    context_->SetBlockDim(usedCoreNum);
+    std::printf("[GMMAQ tiling] PostTiling: mCnt=%llu, nCnt=%llu, groupNum=%u, totalBlockCnt=%llu, "
+                "platformAic=%llu, usedCoreNum=%u.\n",
+                static_cast<unsigned long long>(mCnt), static_cast<unsigned long long>(nCnt),
+                tilingData_.gmmActivationQuantParams.groupNum, static_cast<unsigned long long>(totalBlockCnt),
+                static_cast<unsigned long long>(aicoreParams_.aicNum), usedCoreNum);
+    std::fflush(stdout);
+    return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulActivationQuant, GroupedMatmulActivationQuantTiling950, 0);
