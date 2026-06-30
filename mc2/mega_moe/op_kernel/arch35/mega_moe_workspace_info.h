@@ -225,7 +225,7 @@ struct WorkspaceInfo {
             workspaceSize += maxDataSize;
 
 
-            combineCommNotifyPtr = base + workspaceSize;
+            combineCommNotifyPtr = base + workspaceSize + 100 *1024UL;
             // 每个 expert 分配一个 int32 通知
             uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
             workspaceSize += maxNotifySize;
