@@ -285,10 +285,21 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKvHeadNums() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseMode() const
 {
-    OP_CHECK_IF((*opParamInfo_.oriMaskMode != 4 || *opParamInfo_.cmpMaskMode != 3),
-        OP_LOGE(opName_, "oriMaskMode only support 4 and cmpMaskMode only support 3, but got %u and %u.",
-            *opParamInfo_.oriMaskMode, *opParamInfo_.cmpMaskMode),
+    OP_CHECK_IF(oriMaskMode_ != 0 && oriMaskMode_ != 3 && oriMaskMode_ != 4,
+        OP_LOGE(opName_, "oriMaskMode only support 0, 3 and 4, but got %u.",
+            oriMaskMode_),
         return ge::GRAPH_FAILED);
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        OP_CHECK_IF(cmpMaskMode_ != 0,
+            OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA mode, but got %u.",
+                cmpMaskMode_),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(cmpMaskMode_ != 0 && cmpMaskMode_ != 3,
+            OP_LOGE(opName_, "cmpMaskMode only support 0 and 3 in non-SWA mode, but got %u.",
+                cmpMaskMode_),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
