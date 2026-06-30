@@ -1,4 +1,4 @@
-# sparse_flash_mla / sparse_flash_mla_metadata
+# sparse_flash_mla
 
 ## 产品支持情况
 
@@ -19,7 +19,7 @@
   - **C4A（Compressed Sparse Attention，CSA）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
   - **C128A（Heavily Compressed Attention，HCA）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
-  `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
+  `sparse_flash_mla_metadata`是`sparse_flash_mla`的metadata前置接口，用于在主接口执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主接口必须传入该metadata。典型调用流程如下：
 
   1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、block table、sinks等输入。
   2. 调用`sparse_flash_mla_metadata`生成`metadata`。

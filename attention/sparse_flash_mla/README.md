@@ -163,7 +163,7 @@
     <tr>
       <td>metadata</td>
       <td>可选输入</td>
-      <td>`SparseFlashMlaMetadata`生成的任务切分结果。</td>
+      <td>配套metadata前置接口生成的任务切分结果。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -294,7 +294,7 @@
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
 - 除`ori_topk_length`和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
-- `cmp_residual_kv`为主算子和metadata算子的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
+- `cmp_residual_kv`为主接口和metadata前置接口的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
 
