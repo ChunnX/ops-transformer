@@ -1232,7 +1232,7 @@ private:
             static_cast<int32_t>(n2),
             static_cast<int32_t>(L1TileShape::N),
             shmem,
-            static_cast<int32_t>(peermemInfo.offsetD),
+            peermemInfo.offsetD,
             static_cast<int32_t>(serverId_)
         };
 
@@ -1449,7 +1449,7 @@ private:
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
-            workspaceOffset +=  AlignUp(params.EP * params.expertPerRank, 128) * params.EP * sizeof(int32_t);
+            workspaceOffset += AlignUp(params.EP * params.expertPerRank, 128) * params.EP * sizeof(int32_t);
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
