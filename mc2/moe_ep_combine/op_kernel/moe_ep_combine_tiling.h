@@ -1,0 +1,49 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_ep_combine_tiling.h
+ * \brief
+ */
+ 
+#ifndef MOE_EP_COMBINE_TILING_H
+#define MOE_EP_COMBINE_TILING_H
+
+struct MoeEpCommonTilingData {
+    uint32_t epWorldSize;
+    uint32_t epRankId;
+    uint32_t numExperts;
+    uint32_t numLocalExperts;
+    uint32_t numTokens;
+    uint32_t hidden;
+    uint32_t topK;
+    uint32_t numMaxTokensPerRank;
+    uint32_t scalesBytes;
+    uint32_t perSlotBytes;
+    uint32_t expertAlignment;
+};
+
+struct MoeEpCombineInfo {
+    MoeEpCommonTilingData cfg;
+    uint32_t hasTopkWeights     = 0;
+    uint32_t aivNum             = 0;
+    uint64_t totalWinSizeEp     = 0;
+    uint64_t totalUbSize        = 0;
+    uint64_t localWsSizeDataPerRank     = 0;  // per-rank local workspace stride (compact, not CCL window size)
+    uint64_t localWsSizeStatusPerRank   = 0;
+    uint64_t winStateOffset     = 0;    // Win State Offset
+    uint64_t winDataOffset      = 0;    // Win Data Offset
+};
+
+struct MoeEpCombineTilingData {
+    MoeEpCombineInfo moeEpCombineInfo;
+};
+
+#endif  // MOE_EP_COMBINE_TILING_H
