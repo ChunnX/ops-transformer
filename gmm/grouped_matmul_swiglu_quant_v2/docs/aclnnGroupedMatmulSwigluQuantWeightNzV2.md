@@ -410,7 +410,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示中间GroupedMatmul的结果数据类型。</td>
         <td><ul>
-          <li>暂不支持，默认行为28。</li>
           <li>0表示FLOAT。</li>
           <li>1表示FLOAT16。</li>
           <li>27表示BFLOAT16。</li>
@@ -426,7 +425,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示量化计算类型，用于确定swiglu结果的量化模式。</td>
         <td><ul>
-          <li>暂不支持，默认行为0。</li>
           <li>0表示per-token。</li>
           <li>2表示MX量化。</li>
         </ul></td>
@@ -516,7 +514,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - 仅支持dequantMode和quantMode相同取值。
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
-      - weight和weightScale目前仅支持tensorlist长度为1。
+      - MXFP8、MXFP4场景下weight和weightScale仅支持tensorlist长度为1；MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
       - MXFP4场景支持weight NZ格式，x和weight为FLOAT4_E2M1或FLOAT4_E1M2（支持交叉），output支持FLOAT8_E4M3FN、FLOAT4_E1M2或FLOAT4_E2M1。
 
 - **返回值**
@@ -553,7 +551,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
     </tr>
     <tr>
-      <td>传入的weight、weightScale的tensor list长度不为1。</td>
+      <td>传入的weight、weightScale的tensor list长度不满足约束（MXFP8/MXFP4场景需为1，MXA8W4多tensor场景需weight与weightScale数量一致）。</td>
     </tr>
     <tr>
       <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
@@ -858,6 +856,17 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>(M, N / 2)</td>
               <td>(M, ceil((N / 2) / 64), 2)</td>
             </tr>
+            <tr>
+              <td>MXA8W4（多tensor）</td>
+              <td>(M, K)</td>
+              <td><ul>
+              <li>转置view shape形如{E个(N, K)}，storage shape形如{E个(N/32, K/16, 16, 32)}</li></ul></td>
+              <td><ul>
+              <li>转置view shape形如{E个(N, ceil(K / 64), 2)}</li></ul></td>
+              <td>(M, ceil(K / 64), 2)</td>
+              <td>(M, N / 2)</td>
+              <td>(M, ceil((N / 2) / 64), 2)</td>
+            </tr>
           </tbody>
           </table>
 
@@ -871,7 +880,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           - K >= 32。
           - N >= 128。
           - weight仅支持转置。用户需构造转置的NZ格式weight数据，调用前需transpose成非转置状态。
-
+          - 多tensor场景下（tensorlist长度大于等于1），weight和weightScale的tensor数量需一致。
+          - 多tensor场景下，weight中每个tensor的K和N需相等。
+          - 多tensor场景下，weight中每个tensor的view shape为2D，weightScale中每个tensor的view shape为3D；单tensor场景下，weight中每个tensor的view shape为3D，weightScale中每个tensor的view shape为4D。
+          - 多tensor场景下，所有weightScale tensor的shape需与对应weight tensor匹配。
+          - 多tensor场景下，groupList的长度需等于weight/weightScale的tensor数量。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
