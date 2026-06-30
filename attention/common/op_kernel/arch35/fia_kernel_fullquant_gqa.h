@@ -269,7 +269,6 @@ public:
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
 
-
         // 任务起始位置
         constInfo.bN2Start = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_START_INDEX));
         constInfo.gS1OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_M_START_INDEX));
