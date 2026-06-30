@@ -87,8 +87,6 @@ static _HcclCommGetHandleWithName HcclCommGetHandleWithNameFunc = nullptr;
 static _HcclGetRankSize HcclGetRankSizeFunc = nullptr;
 static _HcclGetRankId HcclGetRankIdFunc = nullptr;
 static _HcclGetHcclBuffer HcclGetHcclBufferFunc = nullptr;
-static _HcclCommMemReg HcclCommMemRegFunc = nullptr;
-static _HcclChannelGetRemoteMems HcclChannelGetRemoteMemsFunc = nullptr;
 
 // 新HCCL EngineCtx API函数指针
 static _HcomGetCommHandleByGroup HcomGetCommHandleByGroupFunc = nullptr;
