@@ -1286,11 +1286,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         }
     }
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1) {
-            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
-        }
-    }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
         ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
@@ -1376,6 +1371,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState gmm2State{initShape, initOffset, 0};
     InitCombineBuffers();
 
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1) {
+            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
+        }
+    }
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
             continue;
