@@ -64,14 +64,14 @@ public:
         int32_t n0;
         int32_t rank;
         HcclShmem<IS_A2> shmem;
-        int32_t offsetD;
+        int64_t offsetD;
         Layout3D tokenPerExpertLayout;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int32_t offsetD_, Layout3D tokenPerExpertLayout_)
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
               layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_),
               tokenPerExpertLayout(tokenPerExpertLayout_)
@@ -140,7 +140,8 @@ public:
 
         auto &ubC = ubCList[is_ping];
         auto &ubD = ubDList[is_ping];
-        int32_t gmCOffset = preSrcExpertSum * params.n2 + blockCoord.m() * params.n2 + blockCoord.n();
+        int64_t gmCOffset = static_cast<int64_t>(preSrcExpertSum) * params.n2 +
+            blockCoord.m() * params.n2 + blockCoord.n();
         auto gmTileC = gmC[gmCOffset];
         auto &ubCFp32 = ubFp32List[is_ping];
         auto &scaleUb = scaleUbList[is_ping];
