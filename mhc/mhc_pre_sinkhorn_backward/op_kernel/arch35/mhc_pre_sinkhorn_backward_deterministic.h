@@ -29,6 +29,10 @@ constexpr uint8_t NUMONE = 1;
 constexpr uint8_t NUMTWO = 2;
 constexpr int64_t WS_BUFFER_INTERVAL = 1024;
 constexpr float FLT_MAX = 3.402823466e+38F;
+constexpr int64_t CUBE_MAX_N_SIZE = 16;
+constexpr uint16_t PIPE_MTE3_FLAG = 0x5;
+constexpr uint16_t PIPE_FIX_FLAG = 0x6;
+constexpr uint8_t AIV_AIC_MODE = 0x2;
 
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
@@ -1225,8 +1229,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         }
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
         // 计算GradXFromRms
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // GradHcBeforeNorm计算完成，可以进行matmul计算
-        CrossCoreWaitFlag<0x2>(0x6); // gradX matmul计算完成可以执行进行最后的计算
+        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG); // GradHcBeforeNorm计算完成，可以进行matmul计算
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG); // gradX matmul计算完成可以执行进行最后的计算
+        SyncAll();
         if (blockIdx_ < usedAivNum_) {
             uint64_t bsLoopNum = Ops::Base::CeilDiv(curCoreProcessbsTask_, bsLoopDataLen_);
             uint64_t bsTailDataLen = curCoreProcessbsTask_ - bsLoopDataLen_ * (bsLoopNum - 1);
@@ -1246,24 +1251,24 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     }
 
     if ASCEND_IS_AIC {
-        CrossCoreWaitFlag<0x2>(0x5);
-        int32_t totalSize = batchSize_ * seqLength_;
-        int32_t taskNumPerCore = Ops::Base::CeilDiv(totalSize, static_cast<int32_t>(aicNum_));
-        int32_t taskOffset = blockIdx_ * taskNumPerCore;
-        taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
-        ComputeGradXMatmul(taskOffset, taskNumPerCore);
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_MTE3_FLAG);
+        int64_t totalSize = batchSize_ * seqLength_;
+        int64_t taskNumPerCore = Ops::Base::CeilDiv(totalSize, aicNum_);
+        int64_t taskOffset = blockIdx_ * taskNumPerCore;
+        taskNumPerCore = min(taskNumPerCore, totalSize - blockIdx_ * taskNumPerCore);
+        ComputeGradXMatmul(static_cast<int32_t>(taskOffset), static_cast<int32_t>(taskNumPerCore));
 
-        int32_t totalN = n_ * c_;
-        int32_t taskNCount = Ops::Base::CeilDiv(totalN, static_cast<int32_t>(aicNum_));
-        taskNCount = min(taskNCount, static_cast<int32_t>(16));
-        int32_t taskLoops = Ops::Base::CeilDiv(totalN, taskNCount);
-        int32_t taskNTailCount = totalN - (taskLoops - 1) * taskNCount;
+        int64_t totalN = n_ * c_;
+        int64_t taskNCount = Ops::Base::CeilDiv(totalN, aicNum_);
+        taskNCount = min(taskNCount, CUBE_MAX_N_SIZE);
+        int64_t taskLoops = Ops::Base::CeilDiv(totalN, taskNCount);
+        int64_t taskNTailCount = totalN - (taskLoops - 1) * taskNCount;
         for (int32_t taskLoop = blockIdx_; taskLoop < taskLoops; taskLoop += aicNum_) {
             int32_t taskOft = taskLoop * taskNCount;
             int32_t taskCount = taskLoop == (taskLoops - 1) ? taskNTailCount : taskNCount;
             ComputeGradPhiMatmul(taskOft, taskCount);
         }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x6);
+        CrossCoreSetFlag<AIV_AIC_MODE, PIPE_FIX>(PIPE_FIX_FLAG);
     }
 }
 
