@@ -202,7 +202,7 @@ def tilelang_grad_kl_loss_single_kernel(
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 20
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 21
         # === SPECIAL (22) ===
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), input_dtype),         # 22  f16 avoids i32+mapping bug
+        SparseIndices: T.Tensor((B, S1, Nidx2, K), calc_dtype),          # 22  f32 avoids i32+mapping bug & f16 overflow
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -765,7 +765,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 14-16 ws
             d_query_index_ws,                           # 17   ws
             d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 18-21 out
-            sparse_indices.to(input_dtype),             # 22   int32→f16 (no precision loss for S2≤2048)
+            sparse_indices.to(torch.float32),           # 22   int32→f32 (avoids i32 mapping bug)
         )
         if _PROFILE:
             _t_kernel_end.record()
