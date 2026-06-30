@@ -77,7 +77,7 @@
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMixedQuantSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMixedQuantSparseFlashMla`执行实际计算。
 
-```c++
+```Cpp
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *q,
     const aclTensor *oriKvOptional,
@@ -115,7 +115,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     aclOpExecutor  **executor)
 ```
 
-```c++
+```Cpp
 aclnnStatus aclnnMixedQuantSparseFlashMla(
     void          *workspace,
     uint64_t       workspaceSize,
@@ -531,54 +531,52 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-
-    <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
-    <col style="width: 262px">
-    <col style="width: 121px">
-    <col style="width: 817px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
-      </tr>
-      <tr>
-        <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
-        <td rowspan="8">161002</td>
-        <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>N1不在[2,4,8,16,32,64,128]范围内，或N2不为1。</td>
-      </tr>
-      <tr>
-        <td>D不为512。</td>
-      </tr>
-      <tr>
-        <td>quantMode不为1或2。</td>
-      </tr>
-      <tr>
-        <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
-      </tr>
-      <tr>
-        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
-      </tr>
-      <tr>
-        <td>SWA场景cmpRatio不为1，或cmpRatio与CSA/HCA场景不匹配。</td>
-      </tr>
-      <tr>
-        <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
-      </tr>
-    </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
+  <col style="width: 262px">
+  <col style="width: 121px">
+  <col style="width: 817px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="8">161002</td>
+      <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>N1不在[2,4,8,16,32,64,128]范围内，或N2不为1。</td>
+    </tr>
+    <tr>
+      <td>D不为512。</td>
+    </tr>
+    <tr>
+      <td>quantMode不为1或2。</td>
+    </tr>
+    <tr>
+      <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+    </tr>
+    <tr>
+      <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+    </tr>
+    <tr>
+      <td>SWA场景cmpRatio不为1，或cmpRatio与CSA/HCA场景不匹配。</td>
+    </tr>
+    <tr>
+      <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnMixedQuantSparseFlashMla
 
