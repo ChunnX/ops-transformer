@@ -722,8 +722,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1Dis
         }
         sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
         uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-        uint32_t dstRank = targetServer * rankPerServer_ + rankInServer_;
-        GM_ADDR recordAddr = GetRankWinAddrWithOffset(dstRank, dispatchWinOffset_) + relayOffset;
+        GM_ADDR recordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
         if (targetServer != serverId_) {
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServer));
