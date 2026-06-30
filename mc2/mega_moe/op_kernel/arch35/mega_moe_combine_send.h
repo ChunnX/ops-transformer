@@ -102,8 +102,8 @@ __aicore__ inline void CombineTokensLayered(
         GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
                         static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
-        PRINTF("cnt = %d\n", cnt);
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
         // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
         gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
@@ -114,7 +114,8 @@ __aicore__ inline void CombineTokensLayered(
         gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
         AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_E>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     }
 }
 
@@ -140,17 +141,15 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
-    AscendC::printf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
-        aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
+
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, cntTensorLength / sizeof(int32_t));
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength, cntTensorLength / sizeof(int32_t));
     
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0 , processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0 , processRankNum);
-    // // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-    // // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-    PipeBarrier<PIPE_ALL>();// todo:
-    // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
+
+    PipeBarrier<PIPE_ALL>();
+
     int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
     int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
         (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
@@ -198,24 +197,16 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     }
 
     uint32_t rankIndex = 0;
-    uint32_t cnt = 0;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
     while (true) {
         while ((rankIndex + startRankId == rankId) || sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
             rankIndex = (rankIndex + 1) % processRankNum;
         }
-        cnt++;
         // 读 notify count
         __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr + (rankIndex + startRankId) * sizeof(int32_t));
         uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
         uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
-        if (cnt % 100000 == 0) {
-            printf("rankId=%d, processRankId=%d, curCnt=%d, completeCnt=%d\n", rankId, rankIndex + startRankId, curCnt, completeCnt);
-        }
-        if (cnt >= 30000000) {
-            break;
-        }
         if (curCnt > completeCnt) {
             uint32_t needCnt = curCnt - completeCnt;
             uint32_t index = completeCnt;
@@ -228,14 +219,14 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-                if (sendTensor.GetValue(7) == 1) {
+                if (sendTensor.GetValue(flagIndex) == 1) {
                     // 读取三元组元数据
-                    uint32_t toRankId = sendTensor.GetValue(0);
-                    uint32_t tokenIdx = sendTensor.GetValue(1);
-                    uint32_t topkIdx = sendTensor.GetValue(2);
-                    uint32_t nLoc = sendTensor.GetValue(3);
-                    uint32_t n = sendTensor.GetValue(4);
-                    uint32_t dataLen = sendTensor.GetValue(5);
+                    uint32_t toRankId = sendTensor.GetValue(rankIdIndex);
+                    uint32_t tokenIdx = sendTensor.GetValue(tokenIdxIndex);
+                    uint32_t topkIdx = sendTensor.GetValue(topkIdxIndex);
+                    uint32_t nLoc = sendTensor.GetValue(blockLenIndex);
+                    uint32_t n = sendTensor.GetValue(tokenLenIndex);
+                    uint32_t dataLen = sendTensor.GetValue(tokenActualLenIndex);
                     uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
                     uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
                     GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset,1)+ gmDstOffset * sizeof(ElementMMadOut2);
@@ -261,7 +252,7 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         }
         rankIndex = (rankIndex + 1) % processRankNum;
     }
-    printf("complete while\n");
+
     // Phase 4: drain 本核负责的 rank 的 urma 发送 (仅 startRankId..endRankId-1)
     for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
         if (dr == rankId) {
@@ -270,7 +261,6 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         params.combineCommParams.hcomm->Drain(GetUrmaCommHandle(params.combineCommParams.mc2Context, dr, rankId));
         PipeBarrier<PIPE_ALL>();
     }
-    printf("complete drain\n");
 }
 
 
