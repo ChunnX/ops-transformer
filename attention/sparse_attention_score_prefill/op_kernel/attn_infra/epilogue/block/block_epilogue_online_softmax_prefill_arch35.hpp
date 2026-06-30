@@ -121,13 +121,20 @@ public:
                     uint32_t causalValidLen,
                     uint32_t sColsAligned,
                     Arch::CrossCoreFlag &mm1ToSmFlag,
-                    Arch::CrossCoreFlag &smToMm2Flag)
+                    Arch::CrossCoreFlag &smToMm2Flag,
+                    uint32_t sDumpId = 0U,
+                    uint32_t pDumpId = 0U)
     {
+        uint32_t ubSBufId = mm1ToSmFlag.id;
         uint32_t mCopyOffset = RoundUp(groupSize, FLOAT_BLOCK_SIZE) / 2;
         uint32_t m = groupSize < mCopyOffset ? groupSize : mCopyOffset;
         m = AscendC::GetSubBlockIdx() == 0 ? m : groupSize - m;
 
         WaitVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
+        if (sDumpId != 0U && numRows > 0U && m > 0U) {
+            AscendC::DumpTensor(ubSBuf, sDumpId, 16);
+        }
         if (numRows == 0U || m == 0U) {
             SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
@@ -166,20 +173,25 @@ public:
             numRows, numRowsRound, validSize, sColsAligned);
         CalcLse(rowMaxUb, rowSumBuf_, lseBuf_, numRows);
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-
         uint32_t n = validSize;
         auto l1PTile = GetTile(l1PTensor,
             tla::MakeCoord(AscendC::GetSubBlockIdx() * mCopyOffset, 0), tla::MakeShape(m, n));
 
-        WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
         uint32_t rowsAligned = RoundUp(numRows, C0_NUM_PER_FRACTAL);
         if constexpr (P_CAST_COLS == 128) {
             CastExpToUbZN<P_CAST_COLS>(ubSBuf, ubPBuf, rowsAligned);
         }
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+        if (pDumpId != 0U && m > 0U) {
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::DumpTensor(ubPBuf, pDumpId, 16);
+        }
         CopyUbZNToL1(l1PTile, ubPBuf, numRows, rowsAligned, groupSize, validSize);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
         SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
     }
 
