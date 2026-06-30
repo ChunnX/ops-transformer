@@ -87,7 +87,8 @@ private:
     __aicore__ inline void QuantProcessInRank();
     __aicore__ inline void ProcessSharedExpert();
     __aicore__ inline void SharedExpertGMM2(GM_ADDR b2Addr, GM_ADDR b2ScaleAddr,
-        GM_ADDR swigluDataAddr, GM_ADDR swigluScaleAddr, GM_ADDR resultAddr, uint32_t sharedIdx);
+        GM_ADDR swigluDataAddr, GM_ADDR swigluScaleAddr, GM_ADDR resultAddr,
+        __gm__ int32_t* swigluToGmm2Flag, uint32_t sharedIdx);
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
         uint32_t expertIdx);
@@ -1271,7 +1272,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpert()
         GM_ADDR resultAddr = params_.workspaceInfo.sharedExpertResultPtr +
             sharedIdx * m_ * k_ * sizeof(bfloat16_t);
 
-        SharedExpertGMM2(b2Addr, b2ScaleAddr, swigluDataAddr, swigluScaleAddr, resultAddr, sharedIdx);
+        SharedExpertGMM2(b2Addr, b2ScaleAddr, swigluDataAddr, swigluScaleAddr, resultAddr,
+            gmm1AddrInfo.swigluToGmm2Flag, sharedIdx);
     }
 }
 
@@ -1282,14 +1284,14 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGMM2(
     GM_ADDR b2Addr, GM_ADDR b2ScaleAddr,
     GM_ADDR swigluDataAddr, GM_ADDR swigluScaleAddr,
-    GM_ADDR resultAddr, uint32_t sharedIdx)
+    GM_ADDR resultAddr, __gm__ int32_t* swigluToGmm2Flag, uint32_t sharedIdx)
 {
     if constexpr (g_coreType == AIC) {
         MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, Weight1Type, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, m_, k_, hiddenDim_ / SWIGLU_N_HALF,
             swigluDataAddr, swigluScaleAddr,
-            b2Addr, b2ScaleAddr, resultAddr, startBlockIdx_);
+            b2Addr, b2ScaleAddr, resultAddr, swigluToGmm2Flag, startBlockIdx_);
     }
 }
 
