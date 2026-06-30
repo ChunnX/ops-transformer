@@ -368,7 +368,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。</td>
+      <td>量化模式1表示K、V nope为per-token-group量化，scale类型为bfloat16，量化模式2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -781,7 +781,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>1表示K、V nope为per-token-group量化，scale类型为bfloat16；2表示K、V nope为per-token-group量化，scale类型为float8_e8m0。当前仅支持1和2。</td>
+      <td>量化模式1表示K、V nope为per-token-group量化，scale类型为bfloat16；量化模式2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -1100,10 +1100,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - `cmpResidualKvOptional`为主算子和`aclnnMixedQuantSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
   - `ropeHeadDim`仅支持64。
   - `oriMaskMode`仅支持4，`cmpMaskMode`仅支持3，`oriWinLeft`仅支持127，`oriWinRight`仅支持0。
-
-- `oriKvOptional`和`cmpKvOptional`的量化布局由`quantMode`决定：
-  - `quantMode`为1时：KV的D_KV=608，布局为block_size*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8_e4m3量化，group_size=64；scale部分数据类型为bf16。
-  - `quantMode`为2时：KV的D_KV=584，布局为block_size*(nope+rope)+block_size*(scale+pad[1])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8_e4m3量化，group_size=64；scale部分数据类型为e8m0。
 
 - 三种Attention场景输入要求
 
