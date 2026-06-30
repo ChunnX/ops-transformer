@@ -20,7 +20,7 @@ class _MaskMode(Enum):
     WINDOW = 4
 
 class _QuantMode(Enum):
-    A16C4_MXFP4 = 0
+    A16C4_MXFP4 = 1
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
