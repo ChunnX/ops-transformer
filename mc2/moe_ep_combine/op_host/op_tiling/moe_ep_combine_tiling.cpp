@@ -32,7 +32,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
-namespace optiling {
+namespace {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t RECVX_INDEX = 1U;

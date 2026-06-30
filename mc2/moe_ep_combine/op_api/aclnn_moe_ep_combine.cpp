@@ -16,11 +16,6 @@
 
 using namespace op;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
 static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                 const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
                                 aclTensor *combinedX)
@@ -46,6 +41,15 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
     CHECK_RET(biasOptional1 == nullptr, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+enum NnopbaseHcclServerType {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE
+};
 
 aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
                                          const aclTensor *topkIdx, const aclTensor *recvSrcMetadata,
@@ -83,11 +87,6 @@ aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(const aclTensor *context, const ac
                                         numExperts, numMaxTokensPerRank, cclBufferSize, combinedX,
                                         combinedTopkWeightsOptional, workspaceSize, executor);
 }
-
-enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_MTE = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1
-};
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
