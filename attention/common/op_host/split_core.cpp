@@ -23,42 +23,42 @@ namespace optiling {
 
 uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 {
-    const auto &actualSeq1 = baseInfo.actualSeqS1Size;
+    const auto &actualSeqS1 = baseInfo.actualSeqS1Size;
 
-    if (actualSeq1.empty()) {
+    if (actualSeqS1.empty()) {
         return baseInfo.s1Size;
     }
 
     if (baseInfo.actualLenQDims == 1U) {
-        return static_cast<uint32_t>(actualSeq1[0]);
+        return static_cast<uint32_t>(actualSeqS1[0]);
     }
 
     if (!baseInfo.isAccumSeqS1) {
-        return static_cast<uint32_t>(actualSeq1[bIdx]);
+        return static_cast<uint32_t>(actualSeqS1[bIdx]);
     }
 
-    return (bIdx == 0U) ? static_cast<uint32_t>(actualSeq1[bIdx]) :
-           static_cast<uint32_t>(actualSeq1[bIdx] - actualSeq1[bIdx - 1U]);
+    return (bIdx == 0U) ? static_cast<uint32_t>(actualSeqS1[bIdx]) :
+           static_cast<uint32_t>(actualSeqS1[bIdx] - actualSeqS1[bIdx - 1U]);
 }
 
 uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 {
-    const auto &actualSeq2 = baseInfo.actualSeqS2Size;
+    const auto &actualSeqS2 = baseInfo.actualSeqS2Size;
     uint32_t prefix = static_cast<uint32_t>(baseInfo.actualSeqPrefixSize);
-    if (actualSeq2.empty()) {
+    if (actualSeqS2.empty()) {
         return prefix + baseInfo.s2Size;
     }
 
     if (baseInfo.actualLenKvDims == 1U) {
-        return prefix + static_cast<uint32_t>(actualSeq2[0]);
+        return prefix + static_cast<uint32_t>(actualSeqS2[0]);
     }
 
     if (!baseInfo.isAccumSeqS2) {
-        return prefix + static_cast<uint32_t>(actualSeq2[bIdx]);
+        return prefix + static_cast<uint32_t>(actualSeqS2[bIdx]);
     }
     
-    return (bIdx == 0U) ? prefix + static_cast<uint32_t>(actualSeq2[bIdx]) :
-           prefix + static_cast<uint32_t>(actualSeq2[bIdx] - actualSeq2[bIdx - 1U]);
+    return (bIdx == 0U) ? prefix + static_cast<uint32_t>(actualSeqS2[bIdx]) :
+           prefix + static_cast<uint32_t>(actualSeqS2[bIdx] - actualSeqS2[bIdx - 1U]);
 }
 
 int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
