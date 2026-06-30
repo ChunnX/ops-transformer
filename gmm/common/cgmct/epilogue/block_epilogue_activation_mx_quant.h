@@ -517,9 +517,11 @@ __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_F
             AscendC::MicroAPI::Select<uint32_t>(extractExp, extractExp, zeroRegTensor32, zeroMask);
             AscendC::MicroAPI::Pack<uint16_t, uint32_t, AscendC::MicroAPI::HighLowPart::LOWEST>(expOut, extractExp);
 
-            AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(
-                mxScaleLocalAddr, expOut, vlForHalfNumber_ / HALF_REG_FACTOR, dataMaskB16Half);
+            // AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
+            //                             AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(
+            //     mxScaleLocalAddr, expOut, vlForHalfNumber_ / HALF_REG_FACTOR, dataMaskB16Half);
+            AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(
+                mxScaleLocalAddr + i * vlForHalfNumber_ / HALF_REG_FACTOR / HALF_REG_FACTOR, expOut, dataMaskB16Half);
 
             AscendC::MicroAPI::ShiftLefts(extractExp, extractExp, SHR_NUM_FOR_BF16, maskFloat);
             AscendC::MicroAPI::Sub(halfScale, scaleBias, extractExp, maskFloat);
@@ -527,8 +529,10 @@ __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_F
             AscendC::MicroAPI::Select<uint32_t>(halfScale, halfScale, zeroRegTensor32, zeroMask);
             AscendC::MicroAPI::Pack<uint16_t, uint32_t, AscendC::MicroAPI::HighLowPart::LOWEST>(recExpOut, halfScale);
 
-            AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                halfScaleLocalAddr, recExpOut, vlForHalfNumber_ / HALF_REG_FACTOR, dataMaskB16Half);
+            // AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            //     halfScaleLocalAddr, recExpOut, vlForHalfNumber_ / HALF_REG_FACTOR, dataMaskB16Half);
+            AscendC::MicroAPI::DataCopy<uint16_t>(
+                halfScaleLocalAddr + i * vlForHalfNumber_ / HALF_REG_FACTOR, recExpOut, dataMaskB16Half);
         }
     }
     return;
