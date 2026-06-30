@@ -55,7 +55,7 @@ class CompressorOpBuilder(OpBuilder):
                 sr = (t + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (sr, h)
             
-            return torch.empty(cmp_kv_size, dtype=x.dtype, device='npu')
+            return torch.empty(cmp_kv_size, dtype=x.dtype, device='meta')
 
 
 compressor_op_builder = CompressorOpBuilder()

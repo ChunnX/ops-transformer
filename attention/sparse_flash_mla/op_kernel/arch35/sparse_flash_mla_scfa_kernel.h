@@ -246,7 +246,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
         this->constInfo.isActualLenDimsOriKVNull = (seqUsedOriKV == nullptr);
     }
 
-    if constexpr (IS_PA) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         constInfo.oriBlockSize = sparseFlashMLABaseParams.oriBlockSize;
         constInfo.cmpBlockSize = sparseFlashMLABaseParams.cmpBlockSize;
         constInfo.oriMaxBlockNumPerBatch = sparseFlashMLABaseParams.oriMaxBlockNumPerBatch;

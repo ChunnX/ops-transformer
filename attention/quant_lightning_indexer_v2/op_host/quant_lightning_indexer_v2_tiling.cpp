@@ -249,8 +249,8 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
                        SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
-        OP_CHECK_IF((*opParamInfo_.cmpRatio != 1) && (*opParamInfo_.cmpRatio != 4) && (*opParamInfo_.cmpRatio != 128),
-                OP_LOGE(opName_, "input attr cmpRatio must be 1、4 or 128, but now cmpRatio is %ld.",
+        OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     }
 
@@ -933,7 +933,8 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             }
         }
     }
-    if (!keyDequantScaleStridesVec_.empty() && opParamInfo_.key_dequant_scale.shape != nullptr) {
+    if ((*opParamInfo_.quantMode != 4) && !keyDequantScaleStridesVec_.empty() &&
+        opParamInfo_.key_dequant_scale.shape != nullptr) {
         auto &shape = opParamInfo_.key_dequant_scale.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {

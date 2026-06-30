@@ -22,7 +22,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_common.h"
-#include "sparse_lightning_indexer_kl_loss_grad_metadata_arch22.h"
+#include "../sparse_lightning_indexer_kl_loss_grad_metadata.h"
 #include "sparse_lightning_indexer_kl_loss_grad_tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_vector.h"
 #include "sparse_lightning_indexer_kl_loss_grad_vector2.h"

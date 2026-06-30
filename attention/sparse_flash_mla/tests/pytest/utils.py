@@ -254,19 +254,65 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             param_combinations.append(combination)
     return param_combinations
 
-def fill_random_cu_len(T, SMax, B, qk_equal_len=False):
+def generate_cu_seqlens(seqused: list) -> list:
+    """
+    根据seqused生成cu_seqlens
+    
+    参数:
+        seqused: 一维list，包含n个元素，表示每个序列的长度
+        
+    返回:
+        cu_seqlens: 一维list，长度为n+1，第一个元素为0，
+                    后续每个元素是seqused对应位置及之前元素的累加和
+                    
+    示例:
+        >>> seqused = [2, 2, 2, 2, 2]
+        >>> cu_seqlens = generate_cu_seqlens(seqused)
+        >>> print(cu_seqlens)
+        [0, 2, 4, 6, 8, 10]
+    """
+    cu_seqlens = [0]  # 第一个元素总是0
+    current_sum = 0
+    
+    for length in seqused:
+        current_sum += length
+        cu_seqlens.append(current_sum)
+    
+    return cu_seqlens
+
+def generate_seqused(cu_seqlens: list) -> list:
+    """
+    根据cu_seqlens生成seqused
+    
+    参数:
+        cu_seqlens: 一维list，长度为n+1，表示累积序列长度
+        
+    返回:
+        seqused: 一维list，长度为n，表示每个序列的真实长度
+        
+    示例:
+        >>> cu_seqlens = [0, 2, 4, 6, 8, 10]
+        >>> generate_seqused(cu_seqlens)
+        [2, 2, 2, 2, 2]
+    """
+    seqused = []
+    for i in range(1, len(cu_seqlens)):
+        seqused.append(cu_seqlens[i] - cu_seqlens[i - 1])
+    return seqused
+
+def fill_random_cu_len(T, SMax, B, qk_equal_len=True, random_seq=False):
     cu_seqlens = [0]
     S = min(SMax, T // B)
-    S_eq = random.randint(0, S)
+    S_eq = random.randint(0, S) if random_seq else S
     for i in range(B):
         length = S_eq if qk_equal_len else random.randint(0, S)
         cu_seqlens.append(cu_seqlens[-1] + length)
     cu_seqlens[-1] = T
     return cu_seqlens
 
-def fill_random_used_len(SMax, B, qk_equal_len=False):
+def fill_random_used_len(SMax, B, qk_equal_len=True, random_seq=False):
     used_lens = []
-    S_eq = random.randint(0, SMax)
+    S_eq = random.randint(0, SMax) if random_seq else SMax
     for i in range(B):
         length = S_eq if qk_equal_len else random.randint(0, SMax)
         used_lens.append(length)
@@ -303,7 +349,9 @@ def generate_case_with_default_param(param_combinations):
         print("cu_seqlens_ori_kv auto set to: ", case_param['cu_seqlens_ori_kv'])
 
     if case_param['cu_seqlens_cmp_kv'] is None and layout_kv == "TND" and cmp_ratio is not None:
-        case_param['cu_seqlens_cmp_kv'] = [x // cmp_ratio for x in case_param['cu_seqlens_ori_kv']]
+        case_param['seqused_ori_kv'] = generate_seqused(case_param['cu_seqlens_ori_kv'])
+        case_param['seqused_cmp_kv'] = [x // cmp_ratio for x in case_param['seqused_ori_kv']]
+        case_param['cu_seqlens_cmp_kv'] = generate_cu_seqlens(case_param['seqused_cmp_kv'])
         print("cu_seqlens_cmp_kv auto set to: ", case_param['cu_seqlens_cmp_kv'])
         case_param['T3'] = case_param['cu_seqlens_cmp_kv'][-1]
 

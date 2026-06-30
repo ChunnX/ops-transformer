@@ -150,7 +150,8 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t KV_INPUT_DIM_LIMIT = 608;
+constexpr uint32_t KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE = 608;
+constexpr uint32_t KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO = 584;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
@@ -236,7 +237,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
-    const int64_t *kvQuantMode = nullptr;
+    const int64_t *quantMode = nullptr;
     const int64_t *tileSize = nullptr;
     const int64_t *ropeHeadDim = nullptr;
     const float *softmaxScale = nullptr;
@@ -274,7 +275,7 @@ public:
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
 
-    int64_t kvQuantMode = 0;
+    int64_t quantMode = 0;
     int64_t tileSize = 0;
     int64_t ropeHeadDim = 0;
     uint32_t dSize = 0;

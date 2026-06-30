@@ -209,12 +209,9 @@ __simd_vf__ void ComputeScaleVF(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t
     AscendC::MicroAPI::RegTensor<uint16_t> expMask;
     AscendC::MicroAPI::Duplicate(expMask, MAX_EXP_FOR_BF16);
     AscendC::MicroAPI::RegTensor<uint16_t> vdMaxExp;
-    AscendC::MicroAPI::RegTensor<T> vdExp0;
-    AscendC::MicroAPI::RegTensor<T> vdExp1;
 
     AscendC::MicroAPI::MaskReg cmpResult;
     AscendC::MicroAPI::MaskReg zeroMask;
-    AscendC::MicroAPI::MaskReg cmpResultSub;
     AscendC::MicroAPI::MaskReg preMaskScale;
     AscendC::MicroAPI::MaskReg invalidDataMask;
     AscendC::MicroAPI::MaskReg specialDataMask;

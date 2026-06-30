@@ -24,6 +24,11 @@ constexpr int64_t DIM_4 = 4;
 
 constexpr int64_t SMLA_METADATA_SIZE = 1024;
 
+const c10::optional<at::Tensor> smla_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
+{
+    return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
+};
+
 at::Tensor sparse_flash_mla_metadata(
     int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_ori_kv, const c10::optional<at::Tensor> &cu_seqlens_cmp_kv,
@@ -56,15 +61,15 @@ at::Tensor sparse_flash_mla_metadata(
     }
 
     at::Tensor output = torch::empty({SMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(output_device));
-    auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
-    auto cu_seqlens_ori_kv_val = get_valid_tensor(cu_seqlens_ori_kv, output_device);
-    auto cu_seqlens_cmp_kv_val = get_valid_tensor(cu_seqlens_cmp_kv, output_device);
-    auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
-    auto seqused_ori_kv_val = get_valid_tensor(seqused_ori_kv, output_device);
-    auto seqused_cmp_kv_val = get_valid_tensor(seqused_cmp_kv, output_device);
-    auto cmp_residual_kv_val = get_valid_tensor(cmp_residual_kv, output_device);
-    auto ori_topk_length_val = get_valid_tensor(ori_topk_length, output_device);
-    auto cmp_topk_length_val = get_valid_tensor(cmp_topk_length, output_device);
+    auto cu_seqlens_q_val = smla_get_valid_tensor(cu_seqlens_q, output_device);
+    auto cu_seqlens_ori_kv_val = smla_get_valid_tensor(cu_seqlens_ori_kv, output_device);
+    auto cu_seqlens_cmp_kv_val = smla_get_valid_tensor(cu_seqlens_cmp_kv, output_device);
+    auto seqused_q_val = smla_get_valid_tensor(seqused_q, output_device);
+    auto seqused_ori_kv_val = smla_get_valid_tensor(seqused_ori_kv, output_device);
+    auto seqused_cmp_kv_val = smla_get_valid_tensor(seqused_cmp_kv, output_device);
+    auto cmp_residual_kv_val = smla_get_valid_tensor(cmp_residual_kv, output_device);
+    auto ori_topk_length_val = smla_get_valid_tensor(ori_topk_length, output_device);
+    auto cmp_topk_length_val = smla_get_valid_tensor(cmp_topk_length, output_device);
 
     // convert str
     std::string layout_q_str = std::string(layout_q);
