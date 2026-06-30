@@ -1785,7 +1785,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        GMM1 consumer 消费 expert e。
+        // GMM1 consumer 消费 expert e。
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
             continue;
         }
