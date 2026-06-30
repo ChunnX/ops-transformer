@@ -151,7 +151,8 @@ def check_param_valid(
 # V scope 3: cast dQueryIndex FP32→FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-5, -4, -3, -2],
+    out_idx=[-4, -3, -2, -1],
+    workspace_idx=[10, 11, 12, 13, 14, 15, 16, 17, 18],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -175,33 +176,33 @@ def tilelang_grad_kl_loss_single_kernel(
     v3_chunks = Nidx1 // 4
     @T.prim_func
     def main(
-        # === INPUTS (0-8) ===
-        Query: T.Tensor((B, S1, N1, DQuery), input_dtype),              # 0
-        QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),          # 1
-        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 2
-        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 3
-        QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 4
-        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 5
-        Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 6
-        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 7
-        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
-        # === WORKSPACES (9-17) ===
-        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 9
-        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 10
-        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 11
-        bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),                  # 12
-        bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),               # 13
-        PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 14
-        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 15
-        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 16
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 17
-        # === OUTPUTS (18-21) ===
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 18
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 19
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 20
-        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 21
-        # === SPECIAL (22) ===
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 22
+        # === SPECIAL: int32 indices must be first to avoid dtype inference issues ===
+        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 0
+        # === INPUTS (1-9) ===
+        Query: T.Tensor((B, S1, N1, DQuery), input_dtype),              # 1
+        QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),          # 2
+        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 3
+        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 4
+        QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 5
+        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 6
+        Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 7
+        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
+        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 9
+        # === WORKSPACES (10-18) ===
+        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 10
+        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 11
+        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 12
+        bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),                  # 13
+        bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),               # 14
+        PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 15
+        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 16
+        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 17
+        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 18
+        # === OUTPUTS (19-22) ===
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 19
+        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 20
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
+        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 22
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -756,15 +757,15 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_prep_end.record()
             _t_kernel_start.record()
         results = func(
-            query, query_rope, key, key_rope,          # 0-3  inputs
-            query_index, key_index,                    # 4-5  inputs
-            weights, softmax_max, softmax_sum,         # 6-8  inputs
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 9-11 ws
-            bmm1_res_ws, bmm2_res_ws,                  # 12-13 ws
-            p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 14-16 ws
-            d_query_index_ws,                           # 17   ws
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 18-21 out
-            sparse_indices,                             # 22   int32
+            sparse_indices,                             # 0  (int32 first)
+            query, query_rope, key, key_rope,          # 1-4
+            query_index, key_index,                    # 5-6
+            weights, softmax_max, softmax_sum,         # 7-9
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 10-12
+            bmm1_res_ws, bmm2_res_ws,                  # 13-14
+            p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 15-17
+            d_query_index_ws,                           # 18
+            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 19-22
         )
         if _PROFILE:
             _t_kernel_end.record()
