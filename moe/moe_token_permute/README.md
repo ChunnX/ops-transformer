@@ -116,3 +116,4 @@
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_moe_token_permute](examples/test_aclnn_moe_token_permute.cpp) | 通过[aclnnMoeTokenPermute](docs/aclnnMoeTokenPermute.md)接口方式调用MoeTokenPermute算子。 |
+| aclnn接口  | [test_aclnn_moe_token_permute_v2](examples/test_aclnn_moe_token_permute_v2.cpp) | 通过[aclnnMoeTokenPermuteV2](docs/aclnnMoeTokenPermuteV2.md)接口方式调用MoeTokenPermute算子。 |
