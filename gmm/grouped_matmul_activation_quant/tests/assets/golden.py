@@ -54,11 +54,19 @@ def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, 
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
     if quant_mode in (None, ""):
+<<<<<<< HEAD
         quant_mode = "mx"
     if quant_mode != "mx":
         raise ValueError("quant_mode 参数当前仅支持为 mx")
     if x_scale is None:
         raise ValueError("x_scale is required for mx quant mode.")
+=======
+        quant_mode = "MX"
+    if quant_mode != "MX":
+        raise ValueError("quant_mode 参数当前仅支持为 MX")
+    if x_scale is None:
+        raise ValueError("x_scale is required for MX quant mode.")
+>>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
 
     output_dtypes = kwargs.get("output_dtypes", [])
     y_dtype = output_dtypes[0] if output_dtypes else _ge_dtype_to_name(y_dtype)
