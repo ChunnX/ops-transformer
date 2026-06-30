@@ -241,8 +241,17 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                         SMLA_A5_PLATFORM_LOG.c_str(), cmpRatio);
             } else {
                 int64_t expectedCmpRatio = (cmpTopk > 0) ? 4 : 128;
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be %lld on %s, but got %lld",
-                        expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                if (cmpTopk > 0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is non-zero(CSA with "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                } else {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is 0(HCA without "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                }
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
