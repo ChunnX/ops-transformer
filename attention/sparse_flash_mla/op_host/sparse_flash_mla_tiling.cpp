@@ -145,6 +145,7 @@ static auto GetStride0FromStrideImpl(const StrideT &stride, int)
     if (stride.GetDimNum() <= 0) {
         return 0ULL;
     }
+    // Negative or zero stride is treated as unavailable; callers then fall back to storage-shape contiguous stride.
     int64_t stride0 = stride.GetStride(0);
     return stride0 > 0 ? static_cast<uint64_t>(stride0) : 0ULL;
 }
@@ -156,25 +157,39 @@ static uint64_t GetStride0FromStrideImpl(const StrideT &, ...)
 }
 
 template <typename StrideT>
-static uint64_t GetStride0FromStride(const StrideT &stride)
+static auto GetStride0FromStrideScalar(const StrideT &stride, int)
+    -> decltype(stride > 0, static_cast<uint64_t>(stride))
 {
-    return GetStride0FromStrideImpl(stride, 0);
+    // Negative or zero stride is treated as unavailable; callers then fall back to storage-shape contiguous stride.
+    return stride > 0 ? static_cast<uint64_t>(stride) : 0ULL;
 }
 
 template <typename StrideT>
-static uint64_t GetStride0FromStride(const StrideT *stride)
+static uint64_t GetStride0FromStrideScalar(const StrideT &, ...)
 {
-    if (stride == nullptr) {
-        return 0ULL;
+    return 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStride(const StrideT &stride)
+{
+    uint64_t stride0 = GetStride0FromStrideImpl(stride, 0);
+    if (stride0 > 0) {
+        return stride0;
     }
-    return GetStride0FromStride(*stride);
+    return GetStride0FromStrideScalar(stride, 0);
 }
 
 template <typename ContextT>
 static auto TryGetOptionalInputStride0(ContextT *context, uint32_t inputIndex, int)
     -> decltype(context->GetOptionalInputStride(inputIndex), uint64_t())
 {
-    return GetStride0FromStride(context->GetOptionalInputStride(inputIndex));
+    const auto *stride = context->GetOptionalInputStride(inputIndex);
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    // New CANN headers expose an array pointer. The first element carries stride0, either as a scalar or stride object.
+    return GetStride0FromStride(stride[0]);
 }
 
 template <typename ContextT>
@@ -190,7 +205,12 @@ static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex, int)
     if (!context->InputIsView(inputIndex)) {
         return 0ULL;
     }
-    return GetStride0FromStride(context->GetInputStride(inputIndex));
+    const auto *stride = context->GetInputStride(inputIndex);
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    // New CANN headers expose an array pointer. The first element carries stride0, either as a scalar or stride object.
+    return GetStride0FromStride(stride[0]);
 }
 
 template <typename ContextT>
@@ -1235,7 +1255,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpSparseIndices() const
     if (smlaInfo_.perfMode == optiling::SMLATemplateMode::SCFA_TEMPLATE_MODE) {
         OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetShapeSize() == 0,
                     OP_LOGE(opName_,
-                        "when cmp_sparse_indices is not nullptr(SCFA), cmp_sparse_indices cannot be empty tensor."),
+                        "when cmp_sparse_indices is not nullptr(C4A/CSA), cmp_sparse_indices cannot be empty tensor."),
                     return ge::GRAPH_FAILED);
         const std::vector<size_t> cmpSparseIndicesDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
         if (
@@ -1342,14 +1362,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
         }
     } else {
         uint32_t expectedCmpRatio = 1;
+        const char *modeName = "C1A/SWA";
+        const char *modeReason = "when cmp_kv is not provided";
         if (smlaInfo_.perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
             expectedCmpRatio = 4;
+            modeName = "C4A/CSA";
+            modeReason = "when cmp_sparse_indices is provided";
         } else if (smlaInfo_.perfMode == SMLATemplateMode::CFA_TEMPLATE_MODE) {
             expectedCmpRatio = 128;
+            modeName = "C128A/HCA";
+            modeReason = "when cmp_sparse_indices is not provided";
         }
         OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
-                    OP_LOGE(opName_, "cmpRatio should be %u in current template mode on %s, but got %ld.",
-                        expectedCmpRatio, A2_A3_PLATFORM_LOG.c_str(), cmpRatio_),
+                    OP_LOGE(opName_, "cmpRatio should be %u in %s on %s %s, but got %ld.",
+                        expectedCmpRatio, modeName, A2_A3_PLATFORM_LOG.c_str(), modeReason, cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
