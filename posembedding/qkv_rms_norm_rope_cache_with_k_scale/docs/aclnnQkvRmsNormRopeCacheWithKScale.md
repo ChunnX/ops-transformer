@@ -83,33 +83,33 @@
 
 ```cpp
 aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
-    const aclTensor *qkv,
-    const aclTensor *qGamma,
-    const aclTensor *kGamma,
-    const aclTensor *cosSin,
-    const aclTensor *slotMapping,
-    aclTensor *kCacheRef,
-    aclTensor *vCacheRef,
-    aclTensor *kScaleCacheRef,
-    const aclTensor *cuSeqLen,
-    const aclTensor *actualSeqLens,
-    const aclTensor *rotationOptional,
-    const aclTensor *vScaleOptional,
+    const aclTensor   *qkv,
+    const aclTensor   *qGamma,
+    const aclTensor   *kGamma,
+    const aclTensor   *cosSin,
+    const aclTensor   *slotMapping,
+    aclTensor         *kCacheRef,
+    aclTensor         *vCacheRef,
+    aclTensor         *kScaleCacheRef,
+    const aclTensor   *cuSeqLen,
+    const aclTensor   *actualSeqLens,
+    const aclTensor   *rotationOptional,
+    const aclTensor   *vScaleOptional,
     const aclIntArray *headNums,
-    const char *qkvLayout,
-    float epsilon,
-    aclTensor *qOut,
-    aclTensor *qScale,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const char        *qkvLayout,
+    float              epsilon,
+    aclTensor         *qOut,
+    aclTensor         *qScale,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor);
 ```
 
 ```cpp
 aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
-    void *workspace,
-    uint64_t workspaceSize,
+    void          *workspace,
+    uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    aclrtStream stream);
+    aclrtStream    stream);
 ```
 
 ## aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize
@@ -427,32 +427,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
   aclnnStatus：返回状态码，具体参见aclnn返回码。
 
-  第二段接口执行计算时，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
-  <col style="width: 260px">
-  <col style="width: 120px">
-  <col style="width: 620px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="white-space: nowrap">ACLNN_ERR_INNER</td>
-      <td style="white-space: nowrap">561000</td>
-      <td><code>CommonOpExecutorRun</code>执行失败。</td>
-    </tr>
-  </tbody></table>
-
 ## 约束说明
 
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
-- <term>Ascend 950PR/Ascend 950DT</term>
 - 输入shape限制：
   - 当前实现仅支持`D=128`。
   - `qkv`、`qOut`、`qScale`必须保持相同N/T布局：
