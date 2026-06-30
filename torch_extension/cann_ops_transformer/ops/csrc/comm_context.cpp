@@ -577,7 +577,7 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
-    int64_t topo_type() const {return topoType_; }
+    int64_t topo_type() const { return topoType_; }
 
 private:
     static int64_t context_tensor_size()
