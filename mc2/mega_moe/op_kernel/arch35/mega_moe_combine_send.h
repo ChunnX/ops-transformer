@@ -40,24 +40,24 @@ __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
-    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
-    AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
-    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
-        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
-        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
-        gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
-            GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset,0)));
-        uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset],
-            l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-    }
+    // int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+    // AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
+    // uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+    // AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+    // ub2GmParams.blockCount = 1;
+    // ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
+    // AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+    // AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    // for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
+    //     uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
+    //     uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
+    //     uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+    //     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
+    //         GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset,0)));
+    //     uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+    //     AscendC::DataCopyPad(gmRemoteD[gmDstOffset],
+    //         l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+    // }
 }
 
 template <typename ElementMMadOut2, typename BlockShape>
