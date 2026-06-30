@@ -21,9 +21,28 @@ namespace SICommon {
 enum class SI_LAYOUT : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNSD = 2, 
+    PA_BNSD = 2,
     BNSD = 3
 };
+
+// CUBE与VEC核间同步的模式
+constexpr uint32_t SI_SYNC_MODE4 = 4U;
+constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+constexpr uint32_t CROSS_VC_EVENT = 0U;
+constexpr uint32_t CROSS_CV_EVENT = 2U;
+// BUFFER的字节数
+constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
+constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;
+constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256U;
+constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512U;
+constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024U;
+constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048U;
+constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
+constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
+constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
+constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
+// 无效索引
+constexpr int INVALID_IDX = -1;
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename... Args>
 struct SIType {
@@ -86,31 +105,6 @@ struct RunInfo {
 };
 
 struct ConstInfo {
-    // CUBE与VEC核间同步的模式
-    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
-    static constexpr uint32_t CROSS_VC_EVENT = 0;
-    static constexpr uint32_t CROSS_CV_EVENT = 2;
-    // BUFFER的字节数
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-    // 无效索引
-    static constexpr int INVALID_IDX = -1;
-
-    // CUBE和VEC的核间同步EventID
-    uint32_t syncC1V1 = 0U;
-    uint32_t syncC1V0 = 2U;
-    uint32_t syncV1C1 = 0U;
-    uint32_t syncV0C1 = 1U;
-
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
     uint32_t s1BaseSize = 1ULL;
@@ -132,8 +126,8 @@ struct ConstInfo {
     uint32_t stemStride = 16U;
     uint32_t initialBlocks = 4U;
     uint32_t windowSize = 4U;
-    float rSquare = 1.0f / 64.0f;
-    float alpha = 1.0f;
+    float rSquare = 1.0f / 64.0f;  // 1/(stem_block_size/stem_stride)^2 = 1/64
+    float alpha = 1.0f;  // TPD 衰减系数，运行时可配
     float kBlockNumRateMedium = 0.2f;
     uint32_t kBlockNumBiasMedium = 30U;
     float kBlockNumRateLarge = 0.1f;
@@ -205,7 +199,7 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace SICommon
 
 // bank冲突优化
-// david 256KB bank layout
+// 256KB bank layout
 // shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
 // stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
 #define UB_BLOCK              32   // 32B
