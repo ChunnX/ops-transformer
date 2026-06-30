@@ -94,9 +94,14 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
 
     std::shared_ptr<std::vector<int64_t>> actual_seq_lengths_data;
     std::shared_ptr<std::vector<int64_t>> actual_seq_lengths_kv_data;
+    std::shared_ptr<std::vector<int64_t>> actual_shared_prefix_len_data;
 
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
+
+    bool isTensorList = false;
+    std::vector<gert::TilingContextPara::TensorDescription> keyList;
+    std::vector<gert::TilingContextPara::TensorDescription> valueList;
 
     static void ApplyConstData(const csv_map &csvMap, const std::string &name,
                                gert::TilingContextPara::TensorDescription &desc,
@@ -118,9 +123,22 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "query_shape", "query_dtype", "query_format", this->query));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
+
+        std::string keyShapeStr = ReadMap(csvMap, "key_shape");
+        if (keyShapeStr.find('|') != std::string::npos) {
+            this->isTensorList = true;
+            this->keyList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
+                csvMap, "key_shape", "key_dtype", "key_format");
+            this->valueList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
+                csvMap, "value_shape", "value_dtype", "value_format");
+            this->inputInstance.emplace_back(static_cast<uint32_t>(this->keyList.size()));
+            this->inputInstance.emplace_back(static_cast<uint32_t>(this->valueList.size()));
+        } else {
+            this->inputInstance.emplace_back(
+                GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
+            this->inputInstance.emplace_back(
+                GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
+        }
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "pse_shift_shape", "pse_shift_dtype", "pse_shift_format", this->pse_shift));
         this->inputInstance.emplace_back(
@@ -169,6 +187,8 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "actual_shared_prefix_len_shape", "actual_shared_prefix_len_dtype",
                         "actual_shared_prefix_len_format", this->actual_shared_prefix_len));
+        ApplyConstData(csvMap, "actual_shared_prefix_len", this->actual_shared_prefix_len,
+                       this->actual_shared_prefix_len_data);
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "query_rope_shape", "query_rope_dtype", "query_rope_format", this->query_rope));
         this->inputInstance.emplace_back(

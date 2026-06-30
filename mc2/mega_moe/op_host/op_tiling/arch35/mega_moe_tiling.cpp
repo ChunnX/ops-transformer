@@ -46,16 +46,18 @@ namespace {
     const static int64_t THREE_DIMS = 3LL;
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
+    const static int64_t MIN_TOPK = 1LL;
+    const static int64_t MAX_TOPK = 16LL;
     const static int64_t MIN_BS = 1LL;
     const static int64_t MAX_BS = 512LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t MAX_H = 8LL * 1024LL;  // 8K
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
-    const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -77,6 +79,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
 
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
+    OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
 }
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -89,6 +92,7 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -184,6 +188,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"), return ge::GRAPH_FAILED);
@@ -203,6 +208,13 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationClampPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationClamp"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*activationClampPtr < 0 || std::isnan(*activationClampPtr),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
+            std::to_string(*activationClampPtr).c_str(),
+            "should be >= 0 and not NAN"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -328,15 +340,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     }
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
-    // A8W4 path: combine-quant is not yet supported.
-    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
-        opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
-        OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineQuantMode",
-                std::to_string(*combineQuantModePtr).c_str(),
-                "A8W4 path only supports combineQuantMode=no_quant(0) currently."),
-            return ge::GRAPH_FAILED);
-    }
 
     OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
                     *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
@@ -373,6 +376,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
+    auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
@@ -381,13 +385,31 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
+    tilingData->clampLimit = *activationClampPtr;
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
         opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
+        // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
+    } else if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+               weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
+               static_cast<ge::Format>(ge::GetPrimaryFormat(
+                   weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
+        // A8W8_NZ: fp8_e4m3fn activation × fp8_e4m3fn weight in NZ format (E5M2 not supported)
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
+    } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+               opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
+        // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
+        if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
+        } else {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
+        }
     } else {
+        // Generic: fp8 activation × fp8 weight in ND format
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
@@ -832,11 +854,6 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
         static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE(nodeName,
             "topkWeights format is invalid."), return ge::GRAPH_FAILED);
-    
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName,
-            "weightOne format is invalid."), return ge::GRAPH_FAILED);
 
     // A8W4 path: weight1 must use NZ_C0_32 format now.
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
@@ -847,12 +864,6 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
                 "FORMAT_FRACTAL_NZ_C0_32"),
             return ge::GRAPH_FAILED);
     }
-    
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat())) ==
-            ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName,
-            "weightTwo format is invalid."), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesOneDesc->GetStorageFormat())) ==
@@ -924,9 +935,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(topkIdsDim1 != 6LL && topkIdsDim1 != 8LL,
+    OP_TILING_CHECK(topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(),
-            "only support 6/8"),
+            "only support [1, 16]"),
         return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);

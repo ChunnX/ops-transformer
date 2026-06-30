@@ -23,11 +23,37 @@
 #endif
 
 namespace vector1 {
-__simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,
-                                          __local_mem__ float* src,
-                                          uint16_t laneIdx)
+__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
+                                              const LocalTensor<uint16_t> &in,
+                                              const uint32_t topK)
 {
-    AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + laneIdx);
+    auto outBuf = (__local_mem__ bfloat16_t*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+                                    AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
+            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+
+            liV2Vector1::UIntSortConstCtx<bfloat16_t> uint16Ctx;
+            liV2Vector1::InitUIntSortConstCtx(uint16Ctx, maskAllB16);
+
+            liV2Vector1::UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+
+            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * 128,
+                regOut,
+                maskAllB16);
+        }
+    }
 }
 
 // float in uint16 out
@@ -281,7 +307,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
             // 混合使用对整体性能更好
             liV2Vector1::BroadcastLane(regwBrc[0], regW[0], i);
             // Weight无bank冲突，用LoadAlign来提取weight标量
-            BroadcastLane(regwBrc[1], weightTemp, i);
+            liV2Vector1::BroadcastLane(regwBrc[1], weightTemp, i);
             AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
             AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
             AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
@@ -613,7 +639,7 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
             // 混合使用对整体性能更好
             liV2Vector1::BroadcastLane(regwBrc[0], regW[0], i);
             // Weight无bank冲突，用LoadAlign来提取weight标量
-            BroadcastLane(regwBrc[1], weightTemp, i);
+            liV2Vector1::BroadcastLane(regwBrc[1], weightTemp, i);
             AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
             AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
             AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
@@ -645,7 +671,6 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
         AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
     }
 }
-
 
 template<typename QK_T, typename SCORE_T>
 __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCORE_T> &out_,

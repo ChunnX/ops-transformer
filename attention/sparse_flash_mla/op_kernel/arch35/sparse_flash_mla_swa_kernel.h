@@ -17,8 +17,8 @@
 #define SPARSE_FLASH_MLA_SWA_KERNEL_H
 #include "sparse_flash_mla_common_arch35.h"
 #include "sparse_flash_mla_kvcache.h"
-#include "sparse_flash_mla_scfa_block_cube.h"
-#include "sparse_flash_mla_scfa_block_vector.h"
+#include "sparse_flash_mla_csa_block_cube.h"
+#include "sparse_flash_mla_csa_block_vector.h"
 #include "kernel_operator.h"
 #include "../sparse_flash_mla_metadata.h"
 
@@ -227,13 +227,14 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
     constInfo.actualSeqLenKVSize = constInfo.bSize;
+    constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         this->constInfo.isActualLenDimsOriKVNull = 0U;
     } else {
         this->constInfo.isActualLenDimsOriKVNull = (seqUsedOriKV == nullptr);
     }
 
-    if constexpr (IS_PA) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         constInfo.oriBlockSize = sparseFlashMLABaseParams.oriBlockSize;
         constInfo.cmpBlockSize = sparseFlashMLABaseParams.cmpBlockSize;
         constInfo.oriMaxBlockNumPerBatch = sparseFlashMLABaseParams.oriMaxBlockNumPerBatch;

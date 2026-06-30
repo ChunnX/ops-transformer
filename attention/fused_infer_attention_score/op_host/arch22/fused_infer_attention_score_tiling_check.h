@@ -214,6 +214,16 @@ private:
     ge::graphStatus CheckFeatureGqaFullquant() const;
     ge::graphStatus CheckFeatureGqaPrefix() const;
     ge::graphStatus CheckFeaturePostQuant() const;
+    int64_t GetQActualSeqLenForPostQuant(uint32_t batchIdx, const gert::Tensor *tempData,
+        int64_t actualLenDims) const;
+    int64_t GetKVActualSeqLenForPostQuant(uint32_t batchIdx, const gert::Tensor *tempDataKV,
+        int64_t actualLenDimsKV) const;
+    void CalcPostQuantTokensPerBatch(int64_t &preTokensPerbatch, int64_t &nextTokensPerbatch,
+        int64_t actualSeqLenKV, int64_t actualSeqLenQ) const;
+    ge::graphStatus CheckFeaturePostQuantLayout() const;
+    ge::graphStatus CheckFeaturePostQuantOffsetPerBatch(bool checkPostQuantOffset,
+        int64_t preTokensPerbatch, int64_t nextTokensPerbatch, int64_t actualSeqLenKV,
+        int64_t actualSeqLenQ, int64_t preTokens, int64_t nextTokens) const;
     ge::graphStatus CheckFeatureLeftPadding() const;
     ge::graphStatus CheckFeaturePSE() const;
     ge::graphStatus CheckFeatureHeadDim() const;

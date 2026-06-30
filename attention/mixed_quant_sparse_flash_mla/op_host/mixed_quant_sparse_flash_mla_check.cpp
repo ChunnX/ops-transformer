@@ -150,9 +150,9 @@ void QSMLATilingCheck::Init()
     if (opParamInfo_.cmpKv.tensor == nullptr) {
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
     } else {
-        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
 }
 static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vector<int64_t> &strides,
