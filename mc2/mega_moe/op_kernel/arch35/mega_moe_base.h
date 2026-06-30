@@ -110,6 +110,9 @@ struct PeermemInfoUrma {
     }
 };
 
+struct CombineCommParams {
+    uint32_t rankId;
+};
 
 struct Params {
     GM_ADDR aGmAddr;
@@ -125,6 +128,7 @@ struct Params {
     PeermemInfo peermemInfo;
     PeermemInfoUrma peermemInfoUrma;
     MegaMoeTilingData *tilingData;
+    CombineCommParams combineCommParams;
 };
 
 enum class AddrUpdateMode : int32_t {

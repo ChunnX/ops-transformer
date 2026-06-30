@@ -120,6 +120,8 @@ struct WorkspaceInfo {
     GM_ADDR gmm2CombineSyncCounterPtr;
 
     GM_ADDR maskSlotPtr; // urma发送mask临时GM
+    GM_ADDR combineCommNotifyPtr; // 合并发送通知临时GM
+    GM_ADDR combineCommDataPtr; // combine communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -212,6 +214,20 @@ struct WorkspaceInfo {
             
             workspaceSize += Ops::Base::CeilAlign(
                 (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+
+            combineCommDataPtr = base + workspaceSize;
+            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(bfloat16_t)), (int64_t)ALIGN_32);
+            //每个 token 含数据+三元组(32B)
+            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+            uint32_t maxDataSize = Ops::Base::CeilDiv(tilingData->bs *  maxDataSizePerToken, (int64_t)ALIGN_512) * tilingData->expertPerRank 
+                                                        * tilingData->epWorldSize;
+            workspaceSize += maxDataSize;
+
+            
+            combineCommNotifyPtr = base + workspaceSize;
+            // 每个 expert 分配一个 int32 通知
+            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)tilingData->epWorldSize * sizeof(int32_t), (int64_t)ALIGN_512);
+            workspaceSize += maxNotifySize;
         }
     }
 };
