@@ -248,7 +248,7 @@ uint64_t MakeExpectedMxA8W4TilingKey(bool isSingleMultiSingle)
     append(GetTilingKeyIndex(1, {0, 1}), 2); // transB=true
     append(GetTilingKeyIndex(0, {0, 1}), 2); // transA=false
     append(GetTilingKeyIndex(static_cast<uint64_t>(optiling::Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4),
-                             {0, 1, 2, 3, 4, 5, 15}),
+                             {0, 1, 2, 3, 4, 5, 6, 15}),
            4);
     append(static_cast<uint64_t>(isSingleMultiSingle), 1);
     append(GetTilingKeyIndex(static_cast<uint64_t>(optiling::OptimizationAlgorithmSubCategory::N_FIRST_TAIL_RESPLIT),

@@ -1491,47 +1491,6 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
     groupSize_ = 0;
     auto antiquantScale = context->GetDynamicInputTensor(ANTIQUANT_SCALE_IDX, 0);
     OP_CHECK_IF(antiquantScale == nullptr, OP_LOGE(context->GetNodeName(), "antiquantScale is nullptr."), return false);
-<<<<<<< HEAD
-    auto antiquantScaleShape = antiquantScale->GetStorageShape();
-    int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-    if (isSingleMultiSingle_ && antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM - 1) {
-        // antiquantScaleShape: (n,k/64,2), compared with (g,n,k/64,2) missing g axis
-        int64_t groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR;
-        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
-                Ops::Base::ToString(antiquantScaleShape),
-                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
-                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
-            return false);
-        // GMM伪量化场景支持K=groupSize
-        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-    } else if (antiquantScaleDimNum == 3) {
-        // 3含义：单场景antiquantScale维度在切M时是(g, N, K)或(g, K, N)
-        // 2含义：(g, K, N)格式K轴索引
-        int64_t groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1)
-                                   : antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
-        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
-                Ops::Base::ToString(antiquantScaleShape),
-                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
-                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
-            return false);
-        // GMM伪量化场景支持K=groupSize
-        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-    } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
-        // antiquantScaleShape: (g,n,k/64,2) (g,k/64,n,2)
-        int64_t groupNum = transB_ ?
-                               antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR :
-                               antiquantScaleShape.GetDim(antiquantScaleDimNum - ANTEPENULTIMATE_DIM) * MX_GROUP_FACTOR;
-        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
-                Ops::Base::ToString(antiquantScaleShape),
-                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
-                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
-            return false);
-        // GMM伪量化场景支持K=groupSize
-        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-=======
 
     if (IsA16W4ND() && !isSingleX_) {
         OP_CHECK_IF(!DeriveGroupSizeMulti(context),
@@ -1539,7 +1498,6 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
     } else {
         OP_CHECK_IF(!DeriveGroupSizeSingle(context),
                     OP_LOGE(context->GetNodeName(), "DeriveGroupSizeSingle failed."), return false);
->>>>>>> gmm_a16w4_pergroup_nd_gen
     }
 
     OP_CHECK_IF(!CheckGroupSize(), OP_LOGE(context->GetNodeName(), "CheckGroupSize failed."), return false);
@@ -1553,7 +1511,10 @@ bool GroupedWeightQuantBatchMatmulTiling::DeriveGroupSizeSingle(const gert::Tili
     int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
 
     int64_t groupNum = 0;
-    if (antiquantScaleDimNum == A16W4_SINGLE_PER_GROUP_DIM) {
+    if (isSingleMultiSingle_ && antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM - 1) {
+        // antiquantScaleShape: (n,k/64,2), compared with (g,n,k/64,2) missing g axis
+        groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR;
+    } else if (antiquantScaleDimNum == A16W4_SINGLE_PER_GROUP_DIM) {
         if (IsA16W4ND()) {
             // bf16/fp16-int4/int32 pergroup: scale is [E, G, N], G is always at dim 1
             groupNum = antiquantScaleShape.GetDim(1);
