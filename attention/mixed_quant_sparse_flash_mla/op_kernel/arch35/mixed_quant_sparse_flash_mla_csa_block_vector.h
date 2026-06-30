@@ -934,7 +934,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
             realKeyOffset = runInfo.boIdx * constInfo.cmpS2Size * constInfo.n2Size * constInfo.dSizeVInput + \
                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
         } else {
-            realKeyOffset = runInfo.boIdx * constInfo.S2Size * constInfo.n2Size * constInfo.dSizeVInput + \
+            realKeyOffset = runInfo.boIdx * constInfo.s2Size * constInfo.n2Size * constInfo.dSizeVInput + \
                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
         }
         DataCopyPad(kvMergUb, keyGm[realKeyOffset], intriParams, padParams);
