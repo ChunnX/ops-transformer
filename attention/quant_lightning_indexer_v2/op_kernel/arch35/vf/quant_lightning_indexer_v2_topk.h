@@ -174,18 +174,18 @@ public:
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // %2: 双 buffer ping-pong
+            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // 2: 双 buffer ping-pong
         } else if (loopIdx != 0 && !isNeedLD) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             // loopIdx * trunkLen - Align(topK, 256): 当前 trunk 在 mrgValueLocal 中的起始偏移
-            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                                          tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK,
+            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, // 2: 双 buffer ping-pong
+                                          tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, // 2: 双 buffer ping-pong
                                           loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)ALIGN_256), s2SeqLen);
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK,
+                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK, // 2: 双 buffer ping-pong
                     (uint32_t)ALIGN_256));
             }
         }
@@ -194,19 +194,19 @@ public:
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // 2: 双 buffer ping-pong
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2: 双 buffer ping-pong
                               QLIV2Common::Align(topK, (uint32_t)ALIGN_256));
         } else if (loopIdx != 0 && isNeedLD) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                                          tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, // 2: 双 buffer ping-pong
+                                          tmpIndexLocal, hisIndexLocal[loopIdx % 2], // 2: 双 buffer ping-pong
                                           topK, loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)ALIGN_256), s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2: 双 buffer ping-pong
                 QLIV2Common::Align(topK, (uint32_t)ALIGN_256));
         }
         if (outputIdxOffset != 0) {
