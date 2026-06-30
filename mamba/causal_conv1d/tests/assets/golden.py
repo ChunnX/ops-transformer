@@ -82,16 +82,6 @@ def _silu(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
-def _split_sequences(
-        x: torch.Tensor, query_start_loc: torch.Tensor | None
-) -> tuple[list[torch.Tensor], int]:
-    if x.ndim == 3:
-        B = x.shape[0]
-        return [x[i] for i in range(B)], B
-    qsl = query_start_loc.to(torch.int64)
-    B = qsl.shape[0] - 1
-    return [x[qsl[i]:qsl[i + 1]] for i in range(B)], B
-
 
 def CausalConv1d(
     x,  # [T, D] varlen or [B, S, D] batch
@@ -221,7 +211,7 @@ def CausalConv1d(
         write_history = history if has_init else torch.zeros(
             W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
         write_padded = torch.cat([write_history, seq_x], dim=0)
-        cs_out[ci] = write_padded[-state_len:].to(dtype)
+        cs_out[ci][0:state_len] = write_padded[-state_len:].to(dtype)
 
     # Step 8: assemble output
     y = torch.stack(ys, dim=0) if is_3d else torch.cat(ys, dim=0)
@@ -238,45 +228,3 @@ def CausalConv1d(
         y = y.numpy()
     return cs_out, y
 
-
-# -----------------------------------------------------------
-# Quick smoke test
-# -----------------------------------------------------------
-if __name__ == "__main__":
-    torch.manual_seed(42)
-    B, S, D, W = 2, 8, 128, 4
-    x = torch.randn(B, S, D, dtype=torch.float16)
-    weight = torch.randn(W, D, dtype=torch.float16)
-    bias = torch.randn(D, dtype=torch.float16)
-    cs_fwd = torch.zeros(B, W - 1, D, dtype=torch.float16)
-
-    cs_out, y = CausalConv1d(x.numpy(),
-                             weight.numpy(),
-                             cs_fwd.numpy(),
-                             bias.numpy(),
-                             None,
-                             None,
-                             None,
-                             None,
-                             activation_mode="silu",
-                             run_mode=0)
-    print(
-        f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
-    )
-
-    x_upd = x[:, -1:, :]
-    cs_out, y = CausalConv1d(x_upd.numpy(),
-                             weight.numpy(),
-                             cs_fwd.numpy(),
-                             bias.numpy(),
-                             None,
-                             None,
-                             None,
-                             None,
-                             activation_mode="silu",
-                             run_mode=1)
-    print(
-        f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
-    )
-
-    print("All passed.")

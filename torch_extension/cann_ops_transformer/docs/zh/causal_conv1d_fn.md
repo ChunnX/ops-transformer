@@ -71,7 +71,7 @@ cann_ops_transformer.causal_conv1d_fn(
 ## 约束说明
 
 - 该接口仅支持推理场景下使用。
-- 该接口支持单算子模式调用，图模式暂不支持。
+- 该接口支持单算子模式和图模式调用。
 - 不支持非连续Tensor。
 - `weight`的kW仅支持2、3、4。
 - `conv_states`的state_len必须 ≥ kW-1，num_cache_lines必须 ≥ batch（未提供cache_indices时）。
@@ -108,4 +108,6 @@ cann_ops_transformer.causal_conv1d_fn(
     )
     ```
 
-- 图模式调用（暂不支持）
+- 图模式调用
+
+    通过 `torch.compile(backend="atc")` 或 `torchair` 自动将算子转换为 GE 图算子，无需额外配置。
