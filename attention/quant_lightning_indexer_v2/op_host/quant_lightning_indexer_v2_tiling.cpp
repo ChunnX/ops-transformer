@@ -850,7 +850,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDimNum();
 
     // MXFP8: scale 比 data 多一维，最后两维为 [D/64, 2]
-    bool isMxFp8Scale = (*opParamInfo_.quantMode == 3);
+    bool isMxFp8Scale = (*opParamInfo_.quantMode == 3); // 3:mxfp8
 
     if (isMxFp8Scale) {
         // MXFP8: qScale shape [B, S1, N1, D/64, 2]，比 query 多一维
