@@ -68,17 +68,16 @@ def _parse_float(val):
     return float(val)
 
 
-def load_cases_from_excel(excel_path=None):
-    from openpyxl import load_workbook
-    if excel_path is None:
-        excel_path = _get_excel_path()
-    wb = load_workbook(excel_path, read_only=True, data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
+def load_cases_from_csv(csv_path=None):
+    import csv
+    if csv_path is None:
+        csv_path = _get_excel_path()
+    with open(csv_path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        rows = list(reader)
     if not rows:
         return {}
-    header = [str(c).strip() for c in rows[0]]
+    header = [c.strip() for c in rows[0]]
     dtype_map = _get_dtype_map()
     import torch as _torch
     cases = {}
@@ -100,6 +99,8 @@ def load_cases_from_excel(excel_path=None):
             if col in ("case_name", "enable"):
                 continue
             val = record.get(col)
+            if val == "":
+                val = None
             if col in _INT_COLS:
                 val = _parse_int(val)
             elif col in _FLOAT_COLS:
@@ -107,7 +108,7 @@ def load_cases_from_excel(excel_path=None):
             elif col in _BOOL_COLS:
                 val = _parse_bool(val)
             elif col == "output_dtype":
-                val = dtype_map.get(str(val).strip(), _torch.bfloat16)
+                val = dtype_map.get(str(val).strip(), _torch.bfloat16) if val is not None else _torch.bfloat16
             params[col] = [val]
 
         params["pa_block_padding_bytes"] = [PA_BLOCK_PADDING_BYTES]
@@ -117,5 +118,5 @@ def load_cases_from_excel(excel_path=None):
 
 
 _excel_path = _get_excel_path()
-TEST_PARAMS = load_cases_from_excel(_excel_path)
+TEST_PARAMS = load_cases_from_csv(_excel_path)
 ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
