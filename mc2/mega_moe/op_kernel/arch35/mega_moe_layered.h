@@ -208,6 +208,10 @@ private:
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
     LocalTensor<uint32_t> sendDedupMaskTensor_;
 
+    using SwigluQuantOutType = typename std::conditional<
+        (QuantMode == E2M1_QUANT),
+        fp8_e4m3fn_t, QuantOutType>::type;
+
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
@@ -1620,7 +1624,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         }
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
