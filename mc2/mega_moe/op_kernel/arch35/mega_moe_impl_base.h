@@ -15,6 +15,15 @@
 
 #ifndef MEGA_MOE_IMP_BASE_H
 #define MEGA_MOE_IMP_BASE_H
+#include "kernel_operator.h"
+
+#include "kernel_tiling/kernel_tiling.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "lib/matmul_intf.h"
+#include "block_epilogue_swiglu_mx_quant.h"
+#include "mega_moe_base.h"
+
+#include "tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_swizzle.h"
 #include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
