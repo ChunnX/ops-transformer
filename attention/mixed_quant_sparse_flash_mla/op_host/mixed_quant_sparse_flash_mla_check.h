@@ -43,9 +43,15 @@ const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
+const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
+const std::string SEQUSED_Q_NAME = "seqused_q";
 const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
 const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
 const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
+const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
+const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
+const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
 struct QSMLATilingRequiredParaInfo {
@@ -150,7 +156,8 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t KV_INPUT_DIM_LIMIT = 608;
+constexpr uint32_t KV_INPUT_DIM_LIMIT_ONE = 608;
+constexpr uint32_t KV_INPUT_DIM_LIMIT_TWO = 584;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
@@ -232,6 +239,8 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -249,6 +258,7 @@ struct QSMLAParaInfo {
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const int64_t *topkValueMode = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -290,6 +300,7 @@ public:
     int64_t cmpRatio = 0;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
+    int64_t topkValueMode = 0;
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
@@ -463,13 +474,21 @@ private:
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
+    ge::graphStatus CheckSingleParaOriSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqLensQ() const;
+    ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
+    ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
+    ge::graphStatus CheckSingleParaSequsedQ() const;
     ge::graphStatus CheckSingleParaSequsedKv() const;
+    ge::graphStatus CheckSingleParaSequsedCmpKv() const;
+    ge::graphStatus CheckSingleParaOriTopkLength() const;
+    ge::graphStatus CheckSingleParaCmpTopkLength() const;
     ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSingleParaMetadata() const;
+    ge::graphStatus CheckSingleParaTopkValueMode() const;
 
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckParaExistenceAntiquant() const;
@@ -503,6 +522,12 @@ private:
     ge::graphStatus CheckActualSeqLensDType();
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
+
+    ge::graphStatus CheckConsistency() const;
+    ge::graphStatus CheckLayoutQKvConsistency() const;
+    ge::graphStatus CheckSparseIndicesShapeMatchQ() const;
+    ge::graphStatus CheckTopkLengthConsistency() const;
+    ge::graphStatus CheckN2Consistency() const;
 
     ge::graphStatus CheckFeatureWinKV() const;
     ge::graphStatus CheckFeatureAntiquantShape() const;
@@ -563,6 +588,7 @@ private:
 
     uint32_t oriMaskMode_ = 0;
     uint32_t cmpMaskMode_ = 0;
+    int64_t topkValueMode_ = 0;
 
     QSMLALayout qLayout_ = QSMLALayout::BSND;
     QSMLALayout outLayout_ = QSMLALayout::BSND;
