@@ -1,0 +1,41 @@
+# quant_block_sparse_attn pytest
+
+## Scope
+
+The pytest framework follows the current `QuantBlockSparseAttn` op definition:
+
+- Inputs: `query`, `key`, `value`, `q_descale`, `k_descale`, `v_descale`, `p_scale`, `cu_seqlens_q`, `cu_seqlens_kv`, `seqused_q`, `seqused_kv`, `sparse_indices`, `sparse_seq_len`, `block_table`, `atten_mask`, `metadata`
+- Outputs: `attention_out`, optional `softmax_lse`
+- Attrs: `max_seqlen_q`, `max_seqlen_kv`, `softmax_scale`, `sparse_q_block_size`, `sparse_kv_block_size`, `layout_kv`, `layout_sparse_indices`, `quant_mode`, `mask_mode`, `return_softmax_lse`
+
+## Golden Semantics
+
+The CPU golden follows BSA scheme 2.4:
+
+- `sparse_indices` stores logical KV block ids in actual KV token space.
+- `q_descale` and `k_descale` are applied in Vec1 as row x column scale on raw `QK^T`.
+- `p_scale[0]` is a static per-tensor P quant scale; golden casts `softmax / p_scale` to FP8 and multiplies BMM2 output by `p_scale * v_descale[n2]`.
+- `key`, `value`, and `k_descale` are rebuilt as separate Tensor views over one combined `uint8` PA storage. Each physical block is packed as `K block | V block | k_descale block`. The saved `.pt` file contains only that raw storage and its layout metadata.
+- `pa_block_padding_bytes` is fixed at `0`; the segmented cache uses a tight `paBlockStride`.
+- Empty sparse tasks produce zero `attention_out` and `EMPTY_LSE` softmax LSE.
+- `mask_mode`: `0` no mask, `3` lower-triangular causal.
+
+## Typical Cases
+
+`quant_block_sparse_attn_paramset.py` covers:
+
+- BSND dense-equivalent sparse selection
+- BSND Q/K/V/P scale gradient
+- BSND partial tail KV block with random PA block table
+- Empty sparse output
+- TND random actual lengths
+- LEFT_UP and RIGHT_DOWN causal sparse cases
+
+## Usage
+
+```bash
+bash test_run.sh single
+bash test_run.sh batch
+```
+
+If `torch.ops.custom.npu_quant_block_sparse_attn` is not registered, NPU precision comparison is skipped. Batch generation still writes `.pt` files under `bsa_testcase`.

@@ -1,0 +1,160 @@
+/**
+ * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#include <iostream>
+#include <torch/library.h>
+#include "ops_common.h"
+
+namespace custom {
+using namespace at_npu::native;
+
+// npu tensor max size
+const int SIZE = 8;
+const int64_t DIM_THREE = 3;
+const int64_t FP32_BYTES = 4;
+
+// 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
+//   - attention_out: BF16，shape 跟随 query 布局（BSND/TND），head-dim 取自 value
+//   - softmax_lse:   FLOAT32，return_softmax_lse 为真时 (B,N1,S1)/(N1,T)，否则空张量
+std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
+                                                                bool return_softmax_lse)
+{
+    for (auto i = 0; i < query.sizes().size(); i++) {
+        TORCH_CHECK(query.size(i) > 0,
+                    "All values within query's shape should be greater "
+                    "than 0, but shape[",
+                    i, "] is ", query.size(i));
+    }
+
+    at::SmallVector<int64_t, SIZE> atten_out_size;
+    at::SmallVector<int64_t, SIZE> softmax_lse_size;
+    int64_t d_size = query.size(query.dim() - 1);
+    if (query.dim() == DIM_THREE) {
+        // TND -> (T, N1, D)
+        int64_t t_size = query.size(0);
+        int64_t n1_size = query.size(1);
+        atten_out_size = {t_size, n1_size, d_size};
+        softmax_lse_size = {n1_size, t_size};
+    } else {
+        // BSND -> (B, S1, N1, D)
+        int64_t b_size = query.size(0);
+        int64_t s1_size = query.size(1);
+        int64_t n1_size = query.size(2);
+        atten_out_size = {b_size, s1_size, n1_size, d_size};
+        softmax_lse_size = {b_size, n1_size, s1_size};
+    }
+    if (!return_softmax_lse) {
+        softmax_lse_size = {};
+    }
+
+    at::Tensor attention_out = at::empty(atten_out_size, query.options().dtype(at::kBFloat16));
+    at::Tensor softmax_lse = at::empty(softmax_lse_size, query.options().dtype(at::kFloat));
+    return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
+}
+
+// step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
+std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
+    const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
+    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
+    const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, int64_t max_seqlen_q,
+    int64_t max_seqlen_kv, int64_t pa_block_stride, c10::string_view layout_kv, c10::string_view layout_q,
+    c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
+    bool return_softmax_lse)
+{
+    TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
+    int64_t paBlockStride = pa_block_stride;
+    if (key.dim() == 1) {
+        TORCH_CHECK(paBlockStride > 0,
+                    "pa_block_stride should be explicitly set when key is the combined KV storage tail, but got ",
+                    paBlockStride);
+        TORCH_CHECK(value.dim() == 1 && k_descale.dim() == 1,
+                    "segmented combined KV kernel inputs should be 1D key/value/k_descale tails, but got dims ",
+                    key.dim(), "/", value.dim(), "/", k_descale.dim());
+    } else {
+        paBlockStride = key.stride(0);
+        TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ",
+                    paBlockStride);
+        TORCH_CHECK(value.stride(0) == paBlockStride,
+                    "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
+                    " and key.stride(0)=", paBlockStride);
+        TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
+                    " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
+                    " and key.stride(0)=", paBlockStride);
+        TORCH_CHECK(
+            key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) && key.stride(3) == 1,
+            "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+            key.strides());
+        TORCH_CHECK(
+            value.stride(1) == value.size(2) * value.size(3) && value.stride(2) == value.size(3) &&
+                value.stride(3) == 1,
+            "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+            value.strides());
+        TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1,
+                    "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1], but got ",
+                    k_descale.strides());
+    }
+
+    // construct the output tensors
+    std::tuple<at::Tensor, at::Tensor> outputs = construct_bsa_output_tensors(query, value, return_softmax_lse);
+    at::Tensor attention_out = std::get<0>(outputs);
+    at::Tensor softmax_lse = std::get<1>(outputs);
+
+    // convert str
+    std::string layout_kv_str = std::string(layout_kv);
+    std::string layout_q_str = std::string(layout_q);
+    std::string layout_sparse_indices_str = std::string(layout_sparse_indices);
+    std::string layout_out_str = std::string(layout_out);
+    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
+    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
+    char *layout_sparse_indices_ptr = const_cast<char *>(layout_sparse_indices_str.c_str());
+    char *layout_out_ptr = const_cast<char *>(layout_out_str.c_str());
+
+    // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
+    EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, p_scale,
+                    cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table,
+                    atten_mask, metadata, max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size,
+                    sparse_kv_block_size, paBlockStride, layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr,
+                    layout_out_ptr, quant_mode, mask_mode, return_softmax_lse, attention_out, softmax_lse);
+
+    return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
+}
+
+// step3, 为META设备实现前向接口
+std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
+    const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
+    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
+    const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, int64_t max_seqlen_q,
+    int64_t max_seqlen_kv, int64_t pa_block_stride, c10::string_view layout_kv, c10::string_view layout_q,
+    c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
+    bool return_softmax_lse)
+{
+    return construct_bsa_output_tensors(query, value, return_softmax_lse);
+}
+} // namespace custom
+
+// step4, 为NPU设备注册前向实现
+TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
+{
+    m.impl("npu_quant_block_sparse_attn", &custom::npu_quant_block_sparse_attn_npu);
+}
+
+// step5, 为META设备注册前向实现
+TORCH_LIBRARY_IMPL(custom, Meta, m)
+{
+    m.impl("npu_quant_block_sparse_attn", &custom::npu_quant_block_sparse_attn_meta);
+}
