@@ -39,9 +39,9 @@ __aicore__ inline void CombineTokens(
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
-        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
-        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+        uint32_t toRankId = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + RANK_ID);
+        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + TOKEN_ID);
+        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + TOPK_INDEX);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
             GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
@@ -302,13 +302,13 @@ __aicore__ inline void CopyRemoteRankTokenToSlot(uint32_t toRankId, uint32_t tok
     uint32_t maxDataSizePerToken, uint32_t tileOffset, LocalTensor<ElementMMadOut2>& l0cOutUbGMM2,
     LocalTensor<int32_t>& tripleTempTensor, const AscendC::DataCopyExtParams& ub2GmParams, const Params& params)
 {
-    tripleTempTensor.SetValue(0, toRankId);
-    tripleTempTensor.SetValue(1, tokenIdx);
-    tripleTempTensor.SetValue(2, topkIdx);
-    tripleTempTensor.SetValue(3, nLoc);
-    tripleTempTensor.SetValue(4, n);
-    tripleTempTensor.SetValue(5, actualDataLength);
-    tripleTempTensor.SetValue(7, 1); // 标记为已处理
+    tripleTempTensor.SetValue(RANK_ID, toRankId);
+    tripleTempTensor.SetValue(TOKEN_ID, tokenIdx);
+    tripleTempTensor.SetValue(TOPK_INDEX, topkIdx);
+    tripleTempTensor.SetValue(N_LOC_INDEX, nLoc);
+    tripleTempTensor.SetValue(N_INDEX, n);
+    tripleTempTensor.SetValue(DATA_LENGTH_INDEX, actualDataLength);
+    tripleTempTensor.SetValue(FLAG_INDEX, 1); // 标记为已处理
     __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr +
         toRankId * sizeof(int32_t));
     GM_ADDR dataAddr = params.workspaceInfo.combineCommPtr + static_cast<uint64_t>(toRankId) *
@@ -341,9 +341,9 @@ __aicore__ inline void CombineTokensWithUrma(
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
-        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
-        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+        uint32_t toRankId = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + RANK_ID);
+        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + TOKEN_ID);
+        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * TRIPLE_SIZE + TOPK_INDEX);
         uint32_t tileOffset = tileIdx * Get<N_VALUE>(actualBlockShape);
         if (toRankId == params.rankId) {
             CopyLocalRankToken<ElementMMadOut2>(tokenIdx, topkIdx, nLoc, n,
