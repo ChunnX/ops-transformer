@@ -330,7 +330,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
     }
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy<float>(outStateTensor, statusTensor, 8UL);
-
+    PipeBarrier<PIPE_MTE3>();
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
