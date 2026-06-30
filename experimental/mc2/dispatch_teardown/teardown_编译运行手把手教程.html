@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch / combine teardown — 编译运行手把手教程</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a212b; --panel2:#222c38; --ink:#e6edf3; --mut:#9fb0c0;
+    --line:#33404f; --accent:#5cc8ff; --ok:#5dd39e; --warn:#ffd166; --pink:#f472b6;
+    --code:#0b0f14; --cmd:#0d1b24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:30px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--accent);color:#06222e;border-radius:8px;font-size:15px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  h3{font-size:16.5px;margin:20px 0 8px;color:var(--accent)}
+  p{margin:8px 0}
+  .sub{color:var(--mut);font-size:13.5px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--mut)}
+  .badge b{color:var(--accent)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600}
+  td code,p code,li code{background:var(--code);padding:1px 6px;border-radius:5px;font-size:12.5px;color:#ffd9a0}
+  pre{background:var(--cmd);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0;white-space:pre-wrap;word-break:break-all}
+  pre .c{color:#6b7c8f} pre .p{color:#5dd39e} pre .k{color:#ff9d6b} pre .v{color:#8fd6ff}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:14px 0}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;flex:1 1 150px;min-width:140px}
+  .step .t{font-weight:700;color:var(--accent);font-size:14px}.step .d{font-size:12px;color:var(--mut);margin-top:4px}
+  .step .cmd{font-family:"SF Mono",Menlo,monospace;font-size:11px;color:#ffd9a0;margin-top:6px;word-break:break-all}
+  .arrow{display:flex;align-items:center;color:var(--accent);font-size:20px;flex:0 0 auto}
+  .note{border-left:3px solid var(--warn);background:#2a2517;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--ok);background:#16291f}
+  .danger{border-left:3px solid var(--pink);background:#2a1620}
+  ul{margin:8px 0 8px 2px;padding-left:20px}li{margin:5px 0}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:5px;border:1px solid var(--line);color:var(--mut);margin-left:4px}
+  .kbd{font-family:monospace;background:#2a2517;color:var(--warn);padding:1px 6px;border-radius:4px;border:1px solid #4a4020}
+  b.f{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>dispatch / combine teardown — 编译运行手把手教程</h1>
+  <p class="sub">从零把两个 mxfp8 teardown 算子在 A5(Ascend950PR) 上编译、装包、跑通、比对的全流程。每条命令都讲清「干什么 / 为什么 / 在哪跑」。</p>
+
+  <div class="badges">
+    <span class="badge">远端 <b>A5 / 123.60.114.41:20028</b></span>
+    <span class="badge">CANN <b>/home/0625/env</b></span>
+    <span class="badge">工程 <b>/home/developer/ops-transformer/experimental/mc2</b></span>
+    <span class="badge">形态 <b>registry-invoke + aclnn</b></span>
+    <span class="badge">单卡 · 无 MPI/HCCL</span>
+  </div>
+
+  <!-- 0 心智模型 -->
+  <h2><span class="n">0</span>先建心智模型：四步法</h2>
+  <p>teardown 是 registry-invoke 自定义算子（不是 <code>&lt;&lt;&lt;&gt;&gt;&gt;</code> 直调，因为 A6 不支持直调）。所以分两条线：<b class="f">算子线</b>（编译成算子包、装进 CANN）和 <b class="f">测试线</b>（编译一个调 aclnn 的 C++ 驱动 exe，造数→跑→比对）。</p>
+  <div class="flow">
+    <div class="step"><div class="t">① 编译装包算子</div><div class="d">把 kernel+tiling+OpDef 编成算子包并装进 CANN，让 aclnn 能找到</div><div class="cmd">bash build_op.sh dispatch_teardown,combine_teardown</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">② 编译测试驱动</div><div class="d">cmake 编出单卡 aclnn C++ 驱动 exe（链接装好的算子 api）</div><div class="cmd">bash build_test.sh</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">③ 跑单个用例</div><div class="d">golden 造数 → 清场 → aclnn 上板 → 比对</div><div class="cmd">bash run.sh dispatch 8 8 7168 4 2</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">④ 回归 / 链式</div><div class="d">多 shape 回归 + dispatch→combine 串接</div><div class="cmd">bash regress.sh</div></div>
+  </div>
+  <div class="note"><b>什么时候重跑哪一步</b>（最常踩）：改了 <b>kernel/tiling/OpDef</b> → 重跑 ①（必须重装包）；只改了 <b>C++ 驱动</b> → 重跑 ②；只改了 <b>golden/compare(.py)</b> → 直接 ③（python 不用编）。改 ① 后 ② 不必重跑（除非 aclnn 签名变）。</p></div>
+
+  <!-- 1 环境 -->
+  <h2><span class="n">1</span>登录与环境</h2>
+  <pre><span class="c"># 本地：连 A5（密码 mc2_team）</span>
+ssh -p 20028 root@123.60.114.41
+
+<span class="c"># 远端：进工作目录（所有命令都在这跑）</span>
+cd /home/developer/ops-transformer/experimental/mc2/teardown_test</pre>
+  <p class="sub">环境变量由 <code>build_op.sh</code>/<code>build_test.sh</code>/<code>run.sh</code> 内部自动 <code>source</code>，手动跑时关键这几条：</p>
+  <table>
+    <tr><th>变量</th><th>值 / 来源</th><th>作用</th></tr>
+    <tr><td><code>ASCEND_DATE</code></td><td>=0625（看 <code>ls /home/</code> 当前 CANN 日期目录）</td><td>CANN 版本目录名，脚本用它拼路径</td></tr>
+    <tr><td>CANN set_env</td><td><code>source /home/0625/env/set_env.sh</code></td><td>拉起 ASCEND_HOME/OPP/TOOLKIT 等</td></tr>
+    <tr><td><code>ASCEND_CUSTOM_OPP_PATH</code></td><td><code>${ASCEND_OPP_PATH}/vendors/custom_transformer</code></td><td><b class="f">必设</b>，否则 aclnn 找不到自定义算子二进制 → <span class="kbd">161002</span></td></tr>
+    <tr><td><code>LD_LIBRARY_PATH</code></td><td>+CANN lib64 + custom_transformer/op_api/lib</td><td>运行时链 libcust_opapi.so</td></tr>
+  </table>
+
+  <!-- 2 目录 -->
+  <h2><span class="n">2</span>目录结构</h2>
+  <pre><span class="p">experimental/mc2/</span>
+├── <span class="v">dispatch_teardown/</span>          <span class="c"># 算子工程（registry 四件套）</span>
+│   ├── op_kernel/dispatch_teardown.cpp      <span class="c"># AIV 核函数（去空洞紧密化+多核）</span>
+│   ├── op_host/dispatch_teardown_def.cpp    <span class="c"># OpDef：I/O tensor + attr 定义</span>
+│   ├── op_host/op_tiling/*.{h,cpp}          <span class="c"># tiling：算 blockDim/A/scaleH，填 TilingData</span>
+│   ├── op_api/aclnn_dispatch_teardown.{h,cpp} <span class="c"># 对外 aclnn 两段式薄壳</span>
+│   └── CMakeLists.txt
+├── <span class="v">combine_teardown/</span>           <span class="c"># 同构（gather+反量化+加权和）</span>
+└── <span class="v">teardown_test/</span>              <span class="c"># 测试工程（你在这跑所有命令）</span>
+    ├── build_op.sh / build_test.sh          <span class="c"># 编译脚本</span>
+    ├── run.sh / regress.sh / run_chain.sh   <span class="c"># 运行脚本</span>
+    ├── golden_dispatch.py / golden_combine.py <span class="c"># numpy 造输入 + CPU 参考</span>
+    ├── compare_dispatch.py / compare_combine.py <span class="c"># NPU vs golden 比对</span>
+    ├── test_dispatch_teardown.cpp / test_combine_teardown.cpp <span class="c"># 单卡 aclnn 驱动</span>
+    └── CMakeLists.txt</pre>
+
+  <!-- 3 step1 -->
+  <h2><span class="n">3</span>第①步：编译装包算子 <span class="tag">改了 kernel/tiling/OpDef 必重跑</span></h2>
+  <pre>bash build_op.sh dispatch_teardown,combine_teardown</pre>
+  <p>脚本内部两件事：</p>
+  <pre><span class="c"># 1) 编算子包（--experimental 因为算子在 experimental/ 下；--soc 选 a5 的 ascend950）</span>
+cd /home/developer/ops-transformer
+bash build.sh --pkg --experimental --soc=ascend950 --ops=dispatch_teardown,combine_teardown -j16
+
+<span class="c"># 2) 装包到 CANN 的 custom_transformer vendor（aclnn 运行时从这里找算子二进制）</span>
+./build_out/cann-ops-transformer-custom_linux-*.run --force</pre>
+  <ul>
+    <li><code>--ops=a,b</code> 逗号分隔可一次编多个算子。</li>
+    <li>编一个算子约 <b>1~2 分钟</b>；成功末尾出现 <code>vendors/custom_transformer</code>。</li>
+    <li><b>这步是慢环节</b>：所以调业务逻辑时尽量先用 golden 把算法想对，减少重编次数。</li>
+  </ul>
+  <div class="note">编译报错先看：<code>grep -inE "error:|fatal error|undefined" /tmp/bfix.log</code>。常见坑：registry kernel 编译<b>没有</b> <code>micro_api/</code>、<code>adv_api/</code> 头（直调工程才有）→ 只能用 basic_api。</div>
+
+  <!-- 4 step2 -->
+  <h2><span class="n">4</span>第②步：编译测试驱动 <span class="tag">改了 .cpp 驱动 / aclnn 签名才重跑</span></h2>
+  <pre>bash build_test.sh</pre>
+  <p>内部 = cmake 编单卡 aclnn C++ 驱动，产物 <code>build/test_dispatch_teardown</code> 与 <code>build/test_combine_teardown</code>：</p>
+  <pre>cmake -B build -DASCEND_CANN_PACKAGE_PATH=/home/0625/env/ascend-toolkit/latest
+cmake --build build -j8</pre>
+  <p class="sub">驱动只做：aclInit → setDevice(0) → 读 bin → H2D → <code>aclnnXxxGetWorkspaceSize</code> → malloc → <code>aclnnXxx</code> → 同步 → D2H → 写 <code>*.npu.bin</code>。<b>单卡单进程，无 MPI/HCCL</b>（teardown 纯本地）。</p>
+
+  <!-- 5 step3 -->
+  <h2><span class="n">5</span>第③步：跑单个用例</h2>
+  <pre>bash run.sh <span class="v">&lt;op&gt; &lt;bs&gt; &lt;topk&gt; &lt;h&gt; &lt;E&gt; &lt;R&gt; [seed]</span>
+<span class="c"># 例：真实场景</span>
+bash run.sh dispatch 8 8 7168 4 2
+bash run.sh combine  8 8 7168 4 2</pre>
+  <p>run.sh 串起四个子步骤：</p>
+  <div class="flow">
+    <div class="step"><div class="t">a. golden 造数</div><div class="d">numpy 造 fp8/e8m0/int32 输入 bin + 算 CPU 参考输出 bin</div><div class="cmd">python golden_&lt;op&gt;.py ...</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">b. 清场</div><div class="d">npu-smi 看占用 → pkill 残留 → sleep（约束：跑前必清）</div><div class="cmd">pkill -9 python3; sleep 3</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">c. aclnn 上板</div><div class="d">驱动 exe 读 bin→跑算子→写 *.npu.bin</div><div class="cmd">build/test_&lt;op&gt;_teardown ...</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">d. 比对</div><div class="d">NPU vs golden：fp8/int bit 精确，bf16 看 mae/cos</div><div class="cmd">python compare_&lt;op&gt;.py ...</div></div>
+  </div>
+  <p class="sub">参数含义：<code>bs</code> token 数 · <code>topk</code> 每 token 选专家数 · <code>h</code> hidden（<b>必须 %32==0</b>，mxfp8 group=32）· <code>E</code> 每卡专家数 · <code>R</code> 卡数。约束：<code>topk ≤ GE=R*E</code>。数据落在 <code>data_&lt;op&gt;_&lt;bs&gt;_..._/</code>。</p>
+
+  <h3>看懂输出</h3>
+  <pre><span class="c"># dispatch（5 个输出，全 bit 精确）</span>
+  [PASS] expand_x(fp8 bytes) exact-equal (n=458752)
+  [PASS] expand_scale(e8m0 bytes) exact-equal (n=14336)
+  [PASS] send_counts / expand_idx / expert_token_nums exact-equal
+=== DISPATCH_TEARDOWN PASS ===
+<span class="c"># combine（bf16，反量化加权和，mae≈0）</span>
+  [PASS] x mae=0.000e+00 cos=1.000001 (n=57344)
+=== COMBINE_TEARDOWN PASS ===</pre>
+
+  <!-- 6 step4 -->
+  <h2><span class="n">6</span>第④步：回归 & 链式</h2>
+  <pre><span class="c"># 回归集：退化(topk≥E)+稀疏(topk&lt;E)+非1024对齐 h(2560/1536)+链式，一键全跑</span>
+bash regress.sh        <span class="c"># 末尾 ALL GREEN 即全过</span>
+
+<span class="c"># 链式：dispatch 在 NPU 真实产出的 expand_idx → 直接喂 combine，验两算子组合</span>
+bash run_chain.sh 8 8 7168 4 2</pre>
+  <div class="panel ok note"><b>当前实测状态：</b>regress.sh 全绿 9/9（真实场景 + 稀疏 + h=2560/1536 + 链式），dispatch 5 输出 bit 精确、combine x mae=0。</div>
+
+  <!-- 7 改场景 -->
+  <h2><span class="n">7</span>怎么改场景 / 加用例</h2>
+  <ul>
+    <li><b>换 shape</b>：直接改 run.sh 的 6 个参数即可（算子是参数化的，无需重编算子）。如跑 <code>bash run.sh combine 16 6 2048 8 2 42</code>。</li>
+    <li><b>加固定回归档</b>：在 <code>regress.sh</code> 里加一行 <code>run dispatch &lt;...&gt; "tag"</code>。</li>
+    <li><b>改 golden 算法 / 造数分布</b>：编辑 <code>golden_*.py</code>，直接重跑 run.sh（python 不编）。</li>
+    <li><b>约束</b>：<code>h%32==0</code>（否则 tiling 返回 GRAPH_FAILED）；<code>topk≤R*E</code>；combine 的 <code>topk</code> 决定每专家收到 token 数 ≤ bs。</li>
+  </ul>
+
+  <!-- 8 坑 -->
+  <h2><span class="n">8</span>常见坑速查</h2>
+  <table>
+    <tr><th>现象</th><th>根因</th><th>解</th></tr>
+    <tr><td>aclnn <span class="kbd">161002</span> basePath.empty</td><td>没设 ASCEND_CUSTOM_OPP_PATH</td><td><code>export ASCEND_CUSTOM_OPP_PATH=${ASCEND_OPP_PATH}/vendors/custom_transformer</code>（run.sh 已带）</td></tr>
+    <tr><td>HCCL 建链失败 / 卡占用</td><td>别人/残留进程占卡</td><td>跑前清场：<code>npu-smi info; pkill -9 python; sleep 3</code></td></tr>
+    <tr><td>kernel 编译 <code>micro_api ... not found</code></td><td>registry kernel 无 micro_api 头</td><td>用 basic_api 等价实现（e8m0 反量化用位型 bitcast）</td></tr>
+    <tr><td>换 h 后 scale/精度静默错</td><td>scaleH=h/32 非 32B 对齐 + 裸 DataCopy</td><td>已修为 DataCopyPad；h 仍须 %32==0</td></tr>
+    <tr><td>tiling 改了没生效</td><td>改 tiling/kernel 后没重 build_op 装包</td><td>改算子侧必重跑第①步</td></tr>
+    <tr><td>只重编一个算子后另一个全挂</td><td><code>build_op.sh &lt;单算子&gt;</code> + <code>.run --force</code> 把 vendor 包整个换成只含该算子、挤掉另一个</td><td>两个算子<b>一起</b>装：<code>build_op.sh dispatch_teardown,combine_teardown</code></td></tr>
+  </table>
+
+  <!-- 9 a6 -->
+  <h2><span class="n">9</span>迁到 A6 要改什么（多核 portable，零代码改动）</h2>
+  <div class="panel">
+    <div class="kv">
+      <b>核数</b><span>A5 = <b>56 V核</b>（实机 Ascend950PR_957c，实测 <code>GetCoreNumAiv()=56</code>、实 launch 56 个 AIV block）· A6 = <b>28 V核</b></span>
+      <b>切分</b><span>tiling 运行时查 <code>GetCoreNumAiv()</code> → <code>SetBlockDim(min(核数,工作量))</code>，kernel 按 <code>blk/aivNum</code> 均分（dispatch 按行、combine 按 (token,chunk)）→ <b>不写死核数，A6 自动用 28 核、源码一字不改</b></span>
+      <b>编译</b><span><code>build.sh --pkg --experimental --soc=ascend910_96 --ops=...</code>（OpDef 已含 ascend910_96 config，白名单 token 一字不差）</span>
+      <b>复用</b><span>build_test / run / golden / compare <b>原样</b>（AIV 算子不区分 a5/a6，单卡无通信）</span>
+      <b>A6 分配</b><span>真实场景 dispatch 64 行/28 ≈ 2-3 行/核、combine 56 项/28 = 2 项/核 → 利用率好</span>
+      <b>性能</b><span>双缓冲在 A5（~1 行/核）无收益已回退；<b>A6（≥2 行/核）会有收益</b>，重做用<b>显式 MTE2/MTE3 软流水</b>（非 TQue 直拷）+ 多跑复验</span>
+    </div>
+    <p class="sub" style="margin-bottom:0"><b>诚实边界</b>：A5 开发 + 实测全绿（回归 9/9）；<b>A6 尚未实跑（无访问权限）</b>，按构造 A6-ready，唯一不确定项是 <code>GetCoreNumAiv()</code>/平台行为在 ascend910_96 是否完全一致（预期一致，本就是该 API 跨平台用途）；拿到 A6 同 harness 复跑即坐实。</p>
+  </div>
+
+  <p class="sub" style="margin-top:26px;text-align:center">配套：原理讲解见 <code>teardown_端到端流程讲解_mxfp8.html</code></p>
+
+</div>
+</body>
+</html>

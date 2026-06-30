@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch / combine teardown aiv (mxfp8) — 端到端流程拆解</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a212b; --panel2:#222c38; --ink:#e6edf3; --mut:#9fb0c0;
+    --line:#33404f; --accent:#5cc8ff; --ok:#5dd39e; --warn:#ffd166; --pink:#f472b6;
+    --r0:#3b82f6; --r1:#22c55e;
+    --e0:#60a5fa; --e1:#f472b6; --e2:#fbbf24; --e3:#a78bfa;
+    --fp8:#5eb0ef; --scale:#e8a33d; --hole:#3a4453; --code:#0b0f14;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:1200px;margin:0 auto;padding:30px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:42px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--accent);color:#06222e;border-radius:8px;font-size:15px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  h3{font-size:17px;margin:22px 0 9px;color:var(--accent)}
+  p{margin:9px 0}
+  .sub{color:var(--mut);font-size:13.5px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--mut)}
+  .badge b{color:var(--accent)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid2>.panel{margin:0}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600}
+  td code,p code,li code{background:var(--code);padding:1px 6px;border-radius:5px;font-size:12.5px;color:#ffd9a0}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0}
+  pre .c{color:#6b7c8f} pre .k{color:#ff9d6b} pre .v{color:#8fd6ff}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex:1 1 150px;min-width:140px}
+  .step .t{font-weight:600;color:var(--accent);font-size:14px}.step .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .arrow{color:var(--accent);font-size:22px;flex:0 0 auto}
+  .blk{display:flex;align-items:center;gap:10px;margin:7px 0;flex-wrap:wrap}
+  .blk .lab{font-size:12px;color:var(--mut);width:200px;flex:0 0 auto;text-align:right}
+  .cells{display:flex;gap:5px;flex-wrap:wrap}
+  .cell{min-width:46px;height:38px;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#06151f;border:1px solid rgba(255,255,255,.18);padding:0 4px}
+  .cell small{font-size:9px;font-weight:500;opacity:.75}
+  .hole{background:var(--hole);color:var(--mut);border:1px dashed #56627280}
+  .r0{background:var(--r0)} .r1{background:var(--r1)}
+  .ce0{background:var(--e0)} .ce1{background:var(--e1)} .ce2{background:var(--e2)} .ce3{background:var(--e3)}
+  .cfp8{background:var(--fp8)} .csc{background:var(--scale)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--mut);margin:8px 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:14px;height:14px;border-radius:4px;display:inline-block}
+  .note{border-left:3px solid var(--warn);background:#2a2517;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--ok);background:#16291f}
+  .fix{border-left:3px solid var(--pink);background:#2a1620}
+  .formula{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-family:"SF Mono",Menlo,monospace;font-size:14px;color:#ffd9a0;margin:10px 0;text-align:center}
+  .in{color:#8fd6ff}.out{color:#5dd39e}
+  ul{margin:8px 0 8px 2px;padding-left:20px}li{margin:4px 0}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}.kv b{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>dispatch / combine teardown aiv (mxfp8) — 端到端流程拆解</h1>
+  <p class="sub">纯 AIV 本地算子 · aclnn 注册式 · 多核并行 · mxfp8 在途 · A5(Ascend950PR)真实场景实测全绿。本文把每个 tensor 的形状/dtype/字节排布讲碎。</p>
+
+  <div class="badges">
+    <span class="badge">真实场景 <b>bs=8</b></span>
+    <span class="badge"><b>topk=8</b></span>
+    <span class="badge"><b>h=7168</b></span>
+    <span class="badge"><b>E=4</b> 专家/卡</span>
+    <span class="badge"><b>R=2</b> 卡 → 全局专家 <b>GE=8</b></span>
+    <span class="badge">在途数据 <b>mxfp8</b>(fp8_e4m3fn + e8m0, group=32)</span>
+    <span class="badge">scaleH = h/32 = <b>224</b></span>
+  </div>
+
+  <div class="panel fix">
+    <b style="color:var(--pink)">★ 两个关键认知（相对早期理解的纠正）</b>
+    <ul style="margin-bottom:0">
+      <li><b>dispatch 数据区是 expert-major（先专家后卡，块序 le·R+src），与 expandX 同序</b> → dispatch teardown <b>没有转置，只是"去空洞紧密化"</b>（块 t 的源就是数据区块 t）。</li>
+      <li><b>在途数据都是 mxfp8</b>：每个 token = fp8 payload(h 字节) + e8m0 scale(h/32 字节)，是<b>两个独立 GM tensor</b>，量化在算子外做好、传进来就是 fp8。</li>
+    </ul>
+  </div>
+
+  <!-- 0 -->
+  <h2><span class="n">0</span>teardown 站在哪</h2>
+  <p>MoE 通算融合 = <b>setup</b>（CCU，跨卡<span class="in">通信</span>）+ <b>teardown</b>（AIV，<span class="out">本地</span>整理）。本次只做两个 teardown：它们<b>不通信</b>，只对本卡 HBM 里已摆好的 mxfp8 数据做"紧密化 / gather 反量化加权和"，所以单卡即可完整验证。</p>
+  <div class="panel">
+    <div class="flow">
+      <div class="step"><div class="t">dispatch setup (CCU)</div><div class="d">跨卡把 mxfp8 token 发到对端"数据区 HBM"(expert-major,每块 bs 槽)+ 写 wishCnt。<span class="sub">本次不做·测试造</span></div></div>
+      <div class="arrow">→</div>
+      <div class="step" style="border-color:var(--accent)"><div class="t">dispatch teardown (AIV)★</div><div class="d">去空洞紧密化 → expandX(fp8)+expandScale(e8m0)；产 sendCounts/expandIdx/expertTokenNums</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="t">GMM 专家计算</div><div class="d">对 expandX 做专家 FFN</div></div>
+    </div>
+    <div class="flow">
+      <div class="step"><div class="t">combine setup (CCU)</div><div class="d">把结果(mxfp8)发回各卡"combine 数据区"(每全局专家一块)。<span class="sub">本次不做·测试造</span></div></div>
+      <div class="arrow">→</div>
+      <div class="step" style="border-color:var(--accent)"><div class="t">combine teardown (AIV)★</div><div class="d">gather k 份复制体 → fp8×2^e8m0 反量化 → ×scale 加权和 → x(bf16)</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="t">x [bs,h] bf16</div><div class="d">还原最终输出</div></div>
+    </div>
+  </div>
+
+  <!-- 1 mxfp8 -->
+  <h2><span class="n">1</span>mxfp8 是什么（字节级）</h2>
+  <p>一个 token 的 h 个元素，不再用 bf16(2 字节/个)，而是 <b>mxfp8</b>：每元素 1 字节 fp8(e4m3fn)，外加<b>每 32 个元素共享 1 个 e8m0 缩放因子</b>(1 字节，纯指数，表示 2 的整数幂)。</p>
+  <div class="panel">
+    <div class="blk"><div class="lab">payload (fp8_e4m3fn)</div><div class="cells">
+      <div class="cell cfp8">x₀</div><div class="cell cfp8">x₁</div><div class="cell cfp8">…</div><div class="cell cfp8">x₃₁</div>
+      <div class="cell cfp8">x₃₂</div><div class="cell cfp8">…</div><div class="cell cfp8">x₆₃</div><div class="cell cfp8" style="opacity:.5">… h 个</div></div></div>
+    <div class="blk"><div class="lab">scale (e8m0, 每 32 共享)</div><div class="cells">
+      <div class="cell csc">s₀<small>管 x₀₋₃₁</small></div><div class="cell csc">s₁<small>管 x₃₂₋₆₃</small></div><div class="cell csc" style="opacity:.5">… h/32 个</div></div></div>
+    <div class="formula">真实值 ≈ fp8(xᵢ) × 2^(e8m0[i/32] − 127)</div>
+    <p class="sub" style="margin-bottom:0">真实场景 h=7168 → 一个 token = <b>7168 字节 fp8 payload</b> + <b>224 字节 e8m0 scale</b>。payload 与 scale 在算子里是<b>两个分开的 GM tensor</b>（token_data / token_scale）。e8m0 字节 E 直接就是 fp32 的偏置指数：<code>2^(E−127)</code> 的 fp32 位型 = <code>E&lt;&lt;23</code>，反量化时一个移位即得缩放因子。</p>
+  </div>
+
+  <!-- 2 速查表 -->
+  <h2><span class="n">2</span>所有 tensor 速查（真实场景 bs=8/topk=8/h=7168/E=4/R=2）</h2>
+  <h3>dispatch teardown　<span class="sub">A = R·bs·min(topk,E) = 2·8·4 = 64</span></h3>
+  <table>
+    <tr><th>方向</th><th>名字</th><th>形状</th><th>dtype</th><th>排布含义</th></tr>
+    <tr><td class="in">输入</td><td><code>token_data</code></td><td>[64, 7168]</td><td>fp8_e4m3fn</td><td>数据区 payload。<b>expert-major</b> 8 块、每块 bs=8 槽(带空洞)。块序 <code>le·R+src</code></td></tr>
+    <tr><td class="in">输入</td><td><code>token_scale</code></td><td>[64, 224]</td><td>e8m0</td><td>数据区 scale，与 payload 同块结构(224=7168/32)</td></tr>
+    <tr><td class="in">输入</td><td><code>wish_cnt</code></td><td>[8]</td><td>int32</td><td>每块实收 token 数(expert-major: idx=le·R+src)</td></tr>
+    <tr><td class="in">输入</td><td><code>expert_ids</code></td><td>[8, 8]</td><td>int32</td><td>本卡 token 选的全局专家 id ∈[0,8)</td></tr>
+    <tr><td class="out">输出</td><td><code>expand_x</code></td><td>[64, 7168]</td><td>fp8_e4m3fn</td><td>去空洞紧密化的 payload（块序不变，仍 expert-major）</td></tr>
+    <tr><td class="out">输出</td><td><code>expand_scale</code></td><td>[64, 224]</td><td>e8m0</td><td>同步紧密化的 scale（随 payload 锁步）</td></tr>
+    <tr><td class="out">输出</td><td><code>send_counts</code></td><td>[8]</td><td>int32</td><td>wishCnt 的 inclusive 前缀和(= expandX 各块结束偏移)</td></tr>
+    <tr><td class="out">输出</td><td><code>expand_idx</code></td><td>[8, 8]</td><td>int32</td><td>遍历 expert_ids 时各全局专家"此前出现几次"(首现=0)</td></tr>
+    <tr><td class="out">输出</td><td><code>expert_token_nums</code></td><td>[4]</td><td>int32</td><td>本卡每个本地专家收到总数 = Σ_src wishCnt[le·R+src]</td></tr>
+    <tr><td>attr</td><td><code>rank_num</code>/<code>expert_per_rank</code></td><td>标量</td><td>int</td><td>R=2 / E=4（shape 只能推 R·E，单独 E/R 靠 attr）</td></tr>
+  </table>
+  <h3>combine teardown</h3>
+  <table>
+    <tr><th>方向</th><th>名字</th><th>形状</th><th>dtype</th><th>排布含义</th></tr>
+    <tr><td class="in">输入</td><td><code>combine_data</code></td><td>[64, 7168]</td><td>fp8_e4m3fn</td><td>combine 数据区 payload。<b>每全局专家一块</b>(GE=8 块×bs=8 槽)，token 落点行 <code>ge·bs+expand_idx</code></td></tr>
+    <tr><td class="in">输入</td><td><code>combine_scale</code></td><td>[64, 224]</td><td>e8m0</td><td>combine 数据区 scale</td></tr>
+    <tr><td class="in">输入</td><td><code>expert_scales</code></td><td>[8, 8]</td><td>fp32</td><td>每 token 对 k 专家的加权系数</td></tr>
+    <tr><td class="in">输入</td><td><code>expand_idx</code></td><td>[8, 8]</td><td>int32</td><td>来自 dispatch teardown(块内落点)</td></tr>
+    <tr><td class="in">输入</td><td><code>expert_ids</code></td><td>[8, 8]</td><td>int32</td><td>定位块(全局专家 id)</td></tr>
+    <tr><td class="out">输出</td><td><code>x</code></td><td>[8, 7168]</td><td>bf16</td><td>k 份复制体反量化加权求和的最终结果</td></tr>
+  </table>
+
+  <!-- 3 dispatch -->
+  <h2><span class="n">3</span>dispatch teardown：expert-major 去空洞紧密化</h2>
+
+  <div class="panel" style="border-color:var(--accent)">
+    <b class="f">① 实际测试主场景（= 规定的 bs=8, topk=8, h=7168, E=4, R=2）的真实输出值</b> <span class="tag">回归 degen 档 · seed=1234</span>
+    <p class="sub" style="margin:8px 0 6px"><b>topk=8 = 全局专家数 GE=8 → 每个 token 路由到全部 8 个专家</b>，这是<b style="color:var(--warn)">全密退化</b>场景：</p>
+    <div class="kv" style="margin-bottom:6px">
+      <b>wish_cnt[8]</b><span><code>[8,8,8,8,8,8,8,8]</code> — 每块都收满 bs=8 个 token，<b>没有空洞</b>（"去空洞"在此是 no-op，expand_x = 数据区原样）</span>
+      <b>send_counts[8]</b><span><code>[8,16,24,32,40,48,56,64]</code>（前缀和）</span>
+      <b>expert_token_nums[4]</b><span><code>[16,16,16,16]</code>（每本地专家从 2 卡各收 8）</span>
+      <b>expand_idx[8,8]</b><span>第 i 行全是 <code>i</code> → <code>[[0×8],[1×8],…,[7×8]]</code>（每专家每行出现一次，行 i 时已出现 i 次）</span>
+      <b>A</b><span>= R·bs·min(topk,E) = 2·8·4 = <b>64</b> = Σwish，完全填满</span>
+    </div>
+    <p class="sub" style="margin-bottom:0">所以主场景下 expand_x/expand_scale = 输入原样、expand_idx = 行号——<b>恰恰看不出「去空洞」与「出现次数」这两个机制</b>。故下面 ② 用<b>稀疏档</b>把机制画透（稀疏档 topk&lt;E 也在回归里跑）。</p>
+  </div>
+
+  <h3>② 机制示意 · 稀疏档（topk&lt;E，回归 sparse 档）— 才能看清去空洞 + 出现次数</h3>
+  <p class="sub">主场景 topk=8 全密、画不出机制；这里用一组<b>缩小</b>的参数 <b>R=2(同真实场景), E=2(GE=4), bs=4, topk=2, h=64(scaleH=2)</b> 把字节格子画下来（真实 E=4 同理，只是块数翻倍）。本卡=rank0，持有全局专家 e0、e1。</p>
+  <div class="legend">
+    <span><i class="sw r0"></i>来自源 rank0</span><span><i class="sw r1"></i>来自源 rank1</span>
+    <span><i class="sw hole" style="border-style:dashed"></i>空洞(未填)</span>
+    <span>每个色块 = 1 个 token(payload h fp8 + scale h/32 e8m0 锁步)</span>
+  </div>
+
+  <h3>输入 token_data + token_scale（expert-major，块序 le·R+src）</h3>
+  <div class="panel">
+    <div class="blk"><div class="lab">blk0 = e0·src0 &nbsp;wishCnt=<b>2</b></div><div class="cells">
+      <div class="cell r0">A0</div><div class="cell r0">A1</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <div class="blk"><div class="lab">blk1 = e0·src1 &nbsp;wishCnt=<b>1</b></div><div class="cells">
+      <div class="cell r1">B0</div><div class="cell hole">·</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <div class="blk"><div class="lab">blk2 = e1·src0 &nbsp;wishCnt=<b>2</b></div><div class="cells">
+      <div class="cell r0">C0</div><div class="cell r0">C1</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <div class="blk"><div class="lab">blk3 = e1·src1 &nbsp;wishCnt=<b>1</b></div><div class="cells">
+      <div class="cell r1">D0</div><div class="cell hole">·</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <p class="sub" style="margin-top:8px">外层是<b>专家</b>(e0,e1)、内层是<b>源卡</b>(src0,src1) → 「先专家后卡」。<code>wish_cnt=[2,1,2,1]</code>(expert-major)。token_scale 是另一份同结构 [GE·bs, h/32] 的 e8m0 张量，随 payload 一起。</p>
+  </div>
+
+  <h3>输出 expand_x + expand_scale（去空洞，块序不变）</h3>
+  <div class="panel">
+    <div class="blk"><div class="lab" style="color:var(--e0)">e0：blk0(2)+blk1(1)</div><div class="cells">
+      <div class="cell r0">A0</div><div class="cell r0">A1</div><div class="cell r1">B0</div></div></div>
+    <div class="blk"><div class="lab" style="color:var(--e1)">e1：blk2(2)+blk3(1)</div><div class="cells">
+      <div class="cell r0">C0</div><div class="cell r0">C1</div><div class="cell r1">D0</div></div></div>
+    <div class="blk"><div class="lab">补 0 → 凑满 A=16</div><div class="cells">
+      <div class="cell hole">·</div><div class="cell hole">·</div><div class="cell hole">…</div></div></div>
+    <p class="sub" style="margin-top:8px"><b>顺序完全不变</b>(还是 e0 然后 e1、每个专家内 src0 然后 src1)，只是把每块的空洞挤掉。<span style="color:var(--pink)">这就是纠正点：没有转置，纯紧密化。</span>payload 与 scale 各搬一行(7168 字节 + 224 字节)，一一对应。</p>
+  </div>
+
+  <div class="grid2">
+    <div class="panel"><h3 style="margin-top:0">send_counts（前缀和）</h3>
+      <div class="formula">wishCnt [2,1,2,1] → [2,3,5,6]</div>
+      <p class="sub">inclusive 前缀和 = expandX 各块结束偏移；下游靠前缀差得每段 token 数与起点。</p></div>
+    <div class="panel"><h3 style="margin-top:0">expert_token_nums</h3>
+      <div class="formula">e0=blk0+blk1=3　e1=blk2+blk3=3 → [3,3]</div>
+      <p class="sub">每本地专家跨源卡求和 = Σ_src wishCnt[le·R+src]。</p></div>
+  </div>
+
+  <h3>expand_idx（出现次数，喂给 combine）</h3>
+  <div class="panel">
+    <table>
+      <tr><th>token</th><th>expert_ids</th><th>遍历(counter 起始[0,0,0,0])</th><th>expand_idx</th></tr>
+      <tr><td>t0</td><td>[0,2]</td><td>e0首现→0；e2首现→0</td><td><code>[0,0]</code></td></tr>
+      <tr><td>t1</td><td>[1,0]</td><td>e1首现→0；e0第2次→1</td><td><code>[0,1]</code></td></tr>
+      <tr><td>t2</td><td>[0,3]</td><td>e0第3次→2；e3首现→0</td><td><code>[2,0]</code></td></tr>
+      <tr><td>t3</td><td>[2,1]</td><td>e2第2次→1；e1第2次→1</td><td><code>[1,1]</code></td></tr>
+    </table>
+    <p class="sub">expand_idx[i][j] = token i 发给专家 expert_ids[i][j] 的复制体是该专家收到的第几个(0 基) = 它在 combine 数据区专家块内的行号。只依赖 expert_ids、与数据区无关。</p>
+  </div>
+
+  <!-- 4 combine -->
+  <h2><span class="n">4</span>combine teardown：gather + 反量化 + 加权和</h2>
+  <p>combine 数据区<b>每个全局专家一块</b>(GE=8 块×bs=8 槽)，mxfp8 存储。一个 token 发给 k 个专家就有 k 份复制体散在 k 个专家块里。</p>
+  <div class="formula">复制体行号 = <span style="color:#8fd6ff">expert_ids[i][j]</span> · bs + <span style="color:#5dd39e">expand_idx[i][j]</span></div>
+  <p class="sub">专家 id 定位"哪一块"(块起点 ge·bs)，expand_idx 定位"块内第几行"。</p>
+  <div class="panel">
+    <h3 style="margin-top:0">还原 token0 逐步 <span class="sub" style="font-weight:400">（沿用 §3② 稀疏示意 expert_ids=[0,2], expand_idx=[0,0]；真实主场景 topk=8 → 每 token gather 8 份复制体）</span></h3>
+    <div class="kv">
+      <b>定位</b><span>j=0→专家0 行 0·8+0=row0；j=1→专家2 行 2·8+0=row16</span>
+      <b>反量化</b><span>每行：fp8 payload → fp32(Cast)；每 32 元素 × 2^(e8m0−127)（位型 E&lt;&lt;23 构造）</span>
+      <b>加权和</b><span>× expert_scales[0][j]，fp32 累加 k 份</span>
+      <b>回写</b><span>fp32 → bf16(四舍五入) → x[0]</span>
+    </div>
+    <div class="formula" style="text-align:left">x[0] = Σ_j  expert_scales[0][j] · ( fp8(combine_data[row]) × 2^(combine_scale[row]−127) )</div>
+    <p class="sub" style="margin-bottom:0">对 8 个 token 各做一遍 → <code>x [8,7168] bf16</code>。fp32 累加保证精度，末位 cast bf16。</p>
+  </div>
+
+  <!-- 5 多核 -->
+  <h2><span class="n">5</span>多核并行（无 SyncAll、无跨核依赖）</h2>
+  <div class="grid2">
+    <div class="panel"><h3 style="margin-top:0">dispatch：按输出行切</h3>
+      <p class="sub">所有核都算出每块 {起点,数量} 与总有效行 N=ΣwishCnt；把 [0,N) 行均分给 aivNum 个核，<b>每核搬自己那段 expandX 行</b>(payload+scale)。各核写不相交的行 → 无需同步。仅 core0 额外产 3 个 int 输出(很小)。</p></div>
+    <div class="panel"><h3 style="margin-top:0">combine：按 (token,chunk) 切</h3>
+      <p class="sub">h 切成 1024 元素的 chunk(7168→7 chunk)，工作项 = bs×chunk 数 = 8×7=56，均分给各核。<b>每核处理若干 (token,chunk)</b>，写 x 的不相交列段 → 无需同步。</p></div>
+  </div>
+  <p class="sub">blockDim 由 host tiling 从平台 AIV 核数推得(<code>GetCoreNumAiv()</code>)，与工作量取 min。真实场景 dispatch 64 行 / combine 56 项分到数十核并行。</p>
+
+  <!-- 6 调用链/实测 -->
+  <h2><span class="n">6</span>调用链 · harness · 实测</h2>
+  <div class="flow">
+    <div class="step"><div class="t">① host 驱动</div><div class="d">aclInit→setDevice(0)→建 aclTensor(fp8/e8m0/fp32/int32/bf16)</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">② aclnn 两段式</div><div class="d">GetWorkspaceSize→malloc→aclnnXxx 提交 stream</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">③ tiling(host)</div><div class="d">读 attr/shape 算 bs/topk/h/scaleH/E/R/A + blockDim</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="t">④ kernel(AIV 多核)</div><div class="d">POD 读 tiling → 各核处理自己分片 → 写 GM</div></div>
+  </div>
+  <pre><span class="c">// dispatch kernel：去空洞紧密化(块 t 源即数据区块 t，expert-major)</span>
+所有核: 载 wishCnt → 算每块 {dstStart,cnt} 与 N=ΣwishCnt；行 [0,N) 均分到本核 [rowBegin,rowEnd)
+本核 for g in [rowBegin,rowEnd): 定位 g 属哪块 t → r=g-dstStart[t] → srcRow=t*bs+r
+        DataCopy payload(h B): tdG[srcRow*h] → UB → exG[g*h]      <span class="c">// int8 整段搬</span>
+        DataCopy scale(h/32 B): tsG[srcRow*scaleH] → UB → esG[g*scaleH]
+core0 额外: expand_idx(出现次数) / send_counts(前缀和) / expert_token_nums(Σsrc)
+
+<span class="c">// combine kernel：gather + 反量化 + 加权和（basic_api，e8m0 位型解码，无 micro_api）</span>
+本核 for (i,c) in 自己的工作项:
+  Duplicate acc=0
+  for j in topk: ge,pos,w = ids/idx/scales[i][j]; srcRow=ge*bs+pos
+      DataCopy fp8 chunk + e8m0 chunk → UB; Cast fp8→fp32
+      for g in nScale: comb = (E&lt;&lt;23 as float) × w; Muls(dat[g*32], comb, 32)   <span class="c">// 反量化×权重</span>
+      Add(acc, dat)
+  Cast acc→bf16 → DataCopy x[i, c-chunk]</pre>
+
+  <div class="panel ok note">
+    <b>A5(Ascend950PR) 实测（真实场景 bs8/topk8/h7168/E4/R2，mxfp8 + 多核）：</b>
+    <ul style="margin-bottom:0">
+      <li>dispatch：<b>expand_x(fp8)/expand_scale(e8m0)/send_counts/expand_idx/expert_token_nums 全部逐字节精确</b></li>
+      <li>combine：<b>x(bf16) mae=0、cos≈1.0</b>（fp8 反量化是子集精确、e8m0=2 的幂精确、fp32 同序累加 → 与 golden 完全一致）</li>
+      <li>多种子 + partial topk + 链式(dispatch 真实产出 expand_idx 喂 combine) 均通过</li>
+    </ul>
+  </div>
+
+  <p class="sub" style="margin-top:26px;text-align:center">平台 A5 / Ascend950PR · aclnn 注册式 · OpDef 已含 ascend910_96(A6) config，待 A6 访问即可同 harness 复跑 · 量化在算子外完成、在途 mxfp8</p>
+
+</div>
+</body>
+</html>

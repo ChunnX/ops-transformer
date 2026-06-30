@@ -2,89 +2,199 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * Licensed under the CANN Open Software License Agreement Version 2.0.
  *
- *  dispatch_teardown.cpp —— DispatchTeardown 的 AIV 核函数。
- *  语义：轮询本卡状态区 status[0]，等到 == 1（由 CCU dispatch_setup 的 LocalCopyNb 写入）
- *        后写 done[0] = 1 并结束。这就是“等状态位”的接收端。
+ *  dispatch_teardown.cpp —— DispatchTeardown(mxfp8 多核) AIV 核函数。
+ *  mxfp8：每 token = fp8(e4m3fn) payload(h 字节) + e8m0 scale(h/32 字节)，两者各独立 GM、随 token 一起搬。
+ *  数据区与 expandX 同为 expert-major（块序 le*R+src，每块 bs 槽带空洞）→ 本算子无算术、无转置，
+ *  纯【按 wishCnt 去空洞紧密化】的字节搬运（块 t 的源就是数据区块 t），payload/scale 都按 int8 整段搬。
  *
- *  与 dispatch_setup 的字节级契约：
- *    - status 是 int32 GM，slot 0 为就绪标志，值 1 表示本卡数据齐；
- *    - 状态区按 32B 对齐分配（≥ 8 个 int32），因为下面 DataCopy 一次搬 32B（8 int32），
- *      若只分配 4 字节会 MTE2 越界（aicore error）。单 die 只有 slot 0 有意义，其余清 0。
- *
- *  轮询范式裁剪自 quant_all_reduce/kernel/mte_comm.h 的 ReadStatus 忙等循环，
- *  但 dtype 由 float 改为 int32（与 CCU LocalCopyNb 写入的 int32 对齐），且只判单 flag。
- *
- *  a6-TODO：
- *    [T3] 跨流可见性 / cache：AIV 每轮重发 DataCopy 从 GM 取数；若 a6 上 CCU 的写
- *         不能被 AIV 及时观测（L2 cache），需配合 dcci / 非 cache 读。all_gather 编译用了
- *         -mllvm -cce-aicore-dcci-before-kernel-end=false，本类同步对 cache 敏感，需上板核实。
- *    [T4✓] 忙等超时：已加 sanity 上限熔断（见下 poll 段，超限带诊断退出、不写 done）；§24 host 侧再兜底。
- *    [T12] PRINTF 设备符号若 a6 不同（AscendC::printf vs PRINTF），按 a6 头调整。
+ *  多核切分（无 SyncAll、无跨核依赖）：
+ *   - 所有核：载 wishCnt → 算每块 {dstStart, cnt} 与总有效行 N(=ΣwishCnt)；
+ *     把 [0,N) 行均分给 aivNum 个核，每核搬自己那段（payload+scale 行各一对 DataCopy）。各核写不相交的 expandX 行。
+ *   - 仅 core0：额外产 expand_idx(出现次数) / send_counts(expert-major 前缀和) / expert_token_nums(Σsrc wishCnt)。
  */
 #include "kernel_operator.h"
 
 namespace {
-constexpr int32_t STATUS_BLOCK_INT32 = 8;   // 一次搬 32B = 8 个 int32（32B 对齐）
-constexpr int32_t STATUS_READY_SLOT = 0;    // 就绪标志在 slot 0
+constexpr uint32_t B32 = 32U;
+__aicore__ inline uint32_t RoundUp32B(uint32_t bytes) { return ((bytes + B32 - 1U) / B32) * B32; }
 
-// 与 op_host/op_tiling/dispatch_teardown_tiling.h 的 TilingData 字段【同序同类型】，
-// 直接 POD cast 读（SaveToBuffer 从偏移 0 起按声明序列化，两 uint32 连续无填充）。
 struct DispatchTeardownTilingPod {
-    uint32_t totalCnt;
-    uint32_t expectVal;
+    uint32_t bs;
+    uint32_t topk;
+    uint32_t h;
+    uint32_t scaleH;
+    uint32_t E;
+    uint32_t R;
+    uint32_t aivNum;
+    uint32_t A;
 };
 }  // namespace
 
 extern "C" __global__ __aicore__ void dispatch_teardown(
-    GM_ADDR status, GM_ADDR done, GM_ADDR workspace, GM_ADDR tilingGM)
+    GM_ADDR token_data, GM_ADDR token_scale, GM_ADDR wish_cnt, GM_ADDR expert_ids,
+    GM_ADDR expand_x, GM_ADDR expand_scale, GM_ADDR send_counts, GM_ADDR expand_idx, GM_ADDR expert_token_nums,
+    GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    if (AscendC::GetBlockIdx() != 0) {
-        return;  // blockDim=1，仅 0 号核工作
-    }
 
-    __gm__ DispatchTeardownTilingPod *tiling = (__gm__ DispatchTeardownTilingPod *)tilingGM;
-    const int32_t expectVal = static_cast<int32_t>(tiling->expectVal);  // = 1
+    __gm__ DispatchTeardownTilingPod *tp = (__gm__ DispatchTeardownTilingPod *)tiling;
+    const uint32_t bs = tp->bs;
+    const uint32_t topk = tp->topk;
+    const uint32_t h = tp->h;
+    const uint32_t scaleH = tp->scaleH;
+    const uint32_t E = tp->E;
+    const uint32_t R = tp->R;
+    const uint32_t aivNum = tp->aivNum;
+    const uint32_t GE = R * E;
+    const uint32_t nIds = bs * topk;
+    const uint32_t blk = AscendC::GetBlockIdx();
+    if (blk >= aivNum) { return; }
 
-    AscendC::GlobalTensor<int32_t> statusGt;
-    statusGt.SetGlobalBuffer((__gm__ int32_t *)status, STATUS_BLOCK_INT32);
-    AscendC::GlobalTensor<int32_t> doneGt;
-    doneGt.SetGlobalBuffer((__gm__ int32_t *)done, STATUS_BLOCK_INT32);
+    // ---- GlobalTensors（payload/scale 按 int8 搬；int 数组按 int32）----
+    AscendC::GlobalTensor<int8_t> tdG;  tdG.SetGlobalBuffer((__gm__ int8_t *)token_data, GE * bs * h);
+    AscendC::GlobalTensor<int8_t> tsG;  tsG.SetGlobalBuffer((__gm__ int8_t *)token_scale, GE * bs * scaleH);
+    AscendC::GlobalTensor<int8_t> exG;  exG.SetGlobalBuffer((__gm__ int8_t *)expand_x, tp->A * h);
+    AscendC::GlobalTensor<int8_t> esG;  esG.SetGlobalBuffer((__gm__ int8_t *)expand_scale, tp->A * scaleH);
+    AscendC::GlobalTensor<int32_t> wishG; wishG.SetGlobalBuffer((__gm__ int32_t *)wish_cnt, GE);
 
     AscendC::TPipe pipe;
-    AscendC::TBuf<AscendC::TPosition::VECCALC> ubBuf;
-    pipe.InitBuffer(ubBuf, STATUS_BLOCK_INT32 * sizeof(int32_t));  // 32B
-    AscendC::LocalTensor<int32_t> ub = ubBuf.Get<int32_t>();
 
-    AscendC::printf("[dispatch_teardown] blk=%d start poll, expect=%d\n",
-                    AscendC::GetBlockIdx(), expectVal);
+    // ---- 所有核：载 wishCnt，算 expert-major 每块 {srcBlk, dstStart, cnt} ----
+    AscendC::TBuf<AscendC::TPosition::VECCALC> wishBuf, srcBlkBuf, dstStartBuf, cntBuf;
+    pipe.InitBuffer(wishBuf,     RoundUp32B(GE * sizeof(int32_t)));
+    pipe.InitBuffer(srcBlkBuf,   RoundUp32B(GE * sizeof(int32_t)));
+    pipe.InitBuffer(dstStartBuf, RoundUp32B(GE * sizeof(int32_t)));
+    pipe.InitBuffer(cntBuf,      RoundUp32B(GE * sizeof(int32_t)));
+    AscendC::LocalTensor<int32_t> wishUb     = wishBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> srcBlkUb   = srcBlkBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> dstStartUb = dstStartBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> cntUb      = cntBuf.Get<int32_t>();
 
-    // ============ 忙等：每轮重新从 GM 搬 32B 到 UB，读 slot0，直到 == expectVal ============
-    //   [T4] sanity 上限：CCU 若始终没写 1（建链失败 / 地址错 / DMA 没落）就不死等——超限带诊断退出，
-    //   让 host 校验 done!=1 显式 FAIL，而非静默卡死成 aicore timeout（核内兜底，与 §24 host 侧熔断互补）。
-    constexpr uint64_t POLL_MAX_SPINS = 1000000000UL;   // 远超任何合法等待，仅作死等熔断阈值
-    int32_t v = 0;
-    bool ready = false;
-    for (uint64_t spins = 0; spins < POLL_MAX_SPINS; ++spins) {
-        AscendC::DataCopy(ub, statusGt, STATUS_BLOCK_INT32);  // GM -> UB（MTE2，每轮重取）
-        AscendC::PipeBarrier<PIPE_ALL>();                     // 等 DMA 落地，scalar 再读 UB（[T3] cache 敏感）
-        v = ub.GetValue(STATUS_READY_SLOT);
-        if (v == expectVal) { ready = true; break; }
+    AscendC::DataCopyPadExtParams<int32_t> padI{false, 0, 0, 0};
+    {
+        AscendC::DataCopyExtParams p{1, static_cast<uint32_t>(GE * sizeof(int32_t)), 0, 0, 0};
+        AscendC::DataCopyPad(wishUb, wishG, p, padI);
     }
-    if (!ready) {
-        AscendC::printf("[dispatch_teardown] blk=%d TIMEOUT: status[0]=%d != expect=%d —— CCU 未写就绪位，不写 done（host 将判 FAIL）\n",
-                        AscendC::GetBlockIdx(), v, expectVal);
-        return;   // 不写 done → done 保持 0 → host 校验 done!=1 → 显式 FAIL，而非死等
+    AscendC::PipeBarrier<PIPE_ALL>();
+
+    int32_t run = 0;
+    for (uint32_t t = 0; t < GE; ++t) {            // 数据区已是 expert-major(le*R+src)，块 t 源即块 t
+        int32_t c = wishUb.GetValue(t);
+        srcBlkUb.SetValue(t, static_cast<int32_t>(t));
+        dstStartUb.SetValue(t, run);
+        cntUb.SetValue(t, c);
+        run += c;
+    }
+    const uint32_t N = static_cast<uint32_t>(run);  // 总有效行
+
+    // ---- 本核负责的行区间 [rowBegin, rowEnd) ----
+    const uint32_t per = (N + aivNum - 1U) / aivNum;
+    const uint32_t rowBegin = blk * per;
+    uint32_t rowEnd = rowBegin + per;
+    if (rowEnd > N) { rowEnd = N; }
+
+    if (rowBegin < rowEnd) {
+        // 单缓冲 + per-row PIPE_ALL（已实测稳定）。多核已把 N 行均分到各核，rows≤cores 时每核仅 ~1 行、
+        // 核内无相邻行可重叠，per-core 双缓冲在本规模无收益（实测 706 vs 814us 边际、区间重叠）；
+        // 且 TQue VECIN 直拷(GM→UB→GM)跨行 WAR 事件追踪不完整 → 间歇覆写。故保留稳定单缓冲。
+        // 若未来 rows≫cores 需提吞吐：用显式 MTE2/MTE3 SetFlag/WaitFlag 软流水双缓冲，并多次跑复验。
+        AscendC::TBuf<AscendC::TPosition::VECCALC> payBuf, scBuf;
+        pipe.InitBuffer(payBuf, RoundUp32B(h * sizeof(int8_t)));
+        pipe.InitBuffer(scBuf,  RoundUp32B(scaleH * sizeof(int8_t)));
+        AscendC::LocalTensor<int8_t> payUb = payBuf.Get<int8_t>();
+        AscendC::LocalTensor<int8_t> scUb  = scBuf.Get<int8_t>();
+
+        AscendC::DataCopyPadExtParams<int8_t> pad8{false, 0, 0, 0};
+        for (uint32_t g = rowBegin; g < rowEnd; ++g) {
+            // 定位 g 属于哪个 expert-major 块
+            uint32_t t = 0;
+            for (; t < GE; ++t) {
+                uint32_t ds = static_cast<uint32_t>(dstStartUb.GetValue(t));
+                uint32_t c = static_cast<uint32_t>(cntUb.GetValue(t));
+                if (g >= ds && g < ds + c) { break; }
+            }
+            if (t >= GE) { continue; }   // 防御：wishCnt 与 N 不自洽时不越界读块表
+            uint32_t r = g - static_cast<uint32_t>(dstStartUb.GetValue(t));
+            uint32_t sBlk = static_cast<uint32_t>(srcBlkUb.GetValue(t));
+            uint32_t srcRow = sBlk * bs + r;
+
+            // payload 行（h 字节，h%32==0 恒 32B 对齐 → 裸 DataCopy）
+            AscendC::DataCopy(payUb, tdG[srcRow * h], h);
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DataCopy(exG[g * h], payUb, h);
+            AscendC::PipeBarrier<PIPE_ALL>();
+            // scale 行（scaleH=h/32 字节，可能非 32B 倍数 → DataCopyPad 防截断）
+            { AscendC::DataCopyExtParams p{1, scaleH, 0, 0, 0}; AscendC::DataCopyPad(scUb, tsG[srcRow * scaleH], p, pad8); }
+            AscendC::PipeBarrier<PIPE_ALL>();
+            { AscendC::DataCopyExtParams p{1, scaleH, 0, 0, 0}; AscendC::DataCopyPad(esG[g * scaleH], scUb, p); }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
     }
 
-    AscendC::printf("[dispatch_teardown] blk=%d got ready=%d, write done\n",
-                    AscendC::GetBlockIdx(), v);
+    // ============ 仅 core0：三条 int 链路 ============
+    if (blk != 0) { return; }
 
-    // ============ 收到就绪：写 done = {1,0,...}（先清 0 整块 UB 再置 slot0=1，免 done[1..7] 残留 status 旧值）============
-    AscendC::Duplicate(ub, 0, STATUS_BLOCK_INT32);      // 清 0：否则上面 poll 留在 ub 的 status[1..7] 会随 32B DataCopy 一起写进 done
+    AscendC::GlobalTensor<int32_t> eidG;  eidG.SetGlobalBuffer((__gm__ int32_t *)expert_ids, nIds);
+    AscendC::GlobalTensor<int32_t> eidxG; eidxG.SetGlobalBuffer((__gm__ int32_t *)expand_idx, nIds);
+    AscendC::GlobalTensor<int32_t> scsG;  scsG.SetGlobalBuffer((__gm__ int32_t *)send_counts, GE);
+    AscendC::GlobalTensor<int32_t> etnG;  etnG.SetGlobalBuffer((__gm__ int32_t *)expert_token_nums, E);
+
+    AscendC::TBuf<AscendC::TPosition::VECCALC> idsBuf, idxBuf, occBuf, scOutBuf, etnBuf;
+    pipe.InitBuffer(idsBuf,   RoundUp32B(nIds * sizeof(int32_t)));
+    pipe.InitBuffer(idxBuf,   RoundUp32B(nIds * sizeof(int32_t)));
+    pipe.InitBuffer(occBuf,   RoundUp32B(GE * sizeof(int32_t)));
+    pipe.InitBuffer(scOutBuf, RoundUp32B(GE * sizeof(int32_t)));
+    pipe.InitBuffer(etnBuf,   RoundUp32B(E * sizeof(int32_t)));
+    AscendC::LocalTensor<int32_t> idsUb   = idsBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> idxUb   = idxBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> occUb   = occBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> scOutUb = scOutBuf.Get<int32_t>();
+    AscendC::LocalTensor<int32_t> etnUb   = etnBuf.Get<int32_t>();
+
+    {
+        AscendC::DataCopyExtParams p{1, static_cast<uint32_t>(nIds * sizeof(int32_t)), 0, 0, 0};
+        AscendC::DataCopyPad(idsUb, eidG, p, padI);
+    }
     AscendC::PipeBarrier<PIPE_ALL>();
-    ub.SetValue(STATUS_READY_SLOT, 1);
+
+    // 链路 B：expand_idx = expert_ids 行主序出现次数
+    AscendC::Duplicate(occUb, 0, static_cast<int32_t>(RoundUp32B(GE * sizeof(int32_t)) / sizeof(int32_t)));
     AscendC::PipeBarrier<PIPE_ALL>();
-    AscendC::DataCopy(doneGt, ub, STATUS_BLOCK_INT32);  // UB -> GM
+    for (uint32_t i = 0; i < nIds; ++i) {
+        int32_t ge = idsUb.GetValue(i);
+        int32_t occ = occUb.GetValue(ge);
+        idxUb.SetValue(i, occ);
+        occUb.SetValue(ge, occ + 1);
+    }
     AscendC::PipeBarrier<PIPE_ALL>();
+    {
+        AscendC::DataCopyExtParams p{1, static_cast<uint32_t>(nIds * sizeof(int32_t)), 0, 0, 0};
+        AscendC::DataCopyPad(eidxG, idxUb, p);
+    }
+
+    // 链路 A1：expert_token_nums[le] = Σ_src wishCnt[le*R+src]（wishCnt 为 expert-major）
+    for (uint32_t le = 0; le < E; ++le) {
+        int32_t s = 0;
+        for (uint32_t src = 0; src < R; ++src) { s += wishUb.GetValue(le * R + src); }
+        etnUb.SetValue(le, s);
+    }
+    AscendC::PipeBarrier<PIPE_ALL>();
+    {
+        AscendC::DataCopyExtParams p{1, static_cast<uint32_t>(E * sizeof(int32_t)), 0, 0, 0};
+        AscendC::DataCopyPad(etnG, etnUb, p);
+    }
+
+    // 链路 A2：send_counts = expert-major inclusive 前缀和（= dstStart+cnt 累计）
+    {
+        int32_t acc = 0;
+        for (uint32_t t = 0; t < GE; ++t) {
+            acc += cntUb.GetValue(t);
+            scOutUb.SetValue(t, acc);
+        }
+    }
+    AscendC::PipeBarrier<PIPE_ALL>();
+    {
+        AscendC::DataCopyExtParams p{1, static_cast<uint32_t>(GE * sizeof(int32_t)), 0, 0, 0};
+        AscendC::DataCopyPad(scsG, scOutUb, p);
+    }
 }
