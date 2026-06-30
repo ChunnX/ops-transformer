@@ -208,9 +208,15 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             return (expand_x, dynamic_scales, expand_idx, expert_token_nums,
                     ep_recv_counts, tp_recv_counts, expand_scales)
 
-# Instantiate the builder
 moe_distribute_dispatch_op_builder = MoeDistributeDispatchOpBuilder()
-op_module = moe_distribute_dispatch_op_builder.load()  # Compiles/loads the .so file
+_moe_dispatch_op_module = None
+
+
+def _get_moe_dispatch_op_module():
+    global _moe_dispatch_op_module
+    if _moe_dispatch_op_module is None:
+        _moe_dispatch_op_module = moe_distribute_dispatch_op_builder.load()
+    return _moe_dispatch_op_module
 
 
 @impl(AS_LIBRARY, moe_distribute_dispatch_op_builder.name, "PrivateUse1")
@@ -225,7 +231,7 @@ def npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_i
     Dispatcher implementation for NPU.
     'PrivateUse1' is the dispatch key for custom NPU backends.
     """
-    return op_module.npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
+    return _get_moe_dispatch_op_module().npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
                                                     ccl_buffer_size, scales, x_active_mask, expert_scales, elastic_info,
                                                     performance_info, tp_world_size, tp_rank_id,
                                                     expert_shard_type, shared_expert_num, shared_expert_rank_num,

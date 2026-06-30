@@ -116,9 +116,15 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             return (attn_out, softmax_lse)
 
-# Instantiate the builder
 mixed_quant_sparse_flash_mla_op_builder = MixedQuantSparseFlashMlaOpBuilder()
-op_module = mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
+_mqsmla_op_module = None
+
+
+def _get_mqsmla_op_module():
+    global _mqsmla_op_module
+    if _mqsmla_op_module is None:
+        _mqsmla_op_module = mixed_quant_sparse_flash_mla_op_builder.load()
+    return _mqsmla_op_module
 
 
 @impl(AS_LIBRARY, MQSMLA_METADATA_OP_NAME, "PrivateUse1")
@@ -155,7 +161,7 @@ def mixed_quant_sparse_flash_mla_metadata(
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
 
-    return op_module.mixed_quant_sparse_flash_mla_metadata(
+    return _get_mqsmla_op_module().mixed_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
         max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, rope_head_dim, cmp_ratio, ori_mask_mode,
@@ -208,7 +214,7 @@ def mixed_quant_sparse_flash_mla(q,
     dispatcher implementation for NPU
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.mixed_quant_sparse_flash_mla(q,
+    return _get_mqsmla_op_module().mixed_quant_sparse_flash_mla(q,
                                 ori_kv, cmp_kv,
                                 ori_sparse_indices, cmp_sparse_indices,
                                 ori_block_table, cmp_block_table,

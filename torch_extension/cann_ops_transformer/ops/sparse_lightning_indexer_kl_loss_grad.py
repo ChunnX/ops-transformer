@@ -102,7 +102,14 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
 
 
 sparse_lightning_indexer_kl_loss_grad_op_builder = SparseLightningIndexerKLLossGradOpBuilder()
-op_module = sparse_lightning_indexer_kl_loss_grad_op_builder.load()
+_sli_kl_grad_op_module = None
+
+
+def _get_sli_kl_grad_op_module():
+    global _sli_kl_grad_op_module
+    if _sli_kl_grad_op_module is None:
+        _sli_kl_grad_op_module = sparse_lightning_indexer_kl_loss_grad_op_builder.load()
+    return _sli_kl_grad_op_module
 
 
 @impl(AS_LIBRARY, SLI_KL_LOSS_GRAD_METADATA_OP_NAME, "PrivateUse1")
@@ -134,7 +141,7 @@ def sparse_lightning_indexer_kl_loss_grad_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    return op_module.sparse_lightning_indexer_kl_loss_grad_metadata(
+    return _get_sli_kl_grad_op_module().sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -216,7 +223,7 @@ def sparse_lightning_indexer_kl_loss_grad(
     mask_mode=3,
     cmp_ratio=1,
 ):
-    return op_module.sparse_lightning_indexer_kl_loss_grad(
+    return _get_sli_kl_grad_op_module().sparse_lightning_indexer_kl_loss_grad(
         q,
         k,
         w,

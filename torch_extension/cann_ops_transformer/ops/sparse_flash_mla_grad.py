@@ -90,9 +90,15 @@ class SparseFlashMlaGradOpBuilder(OpBuilder):
             return (dq, dori_kv, dcmp_kv, dsinks, ori_softmax_l1_norm, cmp_softmax_l1_norm)
 
 
-# Instantiate the builder
 smlag_op_builder = SparseFlashMlaGradOpBuilder()
-op_module = smlag_op_builder.load()  # Compiles/loads the .so file
+_smla_grad_op_module = None
+
+
+def _get_smla_grad_op_module():
+    global _smla_grad_op_module
+    if _smla_grad_op_module is None:
+        _smla_grad_op_module = smlag_op_builder.load()
+    return _smla_grad_op_module
 
 
 @impl(AS_LIBRARY, "sparse_flash_mla_grad_metadata", "PrivateUse1")
@@ -111,7 +117,7 @@ def sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
+    return _get_smla_grad_op_module().sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
                                         seqused_q, seqused_ori_kv, seqused_cmp_kv,
                                         cmp_residual_kv, ori_topk_length, cmp_topk_length,
@@ -164,7 +170,7 @@ def sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=No
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv, cmp_kv,
+    return _get_smla_grad_op_module().sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv, cmp_kv,
                                 ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,
                                 cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
                                 seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, 

@@ -26,6 +26,22 @@ class CommContextOpBuilder(OpBuilder):
         pass
 
 comm_context_op_builder = CommContextOpBuilder()
-op_module = comm_context_op_builder.load()
+_comm_context_op_module = None
+_comm_context_obj = None
 
-CommContextManager = op_module.CommContextManager
+
+def _get_comm_context_op_module():
+    global _comm_context_op_module
+    if _comm_context_op_module is None:
+        _comm_context_op_module = comm_context_op_builder.load()
+    return _comm_context_op_module
+
+
+def __getattr__(name):
+    if name == 'CommContextManager':
+        global _comm_context_obj
+        if _comm_context_obj is None:
+            _comm_context_obj = _get_comm_context_op_module().CommContextManager
+        globals()[name] = _comm_context_obj
+        return _comm_context_obj
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
