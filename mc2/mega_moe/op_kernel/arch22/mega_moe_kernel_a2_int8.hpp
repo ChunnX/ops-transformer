@@ -43,6 +43,9 @@ namespace Catlass::Gemm::Kernel {
 using namespace AscendC;
 using namespace Mc2Tiling;
 
+// A2 (HcclShmem<true> with both winIn/winOut): 10 MB reserved headroom;
+constexpr uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
+
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_,
           class BlockEpilogue1_, class BlockEpilogue2_>
 class MegaMoeKernelA2Int8 {
@@ -384,7 +387,7 @@ private:
             // 1. 将 flag 值写入本地 windowsOut flag 区（RDMA-accessible），供 flag RDMA 使用
             AscendC::GlobalTensor<int32_t> localFlagGm;
             localFlagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-                shmem.windowsOutAddr() + peermemInfo.offsetFlag
+                shmem.windowsOutAddr() + peermemInfo.offsetWinOutFlag
                 + (RuntimeRank(params) * params.expertPerRank + groupIdx) * sizeof(uint32_t)));
             flagUb.SetValue(0, 1);
             AscendC::PipeBarrier<PIPE_ALL>();
@@ -753,13 +756,14 @@ private:
         for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
-            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
+            int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
+            srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
             __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
 
             dstAddress.SetGlobalBuffer((__gm__ int32_t * )dstPeermemPtr);
             AscendC::GlobalTensor<int32_t> localDstAddress;
-            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
+            GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() + peermemInfo.offsetWinOutPeerTokenPerExpert + tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
             localDstAddress.SetGlobalBuffer((__gm__ int32_t * )localDstPeermemPtr);
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -861,7 +865,7 @@ private:
         // 2) tokenPerExpert winOut
         AscendC::GlobalTensor<int32_t> tokenPerExpertWinOut;
         tokenPerExpertWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-            shmem.windowsOutAddr() + peermemInfo.offsetPeerTokenPerExpert));
+            shmem.windowsOutAddr() + peermemInfo.offsetWinOutPeerTokenPerExpert));
         AscendC::DataCopy(tokenPerExpertWinOut, tmp, num);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -878,7 +882,7 @@ private:
         // 4) Dispatch Flag winOut
         AscendC::GlobalTensor<int32_t> flagWinOut;
         flagWinOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-            shmem.windowsOutAddr() + peermemInfo.offsetFlag));
+            shmem.windowsOutAddr() + peermemInfo.offsetWinOutFlag));
         AscendC::DataCopy(flagWinOut, tmp, dispatchFlagInts);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -987,15 +991,16 @@ private:
     {
         icache_preload(8);
         int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
-        GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertOffset;     // Place the entire communication matrix in peermem
+        int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
+        GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset;     // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
         ApplyXActiveMask(params);
         //---initRouting------
         moe_init_routing_quant_v2<ElementD2>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx,
-        params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetA,
+        params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetWinOutA,
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
-        shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale,
+        shmem.windowsOutAddr() + peermemInfo.offsetWinOutPeerPerTokenScale,
         params.ptrWorkspace + expandedRowIdxOffset,
         &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey,
         static_cast<int64_t>(512));
@@ -1056,7 +1061,7 @@ private:
                     prevSum += rows;
                     AscendC::GlobalTensor<ElementA> gmSrcA;
                     gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(
-                        shmem.windowsOutAddr() + peermemInfo.offsetA));
+                        shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
                     int64_t gmSrcOffset = static_cast<int64_t>(rowSrc) * (params.problemShape.k() + ALIGN_512);
 
                     AscendC::GlobalTensor<ElementA> gmRemoteDstA;
@@ -1232,7 +1237,7 @@ private:
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(
-            shmem.windowsOutAddr() + peermemInfo.offsetD));
+            shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
 #endif
         icache_preload(8);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
@@ -1399,6 +1404,11 @@ private:
         int64_t offsetPeerTokenPerExpert;
         int64_t offsetD;
         int64_t offsetFlag;  // EP × expertPerRank × 4 bytes；每个 sender rank 占 expertPerRank 个 uint64_t slot，存放 epoch 到达标志
+        int64_t offsetWinOutA;                   // A tensor in winOut (dispatch, outgoing tokens)
+        int64_t offsetWinOutD;                   // D tensor in winOut (combine, outgoing FFN results)
+        int64_t offsetWinOutPeerPerTokenScale;   // per-token scale in winOut
+        int64_t offsetWinOutFlag;                // Dispatch Flag 区 in winOut
+        int64_t offsetWinOutPeerTokenPerExpert;  // TPE 区 in winOut
 
         CATLASS_DEVICE
         PeermemInfo(){}
@@ -1406,31 +1416,40 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params & params, const HcclShmem<true> & shmem)
         {
-            const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
             const int64_t M = params.maxOutputSize;
             const int64_t h = params.problemShape.k();
+            const int64_t bs = params.problemShape.m();
+            const int64_t topK = params.topK;
 
-            // tokenPerExpert = EP × AlignUp(EP×E, 128) × 4B
-            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
             // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line（与 BF16/W4A8 统一）
             int64_t flagSize = EP * E * 64;
-            // CrossRankSync 尾部
-            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            // A: M × (h + ALIGN_512)，行步长 h+512
-            int64_t offsetASize = M * (h + ALIGN_512);
             // PerTokenScaleSize: M × sizeof(float)
             int64_t offsetPerTokenScaleSize = M * sizeof(float);
+            // AAfterDispatchSize: dispatch 接收数据区INT8， M × (h + ALIGN_512)，原始token
+            int64_t AAfterDispatchSize = M * (h + ALIGN_512);
+            // DAfterCombineSize: combine 接收数据区BF16，bs × topK × h × sizeof(int16_t)，FFN过后的数据
+            int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
 
-            // 从尾部向前：TPE → flag
-            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
-            offsetFlag = offsetPeerTokenPerExpert - flagSize;
-
-            // 从前往后：A → perTokenScale → D（D 占用到 flag 为止的剩余空间）
-            offsetA = 0;
-            offsetPeerPerTokenScale = offsetASize;
+            // WinIn: 纯从前向后布局 (front-to-back)，与 A3 对齐
+            // RESERVED → A → perTokenScale → D → flag → TPE
+            offsetA = RESERVED_SPACE_SIZE;
+            offsetPeerPerTokenScale = offsetA + AAfterDispatchSize;
             offsetD = offsetPeerPerTokenScale + offsetPerTokenScaleSize;
+            offsetFlag = offsetD + DAfterCombineSize;
+            offsetPeerTokenPerExpert = offsetFlag + flagSize;
+
+            // WinOut: 纯从前向后布局，A/D 各占独立偏移
+            // ABeforeDispatchSize: dispatch 发送数据区INT8， bs * topK × (h + ALIGN_512)，原始token
+            int64_t ABeforeDispatchSize = bs * topK * (h + ALIGN_512);
+            // DBeforeCombineSize: combine 发送数据区BF16，M × h × sizeof(int16_t)，FFN过后的数据
+            int64_t DBeforeCombineSize = M * h * sizeof(int16_t);
+            offsetWinOutA = RESERVED_SPACE_SIZE;
+            offsetWinOutPeerPerTokenScale = offsetWinOutA + ABeforeDispatchSize;
+            offsetWinOutD = offsetWinOutPeerPerTokenScale + offsetPerTokenScaleSize;
+            offsetWinOutFlag = offsetWinOutD + DBeforeCombineSize;
+            offsetWinOutPeerTokenPerExpert = offsetWinOutFlag + flagSize;
         }
     };
 

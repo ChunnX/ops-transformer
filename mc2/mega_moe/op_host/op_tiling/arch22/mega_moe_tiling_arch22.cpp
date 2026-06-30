@@ -119,13 +119,10 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     // ============================== winIn ==============================
     // FFN的左矩阵，非量化则token为 h×2 字节 (bf16)，量化则为 h+512 字节 (int8)
     int64_t offsetAAfterDispatch = 0;
-    if (isA3) {  // A3打包发送，+32与+512中取大值，外带临时计算空间
-        offsetAAfterDispatch = bs * topK * (!isQuantRouting ? h * sizeof(int16_t) : (h + ALIGN_512));
-        offsetAAfterDispatch += isQuantRouting ? ops::CeilAlign(bs * topK * sizeof(float), ALIGN_512) : 0;
+    if (isA3) {  // A3打包发送，+32与+512中取大值
+        offsetAAfterDispatch = bs * topK * (isQuantRouting ? (h + ALIGN_512) : h * sizeof(int16_t));
     } else {  // A2分开发送
-        offsetAAfterDispatch = isQuantRouting ? 
-                               maxRecvTokenNum * (h + ALIGN_512) : maxRecvTokenNum * h * sizeof(int16_t);
-        offsetAAfterDispatch += isQuantRouting ? maxRecvTokenNum * sizeof(float) : 0;  // pertokenSize
+        offsetAAfterDispatch = maxRecvTokenNum * (isQuantRouting ? (h + ALIGN_512) : h * sizeof(int16_t));
     }
     // FFN的输出在分发后，接收的空间大小
     int64_t offsetD = bs * topK * h * sizeof(int16_t);
@@ -133,12 +130,15 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     // ============================== winOut（仅A2） ==============================
     int64_t winOutTensorSize = 0;
     if (!isA3) {
-        int64_t offsetA = bs * topK * h * (!isQuantRouting ? sizeof(int16_t) : 1);
-        offsetA += bs * topK * sizeof(float);  // pertokenSize
+        int64_t offsetA = bs * topK * (!isQuantRouting ? h * sizeof(int16_t) : (h + ALIGN_512));
         int64_t offsetC = maxRecvTokenNum * h * sizeof(int16_t);
         winOutTensorSize = offsetA + offsetC;
     }
     int64_t offsetTensor = max(winInTensorSize, winOutTensorSize);
+    // pertokenscale的额外空间
+    if (isQuantRouting) {
+        offsetTensor += (isA3 ? bs * topK : maxRecvTokenNum) * sizeof(float);  // pertokenScale
+    }
 
     // ccl buff的承载的数据块 3（winIn）：
     // 同步flag

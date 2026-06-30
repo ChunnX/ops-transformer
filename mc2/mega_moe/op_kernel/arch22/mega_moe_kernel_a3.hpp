@@ -64,6 +64,7 @@ using namespace Mc2Tiling;
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
+constexpr uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
@@ -1661,10 +1662,7 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
-            // 绝对大小布局：A → perTokenScale → D → (剩余) → TPE → CrossRankSync尾
-            // BF16:  A=M×h×2               无perTokenScale  D=bs×topK×h×2
-            // INT8:  A=M×(h+32)            perToken=M×4     D=bs×topK×h×2（取+512）
-            // W4A8:  A=M×(h+512)           perToken=M×4     D=bs×topK×h×2
+            // 布局：10MB reserved → A → scale → D → cumsum → flag
             const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
@@ -1677,25 +1675,27 @@ private:
                 std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
 
             // 尾部：CrossRankSync + tokenPerExpert
-            // TPE = EP × AlignUp(EP×E, 128) × 4B，放在 CrossRankSync 之前
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
             int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
 
-            // offsetA: dispatch 数据区（量化时含行内 scale）
+            // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));
 
-            // perTokenScale: 量化 scale 区（仅量化路径，临时空间）
+            // scale: per-token 量化 scale 区（仅量化路径）
             int64_t perTokenScaleSize = RoutingIsQuant ? (bs * topK * static_cast<int64_t>(sizeof(float))) : 0;
 
-            offsetA = 0;
+            // D: 输出区
+            int64_t DSize = bs * topK * h * sizeof(int16_t);
+
+            offsetA = RESERVED_SPACE_SIZE;
             if constexpr (RoutingIsQuant) {
-                offsetPeerPerTokenScale = offsetASize;
+                offsetPeerPerTokenScale = offsetA + offsetASize;
                 offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
             } else {
                 offsetPeerPerTokenScale = 0;
-                offsetD = offsetASize;
+                offsetD = offsetA + offsetASize;
             }
-            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
+            offsetPeerTokenPerExpert = offsetD + DSize;
         }
     };
 
