@@ -237,7 +237,7 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
                     uint32_t dataLen = sendTensor.GetValue(5);
                     uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
                     uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-                    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)+ gmDstOffset * sizeof(ElementMMadOut2);
+                    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset,1)+ gmDstOffset * sizeof(ElementMMadOut2);
                     params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
                     // 标记已处理, 避免重复发送
                     sendTensor.SetValue(7, 0);
