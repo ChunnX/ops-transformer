@@ -102,15 +102,15 @@ public:
                                               idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                                                tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                                topK,
-                                                loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256),
-                                                s2SeqLen);
+                    tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                    topK,
+                    loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256),
+                    s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
                     if ((loopIdx + 1) % 2 == 1) {
                         AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                            QLICommon::Align(topK, (uint32_t)256));
+                            QLICommon::Align(topK, (uint32_t)256));
                     }
                 }
             }

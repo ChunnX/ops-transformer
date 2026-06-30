@@ -108,7 +108,7 @@ __simd_callee__ inline void ReduceSumFinalize(AscendC::MicroAPI::RegTensor<float
     AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out_, regOut, maskAllB16);
 }
 
-//uint32 out
+// uint32 out
 __simd_callee__ inline void ReduceSumFinalize(AscendC::MicroAPI::RegTensor<float> (&regSum0)[2],
                                               AscendC::MicroAPI::RegTensor<float> (&regSum1)[2],
                                               AscendC::MicroAPI::RegTensor<float> (&regKScale)[2],
@@ -232,9 +232,11 @@ __simd_callee__ inline void ReduceSum2Finalize(AscendC::MicroAPI::RegTensor<floa
     FloatX2ToSortableKey<float>(regOut0[0], regOut0[1], regSum0[0], regSum0[1], fp32Ctx, maskAllB32);
     FloatX2ToSortableKey<float>(regOut1[0], regOut1[1], regSum1[0], regSum1[1], fp32Ctx, maskAllB32);
     AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0_, regOut0[0], maskAllB32);
-    AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0_ + 64, regOut0[1], maskAllB32);
+    AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0_ + 64, regOut0[1],
+        maskAllB32);
     AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1_, regOut1[0], maskAllB32);
-    AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1_ + 64, regOut1[1], maskAllB32);
+    AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1_ + 64, regOut1[1],
+        maskAllB32);
 }
 
 __simd_callee__ inline void LoadKScaleFP16(AscendC::MicroAPI::RegTensor<half> (&regKScaleFP16)[2],
