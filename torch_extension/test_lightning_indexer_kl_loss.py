@@ -16,7 +16,7 @@ TORCH_EXTENSION_PATH = Path(__file__).resolve().parent
 if str(TORCH_EXTENSION_PATH) not in sys.path:
     sys.path.insert(0, str(TORCH_EXTENSION_PATH))
 
-import cann_ops_transformer  # noqa: E402,F401  pylint: disable=wrong-import-position,unused-import
+from cann_ops_transformer.ops import lightning_indexer_kl_loss  # noqa: E402,F401  pylint: disable=wrong-import-position,unused-import
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ def test_basic_2d():
     y_npu, Y_npu = y.npu(), Y.npu()
 
     ref = lightning_indexer_kl_loss_ref(y, Y)
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.001, max_diff_hd=0.1)
 
@@ -123,7 +123,7 @@ def test_basic_3d():
     y_npu, Y_npu = y.npu(), Y.npu()
 
     ref = lightning_indexer_kl_loss_ref(y, Y)
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.001, max_diff_hd=0.1)
 
@@ -136,7 +136,7 @@ def test_fp16():
     y_npu, Y_npu = y.npu(), Y.npu()
 
     ref = lightning_indexer_kl_loss_ref(y.float(), Y.float())
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.005, max_diff_hd=0.1)
 
@@ -149,7 +149,7 @@ def test_bf16():
     y_npu, Y_npu = y.npu(), Y.npu()
 
     ref = lightning_indexer_kl_loss_ref(y.float(), Y.float())
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.005, max_diff_hd=0.1)
 
@@ -163,7 +163,7 @@ def test_custom_eps():
 
     eps = 1e-6
     ref = lightning_indexer_kl_loss_ref(y, Y, eps=eps)
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu, eps=eps)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu, eps=eps)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.001, max_diff_hd=0.1)
 
@@ -176,7 +176,7 @@ def test_large_d():
     y_npu, Y_npu = y.npu(), Y.npu()
 
     ref = lightning_indexer_kl_loss_ref(y, Y)
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y_npu, Y_npu)
+    npu_out = lightning_indexer_kl_loss(y_npu, Y_npu)
 
     return data_compare(npu_out.cpu(), ref, diff_thd=0.001, max_diff_hd=0.1)
 
@@ -189,7 +189,7 @@ def test_edge_zero_target():
     y = torch.zeros(b, h, d, dtype=torch.float32, device=device)
     Y = _softmax_last_dim(torch.randn(b, h, d, dtype=torch.float32, device=device))
 
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y, Y)
+    npu_out = lightning_indexer_kl_loss(y, Y)
     npu_val = float(npu_out.cpu())
     passed = not (torch.isfinite(npu_out).any() is False or torch.isnan(npu_out).any())
     # When target is all zeros: P = 0/(0+eps)=0, log(clamp_min(0,eps))=log(eps), loss=0*(log(eps)-log(Y+eps))=0
@@ -206,7 +206,7 @@ def test_edge_zero_index_probs():
     y = torch.randn(b, h, d, dtype=torch.float32, device=device)
     Y = torch.zeros(b, h, d, dtype=torch.float32, device=device)
 
-    npu_out = cann_ops_transformer.lightning_indexer_kl_loss(y, Y)
+    npu_out = lightning_indexer_kl_loss(y, Y)
     npu_val = float(npu_out.cpu())
     passed = torch.isfinite(npu_out).item()
     print(f"  zero_index_probs_loss={npu_val:.10f}  isfinite={'PASS' if passed else 'FAIL'}")

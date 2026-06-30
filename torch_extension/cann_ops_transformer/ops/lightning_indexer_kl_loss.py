@@ -24,11 +24,11 @@ class LightningIndexerKLLossOpBuilder(OpBuilder):
         return ["ops/csrc/lightning_indexer_kl_loss.cpp"]
 
     def schema(self) -> str:
-        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, *, float eps=1e-9) -> Tensor"
+        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps=1e-9) -> Tensor"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def lightning_indexer_kl_loss_meta(target_score, index_probs, *, eps=1e-9):
+        def lightning_indexer_kl_loss_meta(target_score, index_probs, eps=1e-9):
             return torch.empty((), dtype=target_score.dtype, device="meta")
 
 
@@ -37,7 +37,7 @@ op_module = lightning_indexer_kl_loss_op_builder.load()
 
 
 @impl(AS_LIBRARY, lightning_indexer_kl_loss_op_builder.name, "PrivateUse1")
-def lightning_indexer_kl_loss(target_score, index_probs, *, eps=1e-9):
+def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
     """Lightning Indexer KL 散度损失函数。
 
     计算 teacher 侧原始未归一化主注意力分数（target_score）与 student 侧 indexer softmax
@@ -73,38 +73,3 @@ def lightning_indexer_kl_loss(target_score, index_probs, *, eps=1e-9):
         >>> loss = lightning_indexer_kl_loss(target_score, index_probs)
     """
     return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps)
-
-
-try:
-    import torchair
-    from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
-    from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair.ge import attr
-
-    _TORCHAIR_AVAILABLE = True
-except ImportError:
-    _TORCHAIR_AVAILABLE = False
-
-
-if _TORCHAIR_AVAILABLE:
-    @register_fx_node_ge_converter(
-        torch.ops.cann_ops_transformer.lightning_indexer_kl_loss.default
-    )
-    def convert_lightning_indexer_kl_loss(
-        target_score: Tensor,
-        index_probs: Tensor,
-        eps: float = 1e-9,
-        meta_outputs: TensorSpec = None,
-    ):
-        """Convert lightning_indexer_kl_loss to GE graph."""
-        return torchair.ge.custom_op(
-            "LightningIndexerKLLoss",
-            inputs={
-                "target_score": target_score,
-                "index_probs": index_probs,
-            },
-            attrs={
-                "eps": attr.Float(eps),
-            },
-            outputs=["loss"],
-        )

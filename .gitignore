@@ -48,3 +48,7 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# torch_extension build & output tempalte dirs
+torch_extension/cann_ops_transformer.egg-info/
+torch_extension/dist/
