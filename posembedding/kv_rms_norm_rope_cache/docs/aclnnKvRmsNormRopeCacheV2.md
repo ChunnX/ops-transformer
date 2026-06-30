@@ -16,11 +16,14 @@
 ## 功能说明
 
 - 接口功能：融合了MLA（Multi-head Latent Attention）结构中RMSNorm归一化计算（对应$rms\_size$）与RoPE（Rotary Position Embedding）位置编码（对应$rope\_size$)，以及更新KVCache的ScatterUpdate操作。本接口支持两种场景，向下兼容aclnnKvRmsNormRopeCache。
+
 - 支持场景：
+
   | 场景类型 | kv分量来源 | 说明 |
     | :------: | :------: | :------ |
     |V1|rms_size=Dv=512<br>rope_size=Dk=64<br>vOptional=None|kv合轴模式：对输入张量kv的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。<li>与DeepSeekV3网络结构强相关，仅支持N=1的场景。<li>rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来，Dk、Dv大小需满足Dk+Dv=Dkv。|
-    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到k_cache中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckv_cache中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。|
+    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到kCacheRef中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckvCacheRef中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。|
+
     * <term>Ascend 950PR/Ascend 950DT</term>：仅支持V1场景。
     * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持V1和V2场景。
 
@@ -29,6 +32,7 @@
   定义输入张量kv的shape为$[Bkv, N, Skv, Dkv]$以及张量vOptional的shape为$[Bkv, N, Skv, Dv]$。
 
   (1) RmsNorm：
+
   $$
   x=kv[...,:rms\_size]
   $$
@@ -37,9 +41,10 @@
   \operatorname{RmsNorm}(x_i)=\frac{1}{\operatorname{Rms}(\mathbf{x})} * x_i * gamma_i, \quad \text { where } \operatorname{Rms}(\mathbf{x})=\sqrt{\frac{1}{n} \sum_{i=1}^n x_i^2+epsilon}
   $$
 
-  (2) interleaveRope:
+  (2) interleaveRope：
 
-  $$x=\begin{cases}
+  $$
+  x=\begin{cases}
   kv[...,Dv:], \quad vOptional = None\\
   {\operatorname{RmsNorm}(\mathbf{x})}[...,:rope\_size],  \quad vOptional != None
   \end{cases}
@@ -71,9 +76,9 @@
   \end{cases}
   $$
 
-  (3) 量化计算:
+  (3) 量化计算：
 
-  x表示将要写入到k_cache和ckv_cache上的原始数据，作为量化过程的输入。
+  x表示将要写入到kCacheRef和ckvCacheRef上的原始数据，作为量化过程的输入。
 
   $$
   x = x * scale,\ if\ scale\ !=\ None
@@ -90,30 +95,32 @@
 
   (4) Scatter写出：
 
-  输入张量index对应输入kv缓存中各元素的索引映射表，取x中具体元素的索引$b \in Bkv$以及$s \in Skv$，
+  输入张量index对应输入kv缓存中各元素的索引映射表，取x中具体元素的索引$b \in Bkv$以及$s \in Skv$，$n$为注意力头索引，
 
   $$
   scatter\_idx = index(b, s) \\
   $$
 
-  Quant表示前述量化计算过程，对原地更新参数k\_cache和ckv\_cache：
+   Quant表示前述量化计算过程，对原地更新参数k\_cache和ckv\_cache：
 
   $$
-  k\_cache[scatter\_idx] = Quant(x = rope\_out, scale = k\_scale, offset = k\_offset)[scatter\_idx]
+  k\_cache[scatter\_idx, ...] = Quant(x = rope\_out, scale = k\_scale, offset = k\_offset)[b, n, s]
   $$
 
   $$
-  ckv\_cache[scatter\_idx] = \begin{cases} Quant(x = \operatorname{RmsNorm}(x), scale = v\_scale, offset = v\_offset)[scatter\_idx], \quad vOptional = None \\
-  Quant(x = vOptional, scale = v\_scale, offset = v\_offset)[scatter\_idx],  \quad vOptional != None
+  ckv\_cache[scatter\_idx, ...] = \begin{cases} Quant(x = \operatorname{RmsNorm}(x), scale = v\_scale, offset = v\_offset)[b, n, s], \quad vOptional = None \\
+  Quant(x = vOptional, scale = v\_scale, offset = v\_offset)[b, n, s],  \quad vOptional != None
   \end{cases}
   $$
 
   (5) 原始结果写出：
 
   当$is\_output\_kv=True$且有效时：
+
   $$
   k\_rope = rope\_out
   $$
+
   $$
   c\_kv = \begin{cases}\operatorname{RmsNorm}(x), \quad vOptional = None \\
   vOptional,  \quad vOptional != None
@@ -149,9 +156,9 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2GetWorkspaceSize(
 
 ```Cpp
 aclnnStatus aclnnKvRmsNormRopeCacheV2(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
@@ -466,44 +473,54 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
 ## 约束说明
 
   * 输入shape限制：
+
       * kv为四维张量，shape为[Bkv,N,Skv,D]，Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。
       * N为输入kv的head number。V1场景与DeepSeekV3网络结构强相关，仅支持N=1的场景。V2场景支持N=1/2/4/8。
       * D为输入kv的head dim。根据rope规则，Dk为偶数。若cacheModeOptional为NZ场景（cacheModeOptional为PA_NZ、PA_BLK_NZ），Dk、Dv需32B对齐。该规则适用于所有场景和计算类型中。
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），block_size需32B对齐。
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以block_size为例，若cache的数据类型为int8，则需block_size%32=0；若cache的数据类型为float16，则需block_size%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，block_size需同时满足block_size%32=0和block_size%16=0。
       * block_num为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
-      * 量化参数项(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)需要满足shape约束：
-        * k_rope_scale, k_rope_offset: 合法shape为2维[N, Dk]。
-        * c_kv_scale, c_kv_offset: 合法shape为2维[N, Dv]。
+      * 量化参数项(kRopeScaleOptional, kRopeOffsetOptional, ckvScaleOptional, cKvOffsetOptional)需要满足shape约束：
+        * kRopeScaleOptional, kRopeOffsetOptional：合法shape为2维[N, Dk]。
+        * ckvScaleOptional, cKvOffsetOptional：合法shape为2维[N, Dv]。
       * 输入张量均不支持空Tensor。
-  * cache的数据类型支持:
+
+  * cache的数据类型支持：
+
     * 非量化模式：cache类型必须与kv保持一致。
       * <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：可支持BFLOAT16、FLOAT16。
       * <term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持FLOAT16。
     * 量化模式：
       * <term>Ascend 950PR/Ascend 950DT</term>：可支持INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-      * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Kirin X90/Kirin 9030 处理器系列产品</term>: 仅支持INT8。
+      * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持INT8。
+
   * 参数说明：
+
     * 输入参数中kv, gamma, cos, sin, vOptional的数据类型必须完全一致。
-    * k_cache和ckv_cache是<b>原地更新参数</b>，它们的数据类型取决于相应的输入分量，以及相应的scale和offset。详情见下：
+    * kCacheRef和ckvCacheRef是<b>原地更新参数</b>，它们的数据类型取决于相应的输入分量，以及相应的scale和offset。详情见下：
 
       | cache_type | offset==None | offset!=None |
       | :-------------------------: | :-----------: | :----------------------------------------------: |
       | scale==None | 与kv保持一致 | 非法输入，拦截 |
       | scale!=None | INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN | INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN |
-      * 非量化模式时，量化参数(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)必须设为 None，且 k_cache 和 ckv_cache 的 dtype 必须与kv保持一致。
-      * 量化模式时，k_cache 和 ckv_cache 的 dtype 应为相应产品上支持的 数据类型。
+
+      * 非量化模式时，量化参数(kRopeScaleOptional, kRopeOffsetOptional, ckvScaleOptional, cKvOffsetOptional)必须设为None，且kCacheRef和ckvCacheRef的dtype必须与kv保持一致。
+      * 量化模式时，kCacheRef和ckvCacheRef的dtype应为相应产品上支持的数据类型。
+
     * 输入分量关于量化因子scale与量化偏移scale的对应关系如下：
+
       | kv分量 | 分量输入来源 | 对应scale输入 | 对应offset输入 | 对应输出cache |
       | :------: | :------: | :------: | :------: | :------: |
-      | k分量 | V1场景下，对应kv[..., Dv:]。<br>V2场景下，对应kv[..., :]。 | k_rope_scale | k_rope_offset | k_cache |
-      | v分量 | V1场景下，对应kv[..., :Dv]。<br>V2场景下，对应vOptional[..., :]。 |c_kv_scale | c_kv_offset | ckv_cache |
+      | k分量 | V1场景下，对应kv[..., Dv:]。<br>V2场景下，对应kv[..., :]。 | kRopeScaleOptional | kRopeOffsetOptional | kCacheRef |
+      | v分量 | V1场景下，对应kv[..., :Dv]。<br>V2场景下，对应vOptional[..., :]。 |ckvScaleOptional | cKvOffsetOptional | ckvCacheRef |
 
-      * k_cache：量化系数为k_rope_scale和k_rope_offset。
-      * ckv_cache：对应量化系数为c_kv_scale和c_kv_offset。
+      * kCacheRef：量化系数为kRopeScaleOptional和kRopeOffsetOptional。
+      * ckvCacheRef：对应量化系数为ckvScaleOptional和cKvOffsetOptional。
 
     * 输出参数中，k_rope和c_kv的类型必须与kv保持一致。
+
   * 量化模式约束：
+
     <table style="undefined;table-layout: fixed; width: 1200px"><colgroup>
       <col style="width: 400px">
       <col style="width: 160px">
@@ -517,7 +534,7 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
         </tr></thead>
       <tbody>
       <tr>
-          <td rowspan="5">无量化模式<li>scale输入：k_rope_scale==None && c_kv_scale==None<li>offset输入：k_rope_offset==None && c_kv_offset==None</td>
+          <td rowspan="5">无量化模式<li>scale输入：kRopeScaleOptional==None && ckvScaleOptional==None<li>offset输入：kRopeOffsetOptional==None && cKvOffsetOptional==None</td>
           <td rowspan="1">Norm</td>
           <td rowspan="5">V1和V2都支持。</td>
       </tr>
@@ -534,7 +551,7 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
           <td>PA_BLK_NZ</td>
       </tr>
       <tr>
-          <td rowspan="5">静态量化模式<li>scale输入：k_rope_scale和c_kv_scale至少一个非空。<li>offset输入：仅限对应scale为非空时，offset输入合法。相应offset如果为空，则为<b>静态对称量化</b>；相应offset如果非空，则为<b>静态非对称量化</b>。</td>
+          <td rowspan="5">静态量化模式<li>scale输入：kRopeScaleOptional和ckvScaleOptional至少一个非空。<li>offset输入：仅限对应scale为非空时，offset输入合法。相应offset如果为空，则为<b>静态对称量化</b>；相应offset如果非空，则为<b>静态非对称量化</b>。</td>
           <td rowspan="1">Norm</td>
           <td rowspan="5"><li><b>静态对称量化</b>和<b>静态非对称量化</b>，支持存在差异。<li>支持K和V独立选择不同量化模式。</td>
       </tr>
@@ -558,7 +575,8 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
       * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：V1场景仅支持<b>静态对称量化</b>；V2场景支持<b>静态对称量化</b>和<b>静态非对称量化</b>。
 
   * cache与index相关约束：
-    | cachemode| k_cache 形状 | ckv_cache 形状 | index 形状 | 说明 |
+
+    | cachemode| kCacheRef 形状 | ckvCacheRef 形状 | index 形状 | 说明 |
     | :------: | :------: | :------: | :------: | :------ |
     |Norm|[Bkv, N, Scache, Dk]|[Bkv, N, Scache, Dv]|[Bkv, Skv]|KV-Cache 更新模式，index 表示每个 Batch 下的偏移。<br>要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。<br>$Scache \ge Skv$|
     |PA/PA_BNSD|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × Skv]|PagedAttention 模式，index 表示每个 token 的偏移。<br>要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
@@ -568,20 +586,24 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
 
     * Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。
     * 当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
+
     * 当cacheModeOptional为PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ时，cache中的数据排布方式为：
-      * 非量化模式下：k_cache 为 [block_num, Dk//16, block_size, 1, 16]；ckv_cache 为 [block_num, Dv//16, block_size, 1, 16]。
-      * 静态量化模式下：k_cache 为 [block_num, Dk//32, block_size, 1, 32]；ckv_cache 为 [block_num, Dv//32, block_size, 1, 32]。
+      * 非量化模式下：kCacheRef 为 [block_num, Dk//16, block_size, 1, 16]；ckvCacheRef 为 [block_num, Dv//16, block_size, 1, 16]。
+      * 静态量化模式下：kCacheRef 为 [block_num, Dk//32, block_size, 1, 32]；ckvCacheRef 为 [block_num, Dv//32, block_size, 1, 32]。
     * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。
     * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,block_size)]，要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。
-  * is_output_kv约束：
-    * 作用是输出中间处理结果：k_embed_out 和 y_out。
+
+  * isOutputKv约束：
+    * 作用是输出具体场景的中间处理结果。
     * 在cacheModeOptional为PA, PA_BNSD, PA_NZ, PA_BLK_BNSD, PA_BLK_NZ模式时有效。
     * 在cacheModeOptional为Norm时，仅在V2场景中使能量化模式时有效。
+
   * vOptional：
     * 该参数仅限aclnnKvRmsNormRopeCacheV2接口，aclnnKvRmsNormRopeCache接口不支持该参数！
     * 该参数仅限<b>Atlas A3 训练系列产品/Atlas A3 推理系列产品</b>、<b>Atlas A2 训练系列产品/Atlas A2 推理系列产品</b>。
       * 该参数仅在<b>kv分离场景(V2)</b>中作为必须入参，在其他类型中会作为无效参数被忽略。
       * 当vOptional存在时，它的类型必须与kv一致，`[B, N, S]`维度也必须与kv一致。
+
     * Ascend 950PR/Ascend 950DT：不会拦截该参数，但实际功能不支持，也不会处理该参数。
 
 ## 调用示例
