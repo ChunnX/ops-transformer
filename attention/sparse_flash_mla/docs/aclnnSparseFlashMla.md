@@ -680,6 +680,21 @@ aclnnStatus aclnnSparseFlashMla(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file test_aclnn_sparse_flash_mla.cpp
+ * \brief SparseFlashMla + SparseFlashMlaMetadata 算子调用示例（SCFA）
+ */
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -849,12 +864,11 @@ int main()
   std::vector<int64_t> cmpBlockTableShape = {B, (cmpKvLen + cmpBlockSize - 1) / cmpBlockSize};
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
-  std::vector<int64_t> cmpResidualKvShape = {B};
   std::vector<int64_t> sinksShape = {N1};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T1, N1, D};
   std::vector<int64_t> softmaxLseShape = {T1, N1, 1};
-  // 对全部 optional 输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
+  // 对全部 5 个输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
   std::vector<int64_t> emptyShape = {0};
 
   void* qDeviceAddr = nullptr;
@@ -868,10 +882,6 @@ int main()
   void* cuSeqLensCmpKvDeviceAddr = nullptr;
   void* seqUsedQDeviceAddr = nullptr;
   void* seqUsedOriKvDeviceAddr = nullptr;
-  void* seqUsedCmpKvDeviceAddr = nullptr;
-  void* cmpResidualKvDeviceAddr = nullptr;
-  void* oriTopkLengthDeviceAddr = nullptr;
-  void* cmpTopkLengthDeviceAddr = nullptr;
   void* sinksDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
@@ -888,10 +898,6 @@ int main()
   aclTensor* cuSeqLensCmpKv = nullptr;
   aclTensor* seqUsedQ = nullptr;
   aclTensor* seqUsedOriKv = nullptr;
-  aclTensor* seqUsedCmpKv = nullptr;
-  aclTensor* cmpResidualKv = nullptr;
-  aclTensor* oriTopkLength = nullptr;
-  aclTensor* cmpTopkLength = nullptr;
   aclTensor* sinks = nullptr;
   aclTensor* metadata = nullptr;
   aclTensor* attnOut = nullptr;
@@ -920,7 +926,6 @@ int main()
   }
   std::vector<int32_t> emptyHostData;
   std::vector<int32_t> seqUsedOriKvHostData(B, static_cast<int32_t>(s2Act));
-  std::vector<int32_t> cmpResidualKvHostData(B, 0);
   std::vector<float> sinksHostData(N1, 1.0f);
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
@@ -960,14 +965,6 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(seqUsedOriKvHostData, seqUsedOriKvShape, &seqUsedOriKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedOriKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &seqUsedCmpKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedCmpKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &oriTopkLengthDeviceAddr, aclDataType::ACL_INT32, &oriTopkLength);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &cmpTopkLengthDeviceAddr, aclDataType::ACL_INT32, &cmpTopkLength);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
@@ -986,8 +983,8 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv, seqUsedCmpKv,
-      cmpResidualKv, oriTopkLength, cmpTopkLength,
+      seqUsedQ, seqUsedOriKv,
+      nullptr, nullptr, nullptr, nullptr,
       N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
@@ -1027,7 +1024,7 @@ int main()
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
       layoutQ, layoutKv,
-      1, 0, 0,
+      1,
       false,
       attnOut, softmaxLse,
       &workspaceSize, &executor);
@@ -1064,7 +1061,7 @@ int main()
   aclDestroyTensor(metadata);
   aclDestroyTensor(attnOut);
   aclDestroyTensor(softmaxLse);
-
+  
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(oriKvDeviceAddr);
