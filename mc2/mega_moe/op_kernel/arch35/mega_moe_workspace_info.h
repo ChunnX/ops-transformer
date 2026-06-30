@@ -23,6 +23,7 @@
 #define GM_ADDR uint8_t*
 #define HOST_DEVICE
 #endif
+#include "mega_moe_impl_base.h"
 
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
@@ -216,7 +217,7 @@ struct WorkspaceInfo {
                 (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
 
             combineCommDataPtr = base + workspaceSize;
-            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(bfloat16_t)), (int64_t)ALIGN_32);
+            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(float16_t)), (int64_t)ALIGN_32);
             //每个 token 含数据+三元组(32B)
             uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
             uint32_t maxDataSize = Ops::Base::CeilDiv((int64_t)(tilingData->bs *  maxDataSizePerToken), (int64_t)ALIGN_512) * tilingData->expertPerRank 
