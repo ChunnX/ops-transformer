@@ -17,14 +17,6 @@
 #include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
-
 using namespace op;
 
 #ifdef __cplusplus
@@ -46,12 +38,6 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -59,16 +45,12 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            if (rankSize <= RANK_DIM_BOUNDARY) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'ccu', 'ai_cpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
+    } else {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     }
     return ACLNN_SUCCESS;
 }

@@ -60,7 +60,7 @@ REG_OP(GroupedMatMulAlltoAllv)
       .REQUIRED_ATTR(recv_counts, ListInt)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
-      .ATTR(comm_mode, String, "")
+      .ATTR(comm_mode, String, "ai_cpu")
       .OP_END_FACTORY_REG(GroupedMatMulAlltoAllv)
 
 

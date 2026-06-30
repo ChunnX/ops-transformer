@@ -60,7 +60,7 @@ namespace ge {
 * @li group_size: An int. Default: 0.
 * @li y_dtype: An int. Declare the gmm_y dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) is 28.
 * @li mm_dtype: An int. Declare the mm_y dtype and should be same as y_dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) is 28.
-* @li comm_mode: A String value. Indicating communication type.
+* @li comm_mode: A String value. Indicating communication type. Default: ai_cpu.
 *
 * @par Outputs:
 * @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
@@ -96,7 +96,7 @@ REG_OP(AlltoAllvQuantGroupedMatMul)
       .ATTR(group_size, Int, 0)
       .ATTR(y_dtype, Int, 28)
       .ATTR(mm_dtype, Int, 28)
-      .ATTR(comm_mode, String, "")
+      .ATTR(comm_mode, String, "ai_cpu")
       .OP_END_FACTORY_REG(AlltoAllvQuantGroupedMatMul)
 
 }  // namespace ge

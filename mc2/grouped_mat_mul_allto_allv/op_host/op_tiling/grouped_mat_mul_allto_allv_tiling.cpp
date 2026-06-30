@@ -319,27 +319,16 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
     const size_t maxLength = 7UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= RANK_DIM_BOUNDARY) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'', 'ai_cpu', 'ccu'");
+            "'ai_cpu', 'ccu'");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

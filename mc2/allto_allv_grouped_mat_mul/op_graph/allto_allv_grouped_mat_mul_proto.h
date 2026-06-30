@@ -63,7 +63,7 @@ REG_OP(AlltoAllvGroupedMatMul)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
       .ATTR(permute_out_flag, Bool, false)
-      .ATTR(comm_mode, String, "")
+      .ATTR(comm_mode, String, "ai_cpu")
       .OP_END_FACTORY_REG(AlltoAllvGroupedMatMul)
 
 }  // namespace ge
