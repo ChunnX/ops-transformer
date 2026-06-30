@@ -87,9 +87,15 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
                 sparse_values_out = torch.empty([0], dtype=torch.bfloat16, device="meta")
             return (sparse_indices_out, sparse_values_out)
 
-# Instantiate the builder
 quant_lightning_indexer_op_builder = QuantLightningIndexerOpBuilder()
-op_module = quant_lightning_indexer_op_builder.load()  # Compiles/loads the .so file
+_qli_op_module = None
+
+
+def _get_qli_op_module():
+    global _qli_op_module
+    if _qli_op_module is None:
+        _qli_op_module = quant_lightning_indexer_op_builder.load()
+    return _qli_op_module
 
 
 @impl(AS_LIBRARY, QLI_V2_METADATA_OP_NAME, "PrivateUse1")
@@ -112,7 +118,7 @@ def quant_lightning_indexer_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    return op_module.quant_lightning_indexer_metadata(
+    return _get_qli_op_module().quant_lightning_indexer_metadata(
         num_heads_q, num_heads_k, head_dim, topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
         cmp_residual_k, batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
 
@@ -145,7 +151,7 @@ def quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequan
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, 
+    return _get_qli_op_module().quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, 
                                                     topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
                                                     cmp_residual_k, block_table, output_idx_offset, metadata,
                                                     max_seqlen_q, layout_q, layout_k, mask_mode,

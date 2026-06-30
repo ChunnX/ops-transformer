@@ -36,9 +36,16 @@ class MhcPostBackwardOpBuilder(OpBuilder):
 
 
 mhc_post_backward_op_builder = MhcPostBackwardOpBuilder()
-op_module = mhc_post_backward_op_builder.load()
+_mhc_post_backward_op_module = None
+
+
+def _get_mhc_post_backward_op_module():
+    global _mhc_post_backward_op_module
+    if _mhc_post_backward_op_module is None:
+        _mhc_post_backward_op_module = mhc_post_backward_op_builder.load()
+    return _mhc_post_backward_op_module
 
 
 @impl(AS_LIBRARY, mhc_post_backward_op_builder.name, "PrivateUse1")
 def mhc_post_backward(grad_output, x, h_res, h_out, h_post):
-    return op_module.mhc_post_backward(grad_output, x, h_res, h_out, h_post)
+    return _get_mhc_post_backward_op_module().mhc_post_backward(grad_output, x, h_res, h_out, h_post)

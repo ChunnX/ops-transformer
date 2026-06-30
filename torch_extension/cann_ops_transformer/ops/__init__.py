@@ -7,24 +7,44 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
-from .moe_distribute_dispatch import npu_moe_distribute_dispatch
-from .moe_distribute_combine import npu_moe_distribute_combine
-from .mega_moe import (
-    get_symm_buffer_for_mega_moe,
-    mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
-)
-from .deep_ep import MoeDistributeBuffer
-from .flash_attn import flash_attn, flash_attn_metadata
-from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
-from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
-from .sparse_lightning_indexer_kl_loss_grad import (
-    sparse_lightning_indexer_kl_loss_grad,
-    sparse_lightning_indexer_kl_loss_grad_metadata
-)
-from .lightning_indexer import lightning_indexer, lightning_indexer_metadata
-from .quant_lightning_indexer import quant_lightning_indexer, quant_lightning_indexer_metadata
-from .mhc_post import mhc_post
-from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
-from . import graph_convert as _graph_convert
+import importlib
+
+_ATTR_TO_MODULE = {
+    'sparse_flash_mla_grad':              'sparse_flash_mla_grad',
+    'sparse_flash_mla_grad_metadata':     'sparse_flash_mla_grad',
+    'npu_moe_distribute_dispatch':        'moe_distribute_dispatch',
+    'npu_moe_distribute_combine':         'moe_distribute_combine',
+    'get_symm_buffer_for_mega_moe':       'mega_moe',
+    'mega_moe':                           'mega_moe',
+    'npu_get_mega_moe_ccl_buffer_size':   'mega_moe',
+    'MoeDistributeBuffer':                'deep_ep',
+    'npu_flash_attn':                     'flash_attn',
+    'flash_attn':                         'flash_attn',
+    'flash_attn_metadata':                'flash_attn',
+    'npu_flash_attn_metadata':            'flash_attn_metadata',
+    'mixed_quant_sparse_flash_mla':       'mixed_quant_sparse_flash_mla',
+    'mixed_quant_sparse_flash_mla_metadata': 'mixed_quant_sparse_flash_mla',
+    'sparse_flash_mla':                   'sparse_flash_mla',
+    'sparse_flash_mla_metadata':          'sparse_flash_mla',
+    'sparse_lightning_indexer_kl_loss_grad':       'sparse_lightning_indexer_kl_loss_grad',
+    'sparse_lightning_indexer_kl_loss_grad_metadata': 'sparse_lightning_indexer_kl_loss_grad',
+    'lightning_indexer':                  'lightning_indexer',
+    'lightning_indexer_metadata':         'lightning_indexer',
+    'quant_lightning_indexer':            'quant_lightning_indexer',
+    'quant_lightning_indexer_metadata':   'quant_lightning_indexer',
+    'mhc_post':                           'mhc_post',
+    'mhc_pre_sinkhorn':                   'mhc_pre_sinkhorn',
+}
+
+
+def __getattr__(name):
+    if name in _ATTR_TO_MODULE:
+        mod = importlib.import_module(f'.{_ATTR_TO_MODULE[name]}', __package__)
+        attr = getattr(mod, name)
+        globals()[name] = attr
+        return attr
+    if name == '_graph_convert':
+        from . import graph_convert as _mod
+        globals()['_graph_convert'] = _mod
+        return _mod
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -62,9 +62,15 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
             metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
             return torch.empty((metadataSize,), dtype=torch.int32, device="npu")
 
-# Instantiate the builder
 flash_attn_metadata_op_builder = FlashAttnMetadataOpBuilder()
-op_module = flash_attn_metadata_op_builder.load()
+_flash_attn_metadata_op_module = None
+
+
+def _get_flash_attn_metadata_op_module():
+    global _flash_attn_metadata_op_module
+    if _flash_attn_metadata_op_module is None:
+        _flash_attn_metadata_op_module = flash_attn_metadata_op_builder.load()
+    return _flash_attn_metadata_op_module
 
 
 @impl(AS_LIBRARY, flash_attn_metadata_op_builder.name, "PrivateUse1")
@@ -92,7 +98,7 @@ def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
     metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
     output = torch.empty((metadataSize,), dtype=torch.int32, device="npu")
  
-    return op_module.npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+    return _get_flash_attn_metadata_op_module().npu_flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                               num_heads_q, num_heads_kv, head_dim,
                                               batch_size, max_seqlen_q, max_seqlen_kv,
                                               mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)

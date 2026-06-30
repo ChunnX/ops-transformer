@@ -17,7 +17,7 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 class MhcPostFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, h_res, h_out, h_post):
-        out = op_module.mhc_post(x, h_res, h_out, h_post)
+        out = _get_mhc_post_op_module().mhc_post(x, h_res, h_out, h_post)
         ctx.save_for_backward(x, h_res, h_out, h_post)
         return out
 
@@ -47,12 +47,19 @@ class MhcPostOpBuilder(OpBuilder):
             return torch.empty_like(x)
 
 mhc_post_op_builder = MhcPostOpBuilder()
-op_module = mhc_post_op_builder.load()
+_mhc_post_op_module = None
+
+
+def _get_mhc_post_op_module():
+    global _mhc_post_op_module
+    if _mhc_post_op_module is None:
+        _mhc_post_op_module = mhc_post_op_builder.load()
+    return _mhc_post_op_module
 
 
 @impl(AS_LIBRARY, mhc_post_op_builder.name, "PrivateUse1")
 def _mhc_post_dispatch(x, h_res, h_out, h_post):
-    return op_module.mhc_post(x, h_res, h_out, h_post)
+    return _get_mhc_post_op_module().mhc_post(x, h_res, h_out, h_post)
 
 
 def mhc_post(x, h_res, h_out, h_post):
@@ -61,4 +68,4 @@ def mhc_post(x, h_res, h_out, h_post):
     if needs_grad:
         return MhcPostFunction.apply(x, h_res, h_out, h_post)
     else:
-        return op_module.mhc_post(x, h_res, h_out, h_post)
+        return _get_mhc_post_op_module().mhc_post(x, h_res, h_out, h_post)

@@ -10,5 +10,14 @@
 import importlib
 import pkgutil
 
-for _, name, _ in pkgutil.iter_modules(__path__):
-    importlib.import_module('.' + name, __package__)
+_GRAPH_CONVERT_MODULES = {
+    name: name for _, name, _ in pkgutil.iter_modules(__path__)
+}
+
+
+def __getattr__(name):
+    if name in _GRAPH_CONVERT_MODULES:
+        mod = importlib.import_module(f'.{name}', __package__)
+        globals()[name] = mod
+        return mod
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
