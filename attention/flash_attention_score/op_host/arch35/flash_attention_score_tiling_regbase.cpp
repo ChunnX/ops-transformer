@@ -1963,11 +1963,11 @@ void FlashAttentionScoreTilingRegbase::CalcDVBasicBlock() {
 
 ge::graphStatus FlashAttentionScoreTilingRegbase::PostTiling()
 {
-    tilingData->b = bSize;
-    tilingData->sq = s1Size;
-    tilingData->n = n2Size;
-    tilingData->skv = s2Size;
-    tilingData->d = dSize;
+    // tilingData->b = bSize;
+    // tilingData->sq = s1Size;
+    // tilingData->n = n2Size;
+    // tilingData->skv = s2Size;
+    // tilingData->d = dSize;
 
     auto numBlocks = CalcTschBlockDim(multiCoreParamsRegbase_->get_coreNum() * 2, aicNum, aivNum);
     context_->SetBlockDim(numBlocks);

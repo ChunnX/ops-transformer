@@ -17,7 +17,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 
 // PyPTO-generated; found via the pypto gen dir on the include path.
-#include "OpTiling_tiling.h"
+// #include "OpTiling_tiling.h"
 
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
@@ -413,11 +413,10 @@ public:
 
 class FlashAttentionScoreSimplifiedTilingData {
 public:
-    int64_t bSize;
-    int64_t s1Size;
-    int64_t n2Size;
-    int64_t s2Size;
-    int64_t dSize;
+    InputParamsRegbase inputParamsRegbase;
+    MultiCoreParamsRegbase multiCoreParamsRegbase;
+    DropmaskParamsRegbase dropmaskParamsRegbase;
+    InitOutputParams initOutputParams;
 };
 
 }  // namespace optiling
