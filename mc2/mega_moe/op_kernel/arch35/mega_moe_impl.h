@@ -308,7 +308,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
 // 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
@@ -492,8 +492,13 @@ __aicore__ inline void GroupMatmul2(
                 tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
                     (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
                 AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
-                MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                    mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                if constexpr (IsLayered) {
+                    MegaMoeCombineImpl::CombineTokensWithUrma<ElementC, decltype(actualShape)>(
+ 	                    mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                } else {
+                    MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                        mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
                 NotifyCube(pingpongIdx);
