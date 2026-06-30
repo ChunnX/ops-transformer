@@ -213,10 +213,9 @@ __aicore__ inline void PollNotifyAndSendData(
                     params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
                     // 标记已处理, 避免重复发送
                     sendTensor.SetValue(flagIndex, 0);
-                    AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
-                    AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
+                    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
                     AscendC::DataCopy(gmLocalDTriple, sendTensor, 8);
-                    PipeBarrier<PIPE_ALL>();
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
                     needCnt--;
                 }
                 slotIdx = (slotIdx + 1 < curCnt) ? slotIdx + 1 : completeCnt;
@@ -274,7 +273,8 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength, cntTensorLength / sizeof(int32_t));
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
-    PipeBarrier<PIPE_ALL>();
+    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID3>();
 
     // mask slot 参数
     int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
