@@ -294,16 +294,16 @@ struct WorkspaceInfo {
             static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
         
         dispatchCursorPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
- 	        static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+        workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32),
+            static_cast<int64_t>(ALIGN_512));
         
         dispatchDonePtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
- 	        static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+        workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32),
+            static_cast<int64_t>(ALIGN_512));
         
         dispatchL2CommPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
- 	        static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes), static_cast<int64_t>(ALIGN_512)); //TODO:
+        workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
+            static_cast<int64_t>(ALIGN_512));
         
         combineCommPtr = base + workspaceSize;
         // 每个 rank 的 workspace 大小: bs * expertPerRank 个 token, 每个 token 含数据+三元组(32B)
