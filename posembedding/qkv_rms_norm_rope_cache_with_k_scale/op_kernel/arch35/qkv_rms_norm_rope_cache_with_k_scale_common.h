@@ -115,7 +115,6 @@ struct TileParam {
     uint64_t aivTokenOffset;
     uint64_t aivTokenSize;
     uint64_t aivBlockTokenOffset;
-    uint64_t vHeadOffset;
     uint64_t vHeadSize;
     uint64_t cacheBaseOffset[QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV];
     uint64_t scaleCacheBaseOffset[QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV];
