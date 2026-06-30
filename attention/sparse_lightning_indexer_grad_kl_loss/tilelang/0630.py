@@ -683,6 +683,14 @@ def sparse_lightning_indexer_grad_kl_loss(
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
 
+        # Convert softmax_max/softmax_sum to float32 if needed (kernel expects calc_dtype=float32)
+        softmax_max_orig = softmax_max
+        softmax_sum_orig = softmax_sum
+        if softmax_max.dtype != torch.float32:
+            softmax_max = softmax_max.float()
+        if softmax_sum.dtype != torch.float32:
+            softmax_sum = softmax_sum.float()
+
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
         if _PROFILE:
             _t_prep_start = torch.npu.Event(enable_timing=True)
