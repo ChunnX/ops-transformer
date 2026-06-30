@@ -450,22 +450,14 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
 {
-    uint32_t rankSize = 0;
     // 获取通信引擎参数
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode, "", CMP_MAX_LEN) == 0) {
-        // 获取卡数
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-        auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-        CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-        commModeEnum = (rankSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
-    } else {
+    }else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode",
-            commMode, "empty string, 'ccu' or 'ai_cpu'");
+            commMode, "'ccu' or 'ai_cpu'");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

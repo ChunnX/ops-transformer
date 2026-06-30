@@ -212,10 +212,6 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU_SCHED;
-    } else if (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0) { // empty string
-        if (rankSize_ <= COMM_MODE_RANKSIZE) {
-            commEngine = Mc2Comm::ENGINE_CCU_SCHED;
-        }
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
