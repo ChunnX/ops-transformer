@@ -69,6 +69,7 @@ struct MoeV3Arch35GatherOutComputeTilingData {
     int64_t lastLoopCols{0};
     int64_t activeNum{0};
     int64_t xCopyInQueueBufferNum{2};
+    int64_t useCompactGatherOutDropPad{0};
 };
 
 // DropPad模式下的SrcToDst阶段TilingData

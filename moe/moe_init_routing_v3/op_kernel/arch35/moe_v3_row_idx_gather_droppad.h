@@ -32,10 +32,9 @@ public:
 private:
     __aicore__ inline void CopyIn(int64_t progress);
     __aicore__ inline void CopyOut(int64_t progress);
-    __aicore__ inline void CopyOutRemain();
     __aicore__ inline void SyncAll();
     __aicore__ inline void AssistInit();
-    __aicore__ inline void ZeroOutRange(int64_t startIndex, int64_t rowCount);
+    __aicore__ inline void ZeroOutAllOutput();
     __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
@@ -45,6 +44,7 @@ private:
 
     GlobalTensor<int32_t> expandDstToSrcRowGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
+    GlobalTensor<int32_t> outputToSrcRowGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
     GlobalTensor<int32_t> expandedExpertIdxGm_;
     GlobalTensor<T> expandedXGm_;
@@ -62,12 +62,15 @@ private:
     int64_t rowLoops_;
     int64_t expertCapacity_;
     int64_t expertNum_;
+    int64_t outputRows_;
     int64_t cols_;
+    int64_t k_;
     int64_t perLoopCols_;
     int64_t lastLoopCols_;
     int64_t colLoops_;
     int64_t isInputScale_;
     int64_t quantMode_;
+    int64_t useCompactOutputRows_ = 0;
 
     int64_t tokenCount_ = 0;
     int32_t lastExpertId_ = -1;
@@ -93,27 +96,47 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::AssistInit()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutRange(int64_t startIndex, int64_t rowCount)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutAllOutput()
 {
+    int64_t perCoreRows = Ceil(this->outputRows_, this->coreNum_);
+    int64_t startIndex = this->blockIdx_ * perCoreRows;
+    int64_t endIndex = Min(startIndex + perCoreRows, this->outputRows_);
+    int64_t rowCount = endIndex - startIndex;
     if (rowCount <= 0) {
         return;
     }
+
+    // DropPad padding rows may never be touched by gather_out. Pre-clear the whole output once, then
+    // synchronize before valid rows are written, avoiding many small expert-gap clears.
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         GlobalTensor<uint8_t> zeroGm;
         zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXUint8Gm_.GetPhyAddr() + startIndex * this->cols_,
                                rowCount * this->cols_);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
     } else {
         GlobalTensor<T> zeroGm;
         zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startIndex * this->cols_,
                                rowCount * this->cols_);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
     }
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
     if (this->isInputScale_ == 1) {
         GlobalTensor<float> scaleZeroGm;
         scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startIndex, rowCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         InitGlobalMemory(scaleZeroGm, rowCount, static_cast<float>(0));
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
+
+    if (this->useCompactOutputRows_ == 1) {
+        GlobalTensor<int32_t> sourceRowGm;
+        sourceRowGm.SetGlobalBuffer((__gm__ int32_t *)outputToSrcRowGm_.GetPhyAddr() + startIndex, rowCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        InitGlobalMemory(sourceRowGm, rowCount, static_cast<int32_t>(-1));
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     }
 }
 
@@ -154,9 +177,6 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             this->tokenCount_ = this->expertCapacity_;
         }
         if (this->lastExpertId_ < expertIdx) {
-            int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
-            int64_t zeroEnd = expertIdx * this->expertCapacity_;
-            ZeroOutRange(zeroStart, zeroEnd - zeroStart);
             this->lastExpertId_ = expertIdx;
             this->tokenCount_ = 0;
         }
@@ -167,29 +187,19 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             outLocal.SetValue(0, index);
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
+
+            if (this->useCompactOutputRows_ == 1) {
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+                outLocal.SetValue(0, outOffset / this->k_);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                DataCopyPad(outputToSrcRowGm_[index], outLocal, copyParams);
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            }
             this->tokenCount_++;
         }
     }
     copyInQueue_.FreeTensor(inLocal);
     copyOutQueue_.FreeTensor(outLocal);
-}
-
-template <typename T>
-__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
-{
-    if (this->blockIdx_ != this->srcToDstTilingData_->needCoreNum - 1) {
-        return;
-    }
-    if (this->lastExpertId_ < 0) {
-        this->lastExpertId_ = 0;
-        this->tokenCount_ = 0;
-    }
-    if (this->tokenCount_ > this->expertCapacity_) {
-        this->tokenCount_ = this->expertCapacity_;
-    }
-    int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
-    int64_t zeroEnd = this->expertNum_ * this->expertCapacity_;
-    ZeroOutRange(zeroStart, zeroEnd - zeroStart);
 }
 
 template <typename T>
@@ -215,9 +225,12 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeIni
     this->srcToDstTilingData_ = &(tilingData->srcToDstDropPadParamsOp);
     this->expertNum_ = tilingData->expertNum;
     this->expertCapacity_ = tilingData->expertCapacity;
+    this->outputRows_ = this->expertNum_ * this->expertCapacity_;
     this->cols_ = tilingData->cols;
+    this->k_ = tilingData->k;
     this->quantMode_ = tilingData->quantMode;
     this->isInputScale_ = tilingData->isInputScale;
+    this->useCompactOutputRows_ = tilingData->gatherOutComputeParamsOp.useCompactGatherOutDropPad;
 
     if (this->blockIdx_ == this->srcToDstTilingData_->needCoreNum - 1) {
         this->coreRows_ = this->srcToDstTilingData_->lastCoreRows;
@@ -266,11 +279,16 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
     // expertIdxValueGm偏移地址必须与expert_tokens_count.h保持一致
-    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
-    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
+    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum) (DropPad模式不保留expertTotalCountGm空间)
+    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t));
     expertIdxValueGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset,
         this->coreNum_ * 2);
+    if (this->useCompactOutputRows_ == 1) {
+        outputToSrcRowGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + this->coreNum_ * 2,
+            this->outputRows_);
+    }
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(INT32_ONE_BLOCK_NUM, sizeof(int32_t)));
@@ -279,6 +297,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
 template <typename T>
 __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
 {
+    ZeroOutAllOutput();
+    this->SyncAll();
+
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
         AssistInit();
         currentLoopRows_ = perLoopRows_;
@@ -289,7 +310,6 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
             CopyIn(loop);
             CopyOut(loop);
         }
-        CopyOutRemain();
     }
     this->SyncAll();
 }
