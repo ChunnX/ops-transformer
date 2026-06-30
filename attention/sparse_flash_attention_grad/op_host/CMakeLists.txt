@@ -18,6 +18,7 @@ endif()
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     set(sparse_flash_attention_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_flash_attention_grad")
+    enable_pypto_kernel(sparse_flash_attention_grad)
     add_ops_compile_options(
         OP_NAME sparse_flash_attention_grad
         COMPUTE_UNIT Ascend950PR_9599
