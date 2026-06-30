@@ -186,7 +186,7 @@ def cpu_sparse_attention_score_bf16(
 def _softmax_p_from_scores_fp32(s_fp32):
   """fp32 softmax; cast P to bf16 only for PV matmul dtype."""
   row_max_fp32 = s_fp32.max(dim=1).values
-  print("row_max_fp32:", row_max_fp32)
+  #print("row_max_fp32:", row_max_fp32)
   p_fp32 = torch.exp(s_fp32 - row_max_fp32.unsqueeze(1))
   row_sum_fp32 = p_fp32.sum(dim=1)
   p_bf16 = p_fp32.to(torch.bfloat16)

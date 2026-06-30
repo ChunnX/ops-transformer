@@ -3,15 +3,20 @@
  *
  * Block-level online softmax epilogue for prefill Phase1 (Arch35 / Atlas A5).
  *
- * Batch: CausalMask -> Scale -> RowMax -> Sub -> Exp -> RowSum -> Cast(P) -> LSE
+ * Batch: ... -> CastTransdataDeconflict(ubP zN) -> LSE -> CopyUbZNToL1
  * Each AIV owns its local UB rows (QK FixPipe already split S across vectors).
  */
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_PREFILL_ARCH35_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_PREFILL_ARCH35_HPP
 
 #include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/arch/cross_core_sync.hpp"
 #include "../../../attn_infra/detail/alignment.hpp"
 #include "../../../attn_infra/epilogue/dispatch_policy.hpp"
+#include "../../../attn_infra/layout/layout.hpp"
+#include "../../../tla/layout.hpp"
+#include "../../../tla/tensor.hpp"
+#include "../../../arch35/vector_api/vf_cast_transdata_deconflict.h"
 #include "kernel_operator.h"
 
 namespace NpuArch::Epilogue::Block {
@@ -31,6 +36,12 @@ public:
     static constexpr uint32_t FLOAT_VECTOR_SIZE = 64;
     static constexpr uint32_t REDUCE_SCRATCH_OFFSET = 64;
     static constexpr uint32_t TV_UB_OFFSET = 128;
+    static constexpr uint32_t ELE_NUM_PER_C0 = 32 / sizeof(ElementP);
+    static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
+    // Must match blockSize (128) and CastTransdataDeconflict srcN template.
+    static constexpr uint32_t P_CAST_COLS = 128;
+    static constexpr uint32_t FRACTAL_NZ_C0 = 32 / sizeof(ElementP);
+    static constexpr uint32_t INPUT_BLOCK_NUM = 32 / sizeof(ElementP);
     static constexpr float MIN_VALUE_FP32 = -3.389531390315715675e+38f;
     static constexpr float NEG_INF_LSE = -3.4028235e38f;
 
@@ -50,23 +61,81 @@ public:
     __aicore__ inline
     void SetScale(float s) { scale_ = s; }
 
+    // CastTransdataDeconflict writes zN to ubP; CopyUbZNToL1 matches FAG grad CopyUB2L1 layout.
+    template <class TensorPL1>
+    __aicore__ inline
+    void CopyUbZNToL1(TensorPL1 const &l1PTile,
+                      AscendC::LocalTensor<ElementP> const &ubPZn,
+                      uint32_t numRows, uint32_t rowsAligned, uint32_t groupSize,
+                      uint32_t validSize)
+    {
+        auto dstOffset = l1PTile.layout()(l1PTile.coord());
+        AscendC::DataCopyParams params;
+        params.blockCount = RoundUp(validSize, C0_NUM_PER_FRACTAL) / FRACTAL_NZ_C0;
+        params.blockLen = static_cast<uint16_t>(numRows * FRACTAL_NZ_C0 / INPUT_BLOCK_NUM);
+        params.srcStride = static_cast<uint16_t>(
+            (rowsAligned + 1U - numRows) * FRACTAL_NZ_C0 / INPUT_BLOCK_NUM);
+        params.dstStride = static_cast<uint16_t>(
+            (RoundUp(groupSize, C0_NUM_PER_FRACTAL) - numRows) * FRACTAL_NZ_C0 / INPUT_BLOCK_NUM);
+        AscendC::DataCopy(l1PTile.data()[dstOffset], ubPZn, params);
+        AscendC::PipeBarrier<PIPE_MTE3>();
+    }
+
+    template <uint32_t SRCN>
+    __aicore__ inline
+    void CastExpToUbZN(AscendC::LocalTensor<float> &expUb,
+                       AscendC::LocalTensor<ElementP> &pUbZN,
+                       uint32_t rowsAligned)
+    {
+        AscendC::LocalTensor<uint8_t> selDummy;
+        AscendC::CastTransdataDeconflict<ElementP, float, SRCN>(pUbZN, expUb, selDummy, rowsAligned);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void SetVecCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
+        }
+    }
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void WaitVecCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
+        }
+    }
+
+    template <class TensorPL1>
     __aicore__ inline
     void operator()(AscendC::LocalTensor<float> &ubSBuf,
                     AscendC::LocalTensor<InDtype> &ubPBuf,
+                    TensorPL1 &l1PTensor,
+                    uint32_t groupSize,
                     uint32_t numRows,
                     uint32_t validSize,
                     uint32_t causalValidLen,
-                    uint32_t sColsAligned)
+                    uint32_t sColsAligned,
+                    Arch::CrossCoreFlag &mm1ToSmFlag,
+                    Arch::CrossCoreFlag &smToMm2Flag)
     {
-        uint32_t maskLen = sColsAligned - causalValidLen;
-            // AscendC::printf(
-            //     "[SASAPrefillSM] subBlk=%u numRows=%u validSize=%u causalValidLen=%u "
-            //     "sColsAligned=%u maskLen=%u scale=%f\n",
-            //     AscendC::GetSubBlockIdx(), numRows, validSize, causalValidLen,
-            //     sColsAligned, maskLen, scale_);
-        if (numRows == 0U) {
+        uint32_t mCopyOffset = RoundUp(groupSize, FLOAT_BLOCK_SIZE) / 2;
+        uint32_t m = groupSize < mCopyOffset ? groupSize : mCopyOffset;
+        m = AscendC::GetSubBlockIdx() == 0 ? m : groupSize - m;
+
+        WaitVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+        if (numRows == 0U || m == 0U) {
+            SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+            WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+            SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
             return;
         }
+
+        uint32_t maskLen = sColsAligned - causalValidLen;
         uint32_t numRowsRound = RoundUp(numRows, FLOAT_BLOCK_SIZE);
 
         if (maskLen > 0U) {
@@ -95,11 +164,23 @@ public:
         //AscendC::DumpTensor(ubSBuf, 456, 16);
         CalcRowSumTail(ubSBuf, rowSumBuf_, tvUb, tvScratch,
             numRows, numRowsRound, validSize, sColsAligned);
-        AscendC::printf("0000000000000000000000000000\n");
-        DownCastP(ubSBuf, ubPBuf, numRows, sColsAligned);
-        AscendC::printf("1111111111111111111111111111\n");
         CalcLse(rowMaxUb, rowSumBuf_, lseBuf_, numRows);
-        AscendC::printf("2222222222222222222222222222\n");
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        uint32_t n = validSize;
+        auto l1PTile = GetTile(l1PTensor,
+            tla::MakeCoord(AscendC::GetSubBlockIdx() * mCopyOffset, 0), tla::MakeShape(m, n));
+
+        WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+        uint32_t rowsAligned = RoundUp(numRows, C0_NUM_PER_FRACTAL);
+        if constexpr (P_CAST_COLS == 128) {
+            CastExpToUbZN<P_CAST_COLS>(ubSBuf, ubPBuf, rowsAligned);
+        }
+        CopyUbZNToL1(l1PTile, ubPBuf, numRows, rowsAligned, groupSize, validSize);
+        SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
     }
 
 private:
@@ -307,28 +388,6 @@ private:
             static_cast<uint64_t>(0),
             CeilDiv(numRows * numElemsAligned, FLOAT_VECTOR_SIZE),
             AscendC::UnaryRepeatParams(1, 1, 8, 8));
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-
-    __aicore__ inline
-    void DownCastP(const AscendC::LocalTensor<float> &srcUb,
-                   AscendC::LocalTensor<InDtype> &dstUb,
-                   uint32_t numRows, uint32_t numElemsAligned)
-    {
-        uint32_t repeatTimes = CeilDiv(numRows * numElemsAligned, FLOAT_VECTOR_SIZE);
-        if constexpr (std::is_same<ElementP, bfloat16_t>::value) {
-            AscendC::Cast<ElementP, float, false>(
-                dstUb, srcUb,
-                AscendC::RoundMode::CAST_RINT,
-                static_cast<uint64_t>(0), repeatTimes,
-                AscendC::UnaryRepeatParams(1, 1, 4, 8));
-        } else {
-            AscendC::Cast<ElementP, float, false>(
-                dstUb, srcUb,
-                AscendC::RoundMode::CAST_NONE,
-                static_cast<uint64_t>(0), repeatTimes,
-                AscendC::UnaryRepeatParams(1, 1, 4, 8));
-        }
         AscendC::PipeBarrier<PIPE_V>();
     }
 

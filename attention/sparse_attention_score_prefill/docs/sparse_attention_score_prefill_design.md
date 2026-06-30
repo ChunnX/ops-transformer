@@ -4,7 +4,7 @@
 
 `sparse_attention_score_prefill` 面向 Prefill 阶段的 Sparse Attention，采用 **KV-Gather-Q** 方案：以 KV block 为主轴分任务，同一个 KV block 只加载一次，然后遍历所有选择该 block 的 Q token，计算该 block 对这些 Q token 的 partial attention。
 
-目标不是实现逐元素标量参考 kernel，而是实现如下数据流：
+目标实现如下数据流：
 
 1. Phase 1 在 Cube 侧完成 `QK + softmax + PV` 的 partial 计算。
 2. Phase 1 以 `1 logical KV block × 1 KV head` 为 task 粒度。
@@ -31,7 +31,7 @@
 | `actual_seq_lengths` | `[batch]` | int32 | 每个 batch 的 Q seqlen。 |
 | `actual_seq_lengths_kv` | `[batch]` | int32 | 每个 batch 的 KV seqlen。 |
 
-- TODO: 确认actual_seq_lengths是否作为cumsum，以快速通过q indices算出当前所属batch
+
 ### 2.2 反向索引输入约束
 
 `k2q_row_ptr`、`k2q_q_indices`、`k2q_slot_indices` 由 host 在调用算子前构建（CSR 格式，对齐 CUDA `build_k2q_csr_reference`），并作为 GM 输入传入 kernel，不放入 workspace。
@@ -396,9 +396,9 @@ Golden 不模拟 Cube tile 搬运；SM/PV 统计量在 fp32 计算，仅 P 矩�
 
 1. Phase 1 扩展 `qTile > 1`：批量 gather Q，拼 `M = qTile * groupSize` 做 Cube QK/PV。
 2. 性能：
- - PRELAUNCH流水
- - double buffer
- - L1/L0 preload
- - score/softmax UB 复用
- - 空 CSR 行 task 负载均衡
- - Regbase优化
+- PRE_LAUNCH流水
+- double buffer
+- L1/L0 preload
+- score/softmax UB 复用
+- 空 CSR 行 task 负载均衡
+- Regbase优化

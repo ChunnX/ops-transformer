@@ -66,10 +66,10 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V0);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V1);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(MM2_TO_WS_FLAG_V0);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(MM2_TO_WS_FLAG_V1);
 #endif
 #ifdef __DAV_VEC__
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -79,6 +79,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V0);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V1);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM2_TO_WS_FLAG_V0);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM2_TO_WS_FLAG_V1);
 #endif
     }
 
@@ -96,6 +98,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(MM1_TO_SM_FLAG_V0);
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(MM1_TO_SM_FLAG_V1);
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V0);
@@ -293,13 +297,15 @@ private:
         AscendC::GlobalTensor<float> &gWorkspaceF)
     {
         uint32_t mPerSubCore = VecRowSplit(groupSize_);
-        uint32_t sColMax = RoundUp(blockSize_, 16u);
+        // CastTransdataDeconflict requires compile-time srcN=128 and ND stride 128.
+        uint32_t sColMax = blockSize_;
         uint32_t oColAligned = RoundUp(embed_, 16u);
 
 #ifdef __DAV_CUBE__
         uint32_t mAligned = RoundUp(mPerSubCore, 16u);
+        uint32_t rowNumRound = RoundUp(groupSize_, 16u);
         uint32_t cubeUbSSize = mAligned * sColMax;
-        uint32_t cubeUbOSize = mAligned * oColAligned;
+        uint32_t cubeUbOSize = rowNumRound * oColAligned;
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
@@ -329,9 +335,12 @@ private:
         uint32_t vecMAligned = RoundUp(vecRows, 16u);
         uint32_t vecUbSSize = vecMAligned * sColMax;
         uint32_t vecUbOSize = vecMAligned * oColAligned;
+        uint32_t vecUbPSize = (vecMAligned + 1U) * sColMax;
 
         AscendC::LocalTensor<float> ubSBuf =
             resource.ubBuf.template GetBufferByByte<float>(0);
+        AscendC::printf("hhhhhhhhhhhhhhhhhhhhhhhh:%d, %d\n", vecUbSSize * sizeof(float),
+                        vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp));
         AscendC::LocalTensor<ElementOTmp> ubOBuf =
             resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 vecUbSSize * sizeof(float));
@@ -341,9 +350,9 @@ private:
         AscendC::LocalTensor<float> ubTmpBuf =
             resource.ubBuf.template GetBufferByByte<float>(
                 vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp)
-                + vecMAligned * sColMax * sizeof(ElementP));
+                + vecUbPSize * sizeof(ElementP));
         uint32_t ubWsMetaOffset = vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp)
-            + vecMAligned * sColMax * sizeof(ElementP) + 256 * sizeof(float);
+            + vecUbPSize * sizeof(ElementP) + 256 * sizeof(float);
         AscendC::LocalTensor<float> ubWsMeta =
             resource.ubBuf.template GetBufferByByte<float>(ubWsMetaOffset);
         AscendC::LocalTensor<float> ubLse = ubWsMeta;
@@ -352,6 +361,13 @@ private:
         EpilogueOnlineSoftmax epilogueSoftmax;
         epilogueSoftmax.Init(ubTmpBuf, ubLse, ubRowSum);
         epilogueSoftmax.SetScale(scaleValue_);
+
+        uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
+            + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
+        uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
+        AscendC::LocalTensor<ElementP> l1PBuf =
+            resource.l1Buf.template GetBufferByByte<ElementP>(qkL1Used + vBufBytes);
+        AscendC::printf("--------------vec init---------------:%d, %d\n", qkL1Used, vBufBytes);
 #endif
 
         int32_t curPackedRow = -1;
@@ -397,7 +413,7 @@ private:
             }
 
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
-            uint32_t sColsAligned = RoundUp(validSize, 16u);
+            uint32_t sColsAligned = sColMax;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
 
 #ifdef __DAV_CUBE__
@@ -456,31 +472,36 @@ private:
 #endif
 #ifdef __DAV_VEC__
                 Arch::CrossCoreFlag mm1ToSmFlag(VecCrossCoreFlagId(MM1_TO_SM_FLAG_V0));
-                Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm1ToSmFlag);
-                //AscendC::printf("11111111111111111111:sub blk:%d\n", AscendC::GetSubBlockIdx());
+                Arch::CrossCoreFlag smToMm2Flag(VecCrossCoreFlagId(SM_TO_MM2_FLAG_V0));
+
+                auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, validSize);
+                auto l1PTensor = tla::MakeTensor(l1PBuf, l1PLayout, Arch::PositionL1{});
                 AscendC::DumpTensor(ubSBuf, 123, 16);
                 epilogueSoftmax(
-                    ubSBuf, ubPBuf, vecRows, validSize, causalValidLen, sColsAligned);
+                    ubSBuf, ubPBuf, l1PTensor, groupSize_, vecRows,
+                    validSize, causalValidLen, sColsAligned,
+                    mm1ToSmFlag, smToMm2Flag);
                 AscendC::DumpTensor(ubPBuf, 456, 16);
-                AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(
-                    VecCrossCoreFlagId(SM_TO_MM2_FLAG_V0));
 #endif
 #ifdef __DAV_CUBE__
                 Arch::CrossCoreFlag smToMm2Flag(SM_TO_MM2_FLAG_V0);
                 Arch::CrossCoreFlag mm2ToWsFlag(MM2_TO_WS_FLAG_V0);
 
-                auto ubPLayout = tla::MakeLayout<ElementP, LayoutP>(groupSize_, validSize);
-                auto ubPTensor = tla::MakeTensor(ubPBuf, ubPLayout, Arch::PositionUB{});
-
-                auto ubOLayout = tla::MakeLayout<ElementOTmp, LayoutO>(mAligned, oColAligned);
+                auto ubOLayout = tla::MakeLayout<ElementOTmp, LayoutO>(rowNumRound, oColAligned);
                 auto ubOTensor = tla::MakeTensor(ubOBuf, ubOLayout, Arch::PositionUB{});
-                blockMmadPV(ubPTensor, ubOTensor, groupSize_, validSize, embed_,
+                blockMmadPV(ubOTensor, groupSize_, validSize, embed_,
                     smToMm2Flag, mm2ToWsFlag);
 #endif
 #ifdef __DAV_VEC__
+                AscendC::printf("dddddddddddddddddddddd\n");
                 Arch::CrossCoreFlag mm2ToWsFlag(VecCrossCoreFlagId(MM2_TO_WS_FLAG_V0));
-                Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(mm2ToWsFlag);
+                Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToWsFlag);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::printf("eeeeeeeeeeeeeeeeeeeeeeee\n");
                 if (vecRows > 0U) {
+                    AscendC::printf("fffffffffffffffffffff:%f\n", ubPBuf.GetValue(0));
+                    AscendC::printf("ggggggggggggggggggggg:%f\n", ubOBuf.GetValue(0));
+                    AscendC::DumpTensor(ubOBuf, 789, 16);
                     int32_t dLen = static_cast<int32_t>(embed_);
                     for (uint32_t gh = 0; gh < vecRows; gh++) {
                         float rowSum = ubRowSum.GetValue(gh);
@@ -495,15 +516,16 @@ private:
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::DataCopy(gWorkspaceF[wsFOff + vecRowOffset], ubLse, vecRows);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+                    //AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
 
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
                     AscendC::DataCopy(
                         gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
                         ubOBuf, vecRows * embed_);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+                    //AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
                 }
+                AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(VecCrossCoreFlagId(MM2_TO_WS_FLAG_V0));
 #endif
             }
         }
