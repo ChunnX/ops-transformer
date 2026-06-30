@@ -743,7 +743,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
                                (MM_IDX == DK_IDX ? runInfo.commonRunInfo.keyOffset : runInfo.commonRunInfo.valueOffset);
     uint64_t ropeGmOffset;
     GlobalTensor<OUTDTYPE> dqkRopeGmTensor;
-    uint16_t ropeDstStride;
+    int64_t ropeDstStride;
     if constexpr (IS_ROPE) {
         dSize = constInfo.commonConstInfo.dSizeV;
         dqkvGmOffset = (MM_IDX == DQ_IDX) ?
@@ -754,37 +754,37 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
             runInfo.commonRunInfo.kRopeOffset;
         dqkRopeGmTensor = MM_IDX == DQ_IDX ? dqRopeGm : dkRopeGm;
         if constexpr (IS_TND) {
-            ropeDstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) *
-                constInfo.dRopeSize * sizeof(OUTDTYPE));
+            ropeDstStride = (constInfo.commonConstInfo.n2G - 1) *
+                constInfo.dRopeSize * sizeof(OUTDTYPE);
             ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2GDr;
         } else {
             if (constInfo.commonConstInfo.layoutType == BNGSD) {
                 ropeDstStride = 0;
                 ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.dRopeSize;
             } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
-                ropeDstStride = static_cast<uint32_t>((constInfo.bSize * constInfo.commonConstInfo.n2G - 1) *
-                    constInfo.dRopeSize * sizeof(OUTDTYPE));
+                ropeDstStride = (constInfo.bSize * constInfo.commonConstInfo.n2G - 1) *
+                    constInfo.dRopeSize * sizeof(OUTDTYPE);
                 ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.bN2GDr;
             } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
-                ropeDstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) *
-                    constInfo.dRopeSize * sizeof(OUTDTYPE));
+                ropeDstStride = (constInfo.commonConstInfo.n2G - 1) *
+                    constInfo.dRopeSize * sizeof(OUTDTYPE);
                 ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2GDr;
             }
         }
     }
 
     if constexpr (IS_TND) {
-        intriParamsOut.dstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE));
+        intriParamsOut.dstStride = (constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE);
         dqkvGmOffset += vSubBlockIdx * firsthalfSRealSize * dSize * constInfo.commonConstInfo.n2G;
     } else {
         if (constInfo.commonConstInfo.layoutType == BNGSD) {
             intriParamsOut.dstStride = 0;
             dqkvGmOffset += vSubBlockIdx * firsthalfSRealSize * dSize;
         } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
-            intriParamsOut.dstStride = static_cast<uint32_t>((constInfo.bSize * constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE));
+            intriParamsOut.dstStride = (constInfo.bSize * constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE);
             dqkvGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2G * constInfo.bSize * dSize;
         } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
-            intriParamsOut.dstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE));
+            intriParamsOut.dstStride = (constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE);
             dqkvGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2G * dSize;
         }
     }
@@ -820,25 +820,24 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
         outQue.template DeQue<OUTDTYPE>();
  
         if constexpr (IS_ROPE) {
-            DataCopyParams dataCopyParams;
-            dataCopyParams.blockCount = curLoopSize;
+            intriParamsOut.blockCount = curLoopSize;
             if (MM_IDX != DV_IDX) {
                 uint16_t dBlockLen = NUM_FOUR * sizeof(OUTDTYPE);
                 uint16_t dRopeBlockLen = NUM_TWO * sizeof(OUTDTYPE);
-                dataCopyParams.blockLen = dBlockLen;
-                dataCopyParams.srcStride = dRopeBlockLen;
-                dataCopyParams.dstStride = static_cast<uint16_t>(intriParamsOut.dstStride >> OFFSET_BITS_5);
-                DataCopy(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, dataCopyParams);
-                dataCopyParams.blockLen = dRopeBlockLen;
-                dataCopyParams.srcStride = dBlockLen;
-                dataCopyParams.dstStride = ropeDstStride >> OFFSET_BITS_5;
-                DataCopy(dqkRopeGmTensor[ropeGmOffset], dqkvCastTensor[dSize], dataCopyParams);
+                intriParamsOut.blockLen = constInfo.commonConstInfo.dSizeV * sizeof(OUTDTYPE);
+                intriParamsOut.srcStride = dRopeBlockLen;
+                DataCopyPad(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, intriParamsOut);
+                DataCopyExtParams ropeParamsOut;
+                ropeParamsOut.blockCount = curLoopSize;
+                ropeParamsOut.blockLen = constInfo.dRopeSize * sizeof(OUTDTYPE);
+                ropeParamsOut.srcStride = dBlockLen;
+                ropeParamsOut.dstStride = ropeDstStride;
+                DataCopyPad(dqkRopeGmTensor[ropeGmOffset], dqkvCastTensor[dSize], ropeParamsOut);
             } else {
                 // 128 * sizeof(OUTDTYPE) / 32B
-                dataCopyParams.blockLen = NUM_FOUR * sizeof(OUTDTYPE);
-                dataCopyParams.srcStride = 0;
-                dataCopyParams.dstStride = 0;
-                DataCopy(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, dataCopyParams);
+                intriParamsOut.blockLen = constInfo.commonConstInfo.dSizeV * sizeof(OUTDTYPE);
+                intriParamsOut.srcStride = 0;
+                DataCopyPad(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, intriParamsOut);
             }
         } else {
             intriParamsOut.blockCount = curLoopSize;
