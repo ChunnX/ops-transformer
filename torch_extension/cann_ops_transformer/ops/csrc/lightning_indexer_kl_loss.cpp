@@ -28,10 +28,10 @@ at::Tensor lightning_indexer_kl_loss(
 
     at::Tensor loss{nullptr};
     {
-    auto local_device = c10::Device(query.device());
-    const c10::OptionalDeviceGuard device_guard(local_device);
-    // 输出为标量，分配一个单元素 tensor
-    loss = at::empty({}, target_score.options());
+        auto local_device = c10::Device(target_score.device());
+        const c10::OptionalDeviceGuard device_guard(local_device);
+        // 输出为标量，分配一个单元素 tensor
+        loss = at::empty({}, target_score.options());
     }
 
     ACLNN_CMD(aclnnLightningIndexerKLLoss, target_score, index_probs, eps, loss);

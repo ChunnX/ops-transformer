@@ -39,7 +39,7 @@ extern "C" {
 struct LightningIndexerKLLossParams {
     const aclTensor *target_score = nullptr;
     const aclTensor *index_probs = nullptr;
-    float eps;
+    double eps;
     const aclTensor *loss = nullptr;
 };
 
@@ -76,7 +76,7 @@ static bool CheckDataType(const aclTensor *target_score, const aclTensor *index_
     return true;
 }
 
-static aclnnStatus ValidateParams(const aclTensor *target_score, const aclTensor *index_probs, float eps)
+static aclnnStatus ValidateParams(const aclTensor *target_score, const aclTensor *index_probs, double eps)
 {
     CHECK_RET(target_score != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(index_probs != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -91,7 +91,7 @@ static aclnnStatus ValidateParams(const aclTensor *target_score, const aclTensor
 
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     const aclTensor *target_score, const aclTensor *index_probs,
-    float eps, const aclTensor *loss,
+    double eps, const aclTensor *loss,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     aclnnStatus validateRet = ValidateParams(target_score, index_probs, eps);
