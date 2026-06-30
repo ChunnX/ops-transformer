@@ -196,7 +196,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于按cmp_len * cmpRatio + residual恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>在C4A/CSA、C128A/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -306,7 +306,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
       <td>从cmpKv中筛选的稀疏token个数。</td>
-      <td>C4A场景下仅支持512或1024，C1A/C128A场景下为0。</td>
+      <td>C4A/CSA场景下仅支持512或1024，C1A/SWA、C128A/HCA场景下为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A场景传4，C128A场景传128。</td>
+      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A/CSA场景传4，C128A/HCA场景传128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>是否传入cmpKv。</td>
-      <td>C1A场景为false，C4A/C128A场景为true。默认值为true。</td>
+      <td>C1A/SWA场景为false，C4A/CSA、C128A/HCA场景为true。默认值为true。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -487,7 +487,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>oriWinLeft不为127，或oriWinRight不为0。</td>
       </tr>
       <tr>
-        <td>C1A场景cmpRatio不为1，或cmpRatio与C4A/C128A场景不匹配。</td>
+        <td>C1A/SWA场景cmpRatio不为1，或cmpRatio与C4A/CSA、C128A/HCA场景不匹配。</td>
       </tr>
       <tr>
         <td>cmpTopk不为0、512或1024。</td>
@@ -610,7 +610,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - layoutKvOptional为PA_BBND时，`sequsedOriKvOptional`必须传入。BSND场景可选传入`sequsedOriKvOptional`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqlensOriKvOptional`表达oriKv序列边界。
   - layoutKvOptional为TND时，`cuSeqlensOriKvOptional`必须传入；若hasCmpKv为true，`cuSeqlensCmpKvOptional`也必须传入。
   - `sequsedCmpKvOptional`为所有layoutKvOptional下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
-  - `cmpResidualKvOptional`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
+  - `cmpResidualKvOptional`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在C4A/CSA、C128A/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
 
@@ -699,7 +699,7 @@ int main()
 {
   // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
-  int32_t deviceId = 5;
+  int32_t deviceId = 0;
   aclrtContext context = nullptr;
   aclrtStream stream = nullptr;
   auto ret = Init(deviceId, &context, &stream);
@@ -782,7 +782,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BBND";
+  char layoutKv[] = "TND";
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
