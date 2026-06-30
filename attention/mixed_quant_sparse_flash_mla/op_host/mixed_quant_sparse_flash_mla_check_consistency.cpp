@@ -22,6 +22,11 @@ using std::string;
 using std::pair;
 namespace optiling {
 
+static constexpr uint32_t DIM_0 = 0;
+static constexpr uint32_t DIM_1 = 1;
+static constexpr uint32_t DIM_2 = 2;
+static constexpr uint32_t DIM_3 = 3;
+
 ge::graphStatus QSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
     const ge::DataType &expectDtype, const std::string &name) const
 {
@@ -345,4 +350,172 @@ ge::graphStatus QSMLATilingCheck::CheckMultiParaConsistency()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSMLATilingCheck::CheckLayoutQKvConsistency() const
+{
+    if (kvLayout_ != QSMLALayout::PA_BBND) {
+        OP_CHECK_IF(qLayout_ != kvLayout_,
+            OP_LOGE(opName_, "When kv layout is not PA_BBND, q layout(%s) must be same as kv layout(%s).",
+                QSMLALayoutToSerialString(qLayout_).c_str(),
+                QSMLALayoutToSerialString(kvLayout_).c_str()),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckSparseIndicesShapeMatchQ() const
+{
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+        const auto &oriSparseShape = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
+        if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(oriSparseShape.GetDimNum() != DIM_NUM_FOUR,
+                OP_LOGE(opName_, "When q layout is BSND, oriSparseIndices should be 4D, but got %zuD.",
+                    oriSparseShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(oriSparseShape.GetDim(DIM_0) != bSize_ ||
+                oriSparseShape.GetDim(DIM_1) != s1Size_ ||
+                oriSparseShape.GetDim(DIM_2) != n2Size_,
+                OP_LOGE(opName_, "When q layout is BSND, oriSparseIndices shape[B,S1,N2] should be [%u,%u,%u], "
+                    "but got [%ld,%ld,%ld].",
+                    bSize_, s1Size_, n2Size_,
+                    oriSparseShape.GetDim(DIM_0), oriSparseShape.GetDim(DIM_1), oriSparseShape.GetDim(DIM_2)),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(oriSparseShape.GetDimNum() != DIM_NUM_THREE,
+                OP_LOGE(opName_, "When q layout is TND, oriSparseIndices should be 3D, but got %zuD.",
+                    oriSparseShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(oriSparseShape.GetDim(DIM_0) != qTSize_ ||
+                oriSparseShape.GetDim(DIM_1) != n1Size_,
+                OP_LOGE(opName_, "When q layout is TND, oriSparseIndices shape[T,N] should be [%u,%u], "
+                    "but got [%ld,%ld].",
+                    qTSize_, n2Size_,
+                    oriSparseShape.GetDim(DIM_0), oriSparseShape.GetDim(DIM_1)),
+                return ge::GRAPH_FAILED);
+        }
+    }
+
+    if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
+        const auto &cmpSparseShape = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
+        if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(cmpSparseShape.GetDimNum() != DIM_NUM_FOUR,
+                OP_LOGE(opName_, "When q layout is BSND, cmpSparseIndices should be 4D, but got %zuD.",
+                    cmpSparseShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(cmpSparseShape.GetDim(DIM_0) != bSize_ ||
+                cmpSparseShape.GetDim(DIM_1) != s1Size_ ||
+                cmpSparseShape.GetDim(DIM_2) != n2Size_,
+                OP_LOGE(opName_, "When q layout is BSND, cmpSparseIndices shape[B,S,N] should be [%u,%u,%u], "
+                    "but got [%ld,%ld,%ld].",
+                    bSize_, s1Size_, n2Size_,
+                    cmpSparseShape.GetDim(DIM_0), cmpSparseShape.GetDim(DIM_1), cmpSparseShape.GetDim(DIM_2)),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(cmpSparseShape.GetDimNum() != DIM_NUM_THREE,
+                OP_LOGE(opName_, "When q layout is TND, cmpSparseIndices should be 3D, but got %zuD.",
+                    cmpSparseShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(cmpSparseShape.GetDim(DIM_0) != qTSize_ ||
+                cmpSparseShape.GetDim(DIM_1) != n2Size_,
+                OP_LOGE(opName_, "When q layout is TND, cmpSparseIndices shape[T,N] should be [%u,%u], "
+                    "but got [%ld,%ld].",
+                    qTSize_, n2Size_,
+                    cmpSparseShape.GetDim(DIM_0), cmpSparseShape.GetDim(DIM_1)),
+                return ge::GRAPH_FAILED);
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckTopkLengthConsistency() const
+{
+    if (opParamInfo_.oriTopkLength.tensor != nullptr) {
+        const auto &oriTopkShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
+        if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(oriTopkShape.GetDim(DIM_1) != s1Size_,
+                OP_LOGE(opName_, "oriTopkLength's S1(%ld) should be equal to q's S1(%u).",
+                    oriTopkShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
+        }
+    }
+
+    if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
+        const auto &cmpTopkShape = opParamInfo_.cmpTopkLength.tensor->GetStorageShape();
+        if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(cmpTopkShape.GetDim(DIM_1) != s1Size_,
+                OP_LOGE(opName_, "cmpTopkLength's S1(%ld) should be equal to q's S1(%u).",
+                    cmpTopkShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckN2Consistency() const
+{
+    if (opParamInfo_.cmpKv.tensor != nullptr) {
+        uint32_t cmpKvN2 = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::N, kvLayout_);
+        OP_CHECK_IF(cmpKvN2 != n2Size_,
+            OP_LOGE(opName_, "cmpKv's N2(%u) should be equal to oriKv's N2(%u).", cmpKvN2, n2Size_),
+            return ge::GRAPH_FAILED);
+    }
+
+    if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+        const auto &oriSparseShape = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
+        int64_t oriSparseN2 = (qLayout_ == QSMLALayout::BSND) ?
+            oriSparseShape.GetDim(DIM_2) : oriSparseShape.GetDim(DIM_1);
+        OP_CHECK_IF(static_cast<uint32_t>(oriSparseN2) != n2Size_,
+            OP_LOGE(opName_, "oriSparseIndices's N2(%ld) should be equal to oriKv's N2(%u).",
+                oriSparseN2, n2Size_),
+            return ge::GRAPH_FAILED);
+    }
+
+    if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
+        const auto &cmpSparseShape = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
+        int64_t cmpSparseN2 = (qLayout_ == QSMLALayout::BSND) ?
+            cmpSparseShape.GetDim(DIM_2) : cmpSparseShape.GetDim(DIM_1);
+        OP_CHECK_IF(static_cast<uint32_t>(cmpSparseN2) != n2Size_,
+            OP_LOGE(opName_, "cmpSparseIndices's N2(%ld) should be equal to oriKv's N2(%u).",
+                cmpSparseN2, n2Size_),
+            return ge::GRAPH_FAILED);
+    }
+
+    if (opParamInfo_.oriTopkLength.tensor != nullptr) {
+        const auto &oriTopkShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
+        int64_t oriTopkN2 = (qLayout_ == QSMLALayout::BSND) ?
+            oriTopkShape.GetDim(DIM_2) : oriTopkShape.GetDim(DIM_1);
+        OP_CHECK_IF(static_cast<uint32_t>(oriTopkN2) != n2Size_,
+            OP_LOGE(opName_, "oriTopkLength's N2(%ld) should be equal to oriKv's N2(%u).",
+                oriTopkN2, n2Size_),
+            return ge::GRAPH_FAILED);
+    }
+
+    if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
+        const auto &cmpTopkShape = opParamInfo_.cmpTopkLength.tensor->GetStorageShape();
+        int64_t cmpTopkN2 = (qLayout_ == QSMLALayout::BSND) ?
+            cmpTopkShape.GetDim(DIM_2) : cmpTopkShape.GetDim(DIM_1);
+        OP_CHECK_IF(static_cast<uint32_t>(cmpTopkN2) != n2Size_,
+            OP_LOGE(opName_, "cmpTopkLength's N2(%ld) should be equal to oriKv's N2(%u).",
+                cmpTopkN2, n2Size_),
+            return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckConsistency() const
+{
+    if (ge::GRAPH_SUCCESS != CheckLayoutQKvConsistency() ||
+        ge::GRAPH_SUCCESS != CheckSparseIndicesShapeMatchQ() ||
+        ge::GRAPH_SUCCESS != CheckTopkLengthConsistency() ||
+        ge::GRAPH_SUCCESS != CheckN2Consistency()) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 }

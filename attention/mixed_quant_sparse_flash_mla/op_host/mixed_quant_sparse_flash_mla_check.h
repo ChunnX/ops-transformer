@@ -43,9 +43,15 @@ const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
+const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
+const std::string SEQUSED_Q_NAME = "seqused_q";
 const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
 const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
 const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
+const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
+const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
+const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
 struct QSMLATilingRequiredParaInfo {
@@ -233,6 +239,8 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
+ 	QSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -250,6 +258,7 @@ struct QSMLAParaInfo {
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const int64_t *topkValueMode = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -291,6 +300,7 @@ public:
     int64_t cmpRatio = 0;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
+    int64_t topkValueMode = 0;
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
@@ -464,13 +474,21 @@ private:
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
+    ge::graphStatus CheckSingleParaOriSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqLensQ() const;
     ge::graphStatus CheckSingleParaSequsedKv() const;
+    ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
+    ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
+ 	ge::graphStatus CheckSingleParaSequsedQ() const;
+    ge::graphStatus CheckSingleParaSequsedCmpKv() const;
+    ge::graphStatus CheckSingleParaOriTopkLength() const;
+ 	ge::graphStatus CheckSingleParaCmpTopkLength() const;
     ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSingleParaMetadata() const;
+    ge::graphStatus CheckSingleParaTopkValueMode() const;
 
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckParaExistenceAntiquant() const;
@@ -505,6 +523,11 @@ private:
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
 
+    ge::graphStatus CheckConsistency() const;
+    ge::graphStatus CheckLayoutQKvConsistency() const;
+    ge::graphStatus CheckSparseIndicesShapeMatchQ() const;
+    ge::graphStatus CheckTopkLengthConsistency() const;
+    ge::graphStatus CheckN2Consistency() const;
     ge::graphStatus CheckFeatureWinKV() const;
     ge::graphStatus CheckFeatureAntiquantShape() const;
     ge::graphStatus CheckFeatureAntiquantLayout() const;
@@ -539,7 +562,7 @@ private:
     uint32_t sparseBlockSize_ = 0;
     uint32_t oriKvStride_ = 0;
     uint32_t cmpKvStride_ = 0;
-
+    int64_t topkValueMode_ = 0;
     uint32_t oriBlockNum_ = 0;
     uint32_t cmpBlockNum_ = 0;
 
@@ -547,7 +570,7 @@ private:
     uint32_t cmpBlockSize_ = 0;
     uint32_t oriBlockTable_ = 0;
     uint32_t cmpBlockTable_ = 0;
-    int64_t kv_quant_mode_ = 0;
+    int64_t quant_mode_ = 0;
     int64_t tileSize_ = 0;
 
     int64_t oriWinLeft_ = 0;
