@@ -755,7 +755,6 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out,
                                                    __ubuf__ float* weight,
                                                    const int gSize)
 {
-
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<float> regwBrc;

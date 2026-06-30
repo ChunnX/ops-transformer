@@ -511,15 +511,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
-    } else {
-        // auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
-        // auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
-        // vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-        //                                     qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-        //                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightTempBase,
-        //                                     kScaleBase, (uint32_t)0,
-        //                                     qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
-        //                                     gSize_, curAivS1ProcNum);
     }
     if constexpr (!IS_MXFP8) {
         if (info.isFirstS2InnerLoop) {

@@ -626,9 +626,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
         Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
              keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
     }
-    // if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
-        PipeBarrier<PIPE_M>();
-    // }
+    PipeBarrier<PIPE_M>();
 }
 
 template <typename QLIV2T>

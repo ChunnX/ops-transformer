@@ -966,8 +966,8 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
         QLIV2Info.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
         // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/64, 2]，stride = BlockSize * (D/64) * 2 = BlockSize * D/32
-        if (*opParamInfo_.quantMode == 3) {
-            QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32);
+        if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
+            QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32); // 32:32个key对应1个scale
         } else {
             QLIV2Info.keyDequantScaleStride0 = blockSize_;
         }

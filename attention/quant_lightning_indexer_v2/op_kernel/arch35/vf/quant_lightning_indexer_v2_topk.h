@@ -161,11 +161,11 @@ public:
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK,
-                                          loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                                          loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen); // 256:topk向256对齐
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK,
-                    (uint32_t)256));
+                    (uint32_t)256)); // 256:topk向256对齐
             }
         }
 
@@ -176,17 +176,17 @@ public:
             Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                              QLIV2Common::Align(topK, (uint32_t)256));
+                              QLIV2Common::Align(topK, (uint32_t)256)); // 256:topk向256对齐
         } else if (loopIdx != 0 && isNeedLD) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
                                           idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                           tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                          topK, loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                                          topK, loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen); // 256:topk向256对齐
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                QLIV2Common::Align(topK, (uint32_t)256));
+                QLIV2Common::Align(topK, (uint32_t)256)); // 256:topk向256对齐
         }
         if (outputIdxOffset != 0) {
             topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
