@@ -501,7 +501,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm2ResPos
         if constexpr (isPa) {
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
-            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
             if constexpr (isFd) {
                 startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                            runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -526,7 +526,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm2ResPos
         } else {
             uint64_t gmOffset = runInfo.keyOffset;
             if (constInfo.dSize != constInfo.dSizeV) {
-                gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+                gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             }
             CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset + gmNOffset], runInfo.s2RealSize, realN, constInfo.mm2Kb);
         }
@@ -583,7 +583,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &output
 {
     if constexpr (isInfer && layout == LayOutTypeEnum::LAYOUT_BNSD) {
         if (constInfo.isKvContinuous == 0) {
-            this->valueGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSizeV);
+            this->valueGm.offsetCalculator.Init(0, constInfo.kvN2Size, runInfo.s2InCurrentBatch, constInfo.dSizeV);
         }
     }
     if constexpr (IsSameType<INPUT_T, float>::value || (uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
@@ -596,7 +596,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &output
         if constexpr (isPa) {
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
-            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
             if constexpr (isFd) {
                 startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                            runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -622,7 +622,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &output
             uint64_t gmOffset = runInfo.keyOffset;
             if (constInfo.dSize != constInfo.dSizeV) {
                 gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx,
-                    runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+                    runInfo.n2oIdx % constInfo.kvN2Size, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             }
             CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
                 constInfo.dSizeV, constInfo.mm2Kb);
@@ -755,7 +755,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -788,7 +788,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
         }
     } else {
-        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
             constInfo.dSize, constInfo.mm1Kb);
@@ -798,7 +798,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                 dstNzC0Stride = (runInfo.s2RealSize + 31) >> 5 << 5; // fp8场景在L1上M方向32对齐，防止loadL12L0出现地址越界
             }
             uint64_t gmRopeOffset = this->keyRopeGm.offsetCalculator.GetOffset(runInfo.boIdx,
-                runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+                runInfo.n2oIdx % constInfo.kvN2Size, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             CopyToL1Nd2Nz<INPUT_T>(mm1BTensor[dstNzC0Stride * constInfo.dSize], this->keyRopeGm.gmTensor[gmRopeOffset],
                 runInfo.s2RealSize, constInfo.dSizeRope, constInfo.mm1RopeKb); 
         }
@@ -892,7 +892,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -911,7 +911,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
-        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
             constInfo.dSize, constInfo.mm1Kb);
@@ -992,7 +992,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -1015,7 +1015,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
-        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
             constInfo.dSize, constInfo.mm1Kb);
@@ -1083,7 +1083,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
     }
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
         coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-    runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+    runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size,
         coordInfo[runInfo.taskIdMod3].s2Coord, 0);
     for (uint32_t k = 0; k < kLoops; k++) {
         Buffer<BufferType::L1> mm1B;
@@ -1114,7 +1114,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
         if constexpr (isPa) {
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
-            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
             if constexpr (isFd) {
                 startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                            runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -1210,7 +1210,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.n2Idx = runInfo.n2oIdx % constInfo.kvN2Size;
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -1229,7 +1229,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
-        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx % constInfo.kvN2Size,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
             constInfo.dSize, constInfo.mm1Kb);
