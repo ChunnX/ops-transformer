@@ -60,8 +60,13 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::DoOpTiling()
     }
 
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
-    if (dSplitCoef_ == 0 || typeSize == 0) {
-        OP_LOGE(context_->GetNodeName(), "dSplitCoef_ can't be 0 or typeSize can't be 0.");
+    if (dSplitCoef_ == 0) {
+        OP_LOGE(context_->GetNodeName(), "dSplitCoef_ can't be 0.");
+        return ge::GRAPH_FAILED;
+    }
+    if (typeSize == 0) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "query",
+            Ops::Base::ToString(dtype_).c_str(), "The dtype size of input query cannot be 0");
         return ge::GRAPH_FAILED;
     }
 
