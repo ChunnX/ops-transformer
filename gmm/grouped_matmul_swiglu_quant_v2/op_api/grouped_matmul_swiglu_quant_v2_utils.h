@@ -140,8 +140,6 @@ constexpr int64_t MXA8W4_K_MIN = 32LL;
 constexpr int64_t MXA8W4_N_ALIGN = 128LL;
 constexpr int64_t MXA8W4_N_MIN = 128LL;
 constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
-constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
-constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3UL;
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
@@ -203,12 +201,16 @@ inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmul
 
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
-<<<<<<< HEAD
     bool IsMultiTensorWeight() const
     {
+        if (gmmDsqParams_.weight == nullptr || gmmDsqParams_.weight->Size() == 0 ||
+            (*gmmDsqParams_.weight)[0] == nullptr) {
+            return false;
+        }
         auto wDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
         return wDimNum == MX_MULTI_WEIGHT_DIM;
-=======
+    }
+
     bool IsMxWeightNzMultiTensorSupported() const
     {
         return gmmDsqParams_.quantMode == QUNAT_MODE_MX && !gmmDsqParams_.isMxA8W4 &&
@@ -216,7 +218,6 @@ protected:
                (*gmmDsqParams_.weight)[0] != nullptr &&
                op::IsPrivateFormat((*gmmDsqParams_.weight)[0]->GetStorageFormat()) &&
                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
->>>>>>> 单多单
     }
 
     bool IsTransposeForMxShape(const aclTensor *tensor) const
@@ -442,7 +443,7 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMxWeightNzMultiTensorSupported()) {
+            if (!IsMultiTensorWeight()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
@@ -578,25 +579,11 @@ protected:
 
     int64_t GetWeightK(const aclTensor *weight) const
     {
-<<<<<<< HEAD
         auto dimNum = weight->GetViewShape().GetDimNum();
         return gmmDsqParams_.transposeWeight
             ? weight->GetViewShape().GetDim(dimNum - 1)
             : weight->GetViewShape().GetDim(dimNum - LAST_SECOND_DIM_INDEX);
     }
-=======
-        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
-        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
-        bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensorSupported();
-        // Single tensor transpose is converted to a contiguous [E,N,K] view; multi tensor keeps [K,N] view.
-        int64_t n = isMxWeightNzMultiTensor ?
-                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                        (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                         ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
-        int64_t e = isMxWeightNzMultiTensor ?
-                        static_cast<int64_t>(gmmDsqParams_.weight->Size()) :
-                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0); // 从weight的第0维获取e
->>>>>>> 单多单
 
     int64_t GetWeightN(const aclTensor *weight) const
     {
@@ -647,29 +634,6 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(output, "output", outputExpectShape, return false);
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
 
-<<<<<<< HEAD
-=======
-        if (isMxWeightNzMultiTensor) {
-            op::Shape multiWeightExpectShape = {k, n};
-            op::Shape multiWeightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n,
-                                                     SWIGLU_SPLIT_FACTOR};
-            for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
-                GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weight)[i], "weight", multiWeightExpectShape, return false);
-                GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weightScale)[i], "weightScale",
-                                       multiWeightScaleExpectShape, return false);
-            }
-        } else {
-            const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
-            const aclTensor *weight = (*gmmDsqParams_.weight)[0];
-            if (gmmDsqParams_.transposeWeight) {
-                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
-            } else {
-                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
-            }
-        }
->>>>>>> 单多单
         // 进行swiglu操作需满足n为偶数
         if (n % SWIGLU_N_CONSTRAINT != 0) {
             std::string gotStr = BuildLogValue("N", n);
@@ -726,6 +690,22 @@ protected:
         return CheckMXExpectShape(m, k, n, e);
     }
 
+    bool CheckMXWeightNzMultiWeightShape()
+    {
+        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
+        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
+        int64_t n = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
+        int64_t e = static_cast<int64_t>(gmmDsqParams_.weight->Size());
+        op::Shape weightExpectShape = {k, n};
+        op::Shape weightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR};
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
+            GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weight)[i], "weight", weightExpectShape, return false);
+            GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weightScale)[i], "weightScale",
+                                   weightScaleExpectShape, return false);
+        }
+        return CheckMXExpectShape(m, k, n, e);
+    }
+
     bool CheckMxSingleWeightShape()
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
@@ -758,7 +738,9 @@ protected:
 
     bool CheckMXShape()
     {
-        if (IsMultiTensorWeight()) {
+        if (IsMxWeightNzMultiTensorSupported()) {
+            return CheckMXWeightNzMultiWeightShape();
+        } else if (IsMultiTensorWeight()) {
             return CheckMXMultiWeightShape();
         } else {
             return CheckMxSingleWeightShape();
@@ -909,8 +891,10 @@ protected:
     {
         int64_t kValue = gmmDsqParams_.x->GetViewShape().GetDim(1);
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
-        int64_t nValue = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                         ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
+        int64_t nValue = IsMxWeightNzMultiTensorSupported() ?
+                             ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                             (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                                                              ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
         // mxfp4场景不支持k=2
         if (kValue == MXFP4_K_CONSTRAINT) {
             std::string gotStr = BuildLogValue("K", kValue);
@@ -1043,7 +1027,6 @@ protected:
         GMM_SWIGLU_CHECK_DIM(xScaleDimNumber, MX_X_SCALE_DIM, "xScale", return false);
         GMM_SWIGLU_CHECK_DIM(outputDimNumber, MX_OUTPUT_DIM, "output", return false);
         GMM_SWIGLU_CHECK_DIM(outputScaleDimNumber, MX_OUTPUT_SCALE_DIM, "outputScale", return false);
-<<<<<<< HEAD
 
         size_t wSize = gmmDsqParams_.weight->Size();
         size_t wsSize = gmmDsqParams_.weightScale->Size();
@@ -1055,7 +1038,12 @@ protected:
             return false;
         }
 
-        if (gmmDsqParams_.isMxA8W4 && IsMultiTensorWeight()) {
+        if (IsMultiTensorWeight()) {
+            if (!gmmDsqParams_.isMxA8W4 && !IsMxWeightNzMultiTensorSupported()) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM(apiName_.c_str(), "weight",
+                                             std::to_string(MX_MULTI_WEIGHT_DIM), std::to_string(MX_WEIGHT_DIM));
+                return false;
+            }
             for (size_t i = 0; i < wSize; i++) {
                 auto weightDimNumber = ((*gmmDsqParams_.weight)[i])->GetViewShape().GetDimNum();
                 auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[i])->GetViewShape().GetDimNum();
@@ -1065,25 +1053,6 @@ protected:
         } else {
             GMM_SWIGLU_CHECK_TENSORNUM(wSize, SINGLE_TENSOR_SIZE, "weight", return false);
             GMM_SWIGLU_CHECK_TENSORNUM(wsSize, SINGLE_TENSOR_SIZE, "weightScale", return false);
-=======
-        if (IsMxWeightNzMultiTensorSupported()) {
-            if (gmmDsqParams_.weight->Size() != gmmDsqParams_.weightScale->Size()) {
-                OP_LOGE_FOR_INVALID_LISTSIZE(apiName_.c_str(), "weightScale",
-                                             std::to_string(gmmDsqParams_.weightScale->Size()),
-                                             std::to_string(gmmDsqParams_.weight->Size()));
-                return false;
-            }
-            for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
-                GMM_SWIGLU_CHECK_DIM(((*gmmDsqParams_.weight)[i])->GetViewShape().GetDimNum(), MX_MULTI_WEIGHT_DIM,
-                                     "weight", return false);
-                GMM_SWIGLU_CHECK_DIM(((*gmmDsqParams_.weightScale)[i])->GetViewShape().GetDimNum(),
-                                     MX_MULTI_WEIGHT_SCALE_DIM, "weightScale", return false);
-            }
-        } else {
-            GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weight->Size(), SINGLE_TENSOR_SIZE, "weight", return false);
-            GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weightScale->Size(), SINGLE_TENSOR_SIZE, "weightScale",
-                                       return false);
->>>>>>> 单多单
             auto weightDimNumber = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
             auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum();
             GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_WEIGHT_SCALE_DIM, "weightScale", return false);
@@ -1126,21 +1095,15 @@ protected:
         }
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
-<<<<<<< HEAD
-        // 根据是否转置从weight中读取维度k
-        int64_t kInWeight = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
-        if (gmmDsqParams_.isMxA8W4) {
+        int64_t kInWeight = 0;
+        if (IsMxWeightNzMultiTensorSupported()) {
+            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
+        } else if (gmmDsqParams_.isMxA8W4) {
             auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
+        } else {
+            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
         }
-
-=======
-        // K is read from the logical view shape. A transposed tensor is identified by stride, not by [N,K] shape.
-        int64_t kInWeight = IsMxWeightNzMultiTensorSupported() ?
-                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
-                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
->>>>>>> 单多单
         if (kInX != kInWeight) {
             std::ostringstream reason;
             reason << "K dim should be equal when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
