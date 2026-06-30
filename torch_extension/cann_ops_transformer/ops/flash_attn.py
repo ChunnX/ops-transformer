@@ -137,9 +137,15 @@ class FlashAttenOpBuilder(OpBuilder):
                  )
 
 
-# Instantiate the builder
 flash_attn_op_builder = FlashAttenOpBuilder()
-op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
+_flash_attn_op_module = None
+
+
+def _get_flash_attn_op_module():
+    global _flash_attn_op_module
+    if _flash_attn_op_module is None:
+        _flash_attn_op_module = flash_attn_op_builder.load()
+    return _flash_attn_op_module
 
 
 @impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
@@ -169,7 +175,7 @@ def flash_attn_metadata(
     metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
  
-    return op_module.flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+    return _get_flash_attn_op_module().flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                                               num_heads_q, num_heads_kv, head_dim,
                                               batch_size, max_seqlen_q, max_seqlen_kv,
                                               mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)
@@ -214,7 +220,7 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.flash_attn(
+    return _get_flash_attn_op_module().flash_attn(
         q, k, v,
         block_table,
         cu_seqlens_q, cu_seqlens_kv,

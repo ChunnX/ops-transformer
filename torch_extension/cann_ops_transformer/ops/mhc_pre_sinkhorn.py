@@ -21,7 +21,7 @@ class MhcPreSinkhornFunction(torch.autograd.Function):
     def forward(ctx, x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps):
         # autograd 路径强制 out_flag=True，以保存 backward 所需的中间结果
         hin, h_post, h_res, h_pre, hc_before_norm, inv_rms, sum_out, norm_out = \
-            op_module.mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, True)
+            _get_mhc_pre_sinkhorn_op_module().mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, True)
 
         ctx.save_for_backward(x, phi, alpha, bias, h_pre, hc_before_norm, inv_rms, sum_out, norm_out)
         ctx.hc_eps = hc_eps
@@ -86,12 +86,19 @@ class MhcPreSinkhornOpBuilder(OpBuilder):
 
 
 mhc_pre_sinkhorn_op_builder = MhcPreSinkhornOpBuilder()
-op_module = mhc_pre_sinkhorn_op_builder.load()
+_mhc_pre_sinkhorn_op_module = None
+
+
+def _get_mhc_pre_sinkhorn_op_module():
+    global _mhc_pre_sinkhorn_op_module
+    if _mhc_pre_sinkhorn_op_module is None:
+        _mhc_pre_sinkhorn_op_module = mhc_pre_sinkhorn_op_builder.load()
+    return _mhc_pre_sinkhorn_op_module
 
 
 @impl(AS_LIBRARY, mhc_pre_sinkhorn_op_builder.name, "PrivateUse1")
 def _mhc_pre_sinkhorn_dispatch(x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, out_flag):
-    return op_module.mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, out_flag)
+    return _get_mhc_pre_sinkhorn_op_module().mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, out_flag)
 
 
 def mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps=1e-6, norm_eps=1e-6):
@@ -110,7 +117,7 @@ def mhc_pre_sinkhorn(x, phi, alpha, bias, hc_mult, num_iters, hc_eps=1e-6, norm_
         )
     else:
         # 普通路径：out_flag=False，不保存中间变量，只返回 3 个主输出
-        hin, h_post, h_res, _, _, _, _, _ = op_module.mhc_pre_sinkhorn(
+        hin, h_post, h_res, _, _, _, _, _ = _get_mhc_pre_sinkhorn_op_module().mhc_pre_sinkhorn(
             x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, False
         )
         return hin, h_post, h_res

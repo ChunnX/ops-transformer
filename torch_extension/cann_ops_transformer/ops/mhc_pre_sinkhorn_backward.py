@@ -42,7 +42,14 @@ class MhcPreSinkhornBackwardOpBuilder(OpBuilder):
 
 
 mhc_pre_sinkhorn_backward_op_builder = MhcPreSinkhornBackwardOpBuilder()
-op_module = mhc_pre_sinkhorn_backward_op_builder.load()
+_mhc_pre_sinkhorn_backward_op_module = None
+
+
+def _get_mhc_pre_sinkhorn_backward_op_module():
+    global _mhc_pre_sinkhorn_backward_op_module
+    if _mhc_pre_sinkhorn_backward_op_module is None:
+        _mhc_pre_sinkhorn_backward_op_module = mhc_pre_sinkhorn_backward_op_builder.load()
+    return _mhc_pre_sinkhorn_backward_op_module
 
 
 @impl(AS_LIBRARY, mhc_pre_sinkhorn_backward_op_builder.name, "PrivateUse1")
@@ -50,7 +57,7 @@ def mhc_pre_sinkhorn_backward(grad_hin, grad_h_post, grad_h_res,
                                    x, phi, alpha, bias,
                                    h_pre, hc_before_norm, inv_rms,
                                    sum_out, norm_out, hc_eps):
-    return op_module.mhc_pre_sinkhorn_backward(grad_hin, grad_h_post, grad_h_res,
+    return _get_mhc_pre_sinkhorn_backward_op_module().mhc_pre_sinkhorn_backward(grad_hin, grad_h_post, grad_h_res,
                                                      x, phi, alpha, bias,
                                                      h_pre, hc_before_norm, inv_rms,
                                                      sum_out, norm_out, hc_eps)
