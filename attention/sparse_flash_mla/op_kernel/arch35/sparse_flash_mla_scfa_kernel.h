@@ -299,7 +299,14 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
         }
         int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
                 actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
-        if (s1Size > s2Size || (LAYOUT_T == SMLA_LAYOUT::TND && hasActualSeqQlen)) {
+        int64_t expectQs;
+        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+            expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ,
+                actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+        } else {
+            expectQs = constInfo.s1Size;
+        }
+        if (s1Size > s2Size || s1Size < expectQs) {
             constInfo.needInit = 1;
             break;
         }
