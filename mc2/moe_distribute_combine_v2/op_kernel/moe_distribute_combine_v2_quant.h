@@ -36,7 +36,7 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
-template <typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter,
+template <typename ExpandXType, typename XType, typename ExpandIdxType,
     uint8_t QuantMode, bool HasAddRmsNorm>
 class MoeDistributeCombineQuant {
 public:

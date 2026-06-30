@@ -257,10 +257,10 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
 #if ORIG_DTYPE_Y == DT_FLOAT16
     DataCopy(scaleOutGm[outOffset + start_loc], scaleF32, loop_size_u64);
 #else
-    DataCopy(scaleOutGm[outOffset + start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
+    DataCopyPad(scaleOutGm[outOffset + start_loc], scaleBF16, {1, uint16_t(loop_size_u64 * sizeof(bfloat16_t)), 0, 0});
 #endif
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
             }
         }
     } else {
@@ -302,8 +302,8 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
 #else
     DataCopy(scaleOutGm[start_element_u64 + start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
 #endif
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
     }
 }

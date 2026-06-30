@@ -46,14 +46,21 @@ constexpr int64_t INPUT_CACHE_IDX = 0;
 constexpr int64_t INPUT_SCALE_IDX = 1;
 constexpr int64_t INPUT_X_IDX = 2;
 constexpr int64_t INPUT_SLOT_MAPPING_IDX = 3;
-// 4D paged cache view [blockNum, blockSize, 1, headDim]
+// 4D-only cache/scale contract: cache 与 cache_scale 的逻辑 shape 必须恰为
+// 4D [blockNum, blockSize, 1, headDim]:
+//   - dim0 blockNum: 仅此维支持非连续(分页); dim1 blockSize: 每 block 的 token 数;
+//   - dim2 固定为 1 (每 token 写出一个量化向量, 该轴不支持为变量);
+//   - dim3 headDim: 每 token 行宽(行步长), cache 须 >= 写出的量化-x 长度, scale 须 >= scaleCol。
 constexpr size_t CACHE_VIEW_DIM_NUM = 4;
 constexpr size_t CACHE_BLOCKNUM_DIM = 0;
 constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
+constexpr size_t CACHE_ONE_DIM = 2;          // 倒数第二维, 必须 == 1
+constexpr int64_t CACHE_ONE_DIM_VALUE = 1;
 constexpr int64_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr int64_t ATTR_ROUND_SCALE_INDEX = 1;
 constexpr int64_t ATTR_SCALE_INDEX = 2;
 constexpr int64_t BLOCK_SIZE = 32;
+constexpr int64_t D_LENGTH_FULL_LOAD = 8192;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t FP4_PACK_NUM = 2;   // MX-FP4: 2 fp4 values packed per byte
@@ -127,7 +134,38 @@ bool IndexerQuantCacheTiling::GetCacheViewLayout(
     blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
     rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
     blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
-    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
+    if (blockSize <= 0 || rowStride <= 0 || blockStride <= 0) {
+        return false;
+    }
+    const int64_t storageElems = inputShape->GetStorageShape().GetShapeSize();
+    if (storageElems > 0 && (blockStride > storageElems || rowStride > storageElems || blockSize > storageElems)) {
+        return false;
+    }
+    return true;
+}
+
+ge::graphStatus IndexerQuantCacheTiling::ValidateCache4D(size_t inputIdx, const char *name, int64_t &lastDim)
+{
+    // 4D-only 契约: 用逻辑(origin/view) shape 做维数门禁。连续 4D tensor 与 4D 分页 strided view
+    // 的 origin shape 均为该 4D 逻辑形状(GetShape()), 与 GetCacheViewLayout 经 inputShape->GetShape()
+    // 读取的 viewShape 同源; strided view 的 storage shape 可能是底层扁平 buffer。
+    auto shapePtr = context_->GetInputShape(inputIdx);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
+    const auto &logical = shapePtr->GetShape();
+    OP_CHECK_IF(logical.GetDimNum() != CACHE_VIEW_DIM_NUM,
+                  OP_LOGE(context_->GetNodeName(),
+                          "%s must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
+                          name, logical.GetDimNum()),
+                  return ge::GRAPH_FAILED);
+    OP_CHECK_IF(logical.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
+                  OP_LOGE(context_->GetNodeName(),
+                          "%s dim2 (second-to-last) must be 1 (one quantized vector per token), got %ld",
+                          name, logical.GetDim(CACHE_ONE_DIM)),
+                  return ge::GRAPH_FAILED);
+    // 连续场景的行宽(headDim)取末维; 分页 view 下随后由 view stride 覆盖, 此处仅作连续默认值。
+    const auto &storage = shapePtr->GetStorageShape();
+    lastDim = storage.GetDim(storage.GetDimNum() - 1);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
@@ -157,6 +195,10 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     OP_CHECK_IF(d_ <= 0 || d_ % BLOCK_SIZE != 0,
                   OP_LOGE(context_->GetNodeName(),
                           "the last dim (d) of x should be 32-aligned, got %ld", d_),
+                  return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
+                  OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
                   return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
@@ -226,9 +268,30 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     // (aclnn 层对两个 cache 做 CreateView, 使 GE tiling context 暴露 view shape/strides),
     // 不再使用 block_size / *_block_stride 属性。无 view 时按连续 flat slots 处理
     // (blockSize=1 => slot * rowStride)。MX-FP4 的 cache 末维为打包字节 (d/2)。
+    //
+    // 每行写出长度(kernel 寻址单位): cache 写 cacheCol; scale 写 scaleCol。
+    //   - cacheCol: MX-FP4 为打包字节 (d/2), 其余模式为 d (fp8/uint8 元素==字节)。
+    //   - scaleCol: MX-FP8/MX-FP4 为 ⌈d/32⌉ 个 e8m0; Normal/HiFloat8 为 1 个 float。
     int64_t cacheCol = (quantMode_ == MXFP4_QUANT_MODE) ? (d_ + 1) / 2 : d_;
-    cacheRowStride_ = cacheCol;
-    scaleRowStride_ = scaleCol_;
+
+    // === Reading B + 4D-only 契约: cache 行宽(headDim)由 cache 自身决定 ===
+    // cache 始终校验。末维 lastDim 为 cache 自身元素单位 (MX-FP4: fp4 元素; 其余: 字节)。
+    int64_t cacheLastDim = 0;
+    if (ValidateCache4D(INPUT_CACHE_IDX, "cache", cacheLastDim) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    // 转为 kernel 寻址单位: MX-FP4 字节寻址打包 cache (÷2); 其余模式元素==字节, 直接取末维。
+    cacheRowStride_ = (quantMode_ == MXFP4_QUANT_MODE) ? (cacheLastDim / FP4_PACK_NUM) : cacheLastDim;
+
+    // cache_scale 校验: 所有量化模式(0/1/2/3)均完整校验, 无例外。kernel 在 mode2(HiFloat8) 下
+    // 仍会为每个 token 无条件散写 1 个 float scale 到 cacheScaleGm(scaleCol=1), 故 cache_scale
+    // 必须是合法 4D 张量 [blockNum, blockSize, 1, headDim] 且行宽 >= scaleCol, 否则散写越界。
+    // scale 末维即 kernel 寻址单位(e8m0 1B 或 float)。
+    int64_t scaleLastDim = 0;
+    if (ValidateCache4D(INPUT_SCALE_IDX, "cache_scale", scaleLastDim) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    scaleRowStride_ = scaleLastDim;
     blockSize_ = 1;                 // default: contiguous flat slots (slot * rowStride)
     cacheBlockStride_ = cacheRowStride_;
     scaleBlockStride_ = scaleRowStride_;
@@ -258,6 +321,21 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
             cacheBlockStride_ = cacheBlockStride_ / FP4_PACK_NUM;
         }
     }
+
+    // === Reading B 长度校验(以最终行步长 = 行宽 判定, kernel 寻址单位) ===
+    // cache 行宽必须能容纳每行写出的 cacheCol, 否则散写越界到下一行。
+    // (cacheCol 与 cacheRowStride_ 单位一致: MX-FP4 皆为字节, 其余皆为元素/字节)
+    OP_CHECK_IF(cacheRowStride_ < cacheCol,
+                  OP_LOGE(context_->GetNodeName(),
+                          "cache headDim(row stride, in cache elements/bytes)=%ld must be >= per-token "
+                          "quantized-x length=%ld", cacheRowStride_, cacheCol),
+                  return ge::GRAPH_FAILED);
+    // cache_scale 行宽必须能容纳每行写出的 scaleCol(mode2: scaleCol=1), 否则散写越界到下一行。
+    OP_CHECK_IF(scaleRowStride_ < scaleCol_,
+                  OP_LOGE(context_->GetNodeName(),
+                          "cache_scale last dim(row stride)=%ld must be >= scaleCol=%ld",
+                          scaleRowStride_, scaleCol_),
+                  return ge::GRAPH_FAILED);
 
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);

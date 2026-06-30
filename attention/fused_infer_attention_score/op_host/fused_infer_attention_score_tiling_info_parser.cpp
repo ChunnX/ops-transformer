@@ -440,16 +440,9 @@ void FiaInfoParser::GetUpdateInfo()
     }
 }
 
-void FiaInfoParser::GetPreNextToken()
+void FiaInfoParser::UpdatePreNextTokenBySparseMode()
 {
-    // 从输入读取参数值
-    preToken_ = opParamInfo_.preToken == nullptr ? 0 : *opParamInfo_.preToken;
-    nextToken_ = opParamInfo_.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
-
-    // 特殊场景下需要更新值
-    sparseMode_ = opParamInfo_.sparseMode == nullptr ? 0 : *opParamInfo_.sparseMode;
     if (sparseMode_ == SPARSE_MODE_NO_MASK) {
-        // sparse_mode=0, 带mask, 启用left padding时, preToken和nextToken参数无效
         if (attenMaskFlag_ && (qPaddingSizeFlag_ || kvPaddingSizeFlag_)) {
             preToken_ = SPARSE_MODE_INT_MAX;
             nextToken_ = SPARSE_MODE_INT_MAX;
@@ -462,8 +455,10 @@ void FiaInfoParser::GetPreNextToken()
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
     }
+}
 
-    // 边界场景需要更新值
+void FiaInfoParser::ClampPreNextToken()
+{
     if (preToken_ > SPARSE_MODE_INT_MAX) {
         preToken_ = SPARSE_MODE_INT_MAX;
     } else if (preToken_ < -(SPARSE_MODE_INT_MAX)) {
@@ -474,17 +469,25 @@ void FiaInfoParser::GetPreNextToken()
     } else if (nextToken_ < -(SPARSE_MODE_INT_MAX)) {
         nextToken_ = -(SPARSE_MODE_INT_MAX);
     }
+}
+
+void FiaInfoParser::GetPreNextToken()
+{
+    preToken_ = opParamInfo_.preToken == nullptr ? 0 : *opParamInfo_.preToken;
+    nextToken_ = opParamInfo_.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
+
+    sparseMode_ = opParamInfo_.sparseMode == nullptr ? 0 : *opParamInfo_.sparseMode;
+    UpdatePreNextTokenBySparseMode();
+    ClampPreNextToken();
 
     if (opParamInfo_.sparseMode != nullptr && sparseMode_ == SPARSE_MODE_NO_MASK) {
         if (!attenMaskFlag_) {
-            // sparse mode need process attention mask when empty tensor scenes as same.
             preToken_ = SPARSE_MODE_INT_MAX;
             nextToken_ = SPARSE_MODE_INT_MAX;
         }
     }
 
     if (sparseMode_ == SPARSE_MODE_NO_MASK && qPaddingSizeFlag_) {
-        // For scenes with sparse mode=0 and left padding, the attention mask part is fully calculated
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
@@ -1262,6 +1265,51 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
     return ge::GRAPH_SUCCESS;
 }
 
+void FiaInfoParser::ProcessKVActualSeqLoop(const int64_t *actualLenData, uint32_t loop)
+{
+    int64_t preActualLen = 0;
+    for (uint32_t i = 0; i < loop; i++) {
+        int64_t actLen = actualLenData[i];
+        if (antiQuantFlag_) {
+            if (qLayout_ == FiaLayout::TND && i > 0 && kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
+                actLen -= actualLenData[i - 1];
+            }
+            if (s1Size_ == 1) {
+                needInit_ = needInit_ || (actLen == 0);
+            }
+        } else {
+            if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                actLen -= preActualLen;
+                preActualLen = actualLenData[i];
+            }
+            needInit_ = needInit_ || (actLen == 0);
+            if (actLen != s2Size_ && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
+                needInit_ = 1;
+            }
+        }
+        maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
+        if (actualLenData[i] != actualLenData[0]) {
+            isSameActualseq_ = false;
+        }
+    }
+}
+
+void FiaInfoParser::ProcessQActualSeqLoop(const int64_t *actualLenQData, uint32_t loop)
+{
+    int64_t preActualLen = 0;
+    for (uint32_t i = 0; i < loop; i++) {
+        int64_t actLen = actualLenQData[i];
+        if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+            actLen -= preActualLen;
+            preActualLen = actualLenQData[i];
+        }
+        if (actLen != static_cast<int64_t>(s1Size_)) {
+            needInit_ = true;
+            break;
+        }
+    }
+}
+
 ge::graphStatus FiaInfoParser::GetActualSeqInfo()
 {
     maxActualseq_ = 0;
@@ -1278,31 +1326,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             const int64_t *actualLenData = opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>();
             uint32_t loop = ((actualLenDims_ == 1) && (kvListSeqLens_.size() == 1)) ? 1 : bSize_;
             loop = std::min(loop, actualLenDims_);
-            int64_t preActualLen = 0;
-            for (uint32_t i = 0; i < loop; i++) {
-                int64_t actLen = actualLenData[i];
-                if (antiQuantFlag_) {
-                    if (qLayout_ == FiaLayout::TND && i > 0 && kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
-                        actLen -= actualLenData[i - 1];
-                    }
-                    if (s1Size_ == 1) {
-                        needInit_ = needInit_ || (actLen == 0);
-                    }
-                } else {
-                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-                        actLen -= preActualLen;
-                        preActualLen = actualLenData[i];
-                    }
-                    needInit_ = needInit_ || (actLen == 0);
-                    if (actLen != s2Size_ && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
-                        needInit_ = 1;
-                    }
-                }
-                maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
-                if (actualLenData[i] != actualLenData[0]) {
-                    isSameActualseq_ = false;
-                }
-            }
+            ProcessKVActualSeqLoop(actualLenData, loop);
         }
     } else {
         maxActualseq_ = s2Size_;
@@ -1315,20 +1339,8 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             isAccumQSeq_ = true;
         }
         if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
-            // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
-            int64_t preActualLen = 0;
-            for (uint32_t i = 0; i < loop; i++) {
-                int64_t actLen = actualLenQData[i];
-                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-                    actLen -= preActualLen;
-                    preActualLen = actualLenQData[i];
-                }
-                if (actLen != static_cast<int64_t>(s1Size_)) {
-                    needInit_ = true;
-                    break;
-                }
-            }
+            ProcessQActualSeqLoop(actualLenQData, loop);
         }
     }
 

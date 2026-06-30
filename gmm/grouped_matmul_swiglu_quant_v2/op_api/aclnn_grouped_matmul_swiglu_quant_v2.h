@@ -19,19 +19,19 @@ extern "C" {
  * @brief aclnnGroupedMatmulSwigluQuantV2 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * @param [in] x: 表示公式中的x，数据类型支持INT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8数据类型，数据格式支持ND。
+ * @param [in] x: 表示公式中的x，数据类型支持INT8、INT4、INT32、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8数据类型，数据格式支持ND。
  * @param [in] weight:
- * 表示公式中的weight，数据类型支持INT4、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、HIFLOAT8数据类型，数据格式支持ND。
+ * 表示公式中的weight，数据类型支持INT8、INT4、INT32、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8数据类型，数据格式支持ND。
  * @param [in] weightScale:
- * 表示量化参数，数据类型支持UINT64、FLOAT32、FLOAT8_E8M0、BF16、FLOAT16数据类型，数据格式支持ND。 
+ * 表示量化参数，数据类型支持UINT64、FLOAT32、FLOAT8_E8M0、BFLOAT16、FLOAT16数据类型，数据格式支持ND。
  * @param [in] weightAssistMatrix:
- * 表示weight辅助矩阵，数据类型支持FLOAT32数据类型。 
+ * 表示weight辅助矩阵，数据类型支持FLOAT32数据类型。
  * @param [in] bias:
- * 表示偏移，数据类型支持FLOAT32数据类型，数据格式支持ND。 
+ * 表示偏移，数据类型支持FLOAT32数据类型，数据格式支持ND。
  * @param [in] xScale:
  * 表示perToken量化参数，数据类型支持FLOAT8_E8M0、FLOAT32数据类型，数据格式支持ND。
  * @param [in] smoothScale:
- * 左矩阵的的量化因子，数据类型支持FLOAT32数据类型，数据格式支持ND。 
+ * 左矩阵的的量化因子，数据类型支持FLOAT32数据类型，数据格式支持ND。
  * @param [in] groupList: 必选参数，表示每个分组参与计算的Token个数，数据类型支持INT64。
  * @param [in] dequantMode: 表示反量化计算类型，用于确定激活矩阵与权重矩阵的反量化方式。
  * @param [in] dequantDtype: 表示中间GroupedMatmul的结果数据类型。

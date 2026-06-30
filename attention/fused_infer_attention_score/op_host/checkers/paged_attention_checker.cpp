@@ -77,7 +77,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", "null",
             "When page attention enable, block_size cannot be null"),
             return ge::GRAPH_FAILED);
-    
+    // blockSize 需要大于0
     OP_CHECK_IF(fiaInfo.blockSize <= 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
             "When page attention enable, block_size must be positive"),
@@ -108,10 +108,11 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         if (fiaInfo.isQKVDDifferent) {
-            std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-                ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key", shapeMsg.c_str(),
-                "When page attention is enabled, the headDim of query and key must be the same");
+            std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + ", " +
+                ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape()) + " and " +
+                ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query, key and value", shapeMsg.c_str(),
+                "When page attention is enabled, the headDim of query, key and value must be the same");
             return ge::GRAPH_FAILED;
         }
     }

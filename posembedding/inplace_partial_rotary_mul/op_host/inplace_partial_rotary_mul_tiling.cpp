@@ -377,6 +377,13 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
             "D must be multiples of 2 in interleave mode, where D refers to the last dim");
         return ge::GRAPH_FAILED;
     }
+    if (headDim_ % INTERLEAVE_MODE_COEF != 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("sliceLength=" + std::to_string(headDim_)).c_str(),
+            "sliceLength must be multiples of 2 in interleave mode, "
+            "where sliceLength refers to partialSlice[1] - partialSlice[0]");
+        return ge::GRAPH_FAILED;
+    }
     if (start_ < 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
             ("sliceStart=" + std::to_string(start_)).c_str(),
