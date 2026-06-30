@@ -82,8 +82,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend910b", aicoreConfig);
-        this->AICore().AddConfig("ascend910_93", aicoreConfig);
+        // 当前仅适配 A5（ascend950），A2/A3 暂未适配，不注册
         this->AICore().AddConfig("ascend950", aicoreConfig);
     }
 };
