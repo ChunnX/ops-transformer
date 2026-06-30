@@ -15,6 +15,7 @@ from .mega_moe import (
     mega_moe,
     npu_get_mega_moe_ccl_buffer_size
 )
+from .moe_elastic_buffer import MoEElasticBuffer, EPHandle
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata

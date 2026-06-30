@@ -498,6 +498,9 @@ function(add_ops_src_copy)
         "attention_to_ffn;"
         "ffn_to_attention;"
         "bandwidth_test;"
+        "moe_ep_dispatch;"
+        "moe_ep_dispatch_epilogue;"
+        "moe_ep_combine;"
     ) # mc2算子列表
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)

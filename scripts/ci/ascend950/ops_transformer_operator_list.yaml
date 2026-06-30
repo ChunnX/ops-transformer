@@ -97,6 +97,9 @@ operator_group_10:
   - moe_update_expert
   - distribute_barrier
   - distribute_barrier_extend
+  - moe_ep_dispatch
+  - moe_ep_dispatch_epilogue
+  - moe_ep_combine
 operator_group_11:
   - fused_infer_attention_score,10-3
 operator_group_12:
