@@ -361,7 +361,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop1(
         }
     }
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) { // alibi
         Arange(vreg_alibi, posShift);
     }
     // x_max = max(src, axis=-1, keepdims=True)
@@ -383,7 +383,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop1(
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
                     Sqrt(vreg_pse, vreg_pse, preg_all);
                 }
-                Muls(vreg_pse, vreg_pse, slopes, preg_all);
+                Muls(vreg_pse, vreg_pse, slopes, preg_all); // multiply slope
                 Adds(vreg_alibi, vreg_alibi, -1.0f, preg_all);
             } else {
                 if constexpr (IsSameType<pseShiftType, float>::value) {
@@ -466,10 +466,10 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop1(
             Muls(vreg_exp, vreg_sel_drop, divValue, preg_all);
         }
 
-        if constexpr (IsSameType<T2, float>::value) {
+        if constexpr (IsSameType<T2, float>::value) { // fp32
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp, blockStride, repeatStride, preg_all);
-        } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        } else if constexpr (IsSameType<T2, bfloat16_t>::value) { // bf16
             Cast<T2, T, castTraitZero>(vreg_exp_bf16, vreg_exp, preg_all_b16);
             DeInterleave(vreg_dst_even_bf16, vreg_dst_odd_bf16, vreg_exp_bf16, vreg_exp_bf16);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
