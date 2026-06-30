@@ -481,7 +481,8 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(mm2Re
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
         mm2A.WaitCrossCore();
-        mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
+        // 占用L1B
+        mm2B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
         if constexpr (isPa) {
             Position startPos;
@@ -931,8 +932,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
-    // 左矩阵复用，S2的第一次循环加载左矩阵
-    // 加载左矩阵到L1 ,当前使用全载方式
+    // 左矩阵复用，S2的第一次循环加载左矩阵 加载左矩阵到L1 ,当前使用全载方式
     if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
         mm1A = l1QBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
