@@ -184,7 +184,7 @@ __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t off
     if (commMode == COMM_MODE_ON_SERVER) {
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     } else {
-        return (GM_ADDR)(uraMARankAddr_[rankId] + offset);
+        return (GM_ADDR)(urmaRankAddr_[rankId] + offset);
     }
 }
 

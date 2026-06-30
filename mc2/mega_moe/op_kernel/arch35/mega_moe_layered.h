@@ -212,6 +212,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
+        urmaRankAddr_[i] = (GM_ADDR)mc2Context_->urmacclBuffer[i];
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
