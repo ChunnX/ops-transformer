@@ -134,24 +134,27 @@ ge::graphStatus CompressorTiling::GetNpuInfo()
 
 ge::graphStatus CompressorTiling::SetBaseInfo()
 {
+    uint32_t computeSeqSize = 0;
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3) {
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
         baseParams_->xCacheReadSize = context_->xCache.desc == nullptr ? 0 : static_cast<uint32_t>(*context_->cmpRatio);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
-        uint32_t computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
+        computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
         baseParams_->tokenSize = baseParams_->batchSize * computeSeqSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     } else {
         baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
+        baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
+        baseParams_->xCacheReadSize = 0;
         baseParams_->tokenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        computeSeqSize = baseParams_->tokenSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     }
 
     baseParams_->headDim = context_->normWeight.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
-    uint32_t computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
     baseParams_->csSize = computeSeqSize - (computeSeqSize % baseParams_->cmpRatio);
     baseParams_->ropeHeadDim = static_cast<uint32_t>(*context_->ropeHeadDim);
     baseParams_->normEps = static_cast<float>(*context_->normEps);
