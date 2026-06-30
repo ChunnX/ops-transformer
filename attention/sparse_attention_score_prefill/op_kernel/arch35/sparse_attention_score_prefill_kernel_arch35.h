@@ -44,13 +44,10 @@ public:
     using LayoutP = layout::RowMajor;
     using LayoutO = layout::RowMajor;
 
-    static constexpr uint32_t MM1_TO_SM_FLAG_V0 = 0;
-    static constexpr uint32_t MM1_TO_SM_FLAG_V1 = 16;
-    static constexpr uint32_t SM_TO_MM2_FLAG_V0 = 2;
-    static constexpr uint32_t SM_TO_MM2_FLAG_V1 = 18;
-    static constexpr uint32_t MM2_TO_WS_FLAG_V0 = 5;
-    static constexpr uint32_t MM2_TO_WS_FLAG_V1 = 21;
-    static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
+    static constexpr uint32_t PRE_LAUNCH = 2U;
+    static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1U;
+    static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2U;
+    static constexpr uint32_t P_L1_BUF_NUM = PRE_LAUNCH + 1U;
 
     __aicore__ inline
     void InitSyncFlags()
@@ -68,8 +65,12 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V0);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V1);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(2);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(18);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(3);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(19);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(4);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(20);
 #endif
 #ifdef __DAV_VEC__
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -77,10 +78,15 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V0);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V1);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM2_TO_WS_FLAG_V0);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM2_TO_WS_FLAG_V1);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(0);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(1);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(5);
+        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(6);
 #endif
     }
 
@@ -100,10 +106,14 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(MM1_TO_SM_FLAG_V0);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(MM1_TO_SM_FLAG_V1);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V0);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE1>(SM_TO_MM2_FLAG_V1);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(0);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(1);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(16);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(17);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(5);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(21);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(6);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(22);
 #endif
 #ifdef __DAV_VEC__
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -111,12 +121,14 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V0);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(MM1_TO_SM_FLAG_V1);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(SM_TO_MM2_FLAG_V0);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(SM_TO_MM2_FLAG_V1);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(MM2_TO_WS_FLAG_V0);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(MM2_TO_WS_FLAG_V1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(2);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(3);
+        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_MTE3>(4);
 #endif
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -138,12 +150,6 @@ public:
     static uint32_t VecGlobalRowOffset(uint32_t groupSize)
     {
         return (AscendC::GetSubBlockIdx() == 0U) ? 0U : VecRowSplit(groupSize);
-    }
-
-    __aicore__ inline
-    static uint32_t VecCrossCoreFlagId(uint32_t flagV0)
-    {
-        return flagV0 + AscendC::GetSubBlockIdx() * V0_V1_FLAG_ID_OFFSET;
     }
 
     __aicore__ inline
@@ -282,6 +288,23 @@ private:
         return blockSize_;
     }
 
+    __aicore__ inline
+    uint32_t CalcCausalValidLen(
+        uint32_t qToken, uint32_t validSize, uint32_t kvStartPos)
+    {
+        uint32_t qBatch = 0;
+        uint32_t localQIdx = 0;
+        FindBatchAndLocalQ(qToken, qBatch, localQIdx);
+        uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(qBatch));
+        uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen_.GetValue(qBatch));
+        uint32_t qPosition = kvSeqlen - qSeqlen + localQIdx;
+        if (qPosition < kvStartPos) {
+            return 0U;
+        }
+        uint32_t maxLen = qPosition - kvStartPos + 1;
+        return (maxLen < validSize) ? maxLen : validSize;
+    }
+
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
     __aicore__ inline
     void Phase1KvCentricCompute(
@@ -297,15 +320,14 @@ private:
         AscendC::GlobalTensor<float> &gWorkspaceF)
     {
         uint32_t mPerSubCore = VecRowSplit(groupSize_);
-        // CastTransdataDeconflict requires compile-time srcN=128 and ND stride 128.
         uint32_t sColMax = blockSize_;
         uint32_t oColAligned = RoundUp(embed_, 16u);
 
 #ifdef __DAV_CUBE__
         uint32_t mAligned = RoundUp(mPerSubCore, 16u);
         uint32_t rowNumRound = RoundUp(groupSize_, 16u);
-        uint32_t cubeUbSSize = mAligned * sColMax;
-        uint32_t cubeUbOSize = rowNumRound * oColAligned;
+        uint32_t ubSStageElems = mAligned * sColMax;
+        uint32_t ubOStageElems = rowNumRound * oColAligned;
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
@@ -315,59 +337,65 @@ private:
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, groupSize_);
 
-        AscendC::LocalTensor<float> ubSBuf =
-            resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::LocalTensor<ElementOTmp> ubOBuf =
-            resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                cubeUbSSize * sizeof(float));
-        AscendC::LocalTensor<ElementP> ubPBuf =
-            resource.ubBuf.template GetBufferByByte<ElementP>(
-                cubeUbSSize * sizeof(float) + cubeUbOSize * sizeof(ElementOTmp));
+        AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
+        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
+        for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
+            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES + ubOStageElems * sizeof(ElementOTmp) * i);
+        }
 
         int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
-        Arch::CrossCoreFlag mm1ToSmFlag(MM1_TO_SM_FLAG_V0);
-        Arch::CrossCoreFlag smToMm2Flag(SM_TO_MM2_FLAG_V0);
-        Arch::CrossCoreFlag mm2ToWsFlag(MM2_TO_WS_FLAG_V0);
+        auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, sColMax);
+        auto ubOLayout = tla::MakeLayout<ElementOTmp, LayoutO>(rowNumRound, oColAligned);
 #endif
 #ifdef __DAV_VEC__
+        uint32_t rowNumRound = RoundUp(groupSize_, 16u);
         uint32_t vecRows = VecNumRows(groupSize_);
         uint32_t vecRowOffset = VecGlobalRowOffset(groupSize_);
-        uint32_t vecMAligned = RoundUp(vecRows, 16u);
-        uint32_t vecUbSSize = vecMAligned * sColMax;
-        uint32_t vecUbOSize = vecMAligned * oColAligned;
-        uint32_t vecUbPSize = (vecMAligned + 1U) * sColMax;
+        uint32_t mAligned = RoundUp(VecRowSplit(groupSize_), 16u);
+        uint32_t ubSStageElems = mAligned * sColMax;
+        uint32_t ubOStageElems = rowNumRound * oColAligned;
+        uint32_t vecUbPStageElems = (RoundUp(vecRows, 16U) + 1U) * sColMax;
 
-        AscendC::LocalTensor<float> ubSBuf =
-            resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::printf("hhhhhhhhhhhhhhhhhhhhhhhh:%d, %d\n", vecUbSSize * sizeof(float),
-                        vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp));
-        AscendC::LocalTensor<ElementOTmp> ubOBuf =
-            resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                vecUbSSize * sizeof(float));
-        AscendC::LocalTensor<ElementP> ubPBuf =
-            resource.ubBuf.template GetBufferByByte<ElementP>(
-                vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp));
+        AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
+        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
+        AscendC::LocalTensor<ElementP> ubPBuf[UB_S_OTMP_BUF_STAGES];
+        for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
+            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES + ubOStageElems * sizeof(ElementOTmp) * i);
+            ubPBuf[i] = resource.ubBuf.template GetBufferByByte<ElementP>(
+                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
+                + ubOStageElems * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES
+                + vecUbPStageElems * sizeof(ElementP) * i);
+        }
+        uint32_t ubWsMetaOffset = ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
+            + ubOStageElems * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES
+            + vecUbPStageElems * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
+        AscendC::LocalTensor<float> ubLseStage[P_L1_BUF_NUM];
+        AscendC::LocalTensor<float> ubRowSumStage[P_L1_BUF_NUM];
         AscendC::LocalTensor<float> ubTmpBuf =
             resource.ubBuf.template GetBufferByByte<float>(
-                vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp)
-                + vecUbPSize * sizeof(ElementP));
-        uint32_t ubWsMetaOffset = vecUbSSize * sizeof(float) + vecUbOSize * sizeof(ElementOTmp)
-            + vecUbPSize * sizeof(ElementP) + 256 * sizeof(float);
-        AscendC::LocalTensor<float> ubWsMeta =
-            resource.ubBuf.template GetBufferByByte<float>(ubWsMetaOffset);
-        AscendC::LocalTensor<float> ubLse = ubWsMeta;
-        AscendC::LocalTensor<float> ubRowSum = ubWsMeta[vecMAligned];
+                ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * P_L1_BUF_NUM);
+        for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
+            ubLseStage[i] = resource.ubBuf.template GetBufferByByte<float>(
+                ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * i);
+            ubRowSumStage[i] = ubLseStage[i][RoundUp(vecRows, 16U)];
+        }
 
         EpilogueOnlineSoftmax epilogueSoftmax;
-        epilogueSoftmax.Init(ubTmpBuf, ubLse, ubRowSum);
         epilogueSoftmax.SetScale(scaleValue_);
 
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
-        AscendC::LocalTensor<ElementP> l1PBuf =
-            resource.l1Buf.template GetBufferByByte<ElementP>(qkL1Used + vBufBytes);
-        AscendC::printf("--------------vec init---------------:%d, %d\n", qkL1Used, vBufBytes);
+        uint32_t l1PStageBytes = RoundUp(groupSize_, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
+        AscendC::LocalTensor<ElementP> l1PBuf[P_L1_BUF_NUM];
+        for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
+            l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
+                qkL1Used + vBufBytes + l1PStageBytes * i);
+        }
 #endif
 
         int32_t curPackedRow = -1;
@@ -428,105 +456,116 @@ private:
             auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
             auto gmVTensor = tla::MakeTensor(gV[kvBlockBase], gmVLayout, Arch::PositionGM{});
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
-
-            auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, sColsAligned);
-            auto ubSTensor = tla::MakeTensor(ubSBuf, ubSLayout, Arch::PositionUB{});
 #endif
 
-            for (uint32_t qi = 0; qi < numQTokens; qi++) {
-                uint32_t csrIdx = csrStart + qi;
-                uint32_t qToken = static_cast<uint32_t>(
-                    gK2qQIndices.GetValue(csrDataBase + csrIdx));
-                uint32_t slotK = static_cast<uint32_t>(
-                    gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+            for (uint32_t qi = 0; qi < numQTokens + PRE_LAUNCH; qi++) {
+                if (qi < numQTokens) {
+                    uint32_t csrIdx = csrStart + qi;
+                    uint32_t qToken = static_cast<uint32_t>(
+                        gK2qQIndices.GetValue(csrDataBase + csrIdx));
+                    uint32_t causalValidLen = CalcCausalValidLen(qToken, validSize, kvStartPos);
+                    if (causalValidLen != 0U) {
+                        uint32_t ubSBufId = qi % UB_S_OTMP_BUF_STAGES;
+                        uint32_t l1PBufId = qi % P_L1_BUF_NUM;
+                        uint32_t mm1ToSmFlagId = ubSBufId;
+                        uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
+                        Arch::CrossCoreFlag mm1ToSmFlag(mm1ToSmFlagId);
+                        Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
 
-                uint32_t qBatch = 0;
-                uint32_t localQIdx = 0;
-                FindBatchAndLocalQ(qToken, qBatch, localQIdx);
-                uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(qBatch));
-                uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen_.GetValue(qBatch));
-                uint32_t qPosition = kvSeqlen - qSeqlen + localQIdx;
-
-                uint32_t causalValidLen = 0;
-                if (qPosition >= kvStartPos) {
-                    uint32_t maxLen = qPosition - kvStartPos + 1;
-                    causalValidLen = (maxLen < validSize) ? maxLen : validSize;
-                }
-                if (causalValidLen == 0) {
-                    continue;
-                }
-
-                uint64_t wsBytes = (static_cast<uint64_t>(qToken) * kvHeads_ * topK_
-                    + kvHeadIdx * topK_ + slotK) * partialSize_;
-                uint64_t wsOOff = wsBytes / sizeof(ElementWorkspaceO);
-                uint64_t wsFOff = (wsBytes + oBytesAligned_) / sizeof(float);
-
-                uint32_t qHeadStart = kvHeadIdx * groupSize_;
-                uint64_t qBase = static_cast<uint64_t>(qToken) * qHeads_ * embed_
-                    + static_cast<uint64_t>(qHeadStart) * embed_;
+                        uint32_t qHeadStart = kvHeadIdx * groupSize_;
+                        uint64_t qBase = static_cast<uint64_t>(qToken) * qHeads_ * embed_
+                            + static_cast<uint64_t>(qHeadStart) * embed_;
 
 #ifdef __DAV_CUBE__
-                auto gmQLayout = tla::MakeLayout<ElementQ, LayoutQ>(groupSize_, embed_);
-                auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
-                blockMmadQK(gmQTensor, ubSTensor, groupSize_, validSize, embed_, mm1ToSmFlag);
+                        auto ubSTensorTla = tla::MakeTensor(
+                            ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
+                        auto gmQLayout = tla::MakeLayout<ElementQ, LayoutQ>(groupSize_, embed_);
+                        auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
+                        blockMmadQK(gmQTensor, ubSTensorTla, groupSize_, validSize, embed_, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
-                Arch::CrossCoreFlag mm1ToSmFlag(VecCrossCoreFlagId(MM1_TO_SM_FLAG_V0));
-                Arch::CrossCoreFlag smToMm2Flag(VecCrossCoreFlagId(SM_TO_MM2_FLAG_V0));
-
-                auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, validSize);
-                auto l1PTensor = tla::MakeTensor(l1PBuf, l1PLayout, Arch::PositionL1{});
-                AscendC::DumpTensor(ubSBuf, 123, 16);
-                epilogueSoftmax(
-                    ubSBuf, ubPBuf, l1PTensor, groupSize_, vecRows,
-                    validSize, causalValidLen, sColsAligned,
-                    mm1ToSmFlag, smToMm2Flag);
-                AscendC::DumpTensor(ubPBuf, 456, 16);
+                        epilogueSoftmax.Init(ubTmpBuf, ubLseStage[l1PBufId], ubRowSumStage[l1PBufId]);
+                        auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, validSize);
+                        auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
+                        epilogueSoftmax(
+                            ubSTensor[ubSBufId], ubPBuf[ubSBufId], l1PTensor, groupSize_, vecRows,
+                            validSize, causalValidLen, sColsAligned,
+                            mm1ToSmFlag, smToMm2Flag, 123U + qi, 456U + qi);
 #endif
-#ifdef __DAV_CUBE__
-                Arch::CrossCoreFlag smToMm2Flag(SM_TO_MM2_FLAG_V0);
-                Arch::CrossCoreFlag mm2ToWsFlag(MM2_TO_WS_FLAG_V0);
-
-                auto ubOLayout = tla::MakeLayout<ElementOTmp, LayoutO>(rowNumRound, oColAligned);
-                auto ubOTensor = tla::MakeTensor(ubOBuf, ubOLayout, Arch::PositionUB{});
-                blockMmadPV(ubOTensor, groupSize_, validSize, embed_,
-                    smToMm2Flag, mm2ToWsFlag);
-#endif
-#ifdef __DAV_VEC__
-                AscendC::printf("dddddddddddddddddddddd\n");
-                Arch::CrossCoreFlag mm2ToWsFlag(VecCrossCoreFlagId(MM2_TO_WS_FLAG_V0));
-                Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToWsFlag);
-                AscendC::PipeBarrier<PIPE_ALL>();
-                AscendC::printf("eeeeeeeeeeeeeeeeeeeeeeee\n");
-                if (vecRows > 0U) {
-                    AscendC::printf("fffffffffffffffffffff:%f\n", ubPBuf.GetValue(0));
-                    AscendC::printf("ggggggggggggggggggggg:%f\n", ubOBuf.GetValue(0));
-                    AscendC::DumpTensor(ubOBuf, 789, 16);
-                    int32_t dLen = static_cast<int32_t>(embed_);
-                    for (uint32_t gh = 0; gh < vecRows; gh++) {
-                        float rowSum = ubRowSum.GetValue(gh);
-                        if (rowSum > 0.0f) {
-                            float invSum = 1.0f / rowSum;
-                            AscendC::Muls(
-                                ubOBuf[gh * oColAligned], ubOBuf[gh * oColAligned],
-                                invSum, dLen);
-                        }
                     }
-                    AscendC::PipeBarrier<PIPE_V>();
-                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::DataCopy(gWorkspaceF[wsFOff + vecRowOffset], ubLse, vecRows);
-                    //AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-
-                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
-                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
-                    AscendC::DataCopy(
-                        gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
-                        ubOBuf, vecRows * embed_);
-                    //AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
                 }
-                AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(VecCrossCoreFlagId(MM2_TO_WS_FLAG_V0));
+
+                if (qi >= PRE_LAUNCH) {
+                    uint32_t qiDe = qi - PRE_LAUNCH;
+                    uint32_t csrIdx = csrStart + qiDe;
+                    uint32_t qToken = static_cast<uint32_t>(
+                        gK2qQIndices.GetValue(csrDataBase + csrIdx));
+                    uint32_t slotK = static_cast<uint32_t>(
+                        gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+                    uint32_t causalValidLenDe = CalcCausalValidLen(qToken, validSize, kvStartPos);
+                    if (causalValidLenDe != 0U) {
+                        uint64_t wsBytes = (static_cast<uint64_t>(qToken) * kvHeads_ * topK_
+                            + kvHeadIdx * topK_ + slotK) * partialSize_;
+                        uint64_t wsOOff = wsBytes / sizeof(ElementWorkspaceO);
+                        uint64_t wsFOff = (wsBytes + oBytesAligned_) / sizeof(float);
+
+                        uint32_t ubOTmpBufId = qiDe % UB_S_OTMP_BUF_STAGES;
+                        uint32_t l1PBufIdDe = qiDe % P_L1_BUF_NUM;
+                        uint32_t smToMm2FlagId = l1PBufIdDe + UB_S_OTMP_BUF_STAGES;
+                        uint32_t mm2ToReFlagId = ubOTmpBufId + UB_S_OTMP_BUF_STAGES + P_L1_BUF_NUM;
+                        Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
+                        Arch::CrossCoreFlag mm2ToReFlag(mm2ToReFlagId);
+
+#ifdef __DAV_CUBE__
+                        auto ubOTensorTla = tla::MakeTensor(
+                            ubOTmpTensor[ubOTmpBufId], ubOLayout, Arch::PositionUB{});
+                        blockMmadPV.SetL1PBuf(l1PBufIdDe);
+                        blockMmadPV(ubOTensorTla, groupSize_, validSize, embed_,
+                            smToMm2Flag, mm2ToReFlag);
 #endif
+#ifdef __DAV_VEC__
+                        if (vecRows > 0U) {
+                            Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
+                            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+                            AscendC::DumpTensor(
+                                ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
+                                789 + qiDe, 16);
+
+                            int32_t dLen = static_cast<int32_t>(embed_);
+                            for (uint32_t gh = 0; gh < vecRows; gh++) {
+                                float rowSum = ubRowSumStage[l1PBufIdDe].GetValue(gh);
+                                if (rowSum > 0.0f) {
+                                    float invSum = 1.0f / rowSum;
+                                    AscendC::Muls(
+                                        ubOTmpTensor[ubOTmpBufId][(vecRowOffset + gh) * oColAligned],
+                                        ubOTmpTensor[ubOTmpBufId][(vecRowOffset + gh) * oColAligned],
+                                        invSum, dLen);
+                                }
+                            }
+                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
+                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+
+                            AscendC::PipeBarrier<PIPE_V>();
+                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                            AscendC::DataCopy(
+                                gWorkspaceF[wsFOff + vecRowOffset], ubLseStage[l1PBufIdDe], vecRows);
+                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+
+                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                            AscendC::DataCopy(
+                                gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
+                                ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
+                                vecRows * embed_);
+                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+                        } else {
+                            Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
+                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
+                        }
+#endif
+                    }
+                }
             }
         }
     }
