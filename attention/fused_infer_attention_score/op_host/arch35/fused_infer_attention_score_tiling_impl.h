@@ -99,7 +99,7 @@ protected:
                            TCubeTiling &bmmTilingData);
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
     void SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo);
- 	void SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo);
+    void SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckPfaMergeLayout(const FiaTilingInfo &fiaInfo) const;
