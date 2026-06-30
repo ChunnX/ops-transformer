@@ -27,10 +27,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduceV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduceV2`接口执行计算。
 
 ```cpp
-aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2(
+aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
     const aclTensor  *x1,
     const aclTensor  *x2,
     const aclTensor  *bias,
@@ -56,7 +56,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     const aclrtStream stream)
 ```
 
-## aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2
+## aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize
 
 - **参数说明**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
@@ -295,7 +295,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -600,11 +600,11 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 调用第一段接口
-      ret = aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2(x1, x2, bias, antiquantScale, antiquantOffset, x3, hcom_name,
+      ret = aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(x1, x2, bias, antiquantScale, antiquantOffset, x3, hcom_name,
                                                               "sum", "", commTurn, streamMode, antiquantGroupSize, out,
                                                               &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnWeightQuantMatmulAllReduceGetWorkspaceSizeV2 failed. ERROR: %d\n", ret); return ret);
+              LOG_PRINT("aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
       if (workspaceSize > 0) {
           ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
