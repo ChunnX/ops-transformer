@@ -571,8 +571,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                 if (s2NoNeedCalc) {
                     continue;
                 }
-                sparseBase = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb * constInfo.maxKb +
-                             s1Index * constInfo.maxKb;
+                sparseBase = (static_cast<uint64_t>(runParam.boIdx) * constInfo.n1Size + runParam.n1oIdx) *
+                                 constInfo.maxQb * constInfo.maxKb +
+                             static_cast<uint64_t>(s1Index) * constInfo.maxKb;
             }
             s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
