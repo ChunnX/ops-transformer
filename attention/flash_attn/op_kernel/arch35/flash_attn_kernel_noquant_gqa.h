@@ -571,10 +571,10 @@ public:
         }
 
         // 3. trans index of token to index of block
-        uint32_t s2StartWithSparse = 0U;
-        uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
+        uint32_t s2StartWithSparse = 0U;
+        uint32_t s2EndWithSparse = 0U;
         // no valid token
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;

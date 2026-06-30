@@ -39,6 +39,9 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr,
+        OP_LOGE(opName_, "quantMode attr is nullptr."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -135,7 +138,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
     opParamInfo_.tileSize = nullptr;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
@@ -515,7 +518,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
-    qsmlaInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
+    qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.tileSize = 64;
     qsmlaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
@@ -670,7 +673,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-            static_cast<uint32_t>(isSplitG),
+            static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
             ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
