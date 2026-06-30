@@ -358,7 +358,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
   // 调用aclCreateTensor接口创建aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
                             strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
+                            *deviceAddr,0,nullptr);
   return 0;
 }
 
@@ -401,7 +401,7 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL_BF16,
+                        &permutedTokensDeviceAddr, aclDataType::ACL FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,

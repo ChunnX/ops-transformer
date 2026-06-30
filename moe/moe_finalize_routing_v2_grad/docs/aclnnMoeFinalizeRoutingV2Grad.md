@@ -350,7 +350,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2_grad.h"
-#include <iostream>
+#include <cstdio>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \

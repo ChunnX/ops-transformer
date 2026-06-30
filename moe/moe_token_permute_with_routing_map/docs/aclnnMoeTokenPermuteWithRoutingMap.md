@@ -283,7 +283,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <tr>
         <td>ACLNN_ERR_INNER_NULLPTR</td>
         <td>561103</td>
-        <td>topK > 512</td>
+        <td>内部指针为空</td>
       </tr>
     </tbody>
   </table>

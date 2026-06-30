@@ -79,7 +79,7 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>probsOptional</td>
+      <td>probs</td>
       <td>可选输入</td>
       <td>对应公式中的`probs`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
