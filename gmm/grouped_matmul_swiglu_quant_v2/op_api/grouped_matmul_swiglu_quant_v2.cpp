@@ -56,7 +56,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         n = IsMxWeightNzMultiTensor(weight) ?
-                (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
+                (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(0) :
+                                   (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM)) :
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
                                    (*weightScale)[0]->GetViewShape().GetDim(MX_WEIGHT_SCALE_N_DIM));
         nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]
