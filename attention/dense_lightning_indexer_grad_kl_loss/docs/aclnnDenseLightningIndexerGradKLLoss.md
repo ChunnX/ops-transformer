@@ -105,7 +105,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
-    aclOpExecutor       *executor)
+    aclOpExecutor       **executor)
 ```
 
 ```c++
