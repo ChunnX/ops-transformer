@@ -77,6 +77,12 @@ private:
     ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapeFP8GQA(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleShapePerblockNTD(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &dequantScaleQueryShape, const gert::Shape &keyAntiquantScaleShape,
+        const gert::Shape &valueAntiquantScaleShape, uint32_t fp8QBlockSize, uint32_t fp8KVBlockSize) const;
+    ge::graphStatus CheckDequantScaleShapePerblockNonNTD(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &dequantScaleQueryShape, const gert::Shape &keyAntiquantScaleShape,
+        const gert::Shape &valueAntiquantScaleShape, uint32_t fp8QBlockSize, uint32_t fp8KVBlockSize) const;
     ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapeFP8GQA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapeFullquant(const FiaTilingInfo &fiaInfo);
@@ -98,6 +104,22 @@ private:
     // SinglePara
     ge::graphStatus CheckSingleParaForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantModeForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckInputKVTypeForAntiquantPerChannel(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerToken(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenPA(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTensorHead(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenHead(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenHeadPA(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantMixed(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenGroup(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
     ge::graphStatus CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     
     // Existence
