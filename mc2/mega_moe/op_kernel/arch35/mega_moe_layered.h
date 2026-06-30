@@ -517,7 +517,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             static_cast<uint64_t>(expertNumPer * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
             static_cast<uint64_t>(maskSlotSize_);
         dstGlobalTensor.SetGlobalBuffer(
-            (__gm__ uint8_t*)GetRankWinAddrWithOffset(dstRank, dstOffset));
+            (__gm__ uint8_t*)GetRankWinAddrWithOffset(dstRank, dstOffset,0));
         DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
         SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
     }
@@ -678,7 +678,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
         params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
     remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-        GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_)));
+        GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_,0)));
 
     // 预置 6 个 MTE3_MTE2 flag,Phase 2 的 prime/steady 的 WaitFlag 可立即通过。
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {

@@ -178,9 +178,14 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-__aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
+inline GM_ADDR urmaRankAddr_[HCCL_MAX_RANK_SIZE];
+__aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset, uint8_t commMode)
 {
-    return (GM_ADDR)(winRankAddr_[rankId] + offset);
+    if (commMode == COMM_MODE_ON_SERVER) {
+        return (GM_ADDR)(winRankAddr_[rankId] + offset);
+    } else {
+        return (GM_ADDR)(uraMARankAddr_[rankId] + offset);
+    }
 }
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
