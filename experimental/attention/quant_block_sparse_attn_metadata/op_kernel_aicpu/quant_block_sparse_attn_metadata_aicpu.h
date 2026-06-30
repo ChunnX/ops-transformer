@@ -38,6 +38,7 @@ struct CoreCache {
 struct AssignContext {
     uint32_t curCoreIdx { 0U };
     uint32_t curBIdx { 0U };
+    uint32_t curN1Idx { 0U };
     uint32_t curBN1Idx { 0U };
     uint32_t curS1Idx { 0U };
     uint32_t curS2Idx { 0U };
@@ -75,8 +76,8 @@ private:
     bool ParamsInit();
     bool ScheduleSection(SplitResult &splitRes);
     bool GenMetadata(const SplitResult &splitRes);
-    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
-    uint64_t GetBatchBlockNum(uint32_t bIdx) const;
+    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t n1Idx, uint32_t s1Idx) const;
+    uint64_t GetBN1BlockNum(uint32_t bIdx, uint32_t n1Idx) const;
     uint64_t CalcBlockNum() const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
     void AssignByBatch(AssignContext &assignContext) const;
