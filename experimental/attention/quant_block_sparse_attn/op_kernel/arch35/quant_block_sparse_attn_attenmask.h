@@ -9,11 +9,9 @@
  */
 
 // BSA-COPY-OF: FIA fullquant GQA local migration.
-// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空
-// sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * ile quant_block_sparse_attn_attenmask.h
+ * \file quant_block_sparse_attn_attenmask.h
  * \brief
  */
 

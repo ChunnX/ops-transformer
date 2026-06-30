@@ -11,7 +11,6 @@
 /*!
  * \file quant_block_sparse_attn_common.h
  * \brief QuantBlockSparseAttn kernel common declarations.
- * TODO: 待实现 - 后续补齐与正式 kernel dispatch 共享的常量、类型别名和调试开关。
  */
 
 #ifndef QUANT_BLOCK_SPARSE_ATTN_COMMON_H
