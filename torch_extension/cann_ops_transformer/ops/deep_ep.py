@@ -109,7 +109,8 @@ class MoeDistributeBuffer:
                              quant_mode=0, comm_alg="", x_smooth_scale=None,
                              x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0,
                              const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1,
-                             shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0):
+                             shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0,
+                             y_dtype=None, x_dtype=None, scales_dtype=None):
         (expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, tp_recv_counts, expand_scales) \
             = torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch(
                                              context=self.context,
@@ -133,7 +134,10 @@ class MoeDistributeBuffer:
                                              comm_alg=comm_alg,
                                              zero_expert_num=zero_expert_num,
                                              copy_expert_num=copy_expert_num,
-                                             const_expert_num=const_expert_num)
+                                             const_expert_num=const_expert_num,
+                                             y_dtype=y_dtype,
+                                             x_dtype=x_dtype,
+                                             scales_dtype=scales_dtype)
         return expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales
 
     def npu_low_latency_combine(self, x, topk_idx, assist_info_for_combine, ep_send_counts, *,
