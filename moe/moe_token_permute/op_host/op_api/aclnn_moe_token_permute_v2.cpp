@@ -294,8 +294,8 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
         DFX_IN(tokens, indices, numOutTokens, paddedMode, quantMode),
                    DFX_OUT(permuteTokensOut, sortedIndicesOut, expandedScaleOut));
     CHECK_RET(MoeTokenPermuteV2Check::CheckNotNull(
-            tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
-            ACLNN_ERR_PARAM_NULLPTR);
+        tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
+        ACLNN_ERR_PARAM_NULLPTR);
 
     if (!Ops::Transformer::AclnnUtil::IsRegbase()) {
         return aclnnInnerMoeTokenPermuteGetWorkspaceSize(
@@ -305,15 +305,15 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
 
     if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND950) {
         CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Fallback(
-                tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
-                ACLNN_ERR_PARAM_INVALID);
+            tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
+            ACLNN_ERR_PARAM_INVALID);
         return BuildMoeInitRoutingV2Executor(tokens, indices, numOutTokens, permuteTokensOut, sortedIndicesOut,
                                              workspaceSize, executor);
     }
 
     CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Regbase(
-            tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
-            ACLNN_ERR_PARAM_INVALID);
+        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
+        ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -332,19 +332,19 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
     aclTensor *fullExpandedScale = nullptr;
     aclIntArray* activeExpertRange = nullptr;
     CHECK_RET(AllocIntermediateTensorsForV3(
-            fullTokenNum, quantMode, permuteTokensOut, expandedScaleOut,
-            &fullExpandedX, &fullExpandedRowIdx, &expertTokensCount,
-            &fullExpandedScale, &activeExpertRange, uniqueExecutor.get()),
-            ACLNN_ERR_INNER_NULLPTR);
+        fullTokenNum, quantMode, permuteTokensOut, expandedScaleOut,
+        &fullExpandedX, &fullExpandedRowIdx, &expertTokensCount,
+        &fullExpandedScale, &activeExpertRange, uniqueExecutor.get()),
+        ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *expandedXOut = nullptr, *expandedRowIdxOut = nullptr, *expandedScale = nullptr;
     CHECK_RET(CallMoeInitRoutingV3AndUnpack(
-            tokensContiguous, indicesContiguous, fullTokenNum, quantMode,
-            fullExpandedX, fullExpandedRowIdx, expertTokensCount,
-            fullExpandedScale, activeExpertRange,
-            &expandedXOut, &expandedRowIdxOut, &expandedScale,
-            uniqueExecutor.get()),
-            ACLNN_ERR_INNER_NULLPTR);
+        tokensContiguous, indicesContiguous, fullTokenNum, quantMode,
+        fullExpandedX, fullExpandedRowIdx, expertTokensCount,
+        fullExpandedScale, activeExpertRange,
+        &expandedXOut, &expandedRowIdxOut, &expandedScale,
+        uniqueExecutor.get()),
+        ACLNN_ERR_INNER_NULLPTR);
 
     CHECK_RET(SliceAndViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(SliceAndViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
