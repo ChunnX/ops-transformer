@@ -46,7 +46,6 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
@@ -288,16 +287,7 @@ public:
         }
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
-        // prefix
-        if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = fiaSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = fiaSystemPrefixParams.prefixSeqInnerSize;
-            if (!constInfo.isActualSharedPrefixLenNull) {
-                constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
-            }
-        } else {
-            constInfo.actualKVPrefixSize = 0;
-        }
+        constInfo.actualKVPrefixSize = 0;
         // learnableSink
         constInfo.learnableSinkFlag = false;
 
