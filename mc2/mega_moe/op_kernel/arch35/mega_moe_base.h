@@ -20,6 +20,7 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
+#include "adv_api/hcomm/hcomm.h"
 
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
@@ -108,6 +109,7 @@ struct Params {
     GM_ADDR expertTokenNumsOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
+    PeermemInfoUrma peermemInfoUrma;
     MegaMoeTilingData *tilingData;
 };
 
@@ -199,6 +201,12 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 inline GM_ADDR urmaRankAddr_[HCCL_MAX_RANK_SIZE];
+__aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext* mc2Context, uint32_t rankId, uint32_t epRankId)
+{
+    uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
+    return mc2Context->hcommHandle[index];
+}
+
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset, uint8_t commMode)
 {
     if (commMode == COMM_MODE_ON_SERVER) {
