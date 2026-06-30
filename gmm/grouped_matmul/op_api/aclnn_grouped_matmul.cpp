@@ -88,44 +88,113 @@ static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
 static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
 
-static int64_t GetShapeDimForLog(const op::Shape &shape, size_t idx)
+static const aclTensor *GetTensorForGmmProtoDebug(const aclTensorList *tensorList, size_t idx = 0)
 {
-    return idx < shape.GetDimNum() ? shape.GetDim(idx) : -1;
+    if (tensorList == nullptr || tensorList->Size() <= idx) {
+        return nullptr;
+    }
+    return (*tensorList)[idx];
 }
 
-static void ZzzLogTensorForGmmPrototype(const char *name, const aclTensor *tensor, size_t idx)
+static std::string GetDtypeForGmmProtoDebug(const aclTensor *tensor)
 {
-    if (tensor == nullptr) {
-        OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s[%zu]: nullptr", name, idx);
-        return;
-    }
-    const auto viewShape = tensor->GetViewShape();
-    const auto storageShape = tensor->GetStorageShape();
-    OP_LOGI("GroupedMatmul",
-            "zzzlog gmm prototype %s[%zu]: dtype=%s storageFormat=%s viewDimNum=%zu "
-            "viewDims=[%ld,%ld,%ld,%ld] storageDimNum=%zu storageDims=[%ld,%ld,%ld,%ld] transLastTwo=%d",
-            name, idx, op::ToString(tensor->GetDataType()).GetString(),
-            op::ToString(tensor->GetStorageFormat()).GetString(), static_cast<size_t>(viewShape.GetDimNum()),
-            GetShapeDimForLog(viewShape, 0), GetShapeDimForLog(viewShape, 1), GetShapeDimForLog(viewShape, 2),
-            GetShapeDimForLog(viewShape, 3), static_cast<size_t>(storageShape.GetDimNum()),
-            GetShapeDimForLog(storageShape, 0), GetShapeDimForLog(storageShape, 1),
-            GetShapeDimForLog(storageShape, 2), GetShapeDimForLog(storageShape, 3),
-            gmm::IsTransposeLastTwoDims(tensor));
+    return tensor == nullptr ? "nullptr" : op::ToString(tensor->GetDataType()).GetString();
 }
 
-static void ZzzLogTensorListForGmmPrototype(const char *name, const aclTensorList *tensorList)
+static std::string GetFormatForGmmProtoDebug(const aclTensor *tensor)
 {
-    if (tensorList == nullptr) {
-        OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s: nullptr", name);
+    return tensor == nullptr ? "nullptr" : op::ToString(tensor->GetStorageFormat()).GetString();
+}
+
+static size_t GetTensorListSizeForGmmProtoDebug(const aclTensorList *tensorList)
+{
+    return tensorList == nullptr ? 0UL : tensorList->Size();
+}
+
+static void LogMxfp8WeightNzPrototypeDebug(const gmm::GroupedMatmulParams &params,
+                                           const aclTensor *perTokenScaleOptional)
+{
+    const aclTensor *x0 = GetTensorForGmmProtoDebug(params.x);
+    const aclTensor *weight0 = GetTensorForGmmProtoDebug(params.weight);
+    if (params.apiVersion != gmm::GMMApiVersion::WeightNz || !params.transposeWeight || x0 == nullptr ||
+        x0->GetDataType() != DataType::DT_FLOAT8_E4M3FN) {
         return;
     }
-    const size_t tensorNum = tensorList->Size();
-    OP_LOGI("GroupedMatmul", "zzzlog gmm prototype %s size=%zu", name, tensorNum);
-    for (size_t i = 0; i < tensorNum; ++i) {
-        if (i < 4 || i + 1 == tensorNum) {
-            ZzzLogTensorForGmmPrototype(name, (*tensorList)[i], i);
-        }
+
+    static size_t logCount = 0;
+    if (logCount >= 8) {
+        return;
     }
+    ++logCount;
+
+    const aclTensor *bias0 = GetTensorForGmmProtoDebug(params.biasOptional);
+    const aclTensor *scale0 = GetTensorForGmmProtoDebug(params.scaleOptional);
+    const aclTensor *offset0 = GetTensorForGmmProtoDebug(params.offsetOptional);
+    const aclTensor *antiquantScale0 = GetTensorForGmmProtoDebug(params.antiquantScaleOptional);
+    const aclTensor *antiquantOffset0 = GetTensorForGmmProtoDebug(params.antiquantOffsetOptional);
+    const aclTensor *y0 = GetTensorForGmmProtoDebug(params.y);
+    const std::string x0Dtype = GetDtypeForGmmProtoDebug(x0);
+    const std::string x0Format = GetFormatForGmmProtoDebug(x0);
+    const std::string weight0Dtype = GetDtypeForGmmProtoDebug(weight0);
+    const std::string weight0Format = GetFormatForGmmProtoDebug(weight0);
+    const std::string bias0Dtype = GetDtypeForGmmProtoDebug(bias0);
+    const std::string bias0Format = GetFormatForGmmProtoDebug(bias0);
+    const std::string scale0Dtype = GetDtypeForGmmProtoDebug(scale0);
+    const std::string scale0Format = GetFormatForGmmProtoDebug(scale0);
+    const std::string offset0Dtype = GetDtypeForGmmProtoDebug(offset0);
+    const std::string offset0Format = GetFormatForGmmProtoDebug(offset0);
+    const std::string antiquantScale0Dtype = GetDtypeForGmmProtoDebug(antiquantScale0);
+    const std::string antiquantScale0Format = GetFormatForGmmProtoDebug(antiquantScale0);
+    const std::string antiquantOffset0Dtype = GetDtypeForGmmProtoDebug(antiquantOffset0);
+    const std::string antiquantOffset0Format = GetFormatForGmmProtoDebug(antiquantOffset0);
+    const std::string perTokenDtype = GetDtypeForGmmProtoDebug(perTokenScaleOptional);
+    const std::string perTokenFormat = GetFormatForGmmProtoDebug(perTokenScaleOptional);
+    const std::string y0Dtype = GetDtypeForGmmProtoDebug(y0);
+    const std::string y0Format = GetFormatForGmmProtoDebug(y0);
+    const bool matchFp8WeightNzPrototype =
+        weight0 != nullptr && scale0 != nullptr && perTokenScaleOptional != nullptr && y0 != nullptr &&
+        weight0->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+        weight0->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+        scale0->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+        perTokenScaleOptional->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+        (y0->GetDataType() == DataType::DT_BF16 || y0->GetDataType() == DataType::DT_FLOAT16 ||
+         y0->GetDataType() == DataType::DT_FLOAT);
+    const bool matchMxA8W4WeightNzPrototype =
+        weight0 != nullptr && antiquantScale0 != nullptr && perTokenScaleOptional != nullptr && y0 != nullptr &&
+        weight0->GetDataType() == DataType::DT_FLOAT4_E2M1 &&
+        weight0->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+        antiquantScale0->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+        perTokenScaleOptional->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+        (scale0 == nullptr || scale0->GetDataType() == DataType::DT_UINT64) &&
+        (y0->GetDataType() == DataType::DT_BF16 || y0->GetDataType() == DataType::DT_FLOAT16);
+
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "GMM_MXFP8_WNZ_PROTO_DEBUG[%zu]: matchFp8WeightNzPrototype=%d matchMxA8W4WeightNzPrototype=%d "
+            "apiVersion=%d splitItem=%ld groupType=%ld "
+            "groupListType=%ld transposeWeight=%d transposeX=%d sizes(x,w,bias,scale,offset,antiS,antiO,pts,y)="
+            "(%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu); x0(dtype,fmt)=(%s,%s); weight0(dtype,fmt,viewDim,storageDim)="
+            "(%s,%s,%zu,%zu); bias0(dtype,fmt)=(%s,%s); scale0(dtype,fmt)=(%s,%s); offset0(dtype,fmt)=(%s,%s); "
+            "antiScale0(dtype,fmt)=(%s,%s); antiOffset0(dtype,fmt)=(%s,%s); perTokenArg(dtype,fmt)=(%s,%s); "
+            "y0(dtype,fmt)=(%s,%s). Expected fp8-fp8 weightNZ: x FLOAT8_E4M3FN/ND, weight "
+            "FLOAT8_E4M3FN/FRACTAL_NZ, scale FLOAT8_E8M0/ND, perTokenScale FLOAT8_E8M0/ND, y BF16|FLOAT16|FLOAT. "
+            "Expected fp8-fp4 weightNZ: x FLOAT8_E4M3FN/ND, weight FLOAT4_E2M1/FRACTAL_NZ, antiquantScale "
+            "FLOAT8_E8M0/ND, perTokenScale FLOAT8_E8M0/ND, y BF16|FLOAT16.",
+            logCount, static_cast<int32_t>(matchFp8WeightNzPrototype),
+            static_cast<int32_t>(matchMxA8W4WeightNzPrototype), static_cast<int32_t>(params.apiVersion),
+            params.splitItem, params.groupType, params.groupListType, static_cast<int32_t>(params.transposeWeight),
+            static_cast<int32_t>(params.transposeX), GetTensorListSizeForGmmProtoDebug(params.x),
+            GetTensorListSizeForGmmProtoDebug(params.weight), GetTensorListSizeForGmmProtoDebug(params.biasOptional),
+            GetTensorListSizeForGmmProtoDebug(params.scaleOptional), GetTensorListSizeForGmmProtoDebug(params.offsetOptional),
+            GetTensorListSizeForGmmProtoDebug(params.antiquantScaleOptional),
+            GetTensorListSizeForGmmProtoDebug(params.antiquantOffsetOptional),
+            GetTensorListSizeForGmmProtoDebug(params.perTokenScaleOptional), GetTensorListSizeForGmmProtoDebug(params.y),
+            x0Dtype.c_str(), x0Format.c_str(), weight0Dtype.c_str(), weight0Format.c_str(),
+            weight0 == nullptr ? 0UL : static_cast<size_t>(weight0->GetViewShape().GetDimNum()),
+            weight0 == nullptr ? 0UL : static_cast<size_t>(weight0->GetStorageShape().GetDimNum()),
+            bias0Dtype.c_str(), bias0Format.c_str(), scale0Dtype.c_str(), scale0Format.c_str(),
+            offset0Dtype.c_str(), offset0Format.c_str(), antiquantScale0Dtype.c_str(),
+            antiquantScale0Format.c_str(), antiquantOffset0Dtype.c_str(), antiquantOffset0Format.c_str(),
+            perTokenDtype.c_str(), perTokenFormat.c_str(), y0Dtype.c_str(), y0Format.c_str());
 }
 
 static bool IsFormatNZWithC0(const aclTensor *tensor)
@@ -2852,22 +2921,7 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
     }
     auto perTokenScaleOptional =
         (*params.perTokenScaleOptional)[0]->IsEmpty() ? nullptr : (*params.perTokenScaleOptional)[0];
-    OP_LOGI("GroupedMatmul",
-            "zzzlog gmm prototype attrs: apiVersion=%d splitItem=%ld groupType=%ld groupListType=%ld "
-            "transposeWeight=%d transposeX=%d ySize=%zu outDtype=%s",
-            static_cast<int>(params.apiVersion), params.splitItem, params.groupType, params.groupListType,
-            params.transposeWeight, params.transposeX, params.y->Size(),
-            op::ToString((*params.y)[0]->GetDataType()).GetString());
-    ZzzLogTensorListForGmmPrototype("x", params.x);
-    ZzzLogTensorListForGmmPrototype("weight", params.weight);
-    ZzzLogTensorListForGmmPrototype("bias", params.biasOptional);
-    ZzzLogTensorListForGmmPrototype("scale", params.scaleOptional);
-    ZzzLogTensorListForGmmPrototype("offset", params.offsetOptional);
-    ZzzLogTensorListForGmmPrototype("antiquantScale", params.antiquantScaleOptional);
-    ZzzLogTensorListForGmmPrototype("antiquantOffset", params.antiquantOffsetOptional);
-    ZzzLogTensorListForGmmPrototype("perTokenScaleList", params.perTokenScaleOptional);
-    ZzzLogTensorForGmmPrototype("perTokenScaleArg", perTokenScaleOptional, 0);
-    ZzzLogTensorForGmmPrototype("groupTensor", params.groupTensorOptional, 0);
+    LogMxfp8WeightNzPrototypeDebug(params, perTokenScaleOptional);
     // Invoke l0 operator GroupedMatmul for calculation.
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,
