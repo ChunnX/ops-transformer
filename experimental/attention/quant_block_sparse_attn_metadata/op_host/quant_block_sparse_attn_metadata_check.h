@@ -68,9 +68,9 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "quantMode only supports 1 or 2, but got %ld", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (strcmp(layoutSparseIndices, "B_N_Qb_Kb") != 0) {
+    if ((layoutSparseIndices == nullptr) || (strcmp(layoutSparseIndices, "B_N_Qb_Kb") != 0)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutSparseIndices only supports B_N_Qb_Kb, but got %s",
-                layoutSparseIndices);
+                layoutSparseIndices == nullptr ? "nullptr" : layoutSparseIndices);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -78,9 +78,8 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
 
 static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
                                       const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-                                      const aclTensor *sequsedKvOptional, int64_t batchSize,
-                                      uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
-                                      const aclTensor *metadata)
+                                      const aclTensor *sequsedKvOptional, int64_t batchSize, uint32_t aicCoreNum,
+                                      uint32_t aivCoreNum, const char *socVersion, const aclTensor *metadata)
 {
     if (sparseSeqLen == nullptr) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
@@ -105,8 +104,8 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (metadata->GetViewShape().GetDim(0) != optiling::QBSA_META_SIZE) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape must be (%u,), but got %ld",
-                optiling::QBSA_META_SIZE, metadata->GetViewShape().GetDim(0));
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape must be (%u,), but got %ld", optiling::QBSA_META_SIZE,
+                metadata->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (metadata->GetDataType() != ACL_INT32) {
@@ -140,18 +139,18 @@ static aclnnStatus CheckConsistencyQbsa(int64_t numHeadsQ, int64_t numHeadsKv)
 static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
                                const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
                                const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
-                               int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ,
-                               int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode, int64_t maxSeqlenQ,
-                               int64_t maxSeqlenKv, const char *layoutQOptional, const char *layoutKvOptional,
+                               int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK,
+                               int64_t quantMode, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                               const char *layoutQOptional, const char *layoutKvOptional,
                                const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
                                const char *socVersion, const aclTensor *metadata)
 {
-    aclnnStatus ret = CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
-                                           sparseBlockSizeK, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv,
-                                           layoutSparseIndicesOptional);
+    aclnnStatus ret =
+        CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
+                             maskMode, maxSeqlenQ, maxSeqlenKv, layoutSparseIndicesOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
-                             sequsedKvOptional, batchSize, aicCoreNum, aivCoreNum, socVersion, metadata);
+    ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
+                             batchSize, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistencyQbsa(numHeadsQ, numHeadsKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

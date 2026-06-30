@@ -115,7 +115,6 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel_unroll, preg_all);
             Max(vreg_max_tmp, vreg_sel, vreg_sel_unroll, preg_all);
-            // TODO: pScale,preg均需要关注
             Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_max_tmp, preg_all);
@@ -125,7 +124,6 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x_unroll, preg_all);
             Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll, preg_all);
-            // TODO: pScale,preg均需要关注
             Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_max_tmp, preg_all);

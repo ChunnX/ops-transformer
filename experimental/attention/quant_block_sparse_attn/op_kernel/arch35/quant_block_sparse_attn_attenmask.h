@@ -9,11 +9,9 @@
  */
 
 // BSA-COPY-OF: FIA fullquant GQA local migration.
-// TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空
-// sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * ile quant_block_sparse_attn_attenmask.h
+ * \file quant_block_sparse_attn_attenmask.h
  * \brief
  */
 
@@ -91,7 +89,7 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
                                                const RunInfo &runInfo, ConstInfo &constInfo,
                                                AttenMaskInfo &attenMaskInfo)
 {
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         uint32_t s2BaseSize = constInfo.s2BaseSize;
         int64_t causalOrNextFactor = deltaCausalOrNext - s2BaseSize;
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE) ||
@@ -146,7 +144,7 @@ template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128
 __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo &runInfo, ConstInfo &constInfo,
                                                      AttenMaskInfo &attenMaskInfo)
 {
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         int64_t bOffset = 0;
         int64_t n2Offset = 0;
         int64_t gOffset = 0;
@@ -299,7 +297,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
                                                       AttenMaskInfo &attenMaskInfo, bool first_block = true,
                                                       const bool useDn = false, const int32_t subLoop = 0)
 {
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
             return ComputeOffsetForNoCompress<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo);
         }
@@ -360,7 +358,7 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
                                        RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
                                        bool isPre = false)
 {
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo);
         BoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,

@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_block_sparse_attn_tiling.h
- * \brief TODO: 待实现
+ * \brief QuantBlockSparseAttn tiling data definitions.
  */
 
 #ifndef QUANT_BLOCK_SPARSE_ATTN_TILING_H_

@@ -65,7 +65,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n1Size (query head num)", std::to_string(tilingInfo_.n1Size),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n1Size (query head num) ", std::to_string(tilingInfo_.n1Size),
                                               "must be divisible by n2Size (kv head num) " +
                                                   std::to_string(tilingInfo_.n2Size));
         return ge::GRAPH_FAILED;

@@ -11,7 +11,6 @@
 /*!
  * \file quant_block_sparse_attn_template_tiling_key.h
  * \brief QuantBlockSparseAttn template tiling key declarations.
- * TODO: 待实现 - 结合最终 tiling key 编码补齐 Q/K/V dtype、layout、mask mode 的完整组合。
  */
 
 #ifndef QUANT_BLOCK_SPARSE_ATTN_TEMPLATE_TILING_KEY_H
