@@ -279,14 +279,16 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
     // expertIdxValueGm偏移地址必须与expert_tokens_count.h保持一致
-    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
-    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
+    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum) (DropPad模式不保留expertTotalCountGm空间)
+    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t));
     expertIdxValueGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset,
         this->coreNum_ * 2);
-    outputToSrcRowGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + this->coreNum_ * 2,
-        this->outputRows_);
+    if (this->useCompactOutputRows_ == 1) {
+        outputToSrcRowGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + this->coreNum_ * 2,
+            this->outputRows_);
+    }
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(INT32_ONE_BLOCK_NUM, sizeof(int32_t)));

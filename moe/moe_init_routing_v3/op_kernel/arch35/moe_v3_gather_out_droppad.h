@@ -173,10 +173,12 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
     expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
                                              blockIdx_ * perCoreIndicesElements_,
                                          Align(curCoreIndicesElements_, sizeof(int32_t)));
-    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
-    outputToSrcRowGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + tilingData->coreNum * 2,
-        outputRows_);
+    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t));
+    if (useCompactOutputRows_ == 1) {
+        outputToSrcRowGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + tilingData->coreNum * 2,
+            outputRows_);
+    }
 
     if (rowIdxType_ == SCATTER) {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreIndicesElements_,

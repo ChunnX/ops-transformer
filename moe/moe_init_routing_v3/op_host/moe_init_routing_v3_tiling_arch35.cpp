@@ -583,11 +583,13 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         totalLength_ * static_cast<int64_t>(sizeof(float) * NUM_TWO * NUM_THREE);             // 排序需要的空间
     int64_t coreSyncWorkspaceSize = tilingDataPtr_->coreNum * SORT32_ALIGN_ELEMENT * NUM_TWO; // 多核同步需要的空间
     int64_t scatterWorkspaceSize = totalLength_ * static_cast<int64_t>(sizeof(int32_t));
-    // ExpertTokensCount uses two aligned int32 work areas after sortedExpertIdx/expandDstToSrcRow:
-    // expertCountTempGm and expertTotalCount/reserved area. DropPad expertIdxValueGm is placed after both.
+    // ExpertTokensCount uses aligned int32 work areas after sortedExpertIdx/expandDstToSrcRow:
+    // expertCountTempGm (always) and expertTotalCountGm (only for non-DropPad modes).
     int64_t expertCountAlignedElements = Align(expertEnd_ - expertStart_, static_cast<int64_t>(sizeof(int32_t)));
-    int64_t expertTokensCountWorkspaceSize = expertCountAlignedElements * NUM_TWO *
-                                             static_cast<int64_t>(sizeof(int32_t));
+    int64_t expertTokensCountWorkspaceSize = expertCountAlignedElements * static_cast<int64_t>(sizeof(int32_t));
+    if (dropPadMode_ != DROP_PAD_MODE_DROPPAD) {
+        expertTokensCountWorkspaceSize += expertCountAlignedElements * static_cast<int64_t>(sizeof(int32_t));
+    }
     int64_t quantTempWorkspaceSize = aivCoreNum_ * cols_ * static_cast<int64_t>(sizeof(float));
 
     workspaceSize_ += sortWorkspaceSize + coreSyncWorkspaceSize + scatterWorkspaceSize +
@@ -597,12 +599,18 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         // expertIdxValueGm: 每个核需要存储2个int32 (lastExpertId和lastCoreExpertIdNum)
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
-        // outputToSrcRow compact map: gather_out_droppad 只遍历输出行，避免扫描 n*k 个 expandedRowIdx。
-        int64_t outputToSrcRowWorkspaceSize = expertNum_ * expertCapacity_ * static_cast<int64_t>(sizeof(int32_t));
-        workspaceSize_ += expertIdxValueWorkspaceSize + outputToSrcRowWorkspaceSize;
+        workspaceSize_ += expertIdxValueWorkspaceSize;
 
-        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, outputToSrcRowWorkspace=%ld",
-                expertIdxValueWorkspaceSize, outputToSrcRowWorkspaceSize);
+        // outputToSrcRow compact map: 仅compact路径需要，gather_out_droppad只遍历输出行
+        if (tilingDataPtr_->gatherOutComputeParamsOp.useCompactGatherOutDropPad) {
+            int64_t outputToSrcRowWorkspaceSize = expertNum_ * expertCapacity_ * static_cast<int64_t>(sizeof(int32_t));
+            workspaceSize_ += outputToSrcRowWorkspaceSize;
+            OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, outputToSrcRowWorkspace=%ld",
+                    expertIdxValueWorkspaceSize, outputToSrcRowWorkspaceSize);
+        } else {
+            OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld (no outputToSrcRow for non-compact)",
+                    expertIdxValueWorkspaceSize);
+        }
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
