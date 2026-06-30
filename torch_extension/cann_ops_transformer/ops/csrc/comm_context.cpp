@@ -35,6 +35,8 @@ struct CommContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
+    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
 };
 
 // ======================== Common Types and Utilities ========================
@@ -220,7 +222,7 @@ public:
         GetOrCreateContext(hcclHandle, mc2ContextTag, engine, protocol,
                            ctx, hcclBuffSize, commContextStruct);
 
-        cclBufferSize = hcclBuffSize;
+        cclBufferSize = hcclBuffSize / 2;
     }
 
     void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
@@ -237,13 +239,14 @@ public:
         }
 
         ASCEND_LOGI("start CheckProtocolSupport, layerNum is %d", layerNum);
-        CheckProtocolSupport(commHandle, layerList, layerNum);
+        CheckProtocolSupport(commHandle, layerList, layerNum, CommProtocol::COMM_PROTOCOL_UB_MEM);
 
         ASCEND_LOGI("CheckProtocolSupport success!");
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     }
 
-    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum)
+    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum,
+                              CommProtocol protocol)
     {
         uint32_t srcRankId = 0;
         uint32_t dstRankId = 0;
@@ -270,17 +273,18 @@ public:
                 TORCH_CHECK(hcclRet == HCCL_SUCCESS,
                             "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
-                TORCH_CHECK(CheckLinks(netLinkNum, linksList), "No HCCL links support UB_MEM srcRankID ", srcRankId,
+                TORCH_CHECK(CheckLinks(netLinkNum, linksList, protocol), "No HCCL links support protocol ",
+                            static_cast<int>(protocol), " srcRankID ", srcRankId,
                             ", dstRankID ", dstRankId, ", layer ", layerList[layerIndex]);
                 layerMap_[rankIdLists[rankId]] = layerList[layerIndex];
             }
         }
     }
 
-    static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+    static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol protocol)
     {
         for (uint32_t j = 0; j < netLinkNum; ++j) {
-            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            if (linksList[j].linkAttr.linkProtocol == protocol) {
                 return true;
             }
         }
@@ -324,7 +328,7 @@ public:
 
     void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
                              const CommProtocol &protocol, const CommEngine &engine,
-                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer)
+                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer, CommContext *commContextStruct)
     {
         ASCEND_LOGI("Start to get HCCL communication channel");
         uint32_t channelNum = rankDim - 1;
@@ -341,7 +345,7 @@ public:
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
 
-        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, channels.data());
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
     }
 
@@ -355,7 +359,7 @@ public:
         std::vector<ChannelHandle> channels;
 
         uint32_t rankSizePerServer = 0;
-        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer);
+        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
         commContextStruct->rankSizePerServer = rankSizePerServer;
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %zu", channels.size());
 
@@ -368,7 +372,7 @@ public:
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
             }
 
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
@@ -377,6 +381,38 @@ public:
             commContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
         }
         ASCEND_LOGI("Get HCCL CommResource success");
+    }
+
+    void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
+                              CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
+    {
+        ASCEND_LOGI("Start to get URMA communication resource");
+        uint32_t rankId = commContextStruct->epRankId;
+        std::vector<ChannelHandle> channels;
+
+        uint32_t rankSizePerServer = 0;
+        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
+        commContextStruct->rankSizePerServer = rankSizePerServer;
+        ASCEND_LOGI("Get URMA communication channel success, channel num is: %zu", channels.size());
+        for (uint32_t i = 0; i < rankSize; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            HcclResult hcclRet;
+
+            if (i == rankId) {
+                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
+            } else {
+                uint32_t idx = (i < rankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+            }
+
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
+                        ", ret: ", hcclRet);
+
+            commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer + bufSize / 2);
+            hcclBuffSize = bufSize;
+        }
+        ASCEND_LOGI("Get URMA CommResource success");
     }
 
     // ---- Context lifecycle helpers ----
@@ -401,6 +437,9 @@ public:
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+
+        CommProtocol protocol1 = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        GetUrmaCommResource(commHandle, engine, protocol1, commContextStruct, rankSize, hcclBuffSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
@@ -428,6 +467,9 @@ public:
     {
         void *tempBuffer = nullptr;
         auto hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
+        if (hcclRet == HCCL_SUCCESS) {
+            hcclBuffSize /= 2;
+        }
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Buffer Size failed, ret: ", hcclRet);
     }
 

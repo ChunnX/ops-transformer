@@ -98,6 +98,10 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 // a4w4 NZ 场景：weight1/weight2 均为 fp4 NZ 格式。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
+// 
+constexpr uint8_t COMM_MODE_ON_SERVER = 0U;
+constexpr uint8_t COMM_MODE_CROSS_SERVER = 1U;
+
 } // namespace
 
 struct WorkspaceInfo {

@@ -169,8 +169,11 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
+    int64_t commModeType = TILINGKEY_TPL_URMA;
+    //int64_t commModeType = TILINGKEY_TPL_MTE;
+    tilingData->commMode = static_cast<uint8_t>(commModeType);
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, commModeType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
@@ -449,7 +452,7 @@ static ge::graphStatus SetWorkspace(
         return ge::GRAPH_FAILED);
 
     int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
-    workspace[0] = workspaceSize;
+    workspace[0] = workspaceSize + 5UL * 1024 * 1024 * 1024;
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
     OP_LOGD(nodeName, "mega_moe_tiling workspaceSize: %ld \n", workspaceSize);
