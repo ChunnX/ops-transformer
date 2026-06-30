@@ -90,11 +90,11 @@ FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int
                                       int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
                                       const char *layoutQ, const char *layoutKv, const char *layoutOut)
 {
-    CHECK_COND(batchSize >= -1, ACLNN_ERR_RUNTIME_ERROR,
+    CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
         "batchSize must be -1 or greater than 0, but got %ld", batchSize);
-    CHECK_COND(maxSeqlenQ >= -1, ACLNN_ERR_RUNTIME_ERROR,
+    CHECK_COND((maxSeqlenQ == -1 || maxSeqlenQ > 0), ACLNN_ERR_RUNTIME_ERROR,
         "maxSeqlenQ must be -1 or greater than 0, but got %ld", maxSeqlenQ);
-    CHECK_COND(maxSeqlenKv >= -1, ACLNN_ERR_RUNTIME_ERROR,
+    CHECK_COND((maxSeqlenKv == -1 || maxSeqlenKv > 0), ACLNN_ERR_RUNTIME_ERROR,
         "maxSeqlenKv must be -1 or greater than 0, but got %ld", maxSeqlenKv);
 
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
@@ -132,8 +132,8 @@ FlashAttnMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_t win
     static const std::unordered_set<int64_t> maskSet = { NO_MASK, CAUSAL_MASK, WINDOW_MASK };
     CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
         "maskMode only supports %ld, %ld, %ld, but got %ld", NO_MASK, CAUSAL_MASK, WINDOW_MASK, maskMode);
-    CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or >= 0, but got %ld", winLeft);
-    CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or >= 0, but got %ld", winRight);
+    CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or at least 0, but got %ld", winLeft);
+    CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
 
     return ACLNN_SUCCESS;
 }
