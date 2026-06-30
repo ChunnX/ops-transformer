@@ -23,7 +23,7 @@ namespace fag {
 ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
-    if (softmaxMaxShape == nullptr) {
+    if (softmaxMaxShape == nullptr) { 
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxMaxShapeDim = softmaxMaxShape->GetStorageShape().GetDimNum();
