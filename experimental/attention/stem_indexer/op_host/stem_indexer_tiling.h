@@ -61,8 +61,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 
 constexpr uint32_t STEM_BLOCK_SIZE_LIMIT = 128;
 constexpr uint32_t STEM_STRIDE_LIMIT = 16;
-constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t FLATTEN_DIM_LIMIT = STEM_STRIDE_LIMIT * HEAD_DIM_LIMIT;
+constexpr uint32_t HEAD_DIM_LIMIT = 2048;
 constexpr uint32_t INITIAL_BLOCKS_LIMIT = 4;
 constexpr uint32_t WINDOW_SIZE_LIMIT = 4;
 constexpr uint32_t METADATA_LIMIT = 2048;
@@ -133,7 +132,7 @@ public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
     StemIndexerParaInfo opParamInfo;
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
     uint32_t bSize = 0;
     uint32_t qHeadNum = 0;
     uint32_t kvHeadNum = 0;
@@ -186,7 +185,7 @@ private:
     const char *opName_ = nullptr;
     fe::PlatFormInfos *platformInfo_ = nullptr;
     StemIndexerParaInfo opParamInfo_;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     uint32_t bSize_ = 0;
     uint32_t qHeadNum_ = 0;
     uint32_t kvHeadNum_ = 0;
