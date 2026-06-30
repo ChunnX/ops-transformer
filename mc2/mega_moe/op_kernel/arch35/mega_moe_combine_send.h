@@ -98,22 +98,23 @@ __aicore__ inline void CombineTokensLayered(
         tripleTempTensor.SetValue(tokenLenIndex, n);
         tripleTempTensor.SetValue(tokenActualLenIndex, actualDataLength);
         tripleTempTensor.SetValue(flagIndex, 1); // 标记为已处理
-        // __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr + toRankId * sizeof(int32_t));
-        // GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
-        //                 static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
-        // int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
-        // AscendC::PipeBarrier<PIPE_ALL>();
-        // // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
-        // gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
-        //     dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
-        // AscendC::DataCopyPad(gmLocalD,
-        //     l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-        // AscendC::PipeBarrier<PIPE_ALL>();
-        // // 三元组区: 紧跟数据之后
-        // gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-        //     dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
-        // AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
-        // AscendC::PipeBarrier<PIPE_ALL>();
+        __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr + toRankId * sizeof(int32_t));
+        GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
+                        static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
+        int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
+        PRINTF("cnt = %d\n", cnt);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
+        gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
+            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
+        AscendC::DataCopyPad(gmLocalD,
+            l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+        AscendC::PipeBarrier<MTE3>();
+        // 三元组区: 紧跟数据之后
+        gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
+        AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 }
 
