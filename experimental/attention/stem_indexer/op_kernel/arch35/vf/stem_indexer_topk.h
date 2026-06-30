@@ -19,6 +19,11 @@
 #include "vf_topk_gather.h"
 
 namespace SIKernel {
+// radix 按 8bit 分桶，共 256 个桶；nkValue 暂存 64 个元素
+constexpr uint32_t HISTOGRAM_BIN_NUM = 256U;
+constexpr uint32_t NK_VALUE_SIZE = 64U;
+
+// 主模板占位：当前仅实现 uint32_t（可排序键）特化，其余类型未实现
 template<typename T>
 class SITopk {
 public:
@@ -34,12 +39,12 @@ class SITopk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * SICommon::Align(topK, (uint32_t)256): 两块hisIndexLocal
+        // 2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM): 两块hisIndexLocal
         // 5 * 256：histogramsLocal + idxLocal[0-3]
         // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * SICommon::Align(topK, (uint32_t)256) + 5 * 256 + 64)  * sizeof(uint32_t);
-        // SICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (SICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
+        uint64_t bufferSize1 = (2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM) + 5 * HISTOGRAM_BIN_NUM + NK_VALUE_SIZE)  * sizeof(uint32_t);
+        // SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen：tmpIndexLocal
+        uint64_t bufferSize2 = (SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen)  * sizeof(uint32_t);
         return bufferSize1 + bufferSize2;
     }
 
@@ -48,9 +53,9 @@ public:
         // 1 * 256：histogramsLocal
         // 64：nkValueLocal
         // 其余皆复用
-        uint64_t bufferSize1 = (256 + 64)  * sizeof(uint32_t);
-        // SICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (SICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
+        uint64_t bufferSize1 = (HISTOGRAM_BIN_NUM + NK_VALUE_SIZE)  * sizeof(uint32_t);
+        // SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen：tmpIndexLocal
+        uint64_t bufferSize2 = (SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen)  * sizeof(uint32_t);
         return bufferSize1 + bufferSize2;
     }
 
@@ -68,16 +73,16 @@ public:
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[SICommon::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[SICommon::Align(topK, HISTOGRAM_BIN_NUM)];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[SICommon::Align(topK, (uint32_t)256)];
-        idx0Local = histogramsLocal[256];
-        idx1Local = idx0Local[256];
-        idx2Local = idx1Local[256];
-        idx3Local = idx2Local[256];
-        nkValueLocal = idx3Local[256];
-        tmpIndexLocal = nkValueLocal[64];
+        histogramsLocal = hisIndexLocal2[SICommon::Align(topK, HISTOGRAM_BIN_NUM)];
+        idx0Local = histogramsLocal[HISTOGRAM_BIN_NUM];
+        idx1Local = idx0Local[HISTOGRAM_BIN_NUM];
+        idx2Local = idx1Local[HISTOGRAM_BIN_NUM];
+        idx3Local = idx2Local[HISTOGRAM_BIN_NUM];
+        nkValueLocal = idx3Local[HISTOGRAM_BIN_NUM];
+        tmpIndexLocal = nkValueLocal[NK_VALUE_SIZE];
     }
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
@@ -86,8 +91,8 @@ public:
         LocalTensor<uint32_t> hisIndexLocal2 = indicesOutLocal;
         hisIndexLocal[1] = hisIndexLocal2;
         histogramsLocal = sharedTmpBuffer[0];
-        nkValueLocal = histogramsLocal[256];
-        tmpIndexLocal = nkValueLocal[64];
+        nkValueLocal = histogramsLocal[HISTOGRAM_BIN_NUM];
+        tmpIndexLocal = nkValueLocal[NK_VALUE_SIZE];
     }
 
 
@@ -97,9 +102,9 @@ public:
     {
         // uint32_t时UB需要进行复用，此处将每8位的targetbin复用mm1res
         idx0Local = reuseMm1ResLocal;
-        idx1Local = idx0Local[256];
-        idx2Local = idx1Local[256];
-        idx3Local = idx2Local[256];
+        idx1Local = idx0Local[HISTOGRAM_BIN_NUM];
+        idx2Local = idx1Local[HISTOGRAM_BIN_NUM];
+        idx3Local = idx2Local[HISTOGRAM_BIN_NUM];
         // hisIndexLocal[0]复用globalIndexLocal
         hisIndexLocal[0] = reuseGlobalIndexLocal;
 
@@ -108,14 +113,14 @@ public:
                                                idx0Local, idx1Local, idx2Local, idx3Local,
                                                nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(topK, HISTOGRAM_BIN_NUM));
         } else {
             if (loopIdx == 0) {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal, SICommon::Align(topK, HISTOGRAM_BIN_NUM));
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
@@ -123,7 +128,7 @@ public:
                 PipeBarrier<PIPE_V>();
                 SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
                                                   mrgValueLocal, tmpIndexLocal, hisIndexLocal[0],
-                                                  topK, loopIdx * trunkLen - SICommon::Align(topK, (uint32_t)256),
+                                                  topK, loopIdx * trunkLen - SICommon::Align(topK, HISTOGRAM_BIN_NUM),
                                                   s2SeqLen);
             }
         }

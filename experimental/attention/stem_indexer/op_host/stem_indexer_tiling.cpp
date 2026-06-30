@@ -59,10 +59,10 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
                 return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    // 当前仅适配 A5（ASCEND950），A2/A3 暂未适配
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGE(opName_, "SOC Version[%d] is not support, only ASCEND950 is supported.",
+                static_cast<int32_t>(socVersion_));
         return ge::GRAPH_FAILED;
     }
 
@@ -276,8 +276,8 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
     OP_CHECK_IF(qHeadNum_ % kvHeadNum_ != 0, OP_LOGE(opName_, "q_heads should be divisible by kv_heads."),
                 return ge::GRAPH_FAILED);
     gSize_ = qHeadNum_ / kvHeadNum_;
-    OP_CHECK_IF(headDim_ != FLATTEN_DIM_LIMIT,
-                OP_LOGE(opName_, "qflat last dim only support %u.", FLATTEN_DIM_LIMIT), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT,
+                OP_LOGE(opName_, "qflat last dim only support %u.", HEAD_DIM_LIMIT), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
