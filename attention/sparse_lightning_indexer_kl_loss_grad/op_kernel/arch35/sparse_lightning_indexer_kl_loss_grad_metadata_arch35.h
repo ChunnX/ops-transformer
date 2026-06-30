@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_klloss_grad_metadata_arch35.h
- * \brief A5 (arch35) metadata definitions for sparse_lightning_indexer_klloss_grad
+ * \file sparse_lightning_indexer_kl_loss_grad_metadata_arch35.h
+ * \brief A5 (arch35) metadata definitions for sparse_lightning_indexer_kl_loss_grad
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_ARCH35_H
-#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_ARCH35_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_ARCH35_H
+#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_ARCH35_H
 
 #include <cstdint>
 

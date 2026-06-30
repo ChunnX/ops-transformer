@@ -16,7 +16,7 @@
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_ARCH35_H
 
 #include "../sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
-#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/arch35/sparse_lightning_indexer_klloss_grad_metadata_arch35.h"
+#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/arch35/sparse_lightning_indexer_kl_loss_grad_metadata_arch35.h"
 
 namespace aicpu {
 
