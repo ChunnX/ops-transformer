@@ -313,6 +313,7 @@ struct RunInfo<false> {
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
     uint32_t headNumRatio; \
+    uint32_t kvN2Size; \
     bool rsvd1; \
     bool isSoftmaxLseEnable; \
     /* 左padding */ \
