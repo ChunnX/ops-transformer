@@ -218,17 +218,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     // ============ HCCL窗口初始化 ============
-    totalWinSizeEp_ = tilingData->total_win_size;
+    totalWinSizeEp_ = tilingData->totalWinSize;
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
 
     // ============ 从tiling获取配置参数 ============
-    totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
-    axisBS_ = tilingData->max_bs;           // token数量
-    axisH_ = tilingData->data_size;     // hidden size
-    epWorldSize_ = tilingData->world_size;
-    globalBS_ = tilingData->max_bs * epWorldSize_;
-    aivNum_ = tilingData->aiv_num;
+    totalUbSize_ = static_cast<uint32_t>(tilingData->totalUbSize);
+    axisBS_ = tilingData->maxBs;           // token数量
+    axisH_ = tilingData->dataSize;     // hidden size
+    epWorldSize_ = tilingData->worldSize;
+    globalBS_ = tilingData->maxBs * epWorldSize_;
+    aivNum_ = tilingData->aivNum;
     mode_ = tilingData->mode;
 
     sendHandleWorkspace_ = workspaceGM;
