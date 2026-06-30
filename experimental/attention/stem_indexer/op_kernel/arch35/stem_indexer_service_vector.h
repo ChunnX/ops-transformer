@@ -300,8 +300,8 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     int64_t curAivMProcNum = (blockId_ % 2 == 0) ? CeilDiv(curMProcNum, 2) : curMProcNum / 2;
 
     if (curAivMProcNum == 0) {
-        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
-        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
+        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
@@ -319,7 +319,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
 
     //CV同步
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
 
     auto qkBase = resMm1Local_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
     auto outBase = mrgValueLocal_[MAX_TOPK_COUNT];
@@ -603,7 +603,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             }
         }
     }
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
@@ -615,7 +615,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t actS2Size = tempLoopInfo.actS2Size;
         uint64_t qFlatBase = (uint64_t)tempLoopInfo.bIdx * constInfo_.qSeqSize * constInfo_.qHeadNum
                         + (uint64_t)tempLoopInfo.n2Idx * constInfo_.gSize * constInfo_.qSeqSize;
-        uint32_t indiceLenOffset = (uint32_t)qFlatBase;
+        uint64_t indiceLenOffset = qFlatBase;  // 保持 uint64，避免大 batch/长序列下截断
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
         initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
