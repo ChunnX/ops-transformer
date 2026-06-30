@@ -2594,14 +2594,20 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
   }
   if (params.transposeWeight) {
     std::vector<aclTensor *> weightTensorList;
-    auto nZShape = (*params.weight)[0]->GetStorageShape();
+    std::vector<op::Shape> nZShapes;
+    nZShapes.reserve(params.weight->Size());
+    for (size_t i = 0; i < params.weight->Size(); ++i) {
+        nZShapes.emplace_back((*params.weight)[i]->GetStorageShape());
+    }
     gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr);
     params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(params.xDtype, weightDtype) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(nZShape);
+        for (size_t i = 0; i < params.weight->Size() && i < nZShapes.size(); ++i) {
+            (*params.weight)[i]->SetStorageShape(nZShapes[i]);
+        }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
   }
