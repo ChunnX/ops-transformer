@@ -5,14 +5,16 @@
 """
 import torch
 import tilelang
-from tilelang import tiling
 import tilelang.language as T
 
-BLOCK_N = 128
+pass_configs = {
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
+}
 
 # ==============================================================================
 # 测试 1: T.copy 用动态索引做 gather
 # ==============================================================================
+@tilelang.jit(pass_configs=pass_configs)
 def test_copy_dynamic_gather(B, S1, K, DQuery, input_dtype, calc_dtype):
     """模拟: gather_key[b,s,i,:] = key[b, sparse_indices[b,s,0,i], :]"""
 
@@ -38,6 +40,7 @@ def test_copy_dynamic_gather(B, S1, K, DQuery, input_dtype, calc_dtype):
 # ==============================================================================
 # 测试 2: T.tile.atomic_add 用动态索引做 scatter
 # ==============================================================================
+@tilelang.jit(pass_configs=pass_configs)
 def test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype):
     """模拟: d_key_index[b, idx, 0, :] += scatter_add[b, s1_id, k_id, :]"""
 
@@ -55,7 +58,7 @@ def test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype):
                         idx = SparseIndices[0, s1_id, 0, k_id]  # 运行时变量
                         if idx >= 0:
                             T.copy(ScatterAdd[0, s1_id, k_id, 0:DQI], val_ub)
-                            T.tile.atomic_add(DKeyIndex[0, idx, 0, 0:DQI], val_ub)  # ❌ 动态索引
+                            T.tile.atomic_add(DKeyIndex[0, idx, 0, 0:DQI], val_ub)  # ❌
 
     return main
 
@@ -63,6 +66,7 @@ def test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype):
 # ==============================================================================
 # 测试 3: T.copy 用动态索引做 scatter
 # ==============================================================================
+@tilelang.jit(pass_configs=pass_configs)
 def test_copy_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype):
     """与测试2相同，但用 T.copy 替代 T.tile.atomic_add"""
 
@@ -94,7 +98,7 @@ if __name__ == "__main__":
     print("测试 1: T.copy 动态索引做 gather")
     print("=" * 70)
     try:
-        main1 = test_copy_dynamic_gather(B, S1, K, DQuery, input_dtype, calc_dtype)
+        func1 = test_copy_dynamic_gather(B, S1, K, DQuery, input_dtype, calc_dtype)
         print("编译成功 (未触发预期错误)")
     except Exception as e:
         print(f"编译失败: {e}")
@@ -104,7 +108,7 @@ if __name__ == "__main__":
     print("测试 2: T.tile.atomic_add 动态索引做 scatter")
     print("=" * 70)
     try:
-        main2 = test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
+        func2 = test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
         print("编译成功 (未触发预期错误)")
     except Exception as e:
         print(f"编译失败: {e}")
@@ -114,7 +118,7 @@ if __name__ == "__main__":
     print("测试 3: T.copy 动态索引做 scatter")
     print("=" * 70)
     try:
-        main3 = test_copy_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
+        func3 = test_copy_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
         print("编译成功 (未触发预期错误)")
     except Exception as e:
         print(f"编译失败: {e}")
