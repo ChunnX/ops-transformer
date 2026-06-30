@@ -501,8 +501,13 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
  */
 CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
 {
+    uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        OP_LOGD(opName_, "GetTilingResult: failed to get commMode, default to CCU.");
+    }
     return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
-                                 QuantMode::KC_QUANT);
+                                 QuantMode::KC_QUANT, commMode);
 }
 
 /**
