@@ -151,8 +151,8 @@ def check_param_valid(
 # V scope 3: cast dQueryIndex FP32→FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-6, -5, -4, -3],
-    workspace_idx=[6, 7, 8, 12, 13, 14, 15, 16, 21],
+    out_idx=[-5, -4, -3, -2],
+    workspace_idx=[9, 10, 11, 12, 13, 14, 15, 16, 17],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -176,29 +176,33 @@ def tilelang_grad_kl_loss_single_kernel(
     v3_chunks = Nidx1 // 4
     @T.prim_func
     def main(
+        # === INPUTS (0-8) ===
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),              # 0
         QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),          # 1
-        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 2  raw key (was GatherKey)
-        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 3  raw key_rope (was GatherKeyRope)
+        Key: T.Tensor((B, S2, N2, DQuery), input_dtype),                # 2
+        KeyRope: T.Tensor((B, S2, N2, d_rope), input_dtype),            # 3
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 4
-        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 5  raw key_index (was GatherKeyIndex)
-        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 6  workspace (was GatherKeyIndexT)
-        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 7  workspace (new)
-        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 8 workspace (new)
-        Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 9
-        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 10
-        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 11
+        KeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),   # 5
+        Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 6
+        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 7
+        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
+        # === WORKSPACES (9-17) ===
+        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 9
+        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 10
+        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 11
         bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),                  # 12
         bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),               # 13
         PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 14
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 15
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 16
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 17 OUT
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 18 OUT
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 19 OUT
-        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 20 OUT
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 21
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 22  int32 at END
+        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 17
+        # === OUTPUTS (18-21) ===
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 18
+        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 19
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 20
+        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 21
+        # === SPECIAL (22) ===
+        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),            # 22
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -753,15 +757,15 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_prep_end.record()
             _t_kernel_start.record()
         results = func(
-            query, query_rope, key, key_rope,
-            query_index, key_index,
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
-            weights, softmax_max, softmax_sum,
-            bmm1_res_ws, bmm2_res_ws,
-            p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
-            d_query_index_ws,
-            sparse_indices,
+            query, query_rope, key, key_rope,          # 0-3  inputs
+            query_index, key_index,                    # 4-5  inputs
+            weights, softmax_max, softmax_sum,         # 6-8  inputs
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 9-11 ws
+            bmm1_res_ws, bmm2_res_ws,                  # 12-13 ws
+            p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 14-16 ws
+            d_query_index_ws,                           # 17   ws
+            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 18-21 out
+            sparse_indices,                             # 22   int32
         )
         if _PROFILE:
             _t_kernel_end.record()
