@@ -315,7 +315,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
                return ge::GRAPH_FAILED);
-        if (*opParamInfo_.quantMode == 3) {
+        if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
             // MXFP8: scale 类型必须是 fp8_e8m0
             OP_CHECK_IF(
                 inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
