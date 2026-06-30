@@ -24,6 +24,8 @@ using npu_utils = at_npu::native::NpuUtils;
 using tensor_list = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
 const int DIM_ONE = 1;
 const int DIM_TWO = 2;
+const int64_t RANK_NUM_PER_NODE = 8;
+const int64_t SEND_COUNT_MEMORY_SIZE = 2;
 
 bool HasTensor(const c10::optional<at::Tensor> &tensor)
 {
@@ -233,9 +235,9 @@ tensor_list NpuMoeDistributeDispatch(
         }
 
         expertTokenNums = at::empty({localMoeExpertNum}, x.options().dtype(at::kLong));
-        if (hasExpertScales && IsAscend910B()) {
-            // 2: 2 buffer, 8 ranknum per server
-            epRecvCntNum = epWorldSize * localMoeExpertNum + 2 * globalBsReal * k * (epWorldSize / 8);
+        if (hasExpertScales) {
+            epRecvCntNum = epWorldSize * localMoeExpertNum +
+                SEND_COUNT_MEMORY_SIZE * globalBsReal * k * (epWorldSize / RANK_NUM_PER_NODE);
         }
         epRecvCounts = at::empty({epRecvCntNum}, x.options().dtype(at::kInt));
         tpRecvCounts = at::empty({tpWorldSize}, x.options().dtype(at::kInt));
