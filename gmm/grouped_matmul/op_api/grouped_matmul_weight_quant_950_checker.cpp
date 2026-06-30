@@ -635,7 +635,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
     auto viewShape = (*tensorList)[idx]->GetViewShape();
     auto viewShapeDimNum = viewShape.GetDimNum();
     bool dimValueAllOne = true;
-    for (size_t i = 0; i < viewShapeDimNum - 1; i++) {
+    for (size_t i = 0; i < viewShapeDimNum; i++) {
         if (viewShape.GetDim(i) != 1) {
             dimValueAllOne = false;
             break;
@@ -645,7 +645,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
     if (dimValueAllOne) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName,
             "true",
-            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + "not support all be 1");
+            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + " not support all be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
