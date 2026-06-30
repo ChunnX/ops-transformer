@@ -36,7 +36,6 @@ public:
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols);
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
-    __aicore__ inline bool IsCompactOutputRowsTiling();
     __aicore__ inline void ProcessCompactOutputRows();
     __aicore__ inline void CopySourceRowsIn(int64_t outputRowOffset, int64_t curLoopRows);
 
