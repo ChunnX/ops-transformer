@@ -53,7 +53,7 @@
   - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
   - 用途：在QK矩阵乘法时对key进行反量化。
 
-  qDequantScale（value量化缩放因子）
+  vDequantScale（value量化缩放因子）
   - 数据类型：FLOAT32
   - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
   - 用途：在PV矩阵乘法时对value进行反量化。
@@ -75,7 +75,7 @@ aclnnStatus aclnnBlockSparseAttentionV2GetWorkspaceSize(
   const aclTensor   *blockTableOptional,
   const aclTensor   *qDequantScale,
   const aclTensor   *kDequantScale,
-  const aclTesnor   *vDequantScale,
+  const aclTensor   *vDequantScale,
   char              *qInputLayout,
   char              *kvInputLayout,
   int64_t            numKeyValueHeads,
@@ -463,7 +463,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         <ul>
           <li>query为"TND": [totalQTokens, headNum, 1]。</li>
           <li>query为"BNSD": [batch, headNum, maxQSeqLength, 1]。</li>
-          <li>query为"BNSD": [batch, maxQSeqLength, headNum, 1]。</li>
+          <li>query为"BSND": [batch, maxQSeqLength, headNum, 1]。</li>
         </ul>
       </td>
       <td>FLOAT</td>
