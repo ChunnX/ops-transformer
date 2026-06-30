@@ -30,6 +30,7 @@ constexpr size_t SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t MX_SPLIT_M_SINGLE_X_DIM = 2UL;
 constexpr size_t MX_SPLIT_M_SINGLE_WEIGHT_DIM = 3UL;
 constexpr size_t MX_SPLIT_M_SCALE_DIM = 4UL;
+constexpr size_t MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM = 3UL;
 constexpr size_t MX_BIAS_DIM = 2UL;
 constexpr size_t MX_SPLIT_M_PER_TOKEN_SCALE_DIM = 3UL;
 constexpr size_t MX_SPLIT_K_SINGLE_X_DIM = 2UL;
