@@ -86,6 +86,9 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
                                  const aclTensor *blockSparseMaskOptional,
                                  const aclTensor *attenMaskOptional,
                                  const aclTensor *blockTableOptional,
+                                 const aclTensor *qDequantScaleOptional,
+                                 const aclTensor *kDequantScaleOptional,
+                                 const aclTensor *vDequantScaleOptional,
                                  const aclTensor *attentionOut,
                                  const aclTensor *softmaxLseOptional)
 {
@@ -109,9 +112,26 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     if (attentionOut != nullptr) {
         attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
     }
+    auto qDequantScaleFormat = ge::FORMAT_ND;
+    if (qDequantScaleOptional != nullptr) {
+        qDequantScaleFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(qDequantScaleOptional->GetStorageFormat()));
+    }
+    auto kDequantScaleFormat = ge::FORMAT_ND;
+    if (kDequantScaleOptional != nullptr) {
+        kDequantScaleFormat =
+            static_cast<ge::Format>(ge::GetPrimaryFormat(kDequantScaleOptional->GetStorageFormat()));
+    }
+    auto vDequantScaleFormat = ge::FORMAT_ND;
+    if (vDequantScaleOptional != nullptr) {
+        vDequantScaleFormat =
+            static_cast<ge::Format>(ge::GetPrimaryFormat(vDequantScaleOptional->GetStorageFormat()));
+    }
     if (!IsSupportedFormat(queryFormat) || !IsSupportedFormat(keyFormat) || !IsSupportedFormat(valueFormat) ||
         !IsSupportedFormat(blockSparseMaskFormat) || !IsSupportedFormat(attenMaskFormat) ||
-        !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat)) {
+        !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat) ||
+        !IsSupportedFormat(qDequantScaleFormat) || !IsSupportedFormat(kDequantScaleFormat) ||
+        !IsSupportedFormat(vDequantScaleFormat)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -323,7 +343,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV2Ge
         return ret;
     }
     ret = CheckNDFormat(query, key, value, blockSparseMask, attenMaskOptional,
-                        blockTableOptional, attentionOut, softmaxLseOptional);
+                        blockTableOptional, qDequantScaleOptional, kDequantScaleOptional, 
+                        vDequantScaleOptional, attentionOut, softmaxLseOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
