@@ -2,7 +2,7 @@
 
 ## 概述
 
-`bandwidth_test.py` 是一个用于测试 NPU 带宽测试算子 (`npu_bandwidth_test`) 的脚本，支持精度验证和性能测试两种模式，可进行单配置或多配置批量测试。
+`bandwidth.py` 是一个用于测试 NPU 带宽测试算子 (`npu_bandwidth_test`) 的脚本，支持精度验证和性能测试两种模式，可进行单配置或多配置批量测试。
 
 ## 功能特性
 
@@ -22,7 +22,7 @@
 ## 快速开始
 
 ```bash
-python bandwidth_test.py
+python bandwidth.py
 ```
 
 ## 配置说明
@@ -30,7 +30,6 @@ python bandwidth_test.py
 ### 测试模式配置
 
 ```python
-# 带宽测试与精度测试不能同时使能
 is_precision_test = True   # 是否进行精度测试
 is_bandwidth_test = False # 是否进行带宽测试
 is_single_test = True     # True: 单配置测试; False: 多配置批量测试
@@ -39,10 +38,10 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 ### 核心配置
 
 ```python
-graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
+graph_type = 0            # 0: 单算子模式; 1: 图模式
 is_full_core = 1         # 1: 使用全部核心; 0: 使用部分核心
 core_num = 16            # is_full_core=0 时的核心数
-aiv_num = 32             # AIV 核心数 (core_num * 2)，后续存在core_num与aiv_num = 1:1
+aiv_num = 32             # AIV 核心数 (core_num * 2)
 ```
 
 ### 性能采集配置

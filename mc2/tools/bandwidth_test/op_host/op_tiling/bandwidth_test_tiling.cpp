@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,6 +7,15 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
+=======
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+>>>>>>> e3e67c783 (daikuan urma)
  */
 
 /*!
@@ -57,6 +67,11 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+<<<<<<< HEAD
+=======
+constexpr uint32_t ATTR_HCCL_BUFFER_INDEX = 4U;       // HCCL缓冲区大小
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 5U;  // 通信模式
+>>>>>>> e3e67c783 (daikuan urma)
 constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;       // AIV核数量
 
 // ============ 其他常量 ============
@@ -77,6 +92,7 @@ constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;  // A5架构base key
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
+<<<<<<< HEAD
     OP_LOGD(nodeName, "data_size is %d.", tilingData.dataSize);
     OP_LOGD(nodeName, "world_size is %d.", tilingData.worldSize);
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.maxBs);
@@ -84,6 +100,15 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.totalWinSize);
+=======
+    OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
+    OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
+    OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
+    OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
+    OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
+    OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.total_ub_size);
+    OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
+>>>>>>> e3e67c783 (daikuan urma)
 }
 
 // 校验属性指针非空
@@ -94,6 +119,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+<<<<<<< HEAD
 
     OP_TILING_CHECK(groupPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return ge::GRAPH_FAILED);
@@ -103,6 +129,23 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "maxBs"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "mode"), return ge::GRAPH_FAILED);
+=======
+    auto hcclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX);
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+
+    OP_TILING_CHECK(groupPtr == nullptr,
+        OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(worldSizePtr == nullptr,
+        OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(maxBsPtr == nullptr,
+        OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(modePtr == nullptr,
+        OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hcclBufferSizePtr == nullptr,
+        OP_LOGE(nodeName, "hcclBufferSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModePtr == nullptr,
+        OP_LOGE(nodeName, "commModePtr is null."), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     return ge::GRAPH_SUCCESS;
 }
@@ -115,6 +158,10 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+<<<<<<< HEAD
+=======
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+>>>>>>> e3e67c783 (daikuan urma)
 
     OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
@@ -133,6 +180,13 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
 
+<<<<<<< HEAD
+=======
+    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urma") != 0),
+        OP_LOGE(nodeName, "commMode is invalid, should be mte or urama, but got commMode=%s.",
+        *commModePtr), return ge::GRAPH_FAILED);
+
+>>>>>>> e3e67c783 (daikuan urma)
     return ge::GRAPH_SUCCESS;
 }
 
@@ -142,11 +196,18 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr,
+<<<<<<< HEAD
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrPointersNotNull(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "attr pointers",
             "null", "not null"), return ge::GRAPH_FAILED);
+=======
+        OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckAttrPointersNotNull(context, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check attr pointers not null failed."), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     OP_TILING_CHECK(CheckAttrValuesValid(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr values valid failed."), return ge::GRAPH_FAILED);
@@ -157,8 +218,13 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     group = std::string(groupPtr);
+<<<<<<< HEAD
     tilingData.worldSize = static_cast<int32_t>(*worldSizePtr);
     tilingData.maxBs = static_cast<int32_t>(*maxBsPtr);
+=======
+    tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
+    tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
+>>>>>>> e3e67c783 (daikuan urma)
     tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
@@ -176,16 +242,24 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr,
+<<<<<<< HEAD
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "x",
             (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
         return ge::GRAPH_FAILED);
+=======
+        OP_LOGE(nodeName, "xStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "x dims is invalid, should be 2, but got %zu.",
+        xStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     const int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     const int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(xDim0 <= 0,
+<<<<<<< HEAD
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "x dim0 (bs)",
             std::to_string(xDim0).c_str(), "positive"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xDim1 <= 0,
@@ -208,11 +282,33 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
             std::to_string(dstRankIdDim0).c_str(),
             "The dim0 of dst_rank_id must be the same as that of x"),
         return ge::GRAPH_FAILED);
+=======
+        OP_LOGE(nodeName, "x dim0 (bs) is invalid, should be positive, but got %ld.", xDim0), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xDim1 <= 0,
+        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
+                return ge::GRAPH_FAILED);
+
+    tilingData.max_bs = static_cast<int32_t>(xDim0);
+    tilingData.data_size = static_cast<int32_t>(xDim1);
+
+    const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
+    OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
+        OP_LOGE(nodeName, "dstRankIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dstRankIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "dst_rank_id dims is invalid, should be 1, but got %zu.",
+        dstRankIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+
+    const int64_t dstRankIdDim0 = dstRankIdStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(dstRankIdDim0 != xDim0,
+        OP_LOGE(nodeName, "dst_rank_id dim0 should equal to x dim0, but got dst_rank_id dim0=%ld, x dim0=%ld.",
+        dstRankIdDim0, xDim0), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     return ge::GRAPH_SUCCESS;
 }
 
 // 校验输出tensor shape
+<<<<<<< HEAD
 // y: [maxBs * worldSize, dataSize], receive_cnt: [worldSize]
 static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
@@ -228,12 +324,29 @@ static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, cons
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "y",
             (std::to_string(yStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
         return ge::GRAPH_FAILED);
+=======
+// y: [max_bs * world_size, data_size], receive_cnt: [world_size]
+static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
+    BandwidthTestTilingData &tilingData)
+{
+    int64_t worldSize = static_cast<int64_t>(tilingData.world_size);
+    int64_t maxBs = static_cast<int64_t>(tilingData.max_bs);
+    int64_t dataSize = static_cast<int64_t>(tilingData.data_size);
+
+    const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
+    OP_TILING_CHECK(yStorageShape == nullptr,
+        OP_LOGE(nodeName, "yStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "y dims is invalid, should be 2, but got %zu.",
+        yStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     const int64_t yDim0 = yStorageShape->GetStorageShape().GetDim(0);
     const int64_t yDim1 = yStorageShape->GetStorageShape().GetDim(1);
     const int64_t expectedYDim0 = maxBs * worldSize;
 
     OP_TILING_CHECK(yDim0 < expectedYDim0,
+<<<<<<< HEAD
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "y dim0",
             std::to_string(yDim0).c_str(),
             (std::string(">= ") + std::to_string(expectedYDim0)).c_str()),
@@ -257,6 +370,25 @@ static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, cons
             std::to_string(receiveCntDim0).c_str(),
             "The dim0 of receive_cnt must be the same as worldSize"),
         return ge::GRAPH_FAILED);
+=======
+        OP_LOGE(nodeName, "y dim0 should be >= maxBs * worldSize, but got y dim0=%ld, expected=%ld.",
+        yDim0, expectedYDim0), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yDim1 != dataSize,
+        OP_LOGE(nodeName, "y dim1 should equal to x dim1, but got y dim1=%ld, x dim1=%ld.",
+        yDim1, dataSize), return ge::GRAPH_FAILED);
+
+    const gert::StorageShape *receiveCntStorageShape = context->GetOutputShape(OUTPUT_RECEIVE_CNT_INDEX);
+    OP_TILING_CHECK(receiveCntStorageShape == nullptr,
+        OP_LOGE(nodeName, "receiveCntStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(receiveCntStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "receive_cnt dims is invalid, should be 1, but got %zu.",
+        receiveCntStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+
+    const int64_t receiveCntDim0 = receiveCntStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(receiveCntDim0 != worldSize,
+        OP_LOGE(nodeName, "receive_cnt dim0 should equal to worldSize, but got receive_cnt dim0=%ld, worldSize=%ld.",
+        receiveCntDim0, worldSize), return ge::GRAPH_FAILED);
+>>>>>>> e3e67c783 (daikuan urma)
 
     return ge::GRAPH_SUCCESS;
 }
@@ -274,10 +406,24 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
+<<<<<<< HEAD
 static uint64_t CalTilingKey()
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
     uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
+=======
+static uint64_t CalTilingKey(const char *nodeName, const std::string & commMode)
+{
+    uint64_t archTag = TILING_KEY_BASE_A5;
+    uint8_t commModeByte = TILINGKEY_TPL_MTE;
+    if (commMode =="mte") {
+        commModeByte = TILINGKEY_TPL_MTE;
+    } else if (commMode =="urma") {
+        commModeByte = TILINGKEY_TPL_URAMA;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(commModeByte, archTag);
+    OP_LOGI(nodeName, "tilingKey is %ld", tilingKey);
+>>>>>>> e3e67c783 (daikuan urma)
     return tilingKey;
 }
 
@@ -285,13 +431,27 @@ static uint64_t CalTilingKey()
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
 {
+<<<<<<< HEAD
+=======
+    auto attrs = context->GetAttrs();
+    int64_t hcclBufferSize = *(attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX));
+    int64_t worldSize = *(attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX));
+
+    uint64_t dataSize = static_cast<uint64_t>(worldSize * hcclBufferSize);
+    OP_LOGD(nodeName, "dataSize = %lu", dataSize);
+
+>>>>>>> e3e67c783 (daikuan urma)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+<<<<<<< HEAD
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+=======
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + dataSize + 2UL * 1024UL * 1024UL * 1024UL;
+>>>>>>> e3e67c783 (daikuan urma)
     
     return ge::GRAPH_SUCCESS;
 }
@@ -308,9 +468,15 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         context, nodeName, hcclBufferSize, maxWindowSize, ATTR_GROUP_INDEX, false) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed"), return ge::GRAPH_FAILED);
 
+<<<<<<< HEAD
     uint64_t dataSize = static_cast<uint64_t>(tilingData->dataSize);
     uint64_t worldSize = static_cast<uint64_t>(tilingData->worldSize);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->maxBs);
+=======
+    uint64_t dataSize = static_cast<uint64_t>(tilingData->data_size);
+    uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
+    uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
+>>>>>>> e3e67c783 (daikuan urma)
     uint64_t actualSize = worldSize * maxBs * dataSize * 2UL * 2UL;
 
     if (actualSize > maxWindowSize) {
@@ -320,7 +486,11 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         return ge::GRAPH_FAILED;
     }
 
+<<<<<<< HEAD
     tilingData->totalWinSize = maxWindowSize;
+=======
+    tilingData->total_win_size = maxWindowSize;
+>>>>>>> e3e67c783 (daikuan urma)
     OP_LOGD(nodeName, "WindowSize = %lu", maxWindowSize);
 
     return ge::GRAPH_SUCCESS;
@@ -338,6 +508,7 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 
     OP_TILING_CHECK(CheckTensorShape(context, nodeName, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
+<<<<<<< HEAD
 
     OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling check winsize failed."), return ge::GRAPH_FAILED);
@@ -345,6 +516,15 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
+=======
+    
+    OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check win size failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
+    
+>>>>>>> e3e67c783 (daikuan urma)
     return ge::GRAPH_SUCCESS;
 }
 
@@ -353,7 +533,11 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
     uint32_t batchMode = 1U;
+<<<<<<< HEAD
     context->SetScheduleMode(batchMode);
+=======
+    auto ret = context->SetScheduleMode(batchMode);
+>>>>>>> e3e67c783 (daikuan urma)
 
     const char *nodeName = context->GetNodeName();
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
@@ -363,8 +547,16 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
+<<<<<<< HEAD
 
     uint64_t tilingKey = CalTilingKey();
+=======
+    
+    auto commModePtr = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    std::string commMode(commModePtr);
+
+    uint64_t tilingKey = CalTilingKey(nodeName, commMode);
+>>>>>>> e3e67c783 (daikuan urma)
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -377,15 +569,26 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
     uint32_t aivNum = platformAivNum;
+<<<<<<< HEAD
     if (*aivNumPtr > 0 && *aivNumPtr <= platformAivNum) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
+=======
+    if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
+        aivNum = static_cast<uint32_t>(*aivNumPtr);
+        OP_LOGD(nodeName, "User set aiv_num = %ld", *aivNumPtr); 
+>>>>>>> e3e67c783 (daikuan urma)
     }
 
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
 
     context->SetBlockDim(numBlocks);
+<<<<<<< HEAD
     tilingData->totalUbSize = ubSize;
     tilingData->aivNum = aivNum;
+=======
+    tilingData->total_ub_size = ubSize;
+    tilingData->aiv_num = aivNum;
+>>>>>>> e3e67c783 (daikuan urma)
 
     OP_LOGD(nodeName, "numBlocks = %u, aivNum = %u, ubSize = %lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);

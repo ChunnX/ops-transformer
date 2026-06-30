@@ -370,6 +370,7 @@ inline void *GetOpApiFuncAddr(const char *apiName)
             return funcAddr;
         }
     }
+
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler == nullptr) {
         return nullptr;
