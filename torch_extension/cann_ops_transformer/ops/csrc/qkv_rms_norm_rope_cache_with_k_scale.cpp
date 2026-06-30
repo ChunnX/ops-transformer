@@ -103,7 +103,7 @@ void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const a
                        double epsilon, at::Tensor &q_out, at::Tensor &q_scale)
 {
     const std::string qkv_layout_str(qkv_layout);
-    char *qkv_layout_ptr = const_cast<char *>(qkv_layout_str.c_str());
+    const char *qkv_layout_ptr = qkv_layout_str.c_str();
     float epsilon_value = static_cast<float>(epsilon);
 
     ACLNN_CMD(aclnnQkvRmsNormRopeCacheWithKScale, qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
