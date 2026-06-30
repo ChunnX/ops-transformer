@@ -222,13 +222,22 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 }
                 baseParams_->splitCoreParam[i].mStart = 0;
                 baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
+                baseParams_->mLoopNum = mBaseNum;
             } else {
+                uint32_t mStartIdx = i / dBaseNum;
+                if (mStartIdx + 1 < mBaseNum) {
+                    uint32_t dealMSize = innerSplitParams_->mBaseSize;
+                    baseParams_->splitCoreParam[i].mStart = mStartIdx * innerSplitParams_->mBaseSize;
+                    baseParams_->splitCoreParam[i].mEnd = baseParams_->splitCoreParam[i].mStart + dealMSize;
+                } else {
+                    uint32_t dealMSize = mStartIdx < mBaseNum ?
+                                        baseParams_->tokenSize - mStartIdx * innerSplitParams_->mBaseSize : 0;
+                    baseParams_->splitCoreParam[i].mStart = mStartIdx * innerSplitParams_->mBaseSize;
+                    baseParams_->splitCoreParam[i].mEnd = baseParams_->splitCoreParam[i].mStart + dealMSize;
+                }
                 baseParams_->splitCoreParam[i].kStart = 0;
                 baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
-                uint32_t groupIdx = i / dBaseNum;
-                baseParams_->splitCoreParam[i].mStart = groupIdx * innerSplitParams_->mBaseSize;
-                baseParams_->splitCoreParam[i].mEnd =
-                    min(baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize, baseParams_->tokenSize);
+                baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
             }
         }
     } else {

@@ -370,11 +370,8 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
     uint32_t mStartBase = constInfo.mStart;
     uint32_t mEndBase = constInfo.mEnd;
     for (uint32_t i = 0; i < loopTimes; ++i) {
-        constInfo.mStart = mStartBase + i * constInfo.coreGroupNum * constInfo.mBaseSize;
-        constInfo.mEnd = min(constInfo.mStart + constInfo.mBaseSize, (uint32_t)tilingData_->baseParams.tokenSize);
-        if (constInfo.mStart >= tilingData_->baseParams.tokenSize) {
-            constInfo.mEnd = constInfo.mStart;
-        }
+        constInfo.mStart = mStartBase + i * constInfo.mBaseSize;
+        constInfo.mEnd = min(constInfo.mStart + constInfo.mBaseSize, mEndBase);
         if ASCEND_IS_AIC {
             blockCube_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
         } else {
