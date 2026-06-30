@@ -57,89 +57,91 @@ struct CubeCoordInfo {
     int32_t sparseBlockIdx[2]; // BSA: 当前迭代的 2 个 sparse block index
 };
 
-__aicore__ constexpr uint16_t Align64Func(uint16_t data) {
+__aicore__ constexpr uint16_t Align64Func(uint16_t data)
+{
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
 }
 
-__aicore__ constexpr bool IsDn() {
+__aicore__ constexpr bool IsDn()
+{
     return true;
 }
 
-__aicore__ constexpr TPosition GetC2Position() {
+__aicore__ constexpr TPosition GetC2Position()
+{
     return TPosition::VECCALC;
 }
-}
+} // namespace BaseApi
 
-#define CHILD_SPEC_TEMPLATE_ARGS \
-    INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isPa, useDn
+#define CHILD_SPEC_TEMPLATE_ARGS                                                                                       \
+    INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAtten, OUTPUT_T,   \
+        isPa, useDn
 
-#define TEMPLATE_INTF \
-    template <typename INPUT_T, typename T, BSALayout layout, BSALayout kvLayout, \
-    S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
-    DTemplateType dVTemplateType, bool hasAtten,\
-    typename OUTPUT_T, bool isPa, bool useDn=true>
+#define TEMPLATE_INTF                                                                                                  \
+    template <typename INPUT_T, typename T, BSALayout layout, BSALayout kvLayout, S1TemplateType s1TemplateType,       \
+              S2TemplateType s2TemplateType, DTemplateType dTemplateType, DTemplateType dVTemplateType, bool hasAtten, \
+              typename OUTPUT_T, bool isPa, bool useDn = true>
 
-#define TEMPLATE_INTF_ARGS \
-    INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isPa, useDn
+#define TEMPLATE_INTF_ARGS                                                                                             \
+    INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAtten, OUTPUT_T,   \
+        isPa, useDn
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
-    X(INPUT_T) \
-    X(T) \
+#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
+    X(INPUT_T)                                                                                                         \
+    X(T)                                                                                                               \
     X(OUTPUT_T)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(layout, BSALayout, BSALayout::TND) \
-    X(kvLayout, BSALayout, BSALayout::PA_BNSD) \
-    X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
-    X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
-    X(dTemplateType, DTemplateType, DTemplateType::Aligned128) \
-    X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
-    X(hasAtten, bool, false) \
-    X(isPa, bool, false) \
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
+    X(layout, BSALayout, BSALayout::TND)                                                                               \
+    X(kvLayout, BSALayout, BSALayout::PA_BNSD)                                                                         \
+    X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
+    X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
+    X(dTemplateType, DTemplateType, DTemplateType::Aligned128)                                                         \
+    X(dVTemplateType, DTemplateType, DTemplateType::Aligned128)                                                        \
+    X(hasAtten, bool, false)                                                                                           \
+    X(isPa, bool, false)                                                                                               \
     X(useDn, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type name = default_val,
 
-#define TEMPLATES_DEF \
-template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+#define TEMPLATES_DEF                                                                                                  \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
+                  true>
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
+
 #define TEMPLATES_DEF_NO_DEFAULT \
-template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+
 
 /* 3. 生成有默认值, 不带ChildClass的Args */
 #define GEN_ARG_NAME(name, ...) name,
-#define TEMPLATE_ARGS \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
+#define TEMPLATE_ARGS                                                                                                  \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)                                                                        \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-/* 4. 生成BASE的有默认值的Template, BASE带ChildClass*/
+/* 4. 生成BASE的有默认值的Template, BASE带ChildClass */
+
 #define TEMPLATES_DEF_BASE \
-template < \
-    typename ChildClass, \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+
 
 /* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
+
 #define TEMPLATES_DEF_BASE_NO_DEFAULT \
-template <\
-    typename ChildClass, \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+
 
 /* 6. 生成BASE的BaseArgs, BASE带ChildClass */
-#define TEMPLATE_BASE_ARGS \
-    ChildClass, \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+#define TEMPLATE_BASE_ARGS                                                                                             \
+    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 // metadata获取
 constexpr uint32_t BSA_FA_METADATA_SIZE = 8U;
@@ -152,7 +154,7 @@ constexpr uint32_t BSA_FA_BN1_END_INDEX = 4U;
 constexpr uint32_t BSA_FA_S1_END_INDEX = 5U;
 constexpr uint32_t BSA_FA_S2_END_INDEX = 6U;
 
-__aicore__ inline uint32_t GetBsaAttrMetadata(GlobalTensor<int32_t>& metadataGm, uint32_t coreIdx, uint32_t metaIdx)
+__aicore__ inline uint32_t GetBsaAttrMetadata(GlobalTensor<int32_t> &metadataGm, uint32_t coreIdx, uint32_t metaIdx)
 {
     uint32_t metadataIndex = BSA_FA_METADATA_SIZE * coreIdx + metaIdx;
     return metadataGm.GetValue(metadataIndex);

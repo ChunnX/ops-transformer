@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_block_sparse_attn_kvcache.h
@@ -26,8 +26,8 @@
 using namespace matmul;
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* prefixSeqQlenAddr)
+__aicore__ inline int64_t CalculateActualS1Size(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
+                                                __gm__ int32_t *prefixSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
@@ -37,13 +37,13 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
             actualS1Size = prefixSeqQlenAddr[bIdx + 1] - prefixSeqQlenAddr[bIdx];
         }
     }
-    
+
     return actualS1Size;
 }
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* prefixSeqKvlenAddr)
+__aicore__ inline int64_t CalculateActualS2Size(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
+                                                __gm__ int32_t *prefixSeqKvlenAddr)
 {
     int64_t actualS2Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
@@ -57,16 +57,15 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    const AttenMaskInfo &attenMaskInfo,
-    GlobalTensor<INPUT_T>& keyGm, __gm__ int32_t *prefixSeqQlenAddr,
-    __gm__ int32_t *prefixSeqKvlenAddr)
+__aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
+                                         const AttenMaskInfo &attenMaskInfo, GlobalTensor<INPUT_T> &keyGm,
+                                         __gm__ int32_t *prefixSeqQlenAddr, __gm__ int32_t *prefixSeqKvlenAddr)
 {
     // 计算实际序列长度
-    runParam.actualS1Size = CalculateActualS1Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
-    runParam.actualS2Size = CalculateActualS2Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, runParam.boIdx, prefixSeqKvlenAddr);
+    runParam.actualS1Size =
+        CalculateActualS1Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
+    runParam.actualS2Size =
+        CalculateActualS2Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqKvlenAddr);
 
     if constexpr (hasAtten) {
         runParam.preTokensPerBatch = attenMaskInfo.preTokens;
@@ -83,18 +82,19 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
         runParam.qBScalarOffset = prefixSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     } else if constexpr (layout == BSALayout::NTD) {
-        runParam.qBScalarOffset = constInfo.t1Size * (runParam.n2oIdx * constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
+        runParam.qBScalarOffset =
+            constInfo.t1Size * (runParam.n2oIdx * constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     }
 
     // 暂时用不到，但保留的参数计算
-    runParam.b1SSAttenMaskOffset = runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size *
-        (uint64_t)attenMaskInfo.attenMaskS2Size;
+    runParam.b1SSAttenMaskOffset =
+        runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size * (uint64_t)attenMaskInfo.attenMaskS2Size;
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t s1StartIdx, uint32_t s1EndIdx, bool firstBN, bool lastBN)
+__aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s1StartIdx,
+                                         uint32_t s1EndIdx, bool firstBN, bool lastBN)
 {
     uint32_t s1OuterSize = CeilDiv(runParam.actualS1Size, constInfo.s1BaseSize);
     runParam.s1LoopStart = firstBN ? s1StartIdx : 0;
@@ -102,14 +102,14 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     if constexpr (hasAtten) {
         if (runParam.nextTokensPerBatch < 0) {
-            int64_t nextTokensOuterSize = (-runParam.nextTokensPerBatch) / constInfo.s1BaseSize;       // 向下取整
+            int64_t nextTokensOuterSize = (-runParam.nextTokensPerBatch) / constInfo.s1BaseSize; // 向下取整
             runParam.s1LoopStart = Max(runParam.s1LoopStart, nextTokensOuterSize);
         }
     }
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx)
+__aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx)
 {
     int64_t cubeSOuterOffset = sOuterLoopIdx * constInfo.s1BaseSize;
     if (runParam.actualS1Size == 0) {
@@ -117,7 +117,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.s1RealSize = Min(constInfo.s1BaseSize, runParam.actualS1Size - cubeSOuterOffset);
     }
-    if constexpr(useDn) {
+    if constexpr (useDn) {
         runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5);
         runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 >> 1;
     } else {
@@ -134,15 +134,15 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 }
 
 TEMPLATE_INTF
-__aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t bIdx, __gm__ int32_t *prefixSeqQlenAddr)
+__aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
+                                            __gm__ int32_t *prefixSeqQlenAddr)
 {
     int64_t seqOffset = prefixSeqQlenAddr[bIdx];
 
     if ASCEND_IS_AIC {
         if constexpr (layout == BSALayout::TND) {
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
+                                     runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
         } else if constexpr (layout == BSALayout::NTD) {
             runParam.tensorQOffset = runParam.n2oIdx * constInfo.gSize * constInfo.t1Size * constInfo.dSize +
                                      runParam.goIdx * constInfo.t1Size * constInfo.dSize +
@@ -151,17 +151,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
     } else {
         if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
             // 起始地址  需要stride偏移
-            runParam.attentionOutOffset = seqOffset * constInfo.n2GDv +
-                runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
-                runParam.goIdx * constInfo.dSizeV;
+            runParam.attentionOutOffset = seqOffset * constInfo.n2GDv + runParam.sOuterOffset * constInfo.n2GDv +
+                                          runParam.n2oIdx * constInfo.gDv + runParam.goIdx * constInfo.dSizeV;
         }
         if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
             if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
             } else {
-                runParam.softmaxLseOffset = seqOffset * constInfo.n2G +
-                                    runParam.sOuterOffset * constInfo.n2G +
-                                    runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
+                runParam.softmaxLseOffset = seqOffset * constInfo.n2G + runParam.sOuterOffset * constInfo.n2G +
+                                            runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
             }
         }
     }
@@ -176,8 +174,8 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, __gm__ int32_t *prefixSeqQlenAddr)
+__aicore__ inline void ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
+                                      __gm__ int32_t *prefixSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
@@ -185,17 +183,17 @@ __aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo,
-    GlobalTensor<int32_t>& sparseSeqLenGm, int64_t s1Index)
+__aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo,
+                                         GlobalTensor<int32_t> &sparseSeqLenGm, int64_t s1Index)
 {
     int64_t sparseSeqLenFlatIdx = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb + s1Index;
     runParam.actSparseLen = sparseSeqLenGm.GetValue(sparseSeqLenFlatIdx);
-    runParam.s2LoopEndIdx = (runParam.actSparseLen + 2 - 1) >> 1;     // sparse块为128  基本块为256
+    runParam.s2LoopEndIdx = (runParam.actSparseLen + 2 - 1) >> 1; // sparse块为128  基本块为256
     return runParam.actSparseLen <= 0;
 }
 
 TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo)
+__aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &runInfo)
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
@@ -206,12 +204,8 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
 }
 
-__aicore__ inline void UpdateLoopFlagsBasedOnS1Index(
-    int32_t extras1, 
-    bool& notLast,
-    bool& notLastTwoLoop,
-    bool& notLastThreeLoop
-)
+__aicore__ inline void UpdateLoopFlagsBasedOnS1Index(int32_t extras1, bool &notLast, bool &notLastTwoLoop,
+                                                     bool &notLastThreeLoop)
 {
     switch (extras1) {
         case -1:
@@ -232,10 +226,9 @@ __aicore__ inline void UpdateLoopFlagsBasedOnS1Index(
             break;
     }
 }
-__aicore__ inline void AttentionMaskFullProcessingOrRequired(
-    int64_t s1Offset, int64_t s2Offset, int64_t delta, uint32_t realSize, 
-    int64_t& sparseBlkIdx, bool& sparseBlkPartialMask
-)
+__aicore__ inline void AttentionMaskFullProcessingOrRequired(int64_t s1Offset, int64_t s2Offset, int64_t delta,
+                                                             uint32_t realSize, int64_t &sparseBlkIdx,
+                                                             bool &sparseBlkPartialMask)
 {
     int64_t offsetDiff = s1Offset - s2Offset + delta;
     if (offsetDiff + realSize - 1 < 0) {
@@ -287,4 +280,4 @@ __aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
     }
 }
 
-#endif  // INFER_FLASH_ATTENTION_KVCACHE_H
+#endif // INFER_FLASH_ATTENTION_KVCACHE_H

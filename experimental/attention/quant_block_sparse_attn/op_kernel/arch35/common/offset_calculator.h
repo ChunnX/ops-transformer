@@ -37,8 +37,7 @@ enum class GmFormat {
 
 
 template <GmFormat FORMAT>
-struct GmLayout {
-};
+struct GmLayout {};
 
 template <>
 struct GmLayout<GmFormat::TNGD> {
@@ -46,7 +45,8 @@ struct GmLayout<GmFormat::TNGD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g, uint32_t d)
+    {
         shape = AscendC::MakeShape(t, n, g, d);
         uint64_t dStride = 1;
         uint64_t gStride = dStride * d;
@@ -62,7 +62,8 @@ struct GmLayout<GmFormat::TND> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t d)
+    {
         shape = AscendC::MakeShape(t, n, d);
         uint64_t dStride = 1;
         uint64_t nStride = dStride * d;
@@ -94,7 +95,8 @@ struct GmLayout<GmFormat::PA_BnBsND> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d)
+    {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t nStride = dStride * d;
@@ -110,7 +112,8 @@ struct GmLayout<GmFormat::PA_BnNBsD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d)
+    {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t bsStride = dStride * d;
@@ -126,7 +129,8 @@ struct GmLayout<GmFormat::PA_BnNBs> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize)
+    {
         shape = AscendC::MakeShape(n, blockSize);
         uint64_t bsStride = 1;
         uint64_t nStride = bsStride * blockSize;
@@ -136,15 +140,13 @@ struct GmLayout<GmFormat::PA_BnNBs> {
 };
 
 // ----------------------------------------------ActualSeqLensParser--------------------------------
-enum class ActualSeqLensMode
-{
+enum class ActualSeqLensMode {
     BY_BATCH = 0,
     ACCUM = 1,
 };
 
 template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
-class ActualSeqLensParser {
-};
+class ActualSeqLensParser {};
 
 template <typename ACTLEN_T>
 class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, false> {
@@ -195,6 +197,7 @@ public:
     {
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
+
 private:
     GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
     uint32_t actualLenDims;
@@ -227,6 +230,7 @@ public:
     {
         return actualLenDims;
     }
+
 private:
     GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
     uint32_t actualLenDims = 0;
@@ -248,6 +252,7 @@ public:
     {
         return blockTableGm.GetValue(bIdx * maxblockNumPerBatch + blockIdxInBatch);
     }
+
 private:
     GlobalTensor<int32_t> blockTableGm;
     uint32_t maxblockNumPerBatch;
@@ -290,6 +295,7 @@ public:
     {
         return cuSeqLensGm.GetValue(cuSeqLensSize);
     }
+
 private:
     GlobalTensor<ACTLEN_T> cuSeqLensGm;
     GlobalTensor<ACTLEN_T> seqUsedGM;
@@ -352,7 +358,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, const SeqLensQParserType& parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, const SeqLensQParserType &parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
@@ -426,7 +432,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType& parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType &parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -587,8 +593,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {
-};
+struct OffsetCalculator
+    : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {};
 
 template <typename Q_T, GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
 struct FaGmTensor {

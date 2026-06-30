@@ -26,49 +26,40 @@ using namespace AscendC;
 //   - 实例化 QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
 // __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
-#define BSA_OP_IMPL(...)                                                                                 \
-    do {                                                                                                 \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                      \
-            BaseApi::BSABlockCube<__VA_ARGS__>, BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type;          \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                       \
-            BaseApi::BSABlockVecDummy<__VA_ARGS__>, BaseApi::BSABlockVec<__VA_ARGS__>>::type;            \
-        BaseApi::QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType> op;                             \
-        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling);            \
-        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn;                  \
-        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen,                                      \
-            attenMask, metadata, cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv,                              \
-            blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
-            /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
-            /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
-            /*queryRope*/nullptr, /*keyRope*/nullptr, /*learnableSink*/nullptr,                          \
-            /*softmaxMax*/nullptr, /*softmaxSum*/nullptr, /*softmaxOut*/nullptr,                         \
-            softmaxLse, attentionOut, /*workspace*/user, tilingData, &tPipe);                            \
-        op.Process();                                                                                    \
+
+#define BSA_OP_IMPL(...) \
+    do { \
+        using CubeBlockType = \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockCube<__VA_ARGS__>, \
+                                      BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type; \
+        using VecBlockType = \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::BSABlockVecDummy<__VA_ARGS__>, \
+                                      BaseApi::BSABlockVec<__VA_ARGS__>>::type; \
+        BaseApi::QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType> op; \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
+        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
+        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, \
+                       cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
+                       nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
+                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
+                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
+                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
+                       nullptr /* queryRope */, nullptr /* keyRope */, \
+                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
+                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
+                       softmaxLse, attentionOut, user /* workspace */, \
+                       tilingData, &tPipe); \
+        op.Process(); \
     } while (0)
 
-template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE,
-          bool RETURN_SOFTMAX_LSE>
+
+template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attn(
-    __gm__ uint8_t *query,
-    __gm__ uint8_t *key,
-    __gm__ uint8_t *value,
-    __gm__ uint8_t *qScale,
-    __gm__ uint8_t *kScale,
-    __gm__ uint8_t *vScale,
-    __gm__ uint8_t *pScale,
-    __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensKv,
-    __gm__ uint8_t *seqUsedQ,
-    __gm__ uint8_t *seqUsedKv,
-    __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseSeqLen,
-    __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *attenMask,
-    __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace,
-    __gm__ uint8_t *tiling)
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+    __gm__ uint8_t *vScale, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
+    __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
@@ -86,8 +77,8 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
     // TODO: 是否新增模板参数
-    constexpr bool HAS_ATTENTION = (MASK_MODE==3);
-    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout,
-        S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
-        HAS_ATTENTION, bsaIsPa, bsaUseDn);
+    constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
+    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
+                S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                bsaIsPa, bsaUseDn);
 }

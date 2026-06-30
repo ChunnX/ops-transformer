@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file util_regbase.h
@@ -19,13 +19,19 @@
 #include "util.h"
 #include "../../quant_block_sparse_attn_common.h"
 
-using AscendC::TQue;
 using AscendC::QuePosition;
+using AscendC::TQue;
 
 namespace regbaseutil {
 constexpr uint16_t regBytes = 256;
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
-enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3, QSCALE_GATHER_INDEX = 4};
+enum class VselrIndexEnum {
+    GT_64_AND_LTE_128_INDEX = 0,
+    GT_0_AND_LTE_64_INDEX = 1,
+    DN_INDEX = 2,
+    NZ_INDEX = 3,
+    QSCALE_GATHER_INDEX = 4
+};
 enum class DTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -67,54 +73,55 @@ enum class SparseType : uint8_t {
     DENSE = 0,
     CASUAL = 1,
     BAND = 2,
-    UNSUPPORTED = 3    // 超L2优化暂不支持sparse的场景
+    UNSUPPORTED = 3 // 超L2优化暂不支持sparse的场景
 };
 
-#define COMMON_RUN_PARAM \
-    int64_t boIdx; \
-    int64_t s1oIdx; \
-    int64_t n1oIdx; \
-    int64_t n2oIdx; \
-    int64_t goIdx; \
-    int32_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
-    /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
-    uint32_t s1RealSize; \
-    uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
-    uint32_t halfS1RealSize; \
-    uint32_t firstHalfS1RealSize; \
-    int64_t tensorQOffset;         /* query的offset souter层确定 */ \
-    int64_t attentionOutOffset;    /* attentionOut的offset souter层确定 */ \
-    int64_t actualS1Size;      /* Q的actualSeqLength */ \
-    int64_t actualS2Size;    /* KV的actualSeqLength */ \
-    uint64_t b1SSAttenMaskOffset; \
-    uint64_t b1SSOffsetAlign16; \
-    int64_t qRopeNBGOffset;             /* QueryRope 的 offset */ \
-    int64_t kRopeNBGOffset;             /* G方向上,不同g的KeyRope的offset */ 
+#define COMMON_RUN_PARAM                                                                                               \
+    int64_t boIdx;                                                                                                     \
+    int64_t s1oIdx;                                                                                                    \
+    int64_t n1oIdx;                                                                                                    \
+    int64_t n2oIdx;                                                                                                    \
+    int64_t goIdx;                                                                                                     \
+    int32_t s2LoopEndIdx; /* S2方向的循环控制信息 souter层确定 */                                                      \
+    /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */                           \
+    uint32_t s1RealSize;                                                                                               \
+    uint32_t s1RealSizeAlign32; /* dn场景使用 */                                                                       \
+    uint32_t halfS1RealSize;                                                                                           \
+    uint32_t firstHalfS1RealSize;                                                                                      \
+    int64_t tensorQOffset;      /* query的offset souter层确定 */                                                       \
+    int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */                                                \
+    int64_t actualS1Size;       /* Q的actualSeqLength */                                                               \
+    int64_t actualS2Size;       /* KV的actualSeqLength */                                                              \
+    uint64_t b1SSAttenMaskOffset;                                                                                      \
+    uint64_t b1SSOffsetAlign16;                                                                                        \
+    int64_t qRopeNBGOffset; /* QueryRope 的 offset */                                                                  \
+    int64_t kRopeNBGOffset; /* G方向上,不同g的KeyRope的offset */
 
 
-struct RunParamStr {  // 分核与切块需要使用到参数
+struct RunParamStr { // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int32_t actSparseLen;
     int64_t s1LoopStart;
     int64_t s1LoopEnd;
     // BN循环生产的数据
-    int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
+    int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS;  // 左上顶点的pretoken
     int64_t nextTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
 
     // NBS1循环生产的数据
-    int64_t sOuterOffset;               // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
-    int64_t cubeSOuterOffset;           // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
-    int64_t keyOffset;              // mm1 Key 的offset,后续更名为KFinalOffset
+    int64_t sOuterOffset;     // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
+    int64_t cubeSOuterOffset; // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
+    int64_t keyOffset;        // mm1 Key 的offset,后续更名为KFinalOffset
 
     // q k v attenMask不同轴的offset
-    // B轴offset 
+    // B轴offset
     int64_t qBOffset;
     int64_t qBScalarOffset;
 
     // lse 输出offset
-    int64_t softmaxLseOffset;       // souter层确定
+    int64_t softmaxLseOffset; // souter层确定
 };
+
 
 #define COMMON_RUN_INFO \
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
@@ -164,166 +171,167 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod3 = 0; \
     int64_t sOuterOffset;
 
+
 struct RunInfo {
     COMMON_RUN_INFO;
-    /* sparseIndices 偏移量计算 */  
-    int64_t sparseBlkIdx1;      /*256/128 第一个sparse块 */  
-    int64_t sparseBlkIdx2;      /* 256/128 第二个sparse块 */
-    int64_t phyBlkNumIdx1;      // blockTable映射后的blockNum的Idx
+    /* sparseIndices 偏移量计算 */
+    int64_t sparseBlkIdx1; /* 256/128 第一个sparse块 */
+    int64_t sparseBlkIdx2; /* 256/128 第二个sparse块 */
+    int64_t phyBlkNumIdx1; // blockTable映射后的blockNum的Idx
     int64_t phyBlkNumIdx2;
-    bool sparseBlk1PartialMask;    // true表示部分计算  false表示全量计算
-    bool sparseBlk2PartialMask;    // true表示部分计算  false表示全量计算
+    bool sparseBlk1PartialMask; // true表示部分计算  false表示全量计算
+    bool sparseBlk2PartialMask; // true表示部分计算  false表示全量计算
     // lse 输出offset
     int64_t softmaxLseOffset;
 };
 
-#define COMMON_CONST_INFO \
-    /* 全局的基本块信息 */ \
-    uint32_t s1BaseSize; \
-    uint32_t s2BaseSize; \
-    int64_t bSize; \
-    int64_t t1Size; \
-    int64_t t2Size; \
-    int64_t dSize; \
-    int64_t dSizeV; \
-    int64_t dBasicBlock; \
-    int64_t dSizeRope; \
-    int64_t n1Size;     \
-    int64_t gSize; /* g轴的大小 */ \
-    int64_t n2Size; \
-    int64_t s1Size; /* s1总大小 */ \
-    int64_t s2Size; /* s2总大小 */ \
-    /* 轴的乘积 */ \
-    int64_t s1D; \
-    int64_t gS1D; \
-    int64_t n2GS1D; \
-    int64_t s2D; \
-    int64_t n2S2D; \
-    int64_t s1Dv; \
-    int64_t gS1Dv; \
-    int64_t n2GS1Dv; \
-    int64_t s2Dv; \
-    int64_t n2S2Dv; \
-    int64_t s1S2; \
-    int64_t gS1; \
-    int64_t gD; \
-    int64_t n2D; \
-    int64_t bN2D; \
-    int64_t gDv; \
-    int64_t n2Dv; \
-    int64_t bN2Dv; \
-    int64_t n2G; \
-    int64_t n2GD; \
-    int64_t bN2GD; \
-    int64_t n2GDv; \
-    int64_t bN2GDv; \
-    int64_t gS2; \
-    int64_t s1Dr; \
-    int64_t gS1Dr; \
-    int64_t n2GS1Dr; \
-    int64_t s2Dr; \
-    int64_t n2S2Dr; \
-    int64_t gDr; \
-    int64_t n2Dr; \
-    int64_t bN2Dr; \
-    int64_t n2GDr; \
-    int64_t bN2GDr; \
-    int32_t s2BaseN2D; \
-    int32_t s1BaseN2GD; \
-    int64_t s2BaseBN2D; \
-    int64_t s1BaseBN2GD; \
-    int32_t s1BaseD; \
-    int32_t s2BaseD; \
-    int64_t s2BaseN2Dv; \
-    int64_t s2BaseBN2Dv; \
-    int64_t s1BaseN2GDv; \
-    int64_t s1BaseBN2GDv; \
-    int32_t s1BaseDv; \
-    int32_t s2BaseDv; \
-    int64_t s1OuterSize; \
-    /* matmul跳读参数 */ \
-    int64_t mm1Ka; \
-    int64_t mm1Kb; \
-    int64_t mm2Kb; \
-    /* dq 或者attentionOut的Stride */ \
-    int64_t attentionOutStride; \
-    uint32_t aivIdx; \
-    uint8_t layoutType; \
-    uint8_t subBlockIdx;\
-    bool softMaxCheckRes; \
-    float keepProb; \
-    float scaleValue; \
-    float pScale;\
+#define COMMON_CONST_INFO                                                                                              \
+    /* 全局的基本块信息 */                                                                                             \
+    uint32_t s1BaseSize;                                                                                               \
+    uint32_t s2BaseSize;                                                                                               \
+    int64_t bSize;                                                                                                     \
+    int64_t t1Size;                                                                                                    \
+    int64_t t2Size;                                                                                                    \
+    int64_t dSize;                                                                                                     \
+    int64_t dSizeV;                                                                                                    \
+    int64_t dBasicBlock;                                                                                               \
+    int64_t dSizeRope;                                                                                                 \
+    int64_t n1Size;                                                                                                    \
+    int64_t gSize; /* g轴的大小 */                                                                                     \
+    int64_t n2Size;                                                                                                    \
+    int64_t s1Size; /* s1总大小 */                                                                                     \
+    int64_t s2Size; /* s2总大小 */                                                                                     \
+    /* 轴的乘积 */                                                                                                     \
+    int64_t s1D;                                                                                                       \
+    int64_t gS1D;                                                                                                      \
+    int64_t n2GS1D;                                                                                                    \
+    int64_t s2D;                                                                                                       \
+    int64_t n2S2D;                                                                                                     \
+    int64_t s1Dv;                                                                                                      \
+    int64_t gS1Dv;                                                                                                     \
+    int64_t n2GS1Dv;                                                                                                   \
+    int64_t s2Dv;                                                                                                      \
+    int64_t n2S2Dv;                                                                                                    \
+    int64_t s1S2;                                                                                                      \
+    int64_t gS1;                                                                                                       \
+    int64_t gD;                                                                                                        \
+    int64_t n2D;                                                                                                       \
+    int64_t bN2D;                                                                                                      \
+    int64_t gDv;                                                                                                       \
+    int64_t n2Dv;                                                                                                      \
+    int64_t bN2Dv;                                                                                                     \
+    int64_t n2G;                                                                                                       \
+    int64_t n2GD;                                                                                                      \
+    int64_t bN2GD;                                                                                                     \
+    int64_t n2GDv;                                                                                                     \
+    int64_t bN2GDv;                                                                                                    \
+    int64_t gS2;                                                                                                       \
+    int64_t s1Dr;                                                                                                      \
+    int64_t gS1Dr;                                                                                                     \
+    int64_t n2GS1Dr;                                                                                                   \
+    int64_t s2Dr;                                                                                                      \
+    int64_t n2S2Dr;                                                                                                    \
+    int64_t gDr;                                                                                                       \
+    int64_t n2Dr;                                                                                                      \
+    int64_t bN2Dr;                                                                                                     \
+    int64_t n2GDr;                                                                                                     \
+    int64_t bN2GDr;                                                                                                    \
+    int32_t s2BaseN2D;                                                                                                 \
+    int32_t s1BaseN2GD;                                                                                                \
+    int64_t s2BaseBN2D;                                                                                                \
+    int64_t s1BaseBN2GD;                                                                                               \
+    int32_t s1BaseD;                                                                                                   \
+    int32_t s2BaseD;                                                                                                   \
+    int64_t s2BaseN2Dv;                                                                                                \
+    int64_t s2BaseBN2Dv;                                                                                               \
+    int64_t s1BaseN2GDv;                                                                                               \
+    int64_t s1BaseBN2GDv;                                                                                              \
+    int32_t s1BaseDv;                                                                                                  \
+    int32_t s2BaseDv;                                                                                                  \
+    int64_t s1OuterSize;                                                                                               \
+    /* matmul跳读参数 */                                                                                               \
+    int64_t mm1Ka;                                                                                                     \
+    int64_t mm1Kb;                                                                                                     \
+    int64_t mm2Kb;                                                                                                     \
+    /* dq 或者attentionOut的Stride */                                                                                  \
+    int64_t attentionOutStride;                                                                                        \
+    uint32_t aivIdx;                                                                                                   \
+    uint8_t layoutType;                                                                                                \
+    uint8_t subBlockIdx;                                                                                               \
+    bool softMaxCheckRes;                                                                                              \
+    float keepProb;                                                                                                    \
+    float scaleValue;                                                                                                  \
+    float pScale;
 
 
-#define INFER_CONST_INFO \
-    /* sparseIndices 相关*/ \
-    uint32_t maxQb;        \
-    uint32_t maxKb;        \
-    /* 推理新增 */ \
-    bool isRowInvalid; /* 是否使能行无效 */ \
-    bool isActualLenDimsNull; /* 判断是否有actualseq */ \
-    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */ \
-    bool isGqa; \
-    bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */\
-    \
-    uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */ \
-    uint32_t isKvContinuous; /* 是否为tensorlist */ \
-    /* service mm1 mm2 pageAttention */ \
-    uint32_t blockTableDim2; \
-    uint32_t blockSize; \
-    uint32_t paLayoutType; \
-    uint32_t paBlockNumSum; \
-    uint32_t paBlockStride; \
-    uint32_t combineDim; \
-    uint32_t transposeLayout; \
-    /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
-    /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
-    uint32_t headNumRatio; \
-    bool rsvd1; \
-    bool isSoftmaxLseEnable; \
-    int64_t queryRightPaddingSize; \
-    int64_t kvRightPaddingSize; \
-    /* 后量化 */ \
-    bool isPostQuantPerChnl; \
-    bool isPostQuantBF16; \
-    bool isPostQuantOffsetExist; \
-    float postQuantScaleValue; \
-    float postQuantOffsetValue; \
-    /* sparseBlockSize */ \
-    uint32_t qSparseBlockSize;     /* sparse_q_block_size (= 128)  */  \
-    uint32_t kvSparseBlockSize;    /* sparse_kv_block_size (= 128) */  \
+#define INFER_CONST_INFO                                                                                               \
+    /* sparseIndices 相关 */                                                                                           \
+    uint32_t maxQb;                                                                                                    \
+    uint32_t maxKb;                                                                                                    \
+    /* 推理新增 */                                                                                                     \
+    bool isRowInvalid;          /* 是否使能行无效 */                                                                   \
+    bool isActualLenDimsNull;   /* 判断是否有actualseq */                                                              \
+    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */                                                           \
+    bool isGqa;                                                                                                        \
+    bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */                                                                    \
+                                                                                                                       \
+    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                                       \
+    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */                                                    \
+    uint32_t isKvContinuous;     /* 是否为tensorlist */                                                                \
+    /* service mm1 mm2 pageAttention */                                                                                \
+    uint32_t blockTableDim2;                                                                                           \
+    uint32_t blockSize;                                                                                                \
+    uint32_t paLayoutType;                                                                                             \
+    uint32_t paBlockNumSum;                                                                                            \
+    uint32_t paBlockStride;                                                                                            \
+    uint32_t combineDim;                                                                                               \
+    uint32_t transposeLayout;                                                                                          \
+    /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */                                                \
+    /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */                                          \
+    uint32_t headNumRatio;                                                                                             \
+    bool rsvd1;                                                                                                        \
+    bool isSoftmaxLseEnable;                                                                                           \
+    int64_t queryRightPaddingSize;                                                                                     \
+    int64_t kvRightPaddingSize;                                                                                        \
+    /* 后量化 */                                                                                                       \
+    bool isPostQuantPerChnl;                                                                                           \
+    bool isPostQuantBF16;                                                                                              \
+    bool isPostQuantOffsetExist;                                                                                       \
+    float postQuantScaleValue;                                                                                         \
+    float postQuantOffsetValue;                                                                                        \
+    /* sparseBlockSize */                                                                                              \
+    uint32_t qSparseBlockSize;  /* sparse_q_block_size (= 128)  */                                                     \
+    uint32_t kvSparseBlockSize; /* sparse_kv_block_size (= 128) */
 
-#define CV_SHARED_PARAMS \
-    /* base params */ \
-    uint32_t bSize;  \
-    int64_t t1Size;  \
-    int64_t t2Size;  \
-    uint32_t n2Size;  \
-    uint32_t gSize;  \
-    uint32_t s1Size;  \
-    uint32_t s2Size;  \
-    uint32_t dSize : 16;  \
-    uint32_t dSizeV : 16;  \
-    /* special params */  \
-    int64_t preTokens;  \
-    int64_t nextTokens;  \
-    uint32_t attenMaskS1Size;  \
-    uint32_t attenMaskS2Size;  \
-    int64_t s1SparseValidSize;  \
-    int64_t s2SparseValidSize;  \
-    /* core params */ \
-    uint32_t s1OuterSize;  \
-    uint32_t bandIndex;  \
-    uint32_t compressMode : 4;  \
-    uint32_t layoutType : 4;  \
-    uint32_t sparseType : 8;  \
-    uint32_t dSizeRope : 11; \
-    uint32_t splitCoreMode : 1; \
+#define CV_SHARED_PARAMS                                                                                               \
+    /* base params */                                                                                                  \
+    uint32_t bSize;                                                                                                    \
+    int64_t t1Size;                                                                                                    \
+    int64_t t2Size;                                                                                                    \
+    uint32_t n2Size;                                                                                                   \
+    uint32_t gSize;                                                                                                    \
+    uint32_t s1Size;                                                                                                   \
+    uint32_t s2Size;                                                                                                   \
+    uint32_t dSize  : 16;                                                                                              \
+    uint32_t dSizeV : 16;                                                                                              \
+    /* special params */                                                                                               \
+    int64_t preTokens;                                                                                                 \
+    int64_t nextTokens;                                                                                                \
+    uint32_t attenMaskS1Size;                                                                                          \
+    uint32_t attenMaskS2Size;                                                                                          \
+    int64_t s1SparseValidSize;                                                                                         \
+    int64_t s2SparseValidSize;                                                                                         \
+    /* core params */                                                                                                  \
+    uint32_t s1OuterSize;                                                                                              \
+    uint32_t bandIndex;                                                                                                \
+    uint32_t compressMode  : 4;                                                                                        \
+    uint32_t layoutType    : 4;                                                                                        \
+    uint32_t sparseType    : 8;                                                                                        \
+    uint32_t dSizeRope     : 11;                                                                                       \
+    uint32_t splitCoreMode : 1;                                                                                        \
     uint32_t coreNum
 
-struct ConstInfo{
+struct ConstInfo {
     COMMON_CONST_INFO;
     INFER_CONST_INFO;
     int64_t n2GS1o;
@@ -336,20 +344,20 @@ template <bool isPa = false>
 struct CVSharedParams;
 
 /* CVSharedParams需要小于等于CacheLine的大小：128Bytes */
-template<>
+template <>
 struct CVSharedParams<false> {
     CV_SHARED_PARAMS;
-    uint32_t fromFused : 1;
-    uint32_t isGqa : 1;
-    uint32_t isPfaGS1Merge : 1;
-    uint32_t isKvContinuous : 1;
-    uint32_t isRowInvalid : 1;
-    uint32_t isActualSeqLengthsNull : 1;
+    uint32_t fromFused                : 1;
+    uint32_t isGqa                    : 1;
+    uint32_t isPfaGS1Merge            : 1;
+    uint32_t isKvContinuous           : 1;
+    uint32_t isRowInvalid             : 1;
+    uint32_t isActualSeqLengthsNull   : 1;
     uint32_t isActualSeqLengthsKVNull : 1;
-    uint32_t needInit : 1;
-    uint32_t isPostQuantPerChnl : 1;
-    uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t needInit                 : 1;
+    uint32_t isPostQuantPerChnl       : 1;
+    uint32_t isPostQuantBF16          : 1;
+    uint32_t headNumRatio             : 20;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
@@ -367,20 +375,20 @@ struct CVSharedParams<false> {
 
     int64_t totalSize;
 };
-template<>
+template <>
 struct CVSharedParams<true> {
     CV_SHARED_PARAMS;
-    uint32_t fromFused : 1;
-    uint32_t isGqa : 1;
-    uint32_t isPfaGS1Merge : 1;
-    uint32_t isKvContinuous : 1;
-    uint32_t isRowInvalid : 1;
-    uint32_t isActualSeqLengthsNull : 1;
+    uint32_t fromFused                : 1;
+    uint32_t isGqa                    : 1;
+    uint32_t isPfaGS1Merge            : 1;
+    uint32_t isKvContinuous           : 1;
+    uint32_t isRowInvalid             : 1;
+    uint32_t isActualSeqLengthsNull   : 1;
     uint32_t isActualSeqLengthsKVNull : 1;
-    uint32_t needInit : 1;
-    uint32_t isPostQuantPerChnl : 1;
-    uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t needInit                 : 1;
+    uint32_t isPostQuantPerChnl       : 1;
+    uint32_t isPostQuantBF16          : 1;
+    uint32_t headNumRatio             : 20;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
@@ -406,6 +414,6 @@ struct CVSharedParams<true> {
 
     int64_t totalSize;
 };
-}
+} // namespace regbaseutil
 
 #endif // FLASH_ATTENTION_UTIL_REGBASE_H

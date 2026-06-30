@@ -213,7 +213,8 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
     auto &initOutputParams = tilingData_.initOutputParams;
     const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * BSA_D_SIZE;
     const int64_t totalSoftmaxLseSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size;
-    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) - 1) / static_cast<int64_t>(usedCoreNum_));
+    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) - 1) /
+                                        static_cast<int64_t>(usedCoreNum_));
     initOutputParams.set_needInit(1);
     initOutputParams.set_isOneN(info.n1Size == 1U ? 1 : 0);
     uint8_t rsvd[2] = {};
