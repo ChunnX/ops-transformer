@@ -241,7 +241,7 @@ __aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &batch
     if (batchInfo.bIdx < constInfo.batchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = (uint32_t)(batchInfo.bStartPos & (constInfo.cmpRatio - 1));
+        batchInfo.headHolderSeq = (uint32_t)(batchInfo.bStartPos % constInfo.cmpRatio);
         batchInfo.tcNum =
             (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
                        batchInfo.bStartPos / constInfo.cmpRatio);
@@ -298,8 +298,8 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
                 alignSeq = constInfo.cmpRatio - batchInfo.headHolderSeq;
             }
             if (quota > alignSeq) {
-                uint64_t delta =
-                    (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1); // 超出对齐的部分
+                    uint64_t delta =
+                    (batchInfo.bStartPos + batchInfo.sIdx + quota) % constInfo.cmpRatio;
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
                 curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;

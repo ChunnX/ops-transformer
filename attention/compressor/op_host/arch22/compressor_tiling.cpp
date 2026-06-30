@@ -636,9 +636,21 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio()const
 {
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckCmpRatioRange()) {
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CompressorTiling::CheckCmpRatioRange() const
+{
+    OP_CHECK_IF(context_->cmpRatio == nullptr, OP_LOGE(context_->opName, "attr cmpRatio is nullptr"),
+                return ge::GRAPH_FAILED);
+    uint32_t cmpRatioVal = static_cast<uint32_t>(*context_->cmpRatio);
+    OP_CHECK_IF(cmpRatioVal < MIN_CMP_RATIO || cmpRatioVal > MAX_CMP_RATIO,
+                OP_LOGE(context_->opName, "cmp_ratio should be within [%u, %u], but got %u",
+                        MIN_CMP_RATIO, MAX_CMP_RATIO, cmpRatioVal),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -831,12 +843,25 @@ ge::graphStatus CompressorTiling::CheckScenarioConsistency() const
     auto curCmpratio = baseParams_->cmpRatio;
     auto curHeaddim = baseParams_->headDim;
     auto curCoff = static_cast<uint8_t>(*context_->coff);
-    std::vector<uint32_t> curScenario{curCmpratio, curCoff, curHeaddim};
-    const std::vector<std::vector<uint32_t>> allowdScenarios = {{4, 2, 512}, {4, 2, 128}, {128, 1, 512}};
 
-    OP_CHECK_IF(std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
-                OP_LOGE(context_->opName, "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512},\
- but now cmpratio=%u, coff=%u, headdim=%u", curCmpratio, curCoff, curHeaddim), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(curCmpratio < MIN_CMP_RATIO || curCmpratio > MAX_CMP_RATIO,
+                OP_LOGE(context_->opName,
+                        "cmpratio should be within [%u, %u], but got %u",
+                        MIN_CMP_RATIO, MAX_CMP_RATIO, curCmpratio),
+                return ge::GRAPH_FAILED);
+
+    if (curCoff == 2) {
+        OP_CHECK_IF(curHeaddim != 512 && curHeaddim != 128,
+                    OP_LOGE(context_->opName,
+                            "When coff=2, headdim should be 512 or 128, but got %u", curHeaddim),
+                    return ge::GRAPH_FAILED);
+    } else if (curCoff == 1) {
+        OP_CHECK_IF(curHeaddim != 512,
+                    OP_LOGE(context_->opName,
+                            "When coff=1, headdim should be 512, but got %u", curHeaddim),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

@@ -230,7 +230,7 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
  * @param scLoopCnt sc循环次数
  */
 
-// 当前仅支持coff * cmpRatio为2的幂的情况
+// 支持任意coff * cmpRatio值，dDealSize需为2的幂(8/16/32/64/128/256/512)
 template <typename T>
 __aicore__ inline void MulReduceSumbaseVF(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                           const LocalTensor<T> &outputLocal, const uint32_t coff, const uint32_t cmpRatio,
