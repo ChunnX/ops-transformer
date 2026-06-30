@@ -278,12 +278,8 @@
   - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
   - `rope_head_dim`仅支持64。
   - `cmp_sparse_indices`的TopK长度支持512或1024。
-  - PageAttention的block_size支持16的倍数，且不超过1024。
-  - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
+  - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致，`block_size`支持16的倍数，且不超过1024。
   - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
-- `ori_kv`和`cmp_kv`的量化布局由`quant_mode`决定：
-  - `quant_mode`为1时：KV的D支持608，布局为block_size*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8_e4m3量化，group_size=64；scale部分数据类型为bf16。
-  - `quant_mode`为2时：KV的D支持584，布局为block_size*(nope+rope)+block_size*(scale+pad[1])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8_e4m3量化，group_size=64；scale部分数据类型为e8m0。
 - 当`layout_q`为TND时，功能使用限制如下：
   - `q`的shape需要为[T1,N1,D]。
   - `ori_sparse_indices`当前暂不支持。
