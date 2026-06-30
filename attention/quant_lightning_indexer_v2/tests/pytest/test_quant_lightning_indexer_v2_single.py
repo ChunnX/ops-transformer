@@ -29,7 +29,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
         "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
         "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value",
-        "output_idx_offset"
+        "output_idx_offset", "run_mode"
     ]
     param_values = [
         locals()["param_batch_size"],
@@ -63,7 +63,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_k_scale_datarange"],
         locals()["param_cmp_ratio"],
         locals()["param_return_value"],
-        locals()["param_output_idx_offset"]
+        locals()["param_output_idx_offset"],
+        params.get("run_mode", ["eager"])
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -107,6 +108,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         cmp_ratio = param_combinations['cmp_ratio']
         return_value = param_combinations['return_value']
         output_idx_offset = param_combinations['output_idx_offset']
+        run_mode = param_combinations['run_mode']
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
                     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
@@ -115,7 +117,13 @@ for _, params in enumerate(ENABLED_PARAMS):
                     k_scale_datarange, cmp_ratio, return_value, output_idx_offset
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
+        if run_mode == "eager":
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
+        elif run_mode == "graph":
+            import quant_lightning_indexer_v2_acl_graph
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_acl_graph.qliv2_output_acl_graph(test_data)
+        else:
+            raise ValueError(f"unsupported run_mode: {run_mode}")
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比
