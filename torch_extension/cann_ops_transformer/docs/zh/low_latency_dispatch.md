@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -66,7 +66,7 @@
 ## 函数原型
 
 ```python
-MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode=0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode=0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0, y_dtype=None, x_dtype=None, scales_dtype=None) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -233,6 +233,30 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>int</td>
         <td>可选</td>
         <td>表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>y_dtype</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>预留参数，当前版本不支持，传默认值None即可。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>x_dtype</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>预留参数，当前版本不支持，传默认值None即可。</td>
+        <td>int</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>scales_dtype</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>预留参数，当前版本不支持，传默认值None即可。</td>
         <td>int</td>
         <td>-</td>
     </tr>

@@ -24,6 +24,8 @@ using npu_utils = at_npu::native::NpuUtils;
 using tensor_list = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
 const int DIM_ONE = 1;
 const int DIM_TWO = 2;
+const int64_t RANK_NUM_PER_NODE = 8;
+const int64_t SEND_COUNT_MEMORY_SIZE = 2;
 
 bool HasTensor(const c10::optional<at::Tensor> &tensor)
 {
@@ -215,6 +217,7 @@ tensor_list npu_moe_distribute_dispatch(const at::Tensor &context, const at::Ten
     }
     auto output_dtype = GetStorageScalarType(output_acl_dtype);
     bool has_expert_scales = HasTensor(expert_scales);
+    aclDataType dynamic_scales_acl_dtype = GetDynamicScalesDtype(x, scales, scales_dtype, quant_mode);
 
     at::Tensor expand_x{nullptr};
     at::Tensor dynamic_scales{nullptr};
@@ -233,7 +236,6 @@ tensor_list npu_moe_distribute_dispatch(const at::Tensor &context, const at::Ten
             expand_x = at::empty({std::max(a, a * tp_world_size), h / 2}, x.options().dtype(output_dtype));
         }
 
-        aclDataType dynamic_scales_acl_dtype = GetDynamicScalesDtype(x, scales, scales_dtype, quant_mode);
         auto dynamic_scales_dtype = GetStorageScalarType(dynamic_scales_acl_dtype);
         if (IsAscend950()) {
             auto dynamic_scales_shape = GetDynamicScalesShape(scales, quant_mode, std::max(a, a * tp_world_size), h);
@@ -245,9 +247,9 @@ tensor_list npu_moe_distribute_dispatch(const at::Tensor &context, const at::Ten
         }
 
         expert_token_nums = at::empty({local_moe_expert_num}, x.options().dtype(at::kLong));
-        if (has_expert_scales && IsAscend910B()) {
-            // 2: 2 buffer, 8 ranknum per server
-            ep_recv_cnt_num = ep_world_size * local_moe_expert_num + 2 * global_bs_real * k * (ep_world_size / 8);
+        if (has_expert_scales) {
+            ep_recv_cnt_num = ep_world_size * local_moe_expert_num +
+                SEND_COUNT_MEMORY_SIZE * global_bs_real * k * (ep_world_size / RANK_NUM_PER_NODE);
         }
         ep_recv_counts = at::empty({ep_recv_cnt_num}, x.options().dtype(at::kInt));
         tp_recv_counts = at::empty({tp_world_size}, x.options().dtype(at::kInt));
@@ -263,7 +265,6 @@ tensor_list npu_moe_distribute_dispatch(const at::Tensor &context, const at::Ten
     at::Tensor scales_tensor = HasTensor(scales) ? scales.value() : at::Tensor();
     aclDataType scales_acl_dtype = scales_dtype.has_value() ? GetAclDataType(scales_dtype.value())
         : ConvertToAclDataType(scales_tensor.defined() ? scales_tensor.scalar_type() : at::kFloat);
-    aclDataType dynamic_scales_acl_dtype = GetDynamicScalesDtype(x, scales, scales_dtype, quant_mode);
     TensorWrapper x_wrapper = {x, x_acl_dtype};
     TensorWrapper scales_wrapper = {scales_tensor, scales_acl_dtype};
     TensorWrapper expand_x_wrapper = {expand_x, output_acl_dtype};
