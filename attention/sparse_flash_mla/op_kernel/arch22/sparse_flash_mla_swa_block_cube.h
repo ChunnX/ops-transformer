@@ -165,7 +165,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::InitMm1GlobalTensor(GlobalTensor<Q_T
     // mm1
     this->queryGm = queryGm;
     this->oriKvGm = oriKvGm;
-    if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
+    if constexpr (TEMPLATE_MODE == HCA_TEMPLATE) {
         this->cmpKvGm = cmpKvGm;
     }
     this->mm1ResGm = mm1ResGm;
@@ -189,7 +189,7 @@ SWACubeBlock<SMLAT>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, // const 
 {
     this->oriKvGm = oriKvGm;
     this->oriBlockTableGm = oriBlockTableGm;
-    if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
+    if constexpr (TEMPLATE_MODE == HCA_TEMPLATE) {
         this->cmpBlockTableGm = cmpBlockTableGm;
     }
 }

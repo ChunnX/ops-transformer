@@ -919,17 +919,17 @@ def gen_data(params, template_mode=None):
     # 路由到三个算子的逻辑：
     template_idx = 0
 
-    mapping = {"SWA": 0, "CFA": 1, "SCFA": 2}
+    mapping = {"SWA": 0, "HCA": 1, "CSA": 2}
     if template_mode is not None and template_mode in mapping:
         template_run_mode = template_mode
         template_idx = mapping[template_mode]
         if template_mode == "SWA":
             cmp_ratio = None
             K = None
-        elif template_mode == "CFA":
+        elif template_mode == "HCA":
             cmp_ratio = int(cmp_ratio)
             K = None
-        elif template_mode == "SCFA":
+        elif template_mode == "CSA":
             cmp_ratio = int(cmp_ratio)
             K = int(K)
     else:
@@ -938,12 +938,12 @@ def gen_data(params, template_mode=None):
                 template_idx = 0  # SWA
                 template_run_mode = 'SWA'
             else:
-                template_idx = 1  # CFA
-                template_run_mode = 'CFA'
+                template_idx = 1  # HCA
+                template_run_mode = 'HCA'
                 cmp_ratio = int(cmp_ratio)
         else:
-            template_idx = 2  # SCFA
-            template_run_mode = 'SCFA'
+            template_idx = 2  # CSA
+            template_run_mode = 'CSA'
             if cmp_ratio == None:
                 cmp_ratio = 1
             else:
