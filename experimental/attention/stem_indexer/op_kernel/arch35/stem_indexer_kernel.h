@@ -150,15 +150,15 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.stemStride = tilingData->stemStride;
     constInfo.initialBlocks = tilingData->initialBlocks;
     constInfo.windowSize = tilingData->windowSize;
-    constInfo.mBaseSize = tilingData->mBaseSize;
-    constInfo.s2BaseSize = tilingData->s2BaseSize;
-    constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
     constInfo.rSquare = tilingData->rSquare;
-    constInfo.alpha = tilingData->alpha;
     constInfo.kBlockNumRateMedium = tilingData->kBlockNumRateMedium;
     constInfo.kBlockNumBiasMedium = tilingData->kBlockNumBiasMedium;
     constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
+    constInfo.mBaseSize = tilingData->mBaseSize;
+    constInfo.s2BaseSize = tilingData->s2BaseSize;
+    constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
+    constInfo.alpha = tilingData->alpha;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     constInfo.attenMaskFlag = tilingData->causal != 0U;
     if (Q_LAYOUT_T == SI_LAYOUT::TND) {
@@ -356,7 +356,7 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         ((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
-                                              static_cast<int32_t>(constInfo.INVALID_IDX));
+                                              static_cast<int32_t>(SICommon::INVALID_IDX));
                     vectorService.SetSparseSeqLenZero(indiceLenOffset);
                 }
             }
@@ -371,7 +371,7 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         ((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
-                                              static_cast<int32_t>(constInfo.INVALID_IDX));
+                                              static_cast<int32_t>(SICommon::INVALID_IDX));
                     vectorService.SetSparseSeqLenZero(indiceLenOffset);
                 }
             }
@@ -417,22 +417,6 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, keyGm);
     }
-
-    // if (GetBlockIdx() == 0) {
-    //     AscendC::printf("[StemIndexer Init] bSize=%u qHeadNum=%u kvHeadNum=%u gSize=%u maxQb=%u maxKb=%u "
-    //                     "headDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
-    //                     "initialBlocks=%u windowSize=%u mBaseSize=%u s2BaseSize=%u scoreScale=%f alpha=%f "
-    //                     "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
-    //                     "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
-    //                     static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
-    //                     static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
-    //                     static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
-    //                     static_cast<uint32_t>(constInfo.headDim), constInfo.usedCoreNum, constInfo.causal,
-    //                     constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
-    //                     constInfo.mBaseSize, constInfo.s2BaseSize, constInfo.scoreScale, constInfo.alpha,
-    //                     constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
-    //                     constInfo.kBlockNumBiasLarge, static_cast<uint32_t>(singleCoreScoreWorkspaceBytes));
-    // }
 
     InitBuffers();
 }
@@ -575,7 +559,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
                                           ? singleCoreIndiceSize
                                           : totalIndiceSize - indiceBaseSize;
             GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceBaseSize];
-            AscendC::InitGlobalMemory(indiceOut, dealIndiceSize, static_cast<int32_t>(constInfo.INVALID_IDX));
+            AscendC::InitGlobalMemory(indiceOut, dealIndiceSize, static_cast<int32_t>(SICommon::INVALID_IDX));
         }
 
         uint64_t totalLenSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize;
@@ -600,8 +584,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0);
+        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1);
     } else {
         matmulService.AllocEventID();
     }
@@ -640,8 +624,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + 0); 
-        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + 1); 
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0);
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1);
     }
 }
 
