@@ -160,8 +160,8 @@ __simd_callee__ inline void DynamicQuantFp8D128(MicroAPI::RegTensor<fp8_e4m3fn_t
 
 __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
                                                          __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
-                                                         __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
-                                                         uint32_t headSize, uint32_t inputTokenStride,
+                                                         __ubuf__ uint16_t *nzScatterIndex, uint16_t tokenSize,
+                                                         uint16_t headSize, uint32_t inputTokenStride,
                                                          uint32_t inputHeadStride, uint32_t outputTokenStride,
                                                          uint32_t outputHeadStride, float epsilon)
 {
@@ -212,17 +212,16 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
 }
 
 __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
-                                                 __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
-                                                 uint32_t vScaleHeadOffset, uint32_t vHeadSize,
-                                                 uint32_t inputTokenStride, uint32_t inputHeadStride)
+                                                 __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint16_t tokenSize,
+                                                 uint16_t vHeadSize, uint32_t inputTokenStride,
+                                                 uint32_t inputHeadStride)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     const uint32_t outputHeadStride = tokenSize * QKV_K_SCALE_D128_FULL_SIZE;
     const uint32_t outputTokenStride = QKV_K_SCALE_D128_FULL_SIZE;
     for (uint16_t headIdx = 0U; headIdx < vHeadSize; ++headIdx) {
-        const uint32_t vHead = vScaleHeadOffset + static_cast<uint32_t>(headIdx);
         MicroAPI::RegTensor<float> scale;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(scale, vScale + vHead);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(scale, vScale + headIdx);
 
         for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
             MicroAPI::RegTensor<bfloat16_t> vLowBf16;
@@ -248,7 +247,7 @@ __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16,
 }
 
 __simd_vf__ inline void QDynamicQuantD128NtdVfImpl(__ubuf__ float *qFp32, __ubuf__ fp8_e4m3fn_t *qFp8,
-                                                   __ubuf__ float *qScale, uint32_t tokenSize, uint32_t qHeadSize,
+                                                   __ubuf__ float *qScale, uint16_t tokenSize, uint16_t qHeadSize,
                                                    uint32_t qkUbTokenCapacity)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
@@ -288,7 +287,7 @@ __simd_vf__ inline void QDynamicQuantD128NtdVfImpl(__ubuf__ float *qFp32, __ubuf
 }
 
 __simd_vf__ inline void QDynamicQuantD128TndVfImpl(__ubuf__ float *qFp32, __ubuf__ fp8_e4m3fn_t *qFp8,
-                                                   __ubuf__ float *qScale, uint32_t tokenSize, uint32_t qHeadSize)
+                                                   __ubuf__ float *qScale, uint16_t tokenSize, uint16_t qHeadSize)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
@@ -324,7 +323,7 @@ __simd_vf__ inline void QDynamicQuantD128TndVfImpl(__ubuf__ float *qFp32, __ubuf
 }
 
 __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ fp8_e4m3fn_t *kFp8,
-                                                __ubuf__ float *kScaleStaging, uint32_t tokenSize, uint32_t kHeadSize,
+                                                __ubuf__ float *kScaleStaging, uint16_t tokenSize, uint16_t kHeadSize,
                                                 uint32_t inputHeadStride, uint32_t inputTokenStride,
                                                 uint32_t outputHeadStrideBytes, uint32_t outputTokenStrideBytes)
 {

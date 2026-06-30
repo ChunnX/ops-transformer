@@ -72,7 +72,6 @@ private:
         tile.aivTokenOffset = 0U;
         tile.aivTokenSize = 0U;
         tile.aivBlockTokenOffset = 0U;
-        tile.vHeadOffset = 0U;
         tile.vHeadSize = 0U;
     }
 
@@ -88,7 +87,6 @@ private:
         tile.tokenSize = MinU64(MinU64(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
         tile.cubeTokenSize = AlignUp(tile.tokenSize, QKV_K_SCALE_MIX_AIV_PER_AIC);
         tile.cubeHalfTokenSize = tile.cubeTokenSize / QKV_K_SCALE_MIX_AIV_PER_AIC;
-        tile.vHeadOffset = 0U;
         tile.vHeadSize = tilingData->kvHeadNum;
         if ASCEND_IS_AIC {
             return;

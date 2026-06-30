@@ -277,15 +277,15 @@ private:
         AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
             (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
-            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(qHeadNum_), inputTokenStride, inputHeadStride, qOutputTokenStride, outputHeadStride,
+            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+            static_cast<uint16_t>(qHeadNum_), inputTokenStride, inputHeadStride, qOutputTokenStride, outputHeadStride,
             epsilon_);
         const uint32_t kInputOffset = static_cast<uint32_t>(qHeadNum_) * inputHeadStride;
         AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
             (__ubuf__ bfloat16_t *)input[kInputOffset].GetPhyAddr(),
             (__ubuf__ float *)(gamma[QKV_K_SCALE_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
             (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(), (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(),
-            static_cast<uint32_t>(tile.aivTokenSize), static_cast<uint32_t>(kvHeadNum_), inputTokenStride,
+            static_cast<uint16_t>(tile.aivTokenSize), static_cast<uint16_t>(kvHeadNum_), inputTokenStride,
             inputHeadStride, kOutputTokenStride, outputHeadStride, epsilon_);
     }
 
@@ -350,12 +350,11 @@ private:
             inputTokenStride = QKV_K_SCALE_D128_FULL_SIZE;
             inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_K_SCALE_D128_FULL_SIZE;
         }
-        const uint32_t vInputOffset = static_cast<uint32_t>(vInputHeadBase + tile.vHeadOffset) * inputHeadStride;
+        const uint32_t vInputOffset = static_cast<uint32_t>(vInputHeadBase) * inputHeadStride;
         AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
             (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-            (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize), inputTokenStride,
-            inputHeadStride);
+            (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+            static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, uint32_t vOutBufferId)
@@ -363,8 +362,7 @@ private:
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[vOutBufferId * QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS];
         for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
             const uint64_t ubOffset = tokenIdx * headDim_;
-            const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * kvCacheStrideHead_;
-            DataCopyUbToGm2D(vCacheOutGm_[gmOffset], vOut[ubOffset], tile.vHeadSize, headDim_,
+            DataCopyUbToGm2D(vCacheOutGm_[tile.cacheBaseOffset[tokenIdx]], vOut[ubOffset], tile.vHeadSize, headDim_,
                              tile.aivTokenSize * headDim_, kvCacheStrideHead_);
         }
     }
@@ -377,13 +375,13 @@ private:
         if constexpr (IS_TND) {
             AscendC::VF_CALL<QDynamicQuantD128TndVfImpl>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
-                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_));
+                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+                static_cast<uint16_t>(qHeadNum_));
         } else {
             AscendC::VF_CALL<QDynamicQuantD128NtdVfImpl>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
-                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
+                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+                static_cast<uint16_t>(qHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
         }
     }
 
@@ -409,8 +407,8 @@ private:
         }
         AscendC::VF_CALL<KDynamicQuantD128VfImpl>(
             (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(),
-            (__ubuf__ float *)kScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(kvHeadNum_), inputHeadStride, inputTokenStride, outputHeadStrideBytes,
+            (__ubuf__ float *)kScale.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+            static_cast<uint16_t>(kvHeadNum_), inputHeadStride, inputTokenStride, outputHeadStrideBytes,
             outputTokenStrideBytes);
     }
 
