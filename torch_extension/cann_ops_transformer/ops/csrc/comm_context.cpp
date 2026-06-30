@@ -620,7 +620,7 @@ private:
 
     std::string group_;
     std::string commAlg_;
- 	std::string opName_;
+    std::string opName_;
     int64_t worldSize_;
     py::object backend_;
     BackendMode mode_;
