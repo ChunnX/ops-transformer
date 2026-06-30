@@ -692,7 +692,7 @@ aclnnStatus aclnnSparseFlashMla(
 
 /*!
  * \file test_aclnn_sparse_flash_mla.cpp
- * \brief SparseFlashMla + SparseFlashMlaMetadata 算子调用示例（SCFA）
+ * \brief SparseFlashMla + SparseFlashMlaMetadata 算子调用示例（CSA）
  */
 
 #include <algorithm>
