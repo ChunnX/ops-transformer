@@ -128,7 +128,7 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     uint32_t aivIdx = GetBlockIdx() / GetTaskRation();  // block 级别索引
     uint32_t aivNum = GetBlockNum();  // 核1参与, 使用 blockNum
 
-    uint32_t rankId = params.rankId;
+    uint32_t rankId = params.combineCommParams.rankId;
     uint32_t worldSize = params.tilingData->epWorldSize;
     uint32_t rankPerCore = worldSize / aivNum;
     uint32_t remainder = worldSize % aivNum;
@@ -183,7 +183,7 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
             cnt += slotReadTensor.GetValue(countWordIdx);
         }
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
-                                    static_cast<int64_t>(L1_TILE_N)));
+                                    static_cast<int64_t>(MegaMoeImpl::L1_TILE_N)));
         //printf("rankId=%d, processRankId=%d, cnt=%d, totalDataBlockCnt=%d\n", rankId, index, cnt, totalDataBlockCnt);
         totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
         if(totalDataBlockCnt == 0) {
