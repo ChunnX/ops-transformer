@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`面向大语言模型推理中的PagedAttention KV Cache更新场景。接口从融合输入`qkv`中拆分Q、K、V分量，对Q/K执行RMSNorm、Half-and-Half RoPE和共享`rotationOptional`矩阵乘，随后将Q/K动态量化为FP8 E4M3FN；Q分支输出`qOut`和`qScale`，K分支按`slotMapping`写入`kCacheRef`和`kScaleCacheRef`。V分支按`vScaleOptional`缩放后量化为FP8 E4M3FN，并按`slotMapping`写入`vCacheRef`。
+- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`面向大语言模型推理中的PagedAttention KV Cache更新场景。接口从融合输入`qkv`中拆分Q、K、V分量，对Q/K执行RMSNorm、RoPE和共享`rotationOptional`矩阵乘，随后将Q/K动态量化为FP8 E4M3FN；Q分支输出`qOut`和`qScale`，K分支按`slotMapping`写入`kCacheRef`和`kScaleCacheRef`。V分支按`vScaleOptional`缩放后量化为FP8 E4M3FN，并按`slotMapping`写入`vCacheRef`。
 
 - 计算公式：
 
@@ -35,7 +35,7 @@
   position = actualSeqLens[b] - (cuSeqLen[b + 1] - cuSeqLen[b]) + i
   $$
 
-  Q/K分支采用Half-and-Half RoPE，`cosSin[..., :D/2]`为cos，`cosSin[..., D/2:]`为sin；V分支不执行RoPE：
+  Q/K分支执行RoPE，`cosSin[..., :D/2]`为cos，`cosSin[..., D/2:]`为sin；V分支不执行RoPE：
 
   $$
   y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
