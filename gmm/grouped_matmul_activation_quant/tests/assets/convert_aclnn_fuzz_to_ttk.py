@@ -17,29 +17,47 @@ from pathlib import Path
 
 TTK_COLUMNS = [
     "testcase_name",
-    "network_name",
     "op_name",
-    "input_shapes",
-    "input_dtypes",
-    "input_formats",
-    "output_shapes",
-    "output_dtypes",
+    "stc_inputs",
+    "stc_ori_inputs",
+    "stc_outputs",
+    "stc_ori_outputs",
+    "dyn_inputs",
+    "dyn_ori_inputs",
+    "dyn_outputs",
+    "dyn_ori_outputs",
+    "stc_input_formats",
+    "dyn_input_formats",
+    "dyn_input_ori_formats",
+    "stc_input_ori_formats",
     "output_formats",
-    "input_ori_shapes",
-    "input_ori_formats",
-    "output_ori_shapes",
     "output_ori_formats",
-    "attributes",
-    "input_data_ranges",
+    "stc_input_dtypes",
+    "dyn_input_dtypes",
+    "output_dtypes",
+    "other_compilation_params",
+    "dyn_input_ranges",
+    "dyn_output_ranges",
+    "dyn_input_as_list_distribution",
+    "stc_input_as_list_distribution",
     "precision_tolerances",
+    "input_data_ranges",
+    "strict_precision_mode",
     "absolute_precision",
+    "shape_check",
+    "is_enabled",
 ]
 
-NETWORK_NAME = "gmm_activation_quant_mxfp8"
 OP_NAME = "grouped_matmul_activation_quant"
 ACLNN_NAME = "aclnnGroupedMatmulActivationQuantWeightNz"
-DEFAULT_PRECISION_TOLERANCES = ((0.25, 0.25), (0.25, 0.25))
-DEFAULT_ABSOLUTE_PRECISION = "1e-2"
+INPUT_NUM = 6
+OUTPUT_NUM = 2
+DEFAULT_PRECISION_TOLERANCES = ((0.01, 0.01), (0.01, 0.01))
+DEFAULT_INPUT_DATA_RANGES = ((1, 1), (1, 1), (1, 1), (1, 1), (1, 1), (1, 1))
+DEFAULT_ABSOLUTE_PRECISION = "1"
+DEFAULT_SHAPE_CHECK = "TRUE"
+DEFAULT_IS_ENABLED = "1"
+DEFAULT_STRICT_PRECISION_MODE = "TRUE"
 
 Y_DTYPE_TO_NAME = {
     35: "float8_e5m2",
@@ -264,24 +282,49 @@ def convert_row(row, row_index):
         f"x{dtype_short_name(input_dtypes[0])}_y{dtype_short_name(y_dtype_name)}"
     )
 
+    stc_inputs = (x_shape, group_list_shape, weight_storage_shape, weight_scale_shape, bias_shape, x_scale_shape)
+    stc_ori_inputs = (x_shape, group_list_shape, weight_logical_shape, weight_scale_shape, bias_shape, x_scale_shape)
+    stc_outputs = (y_shape, y_scale_shape)
+    stc_input_formats = ("ND", "ND", "FRACTAL_NZ", "ND", "ND", "ND")
+    stc_input_ori_formats = ("ND", "ND", "ND", "ND", "ND", "ND")
+    output_formats = ("ND", "ND")
+    stc_input_dtypes = (input_dtypes[0], input_dtypes[1], weight_dtype, weight_scale_dtype, "float32", input_dtypes[5])
+    output_dtypes_tuple = (output_dtypes[0], output_dtypes[1])
+    dyn_placeholders = tuple((-2,) for _ in range(INPUT_NUM))
+    dyn_output_placeholders = tuple((-2,) for _ in range(OUTPUT_NUM))
+    as_list_distribution = (0, 0, 1, 1, 1, 0)
+
     return {
         "testcase_name": testcase_name,
-        "network_name": NETWORK_NAME,
         "op_name": OP_NAME,
-        "input_shapes": repr((x_shape, group_list_shape, (weight_storage_shape,), (weight_scale_shape,), bias_shape, x_scale_shape)),
-        "input_dtypes": repr((input_dtypes[0], input_dtypes[1], (weight_dtype,), (weight_scale_dtype,), bias_shape, input_dtypes[5])),
-        "input_formats": repr(("ND", "ND", ("FRACTAL_NZ",), ("ND",), bias_shape, "ND")),
-        "output_shapes": repr((y_shape, y_scale_shape)),
-        "output_dtypes": repr((output_dtypes[0], output_dtypes[1])),
-        "output_formats": repr(("ND", "ND")),
-        "input_ori_shapes": repr((x_shape, group_list_shape, (weight_logical_shape,), (weight_scale_shape,), bias_shape, x_scale_shape)),
-        "input_ori_formats": repr(("ND", "ND", ("ND",), ("ND",), bias_shape, "ND")),
-        "output_ori_shapes": repr((y_shape, y_scale_shape)),
-        "output_ori_formats": repr(("ND", "ND")),
-        "attributes": repr(attrs),
-        "input_data_ranges": repr(((0, 0), (0, m_value), ((0, 0),), ((1, 1),), bias_shape, (1, 1))),
+        "stc_inputs": repr(stc_inputs),
+        "stc_ori_inputs": repr(stc_ori_inputs),
+        "stc_outputs": repr(stc_outputs),
+        "stc_ori_outputs": repr(stc_outputs),
+        "dyn_inputs": repr(dyn_placeholders),
+        "dyn_ori_inputs": repr(dyn_placeholders),
+        "dyn_outputs": repr(dyn_output_placeholders),
+        "dyn_ori_outputs": repr(dyn_output_placeholders),
+        "stc_input_formats": repr(stc_input_formats),
+        "dyn_input_formats": repr(stc_input_formats),
+        "dyn_input_ori_formats": repr(stc_input_ori_formats),
+        "stc_input_ori_formats": repr(stc_input_ori_formats),
+        "output_formats": repr(output_formats),
+        "output_ori_formats": repr(output_formats),
+        "stc_input_dtypes": repr(stc_input_dtypes),
+        "dyn_input_dtypes": repr(stc_input_dtypes),
+        "output_dtypes": repr(output_dtypes_tuple),
+        "other_compilation_params": repr(attrs),
+        "dyn_input_ranges": "",
+        "dyn_output_ranges": "",
+        "dyn_input_as_list_distribution": repr(as_list_distribution),
+        "stc_input_as_list_distribution": repr(as_list_distribution),
         "precision_tolerances": repr(DEFAULT_PRECISION_TOLERANCES),
+        "input_data_ranges": repr(DEFAULT_INPUT_DATA_RANGES),
+        "strict_precision_mode": DEFAULT_STRICT_PRECISION_MODE,
         "absolute_precision": DEFAULT_ABSOLUTE_PRECISION,
+        "shape_check": DEFAULT_SHAPE_CHECK,
+        "is_enabled": DEFAULT_IS_ENABLED,
     }
 
 

@@ -54,7 +54,7 @@ grouped_matmul_activation_quant(
 | `x_scale` | optional input，当前MXFP8必须传入，shape为`(M, ceil(K / 64), 2)`。 |
 | `group_list_type` | 可选属性，支持`0`或`1`，默认`0`。 |
 | `tuning_config` | 可选属性，预留调优参数。 |
-| `quant_mode` | 可选属性，默认`None`。输入FP8且`quant_mode`为`None`时，自动将`quant_mode`推导为`"MX"`；`quant_mode`显式传值时必须为`"MX"`。 |
+| `quant_mode` | 可选属性，默认`None`。显式传值时当前仅支持`"MX"`；为`None`时，若`x`数据类型为FP8且`x_scale`数据类型为FLOAT8_E8M0，则自动推导为`"MX"`。 |
 | `y_dtype` | 可选属性，输出`y`的数据类型，支持`torch.float8_e4m3fn`和`torch.float8_e5m2`，默认`None`；为`None`时自动推导为与`x`相同的数据类型。 |
 | `round_mode` | 可选属性，当前仅支持`"rint"`。 |
 | `scale_alg` | 可选属性，支持`0`或`1`，默认`0`。 |
