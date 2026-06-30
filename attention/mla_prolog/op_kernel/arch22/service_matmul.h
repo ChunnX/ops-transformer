@@ -547,7 +547,7 @@ __aicore__ inline void MatmulFullLoad(const GlobalTensor<O> &tensorCGm, const Gl
         if constexpr (enUnitFlag) {
             mmadParams.unitFlag = UNIT_FLAG_SET;
         }
-        AscendC::WaitFlag<HardEvent::FIX_M>((bufParam.cL0BufIter & 1u) * L0C_EVENT0);
+        AscendC::WaitFlag<HardEvent::FIX_M>((bufParam.cL0BufIter & 1u) + L0C_EVENT0);
         LocalTensor<O_L0C> cL0 = localTensors.cL0Tensor[(bufParam.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
         MatmulL0<T, O_L0C, S>(bufParam, aL1, bL1[para.k * n * nSplitSize], localTensors.aL0Tensor,
                               localTensors.bL0Tensor, cL0, mmadParams, para.kL1StepSize);
