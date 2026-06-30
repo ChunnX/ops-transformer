@@ -260,14 +260,11 @@ inline int32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetQuery
 
 inline ValidSocVersion SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ProcessSocVersion()
 {
-    const std::string ascend950 = "Ascend950";
-    if (socVersion_.find(ascend950) != std::string::npos) {
-        return ValidSocVersion::ASCEND950;
-    } else {
+    if (socVersion_.find("Ascend910") != std::string::npos) {
         return ValidSocVersion::ASCEND910B;
+    } else {
+        return ValidSocVersion::ASCEND950; 
     }
-
-    return ValidSocVersion::RESERVED_VERSION;
 }
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit()
@@ -287,8 +284,6 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit(
     if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
         s2BaseSize_ = 2048U;
     } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 128U;
-    } else {
         s2BaseSize_ = 128U;
     }
     return true;

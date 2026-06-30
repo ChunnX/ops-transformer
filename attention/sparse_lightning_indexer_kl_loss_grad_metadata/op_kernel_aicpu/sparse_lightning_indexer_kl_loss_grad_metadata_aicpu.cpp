@@ -26,10 +26,15 @@ public:
     uint32_t Compute(CpuKernelContext &ctx) override
     {
         std::string socVersion;
-        if (GetAttrValue(ctx, "soc_version", socVersion) && socVersion.find("Ascend950") != std::string::npos) {
+        if (!GetAttrValue(ctx, "soc_version", socVersion)) {
+            KERNEL_LOG_ERROR("Get soc_version failed!");
+            return KERNEL_STATUS_PARAM_INVALID;
+        }
+        if (socVersion.find("Ascend910") != std::string::npos) {
+            return arch22Kernel_.Compute(ctx);
+        } else {
             return arch35Kernel_.Compute(ctx);
         }
-        return arch22Kernel_.Compute(ctx);
     }
 
 private:
