@@ -82,7 +82,8 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     auto valueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(value->GetStorageFormat()));
     auto blockSparseMaskFormat = ge::FORMAT_ND;
     if (blockSparseMaskOptional != nullptr) {
-        blockSparseMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
+        blockSparseMaskFormat = 
+            static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
     }
     auto attenMaskFormat = ge::FORMAT_ND;
     if (attenMaskOptional != nullptr) {
@@ -286,7 +287,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
         return ret;
     }
 
-    ret = CheckNDFormat(query, key, value, blockSparseMask, attenMaskOptional, 
+    ret = CheckNDFormat(query, key, value, blockSparseMask, attenMaskOptional,
                         blockTableOptional, attentionOut, softmaxLseOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
