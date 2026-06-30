@@ -97,9 +97,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             LoadAlign(vreg_src_x_unroll_1, srcUb1 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
             LoadAlign(vreg_src_x_2, srcUb2 + i * 16 * 16 + j * 64 * 16);  // 第二个256
             LoadAlign(vreg_src_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
-
-            Max(vreg_max_tmp, vreg_max_tmp, vreg_src_x_1, preg_all);  // 读入第j个[64, 16]，和第1个256块已经读入的前j-1个[64, 16]的max再取max
-            Max(vreg_max_tmp, vreg_max_tmp, vreg_src_x_2, preg_all);  // 读入第j个[64, 16]，和第2个256块已经读入的前j-1个[64, 16]的max再取max
+            // 读入第j个[64, 16]，和第1个256块已经读入的前j-1个[64, 16]的max再取max
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_src_x_1, preg_all);
+            // 读入第j个[64, 16]，和第2个256块已经读入的前j-1个[64, 16]的max再取max
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_src_x_2, preg_all);
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_src_x_unroll_1, preg_all);
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_src_x_unroll_2, preg_all);
         }

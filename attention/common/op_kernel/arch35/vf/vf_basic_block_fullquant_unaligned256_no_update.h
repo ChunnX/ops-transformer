@@ -171,8 +171,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
                (RegTensor<uint8_t>&)vreg_exp_0_f8_2, (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_2,
                (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2,
-               (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1,
+               (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
 
             Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_indexes);
             StoreAlign(expUb + i * 16 * 32 + j * 64 * 32 + 256, vreg_exp_merge_f8_2, preg_all_b8);
