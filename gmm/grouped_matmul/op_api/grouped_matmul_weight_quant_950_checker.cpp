@@ -330,7 +330,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
 
     if (gmmParams_.groupType == NO_SPLIT) {
         if (IsA16W4Pergroup(wIdx)) {
-            if (unlikely(xDimNum != MAX_FM_DIM)) {
+            if (unlikely(xDimNum != MIN_FM_DIM)) {
                 std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] must be 2" +
                     ", when weight separated";
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
