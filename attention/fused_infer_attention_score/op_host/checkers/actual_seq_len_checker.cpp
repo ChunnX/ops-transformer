@@ -404,38 +404,6 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo &fiaInfo)
-{
-    if (fiaInfo.fullQuantMode != FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    constexpr int64_t minQuerySeqLen = 1;
-    constexpr int64_t maxQuerySeqLen = 65536; // 64K
-    constexpr int64_t maxKVSeqLen = 262144; // 256K
-
-    uint32_t batchSize = fiaInfo.bSize;
-    for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
-        int64_t qSeqLen = GetActualSeqLengthsQData(fiaInfo, bIdx);
-        OP_CHECK_IF(qSeqLen < minQuerySeqLen || qSeqLen > maxQuerySeqLen,
-            OP_LOGE(fiaInfo.opName,
-                    "In FP8 GQA fullquant scenario, query sequence length(%ld) should be in range of [%ld, %ld].",
-                    qSeqLen, minQuerySeqLen, maxQuerySeqLen),
-            return ge::GRAPH_FAILED);
-
-        int64_t kvSeqLen = GetActualSeqLengthsKvData(fiaInfo, bIdx);
-        OP_CHECK_IF(kvSeqLen < 0 || kvSeqLen > maxKVSeqLen,
-            OP_LOGE(fiaInfo.opName,
-                    "In FP8 GQA fullquant scenario, kv sequence length(%ld) should be in range of [0, %ld].",
-                    kvSeqLen, maxKVSeqLen),
-            return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 // general
 int64_t ActualSeqLenChecker::GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
 {
@@ -526,8 +494,7 @@ ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaI
     }
 
     if (enableFullQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo) ||
-            ge::GRAPH_SUCCESS != CheckFeatureFP8GQAFullquant(fiaInfo)) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
