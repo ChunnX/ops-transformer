@@ -305,14 +305,14 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
 
     if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND950) {
         CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Fallback(
-            tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
+            tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut) == ACLNN_SUCCESS,
             ACLNN_ERR_PARAM_INVALID);
         return BuildMoeInitRoutingV2Executor(tokens, indices, numOutTokens, permuteTokensOut, sortedIndicesOut,
                                              workspaceSize, executor);
     }
 
     CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Regbase(
-        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut),
+        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut) == ACLNN_SUCCESS,
         ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -323,7 +323,7 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
     int64_t fullTokenNum = 0;
     CHECK_RET(PrepareIndicesForV3(
         tokens, indices, &tokensContiguous, &indicesContiguous,
-        &fullTokenNum, uniqueExecutor.get()),
+        &fullTokenNum, uniqueExecutor.get()) == ACLNN_SUCCESS,
         ACLNN_ERR_INNER_NULLPTR);
 
     aclTensor *fullExpandedX = nullptr;
@@ -334,7 +334,7 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
     CHECK_RET(AllocIntermediateTensorsForV3(
         fullTokenNum, quantMode, permuteTokensOut, expandedScaleOut,
         &fullExpandedX, &fullExpandedRowIdx, &expertTokensCount,
-        &fullExpandedScale, &activeExpertRange, uniqueExecutor.get()),
+        &fullExpandedScale, &activeExpertRange, uniqueExecutor.get()) == ACLNN_SUCCESS,
         ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *expandedXOut = nullptr;
@@ -345,13 +345,16 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
         fullExpandedX, fullExpandedRowIdx, expertTokensCount,
         fullExpandedScale, activeExpertRange,
         &expandedXOut, &expandedRowIdxOut, &expandedScale,
-        uniqueExecutor.get()),
+        uniqueExecutor.get()) == ACLNN_SUCCESS,
         ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(SliceAndViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(SliceAndViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(SliceAndViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(SliceAndViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
     if (quantMode != MoeTokenPermuteV2Check::QUANT_MODE_NONE) {
-        CHECK_RET(SliceAndViewCopy(expandedScale, expandedScaleOut, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(SliceAndViewCopy(expandedScale, expandedScaleOut, uniqueExecutor.get()) == ACLNN_SUCCESS,
+                  ACLNN_ERR_INNER_NULLPTR);
     }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
