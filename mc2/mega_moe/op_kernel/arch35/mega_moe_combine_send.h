@@ -404,7 +404,6 @@ __aicore__ inline bool PartitionUrmaSendRanks(UrmaSendContext& ctx, const Params
         cntTensorLength / sizeof(int32_t));
     AscendC::Duplicate<int32_t>(ctx.sendTokenCnt, 0, ctx.processRankNum);
     AscendC::Duplicate<int32_t>(ctx.totalTokenCnt, 0, ctx.processRankNum);
-    PipeBarrier<PIPE_ALL>();
     return true;
 }
 
