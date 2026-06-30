@@ -913,8 +913,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommM
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'aicpu', 'ccu'");
+        OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
