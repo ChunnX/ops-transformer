@@ -23,6 +23,7 @@ from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import npu_flash_attn
 from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
 from .flash_attn_metadata import npu_flash_attn_metadata
+from .mixed_quant_flash_attn import npu_mixed_quant_flash_attn
 from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
 from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
 from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla

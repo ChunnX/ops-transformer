@@ -10,29 +10,27 @@
 
 /*!
  * \file mixed_quant_flash_attn_tiling_data.h
- * \brief MixedQuantFlashAttn Tiling Data structures (independent from flash_attn)
+ * \brief MixedQuantFlashAttn TilingData定义（伪量化，Q为BF16/FP16，K/V为mxFP4）
  */
 
 #ifndef MIXED_QUANT_FLASH_ATTN_TILING_DATA_H_
 #define MIXED_QUANT_FLASH_ATTN_TILING_DATA_H_
-
-#include <cstdint>
 
 namespace optiling {
 
 constexpr uint32_t MQFA_AIC_CORE_NUM = 36;
 constexpr uint32_t MQFA_AIV_CORE_NUM = 72;
 
-constexpr uint32_t MQFA_METADATA_SIZE = 16;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_METADATA_SIZE = 16;
 constexpr uint32_t MQFA_FD_METADATA_SIZE = 16;
 
-constexpr uint32_t MQFA_BN2_START_INDEX = 0;
-constexpr uint32_t MQFA_M_START_INDEX = 1;
-constexpr uint32_t MQFA_S2_START_INDEX = 2;
-constexpr uint32_t MQFA_BN2_END_INDEX = 3;
-constexpr uint32_t MQFA_M_END_INDEX = 4;
-constexpr uint32_t MQFA_S2_END_INDEX = 5;
-constexpr uint32_t MQFA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 6;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_BN2_START_INDEX = 0;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_M_START_INDEX = 1;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_S2_START_INDEX = 2;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_BN2_END_INDEX = 3;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_M_END_INDEX = 4;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_S2_END_INDEX = 5;
+constexpr uint32_t MIXED_QUANT_FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 6;
 
 constexpr uint32_t MQFA_FD_BN2_IDX_INDEX = 0;
 constexpr uint32_t MQFA_FD_M_IDX_INDEX = 1;
@@ -93,23 +91,23 @@ struct MixedQuantFlashAttnS1OuterSplitCoreParams {
 };
 
 struct MixedQuantFlashAttnMetaData {
-    uint32_t FAMetadata[MQFA_AIC_CORE_NUM][MQFA_METADATA_SIZE];
+    uint32_t FAMetadata[MQFA_AIC_CORE_NUM][MIXED_QUANT_FLASH_ATTN_METADATA_SIZE];
     uint32_t FDMetadata[MQFA_AIV_CORE_NUM][MQFA_FD_METADATA_SIZE];
 };
 
 class MixedQuantFlashAttnTilingArch35 {
 public:
-    MixedQuantFlashAttnBaseParams mixedQuantFlashAttnBaseParams;
-    MixedQuantFlashAttnAttenMaskParams mixedQuantFlashAttnAttenMaskParams;
-    MixedQuantFlashAttnPageAttentionParams mixedQuantFlashAttnPageAttentionParams;
-    MixedQuantFlashAttnWorkspaceParams mixedQuantFlashAttnWorkspaceParams;
-    MixedQuantFlashAttnS1OuterSplitCoreParams mixedQuantFlashAttnS1OuterSplitCoreParams;
+    MixedQuantFlashAttnBaseParams flashAttnBaseParams;
+    MixedQuantFlashAttnAttenMaskParams flashAttnAttenMaskParams;
+    MixedQuantFlashAttnPageAttentionParams flashAttnPageAttentionParams;
+    MixedQuantFlashAttnWorkspaceParams flashAttnWorkspaceParams;
+    MixedQuantFlashAttnS1OuterSplitCoreParams flashAttnS1OuterSplitCoreParams;
 };
 
 class MixedQuantFlashAttnTilingData {
 public:
     MixedQuantFlashAttnTilingArch35 baseTiling;
-    MixedQuantFlashAttnMetaData mixedQuantFlashAttnMetaData;
+    MixedQuantFlashAttnMetaData flashAttnMetaData;
 };
 
 } // namespace optiling

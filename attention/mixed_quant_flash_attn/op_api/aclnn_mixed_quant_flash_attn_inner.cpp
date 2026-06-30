@@ -20,7 +20,7 @@ extern "C" {
 
 namespace {
 
-void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
+void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
                                 const aclTensor *&placeHolder)
 {
     if (returnSoftmaxLse == false) {
@@ -35,7 +35,7 @@ void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softm
 }
 
 // sinks shape为{0}时置nullptr
-void FlashAttnProcessSinks(const aclTensor *&sinksOptional)
+void MixQuantFlashAttnProcessSinks(const aclTensor *&sinksOptional)
 {
     if (sinksOptional != nullptr) {
         const auto &shape = sinksOptional->GetViewShape();

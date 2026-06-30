@@ -1,15 +1,15 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+*/
 
 /*!
- * \file aclnn_flash_attn.h
+ * \file aclnn_mixed_quant_flash_attn.h
  * \brief
  */
 
@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnMixedQuantFlashAttn的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnFlashAttn的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_train_infer
  *
  * @param q                   [IN]  query tensor。数据类型FLOAT16/BFLOAT16，ND格式。
@@ -31,17 +31,14 @@ extern "C" {
  *                                  BSND: shape=(B, S_q, N_q, D)
  *                                  BNSD: shape=(B, N_q, S_q, D)
  *                                  TND:  shape=(T_q, N_q, D)，T_q为总token数
- * @param k                   [IN]  key tensor。数据类型UINT8/FP8_e4m3，layout由layoutKv决定。
+ * @param k                   [IN]  key tensor。数据类型与q一致，layout由layoutKv决定。
  *                                  BSND: shape=(B, S_kv, N_kv, D)
  *                                  TND:  shape=(T_kv, N_kv, D)
  *                                  PA_ND: shape=(NumBlocks, BlockSize, N_kv, D)，分页注意力格式
  *                                  PA_Nz: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
- * @param v                   [IN]  value tensor。数据类型UINT8/FP8_e4m3，layout由layoutKv决定，shape同k。
- * @param kDescale            [IN]  key反量化缩放因子tensor。数据类型FLOAT32。
- *                                  per-channel模式(quantMode=1): shape=(N_kv,)；
- *                                  per-token-head模式(quantMode=2): shape=(B, S_kv, N_kv)或(T_kv, N_kv)；
- *                                  mxfp4模式(quantMode=3): shape与per-token-head一致。
- * @param vDescale            [IN]  value反量化缩放因子tensor。数据类型FLOAT32，shape同kDescale。
+ * @param v                   [IN]  value tensor。数据类型与q一致，layout由layoutKv决定，shape同k。
+ * @param kDescale            [IN]  key的反量化参数
+ * @param vDescale            [IN]  value的反量化参数
  * @param blockTableOptional  [IN]  可选。分页KV缓存的块映射表，数据类型INT32。
  *                                  shape=(B, MaxBlocksPerSeq)，与layoutKv=PA_ND/PA_Nz配合使用。
  * @param cuSeqlensQOptional  [IN]  可选。query的累积序列长度（前缀和），数据类型INT32。
@@ -57,10 +54,8 @@ extern "C" {
  * @param attnMaskOptional    [IN]  可选。attnmask的参数，数据类型INT8。
  * @param metadataOptional    [IN]  可选。预计算的tiling切分方案，数据类型INT32，由上游算子传入。
  *                                  当该输入不为nullptr时，tiling侧跳过切分方案计算，直接使用该元数据。
- * @param quantMode           [IN]  ATTR必选。量化模式，数据类型INT64。
- *                                  1: per-channel量化（kDescale/vDescale按head维度缩放）；
- *                                  2: per-token-head量化（kDescale/vDescale按token+head维度缩放）；
- *                                  3: mxfp4量化。
+ * @param quantMode           [IN]  伪量化模式，数据类型INT。
+ *                                  1：q不量化，kv mxfp4，kv的dtype为fp4_e2m1；2:待扩展
  * @param softmaxScale        [IN]  ATTR可选。softmax缩放系数，对应老接口的scaleValue。
  *                                  数据类型DOUBLE。默认值0.0表示使用1/sqrt(D)。
  * @param maskMode            [IN]  ATTR可选。掩码模式，对应老接口的sparseMode。数据类型INT。
@@ -82,17 +77,16 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale,
-    int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *blockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnMixedQuantFlashAttn的第二段接口，用于执行计算。
+ * @brief aclnnFlashAttn的第二段接口，用于执行计算。
  * @param workspace       [IN] 由第一段接口计算得到的workspace设备内存指针。
  * @param workspaceSize   [IN] workspace大小（字节数）。
  * @param executor        [IN] 第一段接口输出的op执行器句柄。

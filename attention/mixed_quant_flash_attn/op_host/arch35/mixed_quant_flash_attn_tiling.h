@@ -25,7 +25,7 @@
 namespace optiling {
 namespace mixed_quant_flash_attn {
 
-// 4字段 tiling key
+// 5字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;

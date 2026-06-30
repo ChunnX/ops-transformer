@@ -9,37 +9,38 @@
  */
 
 /*!
- * \file flash_attn.cpp
- * \brief MixedQuantFlashAttn Kernel主入口（5字段）
+ * \file mixed_quant_flash_attn.cpp
+ * \brief MixedQuantFlashAttn Kernel主入口（5字段，含QuantMode）
  */
 
 #include "kernel_operator.h"
-#include "arch35/flash_attn_entry_regbase.h"
+#include "arch35/mixed_quant_flash_attn_entry_regbase.h"
 #include "arch35/mixed_quant_flash_attn_template_tiling_key.h"
 #include "arch35/mixed_quant_flash_attn_tiling_data.h"
 
 using namespace AscendC;
 
-// kernel主入口：5字段 → 模板参数
-template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config, uint8_t quantMode>
+template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config, uint8_t QuantMode>
 __global__ __aicore__ void
-flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-           __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-           __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-           __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *kDescale,
+                       __gm__ uint8_t *vDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
+                       __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                       __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+                       __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                       __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::MixedQuantFlashAttnTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    (void)quantMode;
-    // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
-#if (ORIG_DTYPE_Q == DT_BF16)
-    flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config, quantMode>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
-        softmaxLse, user, tiling, metadata);
-#elif (ORIG_DTYPE_Q == DT_FLOAT16)
-    flash_attn_kernel_run<half, half, inOutLayoutType, KvLayoutType, hasAttenMask, config, quantMode>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
-        softmaxLse, user, tiling, metadata);
+
+#if (ORIG_DTYPE_QUERY == DT_BF16)
+    mixed_quant_flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config,
+                                      QuantMode>(query, key, value, kDescale, vDescale, attnMask, cuSeqLensQ,
+                                                 cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
+                                                 softmaxLse, user, tiling, metadata);
+#elif (ORIG_DTYPE_QUERY == DT_FLOAT16)
+    mixed_quant_flash_attn_kernel_run<half, half, inOutLayoutType, KvLayoutType, hasAttenMask, config, QuantMode>(
+        query, key, value, kDescale, vDescale, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable,
+        sinks, attnOut, softmaxLse, user, tiling, metadata);
 #endif
 }
