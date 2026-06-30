@@ -9,7 +9,7 @@ if (BUILD_OPEN_PROJECT)
         OPTYPE moe_ep_combine moe_ep_combine ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(moe_ep_combine_depends mc2/common mc2/3rd mc2/moe_ep_dispatch PARENT_SCOPE)
+    set(moe_ep_combine_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")

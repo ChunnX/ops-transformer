@@ -16,7 +16,6 @@
 #define MOE_EP_COMBINE_H
 
 #include "kernel_operator.h"
-#include "kernel_operator_data_copy_intf.h"
 #include "moe_ep_combine_tiling_key.h"
 
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
@@ -42,7 +41,6 @@ using namespace AscendC;
 #define TemplateMoeEpCombineTypeFunc XType, HasTopkWeight
 #define HCOMM_INIT_SIZE 512UL
 
-static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 constexpr uint64_t UB_ALIGN = 32UL;
@@ -114,7 +112,7 @@ private:
     uint32_t topK_{0};
     uint32_t axisH_{0};
     uint32_t hAlignSize_{0};          // UB对齐后的hidden size
-    uint32_t workspaceStateSize_{0};  // 发送侧workspace中给所有卡状态区的大小
+    uint64_t workspaceStateSize_{0};  // 发送侧workspace中给所有卡状态区的大小
     uint64_t CombineStateAddr_{0};    // Win区Combine 状态区的地址
     uint64_t CombineDataAddr_{0};    // Win区Combine 数据区的地址
 
@@ -128,7 +126,7 @@ private:
     uint64_t localWsSizeDataPerRank_{0};
     uint64_t localWsSizeStatusPerRank_{0};
     uint64_t winStateOffset_{0};
-    uint64_t winDataOffset_{0}; 
+    uint64_t winDataOffset_{0};
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -211,7 +209,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     localWsSizeDataPerRank_ = tilingData->localWsSizeDataPerRank;
     localWsSizeStatusPerRank_ = tilingData->localWsSizeStatusPerRank;
     winStateOffset_ = tilingData->winStateOffset;
-    winDataOffset_ = tilingData->winDataOffset; 
+    winDataOffset_ = tilingData->winDataOffset;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
@@ -227,7 +225,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
 
-    workspaceStateSize_ = numMaxTokensPerRank_ * topK_ * UB_ALIGN * epWorldSize_;
+    workspaceStateSize_ = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * UB_ALIGN * epWorldSize_;
     // workspaceStateSize_ = 16 * 1024 * 1024;
     CombineStateAddr_ = tilingData->winStateOffset;
     // CombineStateAddr_ = GetWinCombineStateAddrByRankId(mc2Context_);
@@ -336,6 +334,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
+        hcomm_.Drain(GetCommHandle(dstRankId));
     }
 }
 
@@ -357,10 +356,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             // 计算目标窗口地址:
             // 当前rank的workspaceGM地址（src_rank只是为了workspace内的以卡分区）
+            uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
             GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) +
-                (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
+                slotOffset;
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) +
-                (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
+                slotOffset;
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
             PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
@@ -412,62 +412,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskAlign(LocalTensor<half> maskCalcSelectedTensor)
-{
-    // 扩展后的二维mask通过GM对齐内轴元素个数
-    uint32_t calcCnt = Ceil(tPerCore_ * topK_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
-    GlobalTensor<half> MaskGMTensor;
-    MaskGMTensor.SetGlobalBuffer((__gm__ half*)maskCalcWorkspaceGM_);
-    DataCopyExtParams maskCalcParams = {1U, static_cast<uint32_t>(calcCnt * sizeof(half)), 0U, 0U, 0U};
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(MaskGMTensor, maskCalcSelectedTensor, maskCalcParams);
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    DataCopyExtParams xActiveMaskParams{
-        static_cast<uint16_t>(tPerCore_), static_cast<uint32_t>(topK_ * sizeof(half)), 0U, 0U, 0U};
-    uint8_t rightPad = (Ceil(topK_ * sizeof(half), UB_ALIGN) * UB_ALIGN - topK_ * sizeof(half)) / sizeof(half);
-    DataCopyPadExtParams<half> xActiveMaskPadParams{true, 0U, rightPad, 0U};
-    DataCopyPadExtParams<half> xActiveMaskCopyPadParams{true, 0U, rightPad, 0U};
-    DataCopyPad(maskGenerateTensor_, MaskGMTensor, xActiveMaskParams, xActiveMaskCopyPadParams);
-    DataCopyPad(maskCalcSelectedTensor, MaskGMTensor, xActiveMaskParams, xActiveMaskCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-}
-
-template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
-{
-    LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
-    LocalTensor<int32_t> topkIdsTensor = compareBuf_.Get<int32_t>();
-    LocalTensor<float> topkIdsFloatTensor = rowTmpFloatBuf_.Get<float>();
-    LocalTensor<uint8_t> maskTensor = compareBuf_.Get<uint8_t>();
-    LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
-    maskGenerateTensor_ = compareBuf_.Get<half>();
-    maskStrideTensor_ = tokenBuf_.Get<bool>();
-    tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
-    // 构造二维全true的mask
-    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
-                    Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
-    // 拷入topkIds
-    DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(mask_tokenNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(topkIdsTensor, topkIdxGm_[tStart_ * topK_], topkIdsCntParams, topkIdsCntCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    // 根据topkIds大于0，得到考虑(-1专家) 后的mask
-    uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
-    Cast(topkIdsFloatTensor, topkIdsTensor, RoundMode::CAST_NONE, calcCnt);
-    CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
-    Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
-        calcCnt);
-    // 通过GM对齐内轴元素个数
-    MaskAlign(maskCalcSelectedTensor);
-    // 更新考虑特殊专家后的
-    uint32_t innerAlign = Ceil(topK_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half);
-    SumParams axisKSumParams{tPerCore_, innerAlign, topK_};
-    Sum(tokenTargetTensor_, maskCalcSelectedTensor, axisKSumParams);
-    SyncFunc<AscendC::HardEvent::V_S>();
-}
-
-template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex,
      uint32_t copyCount, uint32_t beginIndex)
 {
@@ -506,7 +450,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) +
+                (tokenIndex * topK_ + topkId) * perSlotBytes_;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
