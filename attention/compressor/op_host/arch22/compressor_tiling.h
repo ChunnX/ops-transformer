@@ -75,6 +75,8 @@ constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
 constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
 constexpr uint32_t MIN_BLOCK_SIZE = 1;
+constexpr uint32_t MAX_CMPRATIO_SIZE = 128;
+constexpr uint32_t MIN_CMPRATIO_SIZE = 2;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -202,11 +204,6 @@ struct CompressorBaseShapeInfo {
 };
 
 const std::vector<int> COFF {1, 2};
-#ifdef DAY0_SCOPE
-const std::vector<int> CMP_RATIO {4, 128};
-#else
-const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
-#endif
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1};
 
@@ -295,7 +292,6 @@ private:
     ge::graphStatus CheckSingleParaSeqused() const;
     ge::graphStatus CheckSingleParaStartPos() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
-    ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;
     ge::graphStatus CheckSingleParaCacheMode() const;
     ge::graphStatus CheckRequiredParaExistence() const;
