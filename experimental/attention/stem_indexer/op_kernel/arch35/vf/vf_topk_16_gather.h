@@ -17,6 +17,8 @@
 #define VF_TOP_K_16_GATHER_H
 
 namespace topkb16gather {
+
+constexpr uint16_t VF_B16_ELEMS = 128U;
     
 template<typename T>
 __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf, uint16_t vfLoop, bool init)
@@ -239,9 +241,9 @@ __simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint16_t* outputIdxBuf, __ubuf__
     MicroAPI::RegTensor<uint16_t> sqzIdxOut;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::Arange(idxC, beginIdx + i * 128);
+        MicroAPI::Arange(idxC, beginIdx + i * VF_B16_ELEMS);
         
-        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * 128);
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * VF_B16_ELEMS);
 
         MicroAPI::Compare<uint16_t, CMPMODE::GT>(poutGT, vregInput, (MicroAPI::RegTensor<uint16_t>&)kthValue, pregB16);
 
@@ -270,9 +272,9 @@ __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint16_t* outputIdxBuf, __ubuf__
     MicroAPI::RegTensor<uint16_t> sqzIdxOut;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::Arange(idxC, beginIdx + i * 128);
+        MicroAPI::Arange(idxC, beginIdx + i * VF_B16_ELEMS);
 
-        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * 128);
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * VF_B16_ELEMS);
 
         MicroAPI::Compare<uint16_t, CMPMODE::EQ>(poutEQ, vregInput, (MicroAPI::RegTensor<uint16_t>&)kthValue, pregB16);
 
@@ -293,11 +295,11 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf
     MicroAPI::RegTensor<uint16_t> outputValue;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 128);
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * VF_B16_ELEMS);
 
         MicroAPI::Gather(outputValue, inputValueBuf, tmpIdx, pregB16);
 
-        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outputValueBuf + i * 128, outputValue, pregB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outputValueBuf + i * VF_B16_ELEMS, outputValue, pregB16);
     }
 }
 

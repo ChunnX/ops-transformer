@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file lightning_indexer_service_cube.h
+ * \file stem_indexer_service_cube.h
  * \brief use 5 buffer for matmul l1, better pipeline
  */
 #ifndef stem_indexer_SERVICE_CUBE_H
@@ -101,7 +101,7 @@ protected:
     LocalTensor<K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
-    LocalTensor<float> cL0_;
+    LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<QK_T> mm1ResUB_;
@@ -138,8 +138,8 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
     keyL0_ = bufKeyL0_.Get<K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK * S2_BASIC_BLOCK * sizeof(float));
-    cL0_ = bufL0C_.Get<float>();
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK * S2_BASIC_BLOCK * sizeof(QK_T));
+    cL0_ = bufL0C_.Get<QK_T>();
 }
 
 template <typename SIT>
@@ -152,8 +152,8 @@ SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const Globa
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET);
+    CrossCoreWaitFlag<SICommon::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2);
+    CrossCoreWaitFlag<SICommon::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -214,8 +214,8 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     l0cBufIdx_++;
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET); 
+    CrossCoreSetFlag<SICommon::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2);
+    CrossCoreSetFlag<SICommon::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
 }
 
 template <typename SIT>
@@ -233,7 +233,7 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * 2048 + kGmOffset], nd2nzPara);  
+             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * SICommon::FLATTEN_DIM + kGmOffset], nd2nzPara);
 }
 
 // batch, n2, g, s1, d
@@ -356,7 +356,7 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOf
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize], //UB偏移地址
+    Fixpipe<QK_T, QK_T, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize], //UB偏移地址
                                                     cL0_[(l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
 }
 

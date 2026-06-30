@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef stem_INDEXER_TEMPLATE_TILING_KEY_H
-#define stem_INDEXER_TEMPLATE_TILING_KEY_H
+#ifndef STEM_INDEXER_TEMPLATE_TILING_KEY_H
+#define STEM_INDEXER_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -23,18 +23,18 @@
 
 // 模板参数支持的范围定义
 #if !defined(__CCE_AICORE__) || (__CCE_AICORE__ == 310) || defined(__DAV_310R6__)
-    ASCENDC_TPL_ARGS_DECL(StemIndexer,  // 算子OpType
-                        ASCENDC_TPL_DTYPE_DECL(DT_Q, SI_TPL_BF16),
-                        ASCENDC_TPL_DTYPE_DECL(DT_K, SI_TPL_BF16),
-                        ASCENDC_TPL_DTYPE_DECL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_DECL(CAUSAL, 1, 0),
-                        );
-    // 支持的模板参数组合
-    // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
-    ASCENDC_TPL_SEL(
-        ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, SI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, SI_TPL_BF16),
-                            ASCENDC_TPL_DTYPE_SEL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0), ),
-        ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, SI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, SI_TPL_BF16),
-                            ASCENDC_TPL_DTYPE_SEL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1), ), );
+ASCENDC_TPL_ARGS_DECL(StemIndexer,  // 算子OpType
+                      ASCENDC_TPL_DTYPE_DECL(DT_Q, SI_TPL_BF16),
+                      ASCENDC_TPL_DTYPE_DECL(DT_K, SI_TPL_BF16),
+                      ASCENDC_TPL_DTYPE_DECL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_DECL(CAUSAL, 1, 0),
+                      );
+// 支持的模板参数组合
+// 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
+ASCENDC_TPL_SEL(
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, SI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, SI_TPL_BF16),
+                         ASCENDC_TPL_DTYPE_SEL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_SEL(CAUSAL, 0), ),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, SI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, SI_TPL_BF16),
+                         ASCENDC_TPL_DTYPE_SEL(DT_OUT, SI_TPL_INT32), ASCENDC_TPL_BOOL_SEL(CAUSAL, 1), ), );
 
 #endif
 

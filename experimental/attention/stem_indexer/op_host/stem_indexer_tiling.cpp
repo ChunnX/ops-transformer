@@ -59,10 +59,10 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
                 return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    // 当前仅适配 A5（ASCEND950），A2/A3 暂未适配
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGE(opName_, "SOC Version[%d] is not support, only ASCEND950 is supported.",
+                static_cast<int32_t>(socVersion_));
         return ge::GRAPH_FAILED;
     }
 

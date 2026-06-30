@@ -134,12 +134,12 @@ private:
     uint32_t trunkLen_ = 0;
     int32_t mBaseSize_ = 0;
     float alpha_ = 1.0f;
-    float kBlockNumRateMedium_ = 0.2f;
-    uint32_t kBlockNumBiasMedium_ = 30U;
-    float kBlockNumRateLarge_ = 0.1f;
-    uint32_t kBlockNumBiasLarge_ = 30U;
-    uint32_t initialBlocks_ = 4U;
-    uint32_t windowSize_ = 4U;
+    float kBlockNumRateMedium_ = SICommon::K_BLOCK_NUM_RATE_MEDIUM;
+    uint32_t kBlockNumBiasMedium_ = SICommon::K_BLOCK_NUM_BIAS_MEDIUM;
+    float kBlockNumRateLarge_ = SICommon::K_BLOCK_NUM_RATE_LARGE;
+    uint32_t kBlockNumBiasLarge_ = SICommon::K_BLOCK_NUM_BIAS_LARGE;
+    uint32_t initialBlocks_ = SICommon::INITIAL_BLOCKS;
+    uint32_t windowSize_ = SICommon::WINDOW_SIZE;
     struct SICommon::ConstInfo constInfo_;
     SIKernel::SITopk<SCORE_T> topkOp_;
 };
@@ -193,12 +193,12 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     alpha_ = constInfo.alpha;
-    kBlockNumRateMedium_ = constInfo.kBlockNumRateMedium;
-    kBlockNumBiasMedium_ = constInfo.kBlockNumBiasMedium;
-    kBlockNumRateLarge_ = constInfo.kBlockNumRateLarge;
-    kBlockNumBiasLarge_ = constInfo.kBlockNumBiasLarge;
-    initialBlocks_ = constInfo.initialBlocks;
-    windowSize_ = constInfo.windowSize;
+    kBlockNumRateMedium_ = SICommon::K_BLOCK_NUM_RATE_MEDIUM;
+    kBlockNumBiasMedium_ = SICommon::K_BLOCK_NUM_BIAS_MEDIUM;
+    kBlockNumRateLarge_ = SICommon::K_BLOCK_NUM_RATE_LARGE;
+    kBlockNumBiasLarge_ = SICommon::K_BLOCK_NUM_BIAS_LARGE;
+    initialBlocks_ = SICommon::INITIAL_BLOCKS;
+    windowSize_ = SICommon::WINDOW_SIZE;
     blockId_ = GetBlockIdx();
     trunkLen_ = TRUNK_LEN_256;
     topkOp_.Init(MAX_TOPK_COUNT, trunkLen_);
@@ -300,8 +300,8 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     int64_t curAivMProcNum = (blockId_ % 2 == 0) ? CeilDiv(curMProcNum, 2) : curMProcNum / 2;
 
     if (curAivMProcNum == 0) {
-        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
-        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
+        CrossCoreWaitFlag<SICommon::QLI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
+        CrossCoreSetFlag<SICommon::QLI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
@@ -319,13 +319,13 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
 
     //CV同步
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
+    CrossCoreWaitFlag<SICommon::QLI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
 
     auto qkBase = resMm1Local_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
     auto outBase = mrgValueLocal_[MAX_TOPK_COUNT];
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
-    vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, constInfo_.rSquare, gS1BasePerVecSize_, s2BaseSize_, (trunkLen_ + MAX_TOPK_COUNT));
+    vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, SICommon::R_SQUARE, gS1BasePerVecSize_, s2BaseSize_, (trunkLen_ + MAX_TOPK_COUNT));
     PipeBarrier<PIPE_V>();
 
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
@@ -603,7 +603,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             }
         }
     }
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
+    CrossCoreSetFlag<SICommon::QLI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
@@ -615,7 +615,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t actS2Size = tempLoopInfo.actS2Size;
         uint64_t qFlatBase = (uint64_t)tempLoopInfo.bIdx * constInfo_.qSeqSize * constInfo_.qHeadNum
                         + (uint64_t)tempLoopInfo.n2Idx * constInfo_.gSize * constInfo_.qSeqSize;
-        uint32_t indiceLenOffset = (uint32_t)qFlatBase;
+        uint64_t indiceLenOffset = qFlatBase;  // 保持 uint64，避免大 batch/长序列下截断
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
         initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
