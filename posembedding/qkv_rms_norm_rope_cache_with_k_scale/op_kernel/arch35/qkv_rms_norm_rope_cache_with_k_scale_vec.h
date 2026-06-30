@@ -286,19 +286,40 @@ private:
         const LocalTensor<float> cosSin = cosSinDbPoolUb_[inputBufferId * QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS];
         const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
-        const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
         const uint32_t tokenCapacity = static_cast<uint32_t>(tile.cubeHalfTokenSize);
-        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl<IS_TND>>(
+        uint32_t inputTokenStride;
+        uint32_t inputHeadStride;
+        uint32_t qOutputTokenStride;
+        uint32_t kOutputTokenStride;
+        uint32_t outputHeadStride;
+        if constexpr (IS_TND) {
+            const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
+            inputTokenStride = qkvHeadNum * QKV_RRC_D128_FULL_SIZE;
+            inputHeadStride = QKV_RRC_D128_FULL_SIZE;
+            qOutputTokenStride = static_cast<uint32_t>(qHeadNum_);
+            kOutputTokenStride = static_cast<uint32_t>(kvHeadNum_);
+            outputHeadStride = 1U;
+        } else {
+            inputTokenStride = QKV_RRC_D128_FULL_SIZE;
+            inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE;
+            qOutputTokenStride = 1U;
+            kOutputTokenStride = 1U;
+            outputHeadStride = tokenCapacity;
+        }
+        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
             (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
-            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
-            static_cast<uint32_t>(qHeadNum_), qkvHeadNum, tokenCapacity, epsilon_);
-        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl<IS_TND>>(
-            (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
+            (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+            static_cast<uint32_t>(qHeadNum_), inputTokenStride, inputHeadStride, qOutputTokenStride, outputHeadStride,
+            epsilon_);
+        const uint32_t kInputOffset = static_cast<uint32_t>(qHeadNum_) * inputHeadStride;
+        AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
+            (__ubuf__ bfloat16_t *)input[kInputOffset].GetPhyAddr(),
             (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
             (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
             (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_), qkvHeadNum, tokenCapacity, epsilon_);
+            static_cast<uint32_t>(kvHeadNum_), inputTokenStride, inputHeadStride, kOutputTokenStride, outputHeadStride,
+            epsilon_);
     }
 
     __aicore__ inline void BuildRopeNzScatterIndex()
@@ -354,13 +375,23 @@ private:
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[inputBufferId * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> vScale = vScaleUb_;
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
-        const uint64_t vHeadOffset = qHeadNum_ + kvHeadNum_;
-        const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
-        AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl<IS_TND>>(
-            (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
+        const uint64_t vInputHeadBase = qHeadNum_ + kvHeadNum_;
+        uint32_t inputTokenStride;
+        uint32_t inputHeadStride;
+        if constexpr (IS_TND) {
+            const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
+            inputTokenStride = qkvHeadNum * QKV_RRC_D128_FULL_SIZE;
+            inputHeadStride = QKV_RRC_D128_FULL_SIZE;
+        } else {
+            inputTokenStride = QKV_RRC_D128_FULL_SIZE;
+            inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE;
+        }
+        const uint32_t vInputOffset = static_cast<uint32_t>(vInputHeadBase + tile.vHeadOffset) * inputHeadStride;
+        AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
+            (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
             (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
             static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
-            static_cast<uint32_t>(qkvHeadNum), static_cast<uint32_t>(vHeadOffset));
+            inputTokenStride, inputHeadStride);
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, uint32_t vOutBufferId)
@@ -378,6 +409,8 @@ private:
                                        LocalTensor<float> qkAfterCube, LocalTensor<float> qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
+        // Q dynamic quant keeps two VF entries. NTD writes compact contiguous head-major q/q_scale
+        // from a padded cube buffer; reusing the TND address formula can make NTD stores overlap.
         if constexpr (IS_TND) {
             AscendC::VF_CALL<QDynamicQuantD128TndVfImpl>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
@@ -396,10 +429,27 @@ private:
     {
         const uint64_t kRowOffset = tile.cubeHalfTokenSize * qHeadNum_ * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
-        AscendC::VF_CALL<KDynamicQuantD128VfImpl<IS_TND>>(
+        constexpr uint32_t fp32RowBytes = QKV_RRC_D128_FULL_SIZE * sizeof(float);
+        uint32_t inputHeadStride;
+        uint32_t inputTokenStride;
+        uint32_t outputHeadStrideBytes;
+        uint32_t outputTokenStrideBytes;
+        if constexpr (IS_TND) {
+            inputHeadStride = QKV_RRC_D128_FULL_SIZE;
+            inputTokenStride = static_cast<uint32_t>(kvHeadNum_) * QKV_RRC_D128_FULL_SIZE;
+            outputHeadStrideBytes = fp32RowBytes;
+            outputTokenStrideBytes = static_cast<uint32_t>(kvHeadNum_) * fp32RowBytes;
+        } else {
+            inputHeadStride = static_cast<uint32_t>(tile.cubeHalfTokenSize) * QKV_RRC_D128_FULL_SIZE;
+            inputTokenStride = QKV_RRC_D128_FULL_SIZE;
+            outputHeadStrideBytes = static_cast<uint32_t>(tile.cubeHalfTokenSize) * fp32RowBytes;
+            outputTokenStrideBytes = fp32RowBytes;
+        }
+        AscendC::VF_CALL<KDynamicQuantD128VfImpl>(
             (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(),
             (__ubuf__ float *)kScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(kvHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
+            static_cast<uint32_t>(kvHeadNum_), inputHeadStride, inputTokenStride,
+            outputHeadStrideBytes, outputTokenStrideBytes);
     }
 
     __aicore__ inline void ScatterQOutputs(const TileParam &tile, LocalTensor<float> qkAfterCube,
