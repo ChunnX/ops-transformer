@@ -24,7 +24,7 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
+constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 } // namespace
 
 namespace Mc2Aclnn {
