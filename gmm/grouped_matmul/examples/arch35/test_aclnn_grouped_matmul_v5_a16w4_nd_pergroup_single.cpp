@@ -119,13 +119,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // A16W4 ND pergroup 单单单场景参数：
-    //   x: 单tensor (M, K), BFLOAT16, ND
-    //   weight: 单tensor (E, K, N), INT4, ND
-    //   antiquantScale: 单tensor (E, G, N), BFLOAT16, ND — pergroup模式（3D）
-    //   bias: 单tensor (E, N), BFLOAT16, ND
-    //   y: 单tensor (M, N), BFLOAT16, ND
-    //   groupSize = K / G = 32
+    // A16W4 ND pergroup 单单单场景参数
     int64_t m = 64L;
     int64_t k = 128L;
     int64_t n = 64L;

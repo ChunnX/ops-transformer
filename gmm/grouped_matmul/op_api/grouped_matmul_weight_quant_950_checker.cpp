@@ -179,9 +179,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
         size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
         size_t pergroupDim = perchannelDim + 1;
         if (tensorDimNum != perchannelDim && tensorDimNum != pergroupDim) {
-            std::string reason = "When x_dtype-weight_dtype is A16W4, Dim must be [" + std::to_string(perchannelDim) +
-                "] (perchannel) or [" + std::to_string(pergroupDim) +
-                "] (pergroup), but now is [" + std::to_string(tensorDimNum) + "]";
+            std::string reason = "When x_dtype-weight_dtype is fp16/bf16-int4, Dim must be [" +
+                                 std::to_string(perchannelDim) + "] (perchannel) or [" + std::to_string(pergroupDim) +
+                                 "] (pergroup), but now is [" + std::to_string(tensorDimNum) + "]";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType,
                 std::to_string(tensorDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
@@ -876,7 +876,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
         if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
                 std::to_string(groupSize),
-                "When the quant mode is A16W4 pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
+                "When the quant mode is pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {

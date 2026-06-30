@@ -135,7 +135,7 @@ int CreateAclTensorNzTransposed(const std::vector<T> &hostData, const std::vecto
     int64_t k = shape[0];
     int64_t n = shape[1];
     std::vector<int64_t> transStrides = {1, k};
-    std::vector<int64_t> storageShape = {k / 64, n / 16, 16, 32};
+    std::vector<int64_t> storageShape = {k / 32, n / 16, 16, 32};
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, transStrides.data(), 0,
                               aclFormat::ACL_FORMAT_FRACTAL_NZ, storageShape.data(), storageShape.size(), *deviceAddr);
     return 0;
@@ -169,14 +169,7 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 单多单 MxA8W4 场景参数：
-    //   x: 单 tensor (M, K), FLOAT8_E4M3FN, ND
-    //   weight: 多 tensor，每个 (K, N) 转置 view，FLOAT4_E2M1, FRACTAL_NZ
-    //   antiquantScale: 多 tensor，每个 (K/groupSize/2, N, 2)，FLOAT8_E8M0, ND
-    //   perTokenScale: 单 tensor (M, K/groupSize/2, 2)，FLOAT8_E8M0, ND
-    //   bias: 多 tensor，每个 (N,)，BFLOAT16, ND
-    //   y: 单 tensor (M, N)，BFLOAT16, ND
-    //   groupSize = 32, K%64==0, N%64==0
+    // 单多单 MxA8W4 场景参数
     int64_t m = 64L;
     int64_t k = 128L;
     int64_t n = 64L;
