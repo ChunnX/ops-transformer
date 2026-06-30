@@ -334,15 +334,17 @@ public:
 
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
-                bRightOffsetStep_ = resN * c0Size;
+                bRightOffsetStep_ = IS_FP4 ? ((resN * c0Size) >> 1) : (resN * c0Size);
             } else {
-                bRightOffsetStep_ = resN * Align16(Get<K_VALUE>(problemShape_));
+                bRightOffsetStep_ = IS_FP4 ? ((resN * Align16(Get<K_VALUE>(problemShape_))) >> 1) :
+                                             (resN * Align16(Get<K_VALUE>(problemShape_)));
             }
         } else {
             if constexpr (transB) {
-                bRightOffsetStep_ = resN * Get<K_VALUE>(problemShape_);
+                bRightOffsetStep_ = IS_FP4 ? ((resN * Get<K_VALUE>(problemShape_)) >> 1) :
+                                             (resN * Get<K_VALUE>(problemShape_));
             } else {
-                bRightOffsetStep_ = resN;
+                bRightOffsetStep_ = IS_FP4 ? (resN >> 1) : resN;
             }
         }
 
@@ -374,6 +376,9 @@ public:
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
                 Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
+            if constexpr (IS_FP4) {
+                Get<IDX_B_OFFSET>(blockOffset_) = Get<IDX_B_OFFSET>(blockOffset_) >> 1;
+            }
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
