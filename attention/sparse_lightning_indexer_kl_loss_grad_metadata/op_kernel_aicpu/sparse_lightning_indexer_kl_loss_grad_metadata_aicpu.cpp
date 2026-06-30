@@ -10,24 +10,32 @@
 
 /*!
  * \file sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.cpp
- * \brief Registration entry for AICPU kernel with compile-time arch selection
+ * \brief Registration entry for AICPU kernel with runtime arch selection by soc_version
  */
 
 #include "sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
-
-#if defined(SLI_AICPU_ARCH22)
 #include "arch22/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch22.h"
-#else
 #include "arch35/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch35.h"
-#endif
 
 namespace aicpu {
 
-#if defined(SLI_AICPU_ARCH22)
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch22;
-#else
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch35;
-#endif
+class SparseLightningIndexerKLLossGradMetadataCpuKernel : public CpuKernel {
+public:
+    SparseLightningIndexerKLLossGradMetadataCpuKernel() = default;
+    ~SparseLightningIndexerKLLossGradMetadataCpuKernel() override = default;
+    uint32_t Compute(CpuKernelContext &ctx) override
+    {
+        std::string socVersion;
+        if (GetAttrValue(ctx, "soc_version", socVersion) && socVersion.find("Ascend950") != std::string::npos) {
+            return arch35Kernel_.Compute(ctx);
+        }
+        return arch22Kernel_.Compute(ctx);
+    }
+
+private:
+    SparseLightningIndexerKLLossGradMetadataCpuKernelArch22 arch22Kernel_;
+    SparseLightningIndexerKLLossGradMetadataCpuKernelArch35 arch35Kernel_;
+};
 
 static const char *kernelType = "SparseLightningIndexerKLLossGradMetadata";
 REGISTER_CPU_KERNEL(kernelType, SparseLightningIndexerKLLossGradMetadataCpuKernel);
