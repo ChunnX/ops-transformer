@@ -228,6 +228,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
     scaleOutQueue_.EnQue(scaleLocal);
 }
 
+template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
