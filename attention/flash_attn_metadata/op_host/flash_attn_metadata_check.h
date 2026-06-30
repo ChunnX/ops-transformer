@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-class FlashAttnMetadataChecker {
+class FlashAttnMetadataCheck {
 public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
@@ -58,7 +58,7 @@ private:
 };
 
 inline aclnnStatus
-FlashAttnMetadataChecker::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+FlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                       const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                       int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                       int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
@@ -79,14 +79,14 @@ FlashAttnMetadataChecker::ParamsCheck(const aclTensor *cuSeqlensQOptional, const
     return ACLNN_SUCCESS;
 }
 
-inline bool FlashAttnMetadataChecker::IsTensorExist(const aclTensor *tensor)
+inline bool FlashAttnMetadataCheck::IsTensorExist(const aclTensor *tensor)
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
         (tensor->GetData() != nullptr);
 }
 
 inline aclnnStatus
-FlashAttnMetadataChecker::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                         int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
                                         const char *layoutQ, const char *layoutKv, const char *layoutOut)
 {
@@ -123,7 +123,7 @@ FlashAttnMetadataChecker::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, i
 }
 
 inline aclnnStatus
-FlashAttnMetadataChecker::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
+FlashAttnMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
@@ -139,7 +139,7 @@ FlashAttnMetadataChecker::CheckMask(int64_t maskMode, int64_t winLeft, int64_t w
 }
 
 inline aclnnStatus
-FlashAttnMetadataChecker::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+FlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                          const char *layoutQ, const char *layoutKv,
                                          const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
@@ -177,7 +177,7 @@ FlashAttnMetadataChecker::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv
 }
 
 inline aclnnStatus
-FlashAttnMetadataChecker::CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
+FlashAttnMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
                                            const aclTensor *cuSeqlensQOptional,
                                            const aclTensor *cuSeqlensKvOptional,
                                            const aclTensor *sequsedQOptional,
@@ -204,7 +204,7 @@ FlashAttnMetadataChecker::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
 }
 
 inline aclnnStatus
-FlashAttnMetadataChecker::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
+FlashAttnMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
 {
     if (seqLens == nullptr) {
         return ACLNN_SUCCESS;

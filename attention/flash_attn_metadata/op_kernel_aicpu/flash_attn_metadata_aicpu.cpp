@@ -199,7 +199,7 @@ bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult 
     faMetadata.SetHeadMetadata(HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
     faMetadata.SetHeadMetadata(HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
     if (std::any_of(splitRes.sectionFdResult.begin(), splitRes.sectionFdResult.end(),
-        [](load_balance::SectionStreamKFdResult result) { return result.usedVecNum > 0U; } )) {
+        [](load_balance::SectionStreamKFdResult result) { return result.usedVecNum > 0U; })) {
         faMetadata.SetHeadMetadata(HEAD_IS_FD_INDEX, 1U);
     }
 
