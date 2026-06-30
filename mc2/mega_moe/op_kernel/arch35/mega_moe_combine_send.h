@@ -24,7 +24,7 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
-constexpr uint32_t TRIPLE_TENSOR_ADDR = 130U * 1024U;  // triple tensor 在 UB 中的起始地址
+constexpr uint32_t COMBINE_SEND_ADDR = MegaMoeImpl::TRIPLE_TENSOR_ADDR + ALIGN32;  // triple tensor 在 UB 中的起始地址
 constexpr uint32_t rankIdIndex = 0;
 constexpr uint32_t tokenIdxIndex = 1;
 constexpr uint32_t topkIdxIndex = 2;
@@ -70,7 +70,7 @@ __aicore__ inline void CombineTokensLayered(
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
     //每个 token 含数据+三元组(32B)
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, TRIPLE_TENSOR_ADDR, ALIGN_32 / sizeof(int32_t));
+    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, COMBINE_SEND_ADDR, ALIGN_32 / sizeof(int32_t));
     AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
