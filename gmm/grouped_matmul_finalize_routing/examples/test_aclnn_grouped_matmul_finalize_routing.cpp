@@ -244,7 +244,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-    CHECK_RET(tuningConfig == nullptr, -1);
+    CHECK_RET(tuningConfig != nullptr, return -1);
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
@@ -276,31 +276,30 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
             return ret);
 
-    // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
-    aclDestroyTensor(x);
-    aclDestroyTensor(w);
-    aclDestroyTensor(scale);
-    aclDestroyTensor(bias);
-    aclDestroyTensor(offset);
-    aclDestroyTensor(pertokenScale);
-    aclDestroyTensor(groupList);
-    aclDestroyTensor(sharedInput);
-    aclDestroyTensor(logit);
-    aclDestroyTensor(rowIndex);
-    aclDestroyTensor(out);
+    // RAII 资源必须在 aclrtResetDevice / aclFinalize 之前释放，故在此显式 .reset()
+    xTensorPtr.reset();
+    xDeviceAddrPtr.reset();
+    wTensorPtr.reset();
+    wDeviceAddrPtr.reset();
+    scaleTensorPtr.reset();
+    scaleDeviceAddrPtr.reset();
+    biasTensorPtr.reset();
+    biasDeviceAddrPtr.reset();
+    offsetTensorPtr.reset();
+    offsetDeviceAddrPtr.reset();
+    pertokenScaleTensorPtr.reset();
+    pertokenScaleDeviceAddrPtr.reset();
+    groupListTensorPtr.reset();
+    groupListDeviceAddrPtr.reset();
+    sharedInputTensorPtr.reset();
+    sharedInputDeviceAddrPtr.reset();
+    logitTensorPtr.reset();
+    logitDeviceAddrPtr.reset();
+    rowIndexTensorPtr.reset();
+    rowIndexDeviceAddrPtr.reset();
+    outTensorPtr.reset();
+    outDeviceAddrPtr.reset();
 
-    // 7.释放device资源，需要根据具体API的接口定义修改
-    aclrtFree(xDeviceAddr);
-    aclrtFree(wDeviceAddr);
-    aclrtFree(scaleDeviceAddr);
-    aclrtFree(biasDeviceAddr);
-    aclrtFree(offsetDeviceAddr);
-    aclrtFree(pertokenScaleDeviceAddr);
-    aclrtFree(groupListDeviceAddr);
-    aclrtFree(sharedInputDeviceAddr);
-    aclrtFree(logitDeviceAddr);
-    aclrtFree(rowIndexDeviceAddr);
-    aclrtFree(outDeviceAddr);
     aclDestroyIntArray(tuningConfig);
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
