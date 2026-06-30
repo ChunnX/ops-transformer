@@ -112,28 +112,10 @@ def _resolve_y_dtype(y_dtype, x, x_dtype):
     return _normalize_attr_dtype(y_dtype)
 
 
-def _infer_weight_layout(weight, weight_scale, e, k):
-    weight_shape = tuple(weight.shape)
-    weight_scale_shape = tuple(weight_scale.shape)
-
-    non_trans_n = weight_scale.shape[2]
-    non_trans_weight_shape = (e, k, non_trans_n)
-    non_trans_weight_scale_shape = (e, math.ceil(k / 64), non_trans_n, 2)
-    if weight_shape == non_trans_weight_shape and weight_scale_shape == non_trans_weight_scale_shape:
-        return non_trans_n, False
-
-    trans_n = weight_scale.shape[1]
-    trans_weight_shape = (e, trans_n, k)
-    trans_weight_scale_shape = (e, trans_n, math.ceil(k / 64), 2)
-    if weight_shape == trans_weight_shape and weight_scale_shape == trans_weight_scale_shape:
-        return trans_n, True
-
-    raise AssertionError(
-        "weight and weight_scale shape must match one of the supported WeightNz layouts: "
-        f"non-transposed weight {non_trans_weight_shape}, weight_scale {non_trans_weight_scale_shape}; "
-        f"transposed weight {trans_weight_shape}, weight_scale {trans_weight_scale_shape}. "
-        f"Got weight {weight_shape}, weight_scale {weight_scale_shape}."
-    )
+def _infer_nz_logical_n(weight_scale):
+    # Runtime callers normalize MX weight to the non-transposed logical layout before this op.
+    # Thus 4D MX weight_scale is [E, ceil(K / 64), N, 2], and logical N is dim2.
+    return weight_scale.shape[2]
 
 
 class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
@@ -177,9 +159,7 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
             torch._check(group_list.dim() == 1, lambda: f"group_list must be 1D, but got {group_list.dim()}D.")
 
             m = x.shape[0]
-            k = x.shape[1]
-            e = group_list.shape[0]
-            n, _ = _infer_weight_layout(weight[0], weight_scale[0], e, k)
+            n = _infer_nz_logical_n(weight_scale[0])
 
             y_dtype_value = _to_torch_dtype(_resolve_y_dtype(y_dtype, x, x_dtype))
             y = torch.empty((m, n), dtype=y_dtype_value, device="meta")
@@ -235,11 +215,10 @@ def grouped_matmul_activation_quant(
         group_list (Tensor): 分组信息，1D Tensor，dtype为 ``torch.int64``，第一维表示group数E，
             当前E取值范围为[1, 1024]。
         weight (List[Tensor]): 右矩阵dynamic input，当前MXFP8仅支持长度为1。
-            元素为3D逻辑Tensor，shape支持非转置 ``(E, K, N)`` 或转置 ``(E, N, K)``，
+            元素为3D逻辑Tensor，MX WeightNZ运行时调用者会将其规整为非转置逻辑布局，
             传入前需要通过 ``torch_npu.npu_format_cast(weight, 29)`` 转为FRACTAL_NZ格式。
         weight_scale (List[Tensor]): weight的MX量化scale，当前MXFP8仅支持长度为1。
-            非转置weight对应shape为 ``(E, ceil(K / 64), N, 2)``，转置weight对应shape为
-            ``(E, N, ceil(K / 64), 2)``。
+            shape为 ``(E, ceil(K / 64), N, 2)``，torch层根据第2维推导逻辑N。
         activation_type (str): 激活函数类型，当前仅支持 ``"gelu_tanh"``。
         bias (List[Tensor], optional): bias dynamic input。当前MXFP8仅支持传None或空TensorList。
         x_scale (Tensor, optional): x的MX量化scale。当前MXFP8必须传入，shape为

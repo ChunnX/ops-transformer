@@ -27,9 +27,7 @@ constexpr int64_t GE_DTYPE_FLOAT8_E4M3FN = 36;
 constexpr int64_t GE_DTYPE_FLOAT8_E8M0 = 37;
 constexpr int64_t ACL_DTYPE_OFFSET = 256;
 constexpr int64_t DIM_0 = 0;
-constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
-constexpr int64_t DIM_3 = 3;
 constexpr int64_t MX_GROUP_SIZE = 64;
 
 template <typename ShapeT>
@@ -155,53 +153,14 @@ int64_t CeilDiv(int64_t value, int64_t factor)
     return (value + factor - 1) / factor;
 }
 
-bool IsNonTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e, int64_t k,
-    int64_t n)
+int64_t InferNzLogicalN(const at::Tensor &weightScaleTensor)
 {
-    return weightTensor.size(DIM_0) == e &&
-        weightTensor.size(DIM_1) == k &&
-        weightTensor.size(DIM_2) == n &&
-        weightScaleTensor.size(DIM_0) == e &&
-        weightScaleTensor.size(DIM_1) == CeilDiv(k, MX_GROUP_SIZE) &&
-        weightScaleTensor.size(DIM_2) == n &&
-        weightScaleTensor.size(DIM_3) == 2;
-}
-
-bool IsTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e, int64_t k,
-    int64_t n)
-{
-    return weightTensor.size(DIM_0) == e &&
-        weightTensor.size(DIM_1) == n &&
-        weightTensor.size(DIM_2) == k &&
-        weightScaleTensor.size(DIM_0) == e &&
-        weightScaleTensor.size(DIM_1) == n &&
-        weightScaleTensor.size(DIM_2) == CeilDiv(k, MX_GROUP_SIZE) &&
-        weightScaleTensor.size(DIM_3) == 2;
-}
-
-int64_t InferLogicalN(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e, int64_t k)
-{
-    int64_t nonTransN = weightScaleTensor.size(DIM_2);
-    if (IsNonTransWeightLayout(weightTensor, weightScaleTensor, e, k, nonTransN)) {
-        std::printf("[GMMAQ torch] infer logical N by non-transposed view: n=%ld.\n", nonTransN);
-        std::fflush(stdout);
-        return nonTransN;
-    }
-
-    int64_t transN = weightScaleTensor.size(DIM_1);
-    if (IsTransWeightLayout(weightTensor, weightScaleTensor, e, k, transN)) {
-        std::printf("[GMMAQ torch] infer logical N by transposed view: n=%ld.\n", transN);
-        std::fflush(stdout);
-        return transN;
-    }
-
-    TORCH_CHECK(false,
-        "weight and weight_scale shape must match one of the supported WeightNz layouts: "
-        "non-transposed logical weight (E, K, N), "
-        "weight_scale (E, ceil(K / 64), N, 2); "
-        "transposed logical weight (E, N, K), "
-        "weight_scale (E, N, ceil(K / 64), 2).");
-    return 0;
+    // Runtime callers normalize MX weight to the non-transposed logical layout before this op.
+    // Thus 4D MX weightScale is [E, ceil(K / 64), N, 2], and logical N is dim2.
+    int64_t n = weightScaleTensor.size(DIM_2);
+    std::printf("[GMMAQ torch] infer logical N from non-transposed MX weightScale dim2: n=%ld.\n", n);
+    std::fflush(stdout);
+    return n;
 }
 
 void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name)
@@ -259,9 +218,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     TORCH_CHECK(weightScaleTensor.dim() == 4, "weight_scale must be 4D, but got ", weightScaleTensor.dim(), "D.");
 
     int64_t m = x.size(DIM_0);
-    int64_t k = x.size(DIM_1);
-    int64_t e = groupList.size(DIM_0);
-    int64_t n = InferLogicalN(weightTensor, weightScaleTensor, e, k);
+    int64_t n = InferNzLogicalN(weightScaleTensor);
 
     aclDataType xAclDtype = GetTensorAclDataType(xDtype, x);
     aclDataType weightAclDtype = GetTensorAclDataType(weightDtype, weightTensor);
