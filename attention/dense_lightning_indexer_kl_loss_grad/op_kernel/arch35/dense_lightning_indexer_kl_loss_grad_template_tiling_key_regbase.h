@@ -9,12 +9,12 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_template_tiling_key_regbase.h
+ * \file dense_lightning_indexer_kl_loss_grad_template_tiling_key_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -26,7 +26,7 @@ enum class TopKRangeRegbase : uint8_t { RANGE_0_2K = 0, RANGE_2K_8K = 1, RANGE_N
 #define ASCENDC_TPL_4_BW 4
 
 // 模板参数支持的范围定义
-ASCENDC_TPL_ARGS_DECL(SparseLightningIndexerKLLossGrad, // 算子OpType
+ASCENDC_TPL_ARGS_DECL(DenseLightningIndexerKLLossGrad, // 算子OpType
     ASCENDC_TPL_UINT_DECL(TOPK_RANGE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     ASCENDC_TPL_UINT_DECL(LAYOUT_Q, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1), // 0为BSND 1为TND
     ASCENDC_TPL_UINT_DECL(LAYOUT_KT, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
@@ -53,7 +53,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_K, 0, 1),
         ASCENDC_TPL_BOOL_SEL(HAS_CMP_RESIDUAL_K, 0, 1),
         ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 0, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::SparseLightningIndexerGradRegBaseTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData)
     )
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(TOPK_RANGE, ASCENDC_TPL_UI_LIST, 0),
@@ -66,7 +66,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED_K, 0, 1),
         ASCENDC_TPL_BOOL_SEL(HAS_CMP_RESIDUAL_K, 0, 1),
         ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 0, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::SparseLightningIndexerGradRegBaseTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::DenseLightningIndexerGradRegBaseTilingData)
     )
 );
 #endif // TEMPLATE_TILING_KEY

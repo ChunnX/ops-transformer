@@ -9,7 +9,7 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_tiling.cpp
+ * \file dense_lightning_indexer_kl_loss_grad_tiling.cpp
  * \brief
  */
 
@@ -19,12 +19,10 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "register/op_def_registry.h"
-#include "../op_kernel/sparse_lightning_indexer_kl_loss_grad_template_tiling_key.h"
-#include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
-#include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
+#include "dense_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "platform/platform_info.h"
 #include "op_host/tiling_templates_registry.h"
-#include "sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
+#include "dense_lightning_indexer_kl_loss_grad_tiling_common.h"
 
 using std::map;
 using std::pair;
@@ -41,38 +39,24 @@ constexpr int32_t SPARSE_MODE_BAND = 4;
 static const std::string QUERY_NAME = "query";
 static const std::string KEY_NAME = "key";
 static const std::string VALUE_NAME = "value";
-static const std::string BLOCK_TABLE_NAME = "block_table";
-static const std::string SPARSE_INDICES_NAME = "sparse_indices";
-static const std::string QUERY_ROPE_NAME = "query_rope";
-static const std::string KEY_ROPE_NAME = "key_rope";
-static const std::string ATTEN_OUT_NAME = "attention_out";
 
-
-ge::graphStatus TilingSparseLightningIndexerKLLossGrad(gert::TilingContext *context)
+ge::graphStatus TilingDenseLightningIndexerKLLossGrad(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (sligPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGW(context, "Current npu arch is dav-3510.");
-        return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
-    } else {
-        OP_LOGW(context, "Current npu arch is not dav-3510.");
-        SparseLightningIndexerKLLossGradTilingBase sligKLLossTiling(context);
-        sligKLLossTiling.DoTiling();
-        return ge::GRAPH_SUCCESS;
-    }
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForSparseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForDenseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
 {
     OP_LOGW(context, "Start registering tiling.");
-    auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerKLLossGradCompileInfo>();
+    auto compileInfoPtr = context->GetCompiledInfo<DenseLightningIndexerKLLossGradCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(SparseLightningIndexerKLLossGrad)
-    .Tiling(TilingSparseLightningIndexerKLLossGrad)
-    .TilingParse<SparseLightningIndexerKLLossGradCompileInfo>(TilingPrepareForSparseLightningIndexerKLLossGrad);
+IMPL_OP_OPTILING(DenseLightningIndexerKLLossGrad)
+    .Tiling(TilingDenseLightningIndexerKLLossGrad)
+    .TilingParse<DenseLightningIndexerKLLossGradCompileInfo>(TilingPrepareForDenseLightningIndexerKLLossGrad);
 } // namespace optiling

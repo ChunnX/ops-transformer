@@ -9,21 +9,21 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_regbase_common.h
+ * \file dense_lightning_indexer_kl_loss_grad_regbase_common.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_REGBASE_COMMON_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_REGBASE_COMMON_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_REGBASE_COMMON_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_REGBASE_COMMON_H
 
 #include "../../../common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
-enum class SLILayout { BSND = 0, TND = 1 };
+enum class DLILayout { BSND = 0, TND = 1 };
 
-enum class SLISparseMode { DefaultMask = 0, RightDown = 3 };
+enum class DLISparseMode { DefaultMask = 0, RightDown = 3 };
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
@@ -47,7 +47,7 @@ struct GatherParams {
 /* * @name 核内数据结构定义
  * @{
  */
-struct SLIGradConstInfo {
+struct DLIKGradConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32 = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64 = 64;
     static constexpr uint32_t BUFFER_SIZE_BYTE_256 = 256;
@@ -89,7 +89,7 @@ struct SLIGradConstInfo {
     uint32_t kSizeAlign128;
     uint32_t cmpRatio;
     int64_t totalCost;
-    SLISparseMode sparseMode; // 0或者3
+    DLISparseMode sparseMode; // 0或者3
     float scaleValue;
     float pScaler;
 
@@ -108,7 +108,7 @@ struct SLIGradConstInfo {
     int64_t bmm3BaseOffset = 0;
 };
 
-struct SLIGradRunInfo {
+struct DLIKGradRunInfo {
     uint32_t taskId;
     uint32_t taskIdMod2;
     uint32_t bIdx;
@@ -156,7 +156,7 @@ struct SLIGradRunInfo {
     bool isLastK = false;
 };
 
-struct SLIGradKRunInfo {
+struct DLIKGradKRunInfo {
     uint32_t kTaskId;
     uint32_t kTaskIdMod2;
     uint32_t s2RealBaseSize;
@@ -219,9 +219,9 @@ template <typename T> __aicore__ inline T AlignTo(const T n, const T alignSize)
     X(T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                  \
-    X(Layout_Q, SLILayout, SLILayout::TND)                 \
-    X(Layout_KT, SLILayout, SLILayout::TND)                \
-    X(SparseMode, SLISparseMode, SLISparseMode::RightDown) \
+    X(Layout_Q, DLILayout, DLILayout::TND)                 \
+    X(Layout_KT, DLILayout, DLILayout::TND)                \
+    X(SparseMode, DLISparseMode, DLISparseMode::RightDown) \
     X(HasCuSeqlensQ, bool, false)                          \
     X(HasCuSeqlensK, bool, false)                          \
     X(HasSequsedQ, bool, false)                            \

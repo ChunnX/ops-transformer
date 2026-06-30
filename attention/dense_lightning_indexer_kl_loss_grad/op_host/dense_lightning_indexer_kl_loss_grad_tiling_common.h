@@ -9,12 +9,12 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_tiling_common.h
+ * \file dense_lightning_indexer_kl_loss_grad_tiling_common.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
 
 #include <cstdint>
 #include "err/ops_err.h"
@@ -31,15 +31,14 @@ namespace optiling {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_INPUT_INDEX = 2;
-constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
-constexpr uint32_t ATTN_SOFTMAX_L1_NORM_INPUT_INDEX = 4;
+constexpr uint32_t ATTN_SOFTMAX_L1_NORM_INPUT_INDEX = 3;
 // Optional Inputs Index
-constexpr uint32_t CU_SEQLENS_QUERY_INPUT_INDEX = 5;
-constexpr uint32_t CU_SEQLENS_KEY_INPUT_INDEX = 6;
-constexpr uint32_t SEQUSED_QUERY_INPUT_INDEX = 7;
-constexpr uint32_t SEQUSED_KEY_INPUT_INDEX = 8;
-constexpr uint32_t CMP_RESIDUAL_KEY_INPUT_INDEX = 9;
-constexpr uint32_t METADATA_INPUT_INDEX = 10;
+constexpr uint32_t CU_SEQLENS_QUERY_INPUT_INDEX = 4;
+constexpr uint32_t CU_SEQLENS_KEY_INPUT_INDEX = 5;
+constexpr uint32_t SEQUSED_QUERY_INPUT_INDEX = 6;
+constexpr uint32_t SEQUSED_KEY_INPUT_INDEX = 7;
+constexpr uint32_t CMP_RESIDUAL_KEY_INPUT_INDEX = 8;
+constexpr uint32_t METADATA_INPUT_INDEX = 9;
 
 // Outputs Index
 constexpr uint32_t D_QUERY_OUTPUT_INDEX = 0;
@@ -52,7 +51,6 @@ constexpr uint32_t LAYOUT_Q_ATTR_INDEX = 0;
 constexpr uint32_t LAYOUT_K_ATTR_INDEX = 1;
 constexpr uint32_t MASK_MODE_ATTR_INDEX = 2;
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 3;
-constexpr uint32_t DETERMINISTIC_ATTR_INDEX = 4;
 
 // Dim Num
 constexpr size_t DIM_NUM_TWO = 2;
@@ -71,10 +69,9 @@ struct InnerSplitParams {
     uint32_t s2BaseSize = 1;
 };
 
-enum class SparseMode : uint32_t {
+enum class MaskMode : uint32_t {
     DEFAULT_MASK = 0,      // 默认，全计算
     RIGHT_DOWN_CAUSAL = 3, // 右下角点划分的下三角部分
-    // BAND = 4
 };
 
 struct AiCoreParams {
@@ -88,7 +85,7 @@ struct AiCoreParams {
 };
 
 // SLIG tiling类定义 继承TilingBaseClass
-struct SparseLightningIndexerGradCompileInfo {
+struct DenseLightningIndexerGradCompileInfo {
     int64_t core_num;
     uint32_t aivNum;
     uint32_t aicNum;

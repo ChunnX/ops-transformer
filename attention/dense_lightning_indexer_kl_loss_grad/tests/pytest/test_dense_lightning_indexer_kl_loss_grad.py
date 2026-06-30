@@ -1,5 +1,5 @@
 """
-Reference and precision harness for sparse_lightning_indexer_kl_loss_grad.
+Reference and precision harness for dense_lightning_indexer_kl_loss_grad.
 
 TND, N2=1 flow:
   1. Recompute main-attention sparse softmax on CPU to produce attn_softmax_l1_norm.
@@ -281,7 +281,7 @@ def make_cu_seqlens(lengths, device):
     return cu
 
 
-class SparseLightningIndexerKLLossGradRef:
+class DenseLightningIndexerKLLossGradRef:
     def __init__(
         self,
         q,
@@ -419,7 +419,7 @@ class SparseLightningIndexerKLLossGradRef:
 
 def run_golden(case, tensors, cmp_ratio):
     print(f"========= run_golden: cmp_ratio={cmp_ratio}, dtype={case.dtype} =========")
-    ref = SparseLightningIndexerKLLossGradRef(
+    ref = DenseLightningIndexerKLLossGradRef(
         q=tensors["q"],
         k=tensors["k"],
         q_index=tensors["q_index"],
@@ -462,7 +462,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     print("layout:", case.layout, "mask_mode:", case.sparse_mode, "cmp_ratio:", cmp_ratio)
     print("##################### END fused inputs #######################")
 
-    metadata = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata(
+    metadata = torch.ops.cann_ops_transformer.dense_lightning_indexer_kl_loss_grad_metadata(
         case.n_query_index,
         case.n_key,
         case.d_index,
@@ -480,7 +480,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     )
     print_slig_metadata(metadata)
 
-    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad(
+    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.dense_lightning_indexer_kl_loss_grad(
         q,
         k,
         w,

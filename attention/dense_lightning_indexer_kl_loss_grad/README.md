@@ -1,4 +1,4 @@
-# SparseLightningIndexerKLLossGrad
+# DenseLightningIndexerKLLossGrad
 
 ## 产品支持情况
 
@@ -13,7 +13,7 @@
 
 ## 算子功能
 
-- 算子功能：SparseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该算子接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本算子不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
+- 算子功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该算子接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本算子不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
 
 - 计算公式：
    用于取Top-k的value的Indexer logits可表示为：
@@ -156,7 +156,7 @@
     <tr>
         <td>metadataOptional</td>
         <td>可选输入</td>
-        <td>由SparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
+        <td>由DenseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -225,7 +225,7 @@
 ## 约束说明
 
 - 确定性计算：
-  - SparseLightningIndexerKLLossGrad外部接口不提供deterministic入参，kernel侧优先使用运行时上下文中的确定性配置。
+  - DenseLightningIndexerKLLossGrad外部接口不提供deterministic入参，kernel侧优先使用运行时上下文中的确定性配置。
 - 公共约束
     - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
     - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
@@ -384,5 +384,5 @@
 
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| aclnn调用 | [aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md) | 通过[aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md)接口方式调用SparseLightningIndexerKLLossGrad算子。 |
-| pytest调用 | [test_sparse_lightning_indexer_kl_loss_grad](./tests/pytest/test_sparse_lightning_indexer_kl_loss_grad.py) | 通过torch extension接口进行功能和精度验证。 |
+| aclnn调用 | [aclnnDenseLightningIndexerKLLossGrad](./docs/aclnnDenseLightningIndexerKLLossGrad.md) | 通过[aclnnDenseLightningIndexerKLLossGrad](./docs/aclnnDenseLightningIndexerKLLossGrad.md)接口方式调用DenseLightningIndexerKLLossGrad算子。 |
+| pytest调用 | [test_dense_lightning_indexer_kl_loss_grad](./tests/pytest/test_dense_lightning_indexer_kl_loss_grad.py) | 通过torch extension接口进行功能和精度验证。 |
