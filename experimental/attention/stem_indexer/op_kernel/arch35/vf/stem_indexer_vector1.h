@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_vector1.h
+ * \file stem_indexer_vector1.h
  * \brief
  */
-#ifndef QUANT_LIGHTNING_INDEXER_VECTOR1_H
-#define QUANT_LIGHTNING_INDEXER_VECTOR1_H
+#ifndef STEM_INDEXER_VECTOR1_H
+#define STEM_INDEXER_VECTOR1_H
 
 #include "kernel_operator.h"
 
@@ -138,9 +138,9 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<ty
     AscendC::MicroAPI::Xor(outKey1, outKey1, regMask[1], maskAll);
 }
 
-// float in uint32 out
+// QK_T in, sortable key out
 template <typename QK_T>
-__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
+__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortTraits<QK_T>::UInt* outBuf,
                                                     __ubuf__ QK_T* qkBuf,
                                                     __ubuf__ float* vBiasBuf,
                                                     const float rSquare,
@@ -148,29 +148,34 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
                                                     const int s2BaseSize,
                                                     const int mrgValueLen)
 {
-    MicroAPI::RegTensor<float> regvBias[4];
-    MicroAPI::RegTensor<float> regQK[4];
-    MicroAPI::RegTensor<float> regQKMul[4];
-    MicroAPI::RegTensor<float> regQKBias[4];
-    MicroAPI::RegTensor<uint32_t> regOut[4];
-    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+    using ScoreT = QK_T;
+    using KeyT = typename FloatSortTraits<QK_T>::UInt;
+    // 每个向量寄存器的元素数，s2BaseSize 拆成 4 个寄存器，每寄存器 64 元素
+    constexpr int32_t S2_REG_ELEMS = 64;
 
-    // float -> uint32相关参数结构体
-    FloatSortConstCtx<float> fp32Ctx;
-    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
+    MicroAPI::RegTensor<float> regvBias[4];   // vbias 恒为 FP32 输入
+    MicroAPI::RegTensor<ScoreT> regQK[4];
+    MicroAPI::RegTensor<ScoreT> regQKMul[4];
+    MicroAPI::RegTensor<ScoreT> regQKBias[4];
+    MicroAPI::RegTensor<KeyT> regOut[4];
+    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<ScoreT, AscendC::MicroAPI::MaskPattern::ALL>();
+
+    // 浮点 -> 可排序整型相关参数结构体
+    FloatSortConstCtx<ScoreT> scoreCtx;
+    InitFloatSortConstCtx(scoreCtx, maskAllB32);
 
     // s2BaseSize固定为256时，搬运vbias写在外面性能最佳
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + S2_REG_ELEMS);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 2 * S2_REG_ELEMS);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 3 * S2_REG_ELEMS);
 
     // 一次处理s2BaseSize 256个元素
     for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
-        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i); // RowStride是128, 行都落在一个bank上
-        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
-        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + 128);
-        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + 192);
+        MicroAPI::LoadAlign<ScoreT>(regQK[0], qkBuf + s2BaseSize * i); // RowStride是128, 行都落在一个bank上
+        MicroAPI::LoadAlign<ScoreT>(regQK[1], qkBuf + s2BaseSize * i + S2_REG_ELEMS);
+        MicroAPI::LoadAlign<ScoreT>(regQK[2], qkBuf + s2BaseSize * i + 2 * S2_REG_ELEMS);
+        MicroAPI::LoadAlign<ScoreT>(regQK[3], qkBuf + s2BaseSize * i + 3 * S2_REG_ELEMS);
         // qk * (stem_block_size / stem_stride) ^ 2
         MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
         MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
@@ -181,14 +186,14 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
         MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[1], maskAllB32);
         MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[2], maskAllB32);
         MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[3], maskAllB32);
-        // float -> uint32
-        FloatX2ToSortableKey<float>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], fp32Ctx, maskAllB32);
-        FloatX2ToSortableKey<float>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], fp32Ctx, maskAllB32);
+        // ScoreT -> KeyT
+        FloatX2ToSortableKey<ScoreT>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], scoreCtx, maskAllB32);
+        FloatX2ToSortableKey<ScoreT>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], scoreCtx, maskAllB32);
         // 搬入outBuf的value部分
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 64, regOut[1], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[2], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + S2_REG_ELEMS, regOut[1], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 2 * S2_REG_ELEMS, regOut[2], maskAllB32);
+        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 3 * S2_REG_ELEMS, regOut[3], maskAllB32);
     }
 }
 

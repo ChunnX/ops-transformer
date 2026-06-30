@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef stem_INDEXER_TEMPLATE_TILING_KEY_H
-#define stem_INDEXER_TEMPLATE_TILING_KEY_H
+#ifndef STEM_INDEXER_TEMPLATE_TILING_KEY_H
+#define STEM_INDEXER_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 

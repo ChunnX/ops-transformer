@@ -146,19 +146,11 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.headDim = tilingData->headDim;
     constInfo.sparseCount = tilingData->maxKb;
     constInfo.causal = tilingData->causal;
-    constInfo.stemBlockSize = tilingData->stemBlockSize;
-    constInfo.stemStride = tilingData->stemStride;
-    constInfo.initialBlocks = tilingData->initialBlocks;
-    constInfo.windowSize = tilingData->windowSize;
+    // stemBlockSize/stemStride/initialBlocks/windowSize/rSquare/kBlockNum* 已为 static constexpr 常量，无需从 tiling 赋值
     constInfo.mBaseSize = tilingData->mBaseSize;
     constInfo.s2BaseSize = tilingData->s2BaseSize;
     constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
-    constInfo.rSquare = tilingData->rSquare;
     constInfo.alpha = tilingData->alpha;
-    constInfo.kBlockNumRateMedium = tilingData->kBlockNumRateMedium;
-    constInfo.kBlockNumBiasMedium = tilingData->kBlockNumBiasMedium;
-    constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
-    constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     constInfo.attenMaskFlag = tilingData->causal != 0U;
     if (Q_LAYOUT_T == SI_LAYOUT::TND) {
@@ -417,22 +409,6 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, keyGm);
     }
-
-    // if (GetBlockIdx() == 0) {
-    //     AscendC::printf("[StemIndexer Init] bSize=%u qHeadNum=%u kvHeadNum=%u gSize=%u maxQb=%u maxKb=%u "
-    //                     "headDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
-    //                     "initialBlocks=%u windowSize=%u mBaseSize=%u s2BaseSize=%u scoreScale=%f alpha=%f "
-    //                     "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
-    //                     "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
-    //                     static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
-    //                     static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
-    //                     static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
-    //                     static_cast<uint32_t>(constInfo.headDim), constInfo.usedCoreNum, constInfo.causal,
-    //                     constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
-    //                     constInfo.mBaseSize, constInfo.s2BaseSize, constInfo.scoreScale, constInfo.alpha,
-    //                     constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
-    //                     constInfo.kBlockNumBiasLarge, static_cast<uint32_t>(singleCoreScoreWorkspaceBytes));
-    // }
 
     InitBuffers();
 }

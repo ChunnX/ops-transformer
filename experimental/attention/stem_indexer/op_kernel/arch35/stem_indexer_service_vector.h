@@ -615,7 +615,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t actS2Size = tempLoopInfo.actS2Size;
         uint64_t qFlatBase = (uint64_t)tempLoopInfo.bIdx * constInfo_.qSeqSize * constInfo_.qHeadNum
                         + (uint64_t)tempLoopInfo.n2Idx * constInfo_.gSize * constInfo_.qSeqSize;
-        uint32_t indiceLenOffset = (uint32_t)qFlatBase;
+        uint64_t indiceLenOffset = qFlatBase;  // 保持 uint64，避免大 batch/长序列下截断
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
         initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);

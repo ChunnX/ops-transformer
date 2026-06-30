@@ -1,10 +1,10 @@
-# QuantLightningIndexer
+# StemIndexer
 
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列加速卡产品</term>|      ×     |
@@ -12,239 +12,93 @@
 
 ## 功能说明
 
--   API功能：QuantLightningIndexer是推理场景下，稀疏attention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8，获取最大收益。
+-   API功能：StemIndexer是推理场景下稀疏attention的前处理算子，承担块级打分与动态选块职责。对每个query block，基于`qflat`与`kflat`的相关性并叠加value量值偏置`vbias`（OAM，Output-Aware Metric）进行打分，再按TPD（Token Position Decay）动态TopK预算选出关键key block，输出`sparse_indices`与`sparse_seq_len`供下游BlockSparseAttention消费。
 
 -   计算公式：
-    $$out = \text{Top-}k\left\{[1]_{1\times g}@\left[(W@[1]_{1\times S_{k}})\odot\text{ReLU}\left(\left(Scale_Q@Scale_K^T\right)\odot\left(Q_{index}^{Quant}@{\left(K_{index}^{Quant}\right)}^T\right)\right)\right]\right\}$$
+    $$\text{score} = \text{qflat} \cdot \text{kflat}^{T} \cdot \text{rSquare} + \text{vbias}$$
+    $$\text{rSquare} = \frac{1}{(\text{stem\_block\_size} / \text{stem\_stride})^{2}} = \frac{1}{(128/16)^{2}} = \frac{1}{64}$$
     主要计算过程为：
-    1. 将某个token对应的输入参数`query`（$Q_{index}^{Quant}\in\R^{g\times d}$）乘以给定上下文`key`（$K_{index}^{Quant}\in\R^{S_{k}\times d}$），得到相关性。
-    2. 相关性结果与`query`和`key`对应的反量化系数`query_dequant_scale`（$Scale_Q$）和`key_dequant_scale`（$Scale_K^T$）相乘，通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
-    3. 将其与权重系数`weights`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$out$，作为Attention的输入。
+    1. `qflat`（Q块代表，$Q_{block}\in\R^{g\times d}$）与`kflat`（K块代表，$K_{block}\in\R^{S_{k}\times d}$）做矩阵乘，得到当前query block与各key block的相关性；上游每个代表聚合`stem_block_size/stem_stride=8`个token，Q×K含$8\times8=64$个token-pair，故除以`rSquare=1/64`归一化到单token-pair量级。
+    2. 叠加`vbias`（value量值偏置，OAM项），避免纯QK相关性漏选对输出贡献较大的key block。
+    3. 按TPD动态TopK预算（预算随query位置线性衰减）选出关键key block，并固定保留开头`initial_blocks`（sink）与末尾`window_size`（window）个块，得到输出索引`sparse_indices`与有效长度`sparse_seq_len`。
 
 ## 参数说明
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
-| query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}，表示输入Index Query$，不支持非连续。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND         |
-| key                   | 输入      | 公式的$K_{index}^{Quant}\in\R^{S_{k}\times d}，表示压缩后的输入Index Key$，支持0轴非连续。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND |
-| weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。| FLOAT16、FLOAT32 | ND |
-| query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续 | FLOAT16、FLOAT32     | ND         |
-| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，不支持非连续 | FLOAT16、FLOAT32       | ND         |
-| actual_seq_lengths_query                    | 可选输入      | 表示不同Batch中`query`的有效token数 | INT32       | ND         |
-| actual_seq_lengths_key                    | 可选输入      | 表示不同Batch中`key`的有效token数 | INT32       | ND         |
-| block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表 | INT32       | ND         |
-| metadata                    | 可选输入      | QuantLightningIndexerMetadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容，shape大小为[1024]，当前不支持传空 | INT32       | ND         |
-| query_quant_mode                 | 属性      | 用于标识输入`query`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32          | -         |
-| key_quant_mode                 | 属性| 用于标识输入`key`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32 | -         |
-| layout_query                 | 可选属性| 用于标识输入`query`的数据排布格式，当前支持BSND、TND，默认值"BSND" | STRING | -         |
-| layout_key      | 可选属性      | 用于标识输入`key`的数据排布格式，当前仅支持传入PA_BSND，默认值"PA_BSND"  | STRING          | -         |
-| sparse_count  | 可选属性      | 代表topK阶段需要保留的block数量，支持[1, 2048]，默认值2048| INT32          | -         |
-| sparse_mode | 可选属性      | 表示sparse的模式，支持0/3，数据类型支持`int32`。 sparse_mode为0时，代表defaultMask模式。sparse_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。 | INT32          | -         |
-| pre_tokens    | 可选属性      | 预留参数，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1 | INT64          | -         |
-| next_tokens    | 可选属性      | 预留参数，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1 | INT64          | -         |
-| cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数。数据类型支持`int32`。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128，Ascend 950PR/Ascend 950DT支持1/4/128，默认值1。 | INT32          | -         |
-| return_value      |  可选属性     | 表示是否输出`sparse_values`。True表示输出，False表示不输出；仅支持默认值False | BOOL          | -         |
-| sparse_indices     | 输出      | 公式中的输出Out，参与稀疏attention计算的token索引值 | INT32          | ND         |
-| sparse_values           | 输出      | 公式中的Indices输出对应的value值，**目前暂不支持返回sparse_values。** | FLOAT32         | ND          |
-
-- <term>Ascend 950PR/Ascend 950DT</term>：query、key不支持INT8；weights、query_dequant_scale和key_dequant_scale不支持FLOAT16。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：query、key不支持FLOAT8_e4m3fn和HIFLOAT8；weights、query_dequant_scale和key_dequant_scale不支持FLOAT32。
+| qflat                     | 输入      | Q块代表，shape为`[B, q_heads, max_Qb, stem_stride * D]`，不支持非连续。 | BF16 | ND         |
+| kflat                   | 输入      | K块代表，shape为`[B, kv_heads, max_Kb, stem_stride * D]`，支持0轴非连续。 | BF16 | ND |
+| vbias                 | 输入      | value量值偏置（OAM项），shape为`[B, kv_heads, max_Kb]`，不支持非连续。| FP32 | ND |
+| q_seq_lens             | 输入      | 每个batch中query的有效token数。 | INT32     | ND         |
+| kv_seq_lens            | 输入      | 每个batch中key的有效token数。 | INT32       | ND         |
+| num_prompt_tokens                    | 输入      | prompt token数，用于TPD动态TopK预算分档。 | INT32       | ND         |
+| metadata                    | 输入      | StemIndexerMetadata算子传入的分核调度信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容，shape大小为`[2048]`，当前不支持传空。 | INT32       | ND         |
+| causal                 | 属性      | 是否因果（right-down causal mask），默认值true。 | BOOL          | -         |
+| stem_block_size                 | 属性| block大小，当前仅支持128。 | INT32 | -         |
+| stem_stride                 | 可选属性| 代表聚合stride，当前仅支持16。 | INT32 | -         |
+| alpha      | 可选属性      | TPD衰减系数μ，用于计算预算衰减终点`k_end = k_start * alpha`，默认值1.0。 | FLOAT32          | -         |
+| initial_blocks    | 可选属性      | 开头固定保留的sink块数，默认值4。 | INT32          | -         |
+| window_size    | 可选属性      | 末尾固定保留的window块数，默认值4。 | INT32          | -         |
+| k_block_num_rate_medium      | 可选属性      | 中等长度序列的TopK预算系数，默认值0.2。 | FLOAT32          | -         |
+| k_block_num_bias_medium      | 可选属性      | 中等长度序列的TopK预算偏置，默认值30。 | INT32          | -         |
+| k_block_num_rate_large      | 可选属性      | 长序列的TopK预算系数，默认值0.1。 | FLOAT32          | -         |
+| k_block_num_bias_large      | 可选属性      | 长序列的TopK预算偏置，默认值30。 | INT32          | -         |
+| sparse_indices     | 输出      | 选中的key block索引，shape为`[B, q_heads, max_Qb, max_Kb]`，仅前`sparse_seq_len`项有效，尾部无效区以-1填充。 | INT32          | ND         |
+| sparse_seq_len           | 输出      | 每个query block选中的块数，shape为`[B, q_heads, max_Qb]`。 | INT32         | ND          |
 
 
 ## 约束说明
 -   该接口支持图模式。
--   该接口要求$W \odot Scale_Q$的结果在`float16`(Atlas A3)/`float32`(Ascend 950PR/Ascend 950DT)的表示范围内。
--   该接口的TopK过程对NAN排序是未定义行为。
--   参数query中的D轴和参数key中的D轴值相等为128。
--   参数query和key中的N轴分别仅支持64和1。
--   当`layout_query`为TND时，`actual_seq_lengths_query`必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。不能出现负值。
--   当`layout_key`为PA_BSND时，`actual_seq_lengths_key`该入参必须传入。
--   PageAttention场景下，`block_table`必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq(maxBlockNumPerSeq为每个batch中最大`actual_seq_lengths_key`对应的block数量)，支持block_size取值为16的整数倍，最大支持到1024。
--   query、key、weights、query_dequant_scale、key_dequant_scale数据排布格式支持从多种维度解读，其中B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+-   当前仅适配Ascend 950PR/Ascend 950DT（A5），不支持A3/A2。
+-   `qflat`/`kflat`仅支持BF16，`vbias`仅支持FP32，`q_seq_lens`/`kv_seq_lens`/`num_prompt_tokens`/`metadata`及输出仅支持INT32。
+-   `q_heads`仅支持32/64，`kv_heads`仅支持2/4/8，且需满足`q_heads % kv_heads == 0`（GQA）。
+-   `headDim`固定为128；`stem_block_size`固定为128，`stem_stride`固定为16，因此`qflat`/`kflat`最后一维固定为`stem_stride * D = 16 * 128 = 2048`。
+-   `metadata`首维必须为2048。
+-   `initial_blocks`固定为4，`window_size`固定为4。
+-   TopK预算分档：prompt block数较小时直接取prompt block数；中等长度使用`k_block_num_rate_medium * prompt_block + k_block_num_bias_medium`；长序列使用`k_block_num_rate_large * prompt_block + k_block_num_bias_large`；再按query位置与`alpha`线性衰减得到当前query block的动态TopK预算。
+-   输出`sparse_indices`采用有效前缀契约：仅前`sparse_seq_len`项有效，尾部无效区在S2内层首轮以-1前置初始化，下游BlockSparseAttention只读取有效前缀。
 
-## Atlas A3 推理系列产品 调用说明
+## Ascend 950PR/Ascend 950DT 调用说明
 
 -   单算子模式调用
     ```python
     import torch
     import torch_npu
     import numpy as np
-    import torch.nn as nn
-    import math
-    import custom_ops
+    import cann_ops_transformer
 
-    n1 = 64
-    n2 = 1
+    b = 4
+    q_heads = 64
+    kv_heads = 8
+    g_size = q_heads // kv_heads
     d = 128
-    block_size = 128
-    layout_key = "PA_BSND"
-    layout_query = "BSND"
-    query_quant_mode = 0
-    key_quant_mode = 0
+    stem_block_size = 128
+    stem_stride = 16
+    q_block_num = 16
+    k_block_num = 64
+    q_seq_len = q_block_num * stem_block_size
+    kv_seq_len = k_block_num * stem_block_size
+    num_prompt_tokens = q_seq_len
+
     np.random.seed(0)
-    # -------------
-    b = 24
-    t = None
-    s1 = 4
-    s2 = 512
-    act_seq_q = None
-    act_seq_k = None
-    sparse_mode = 0
-    sparse_count = 512
-    cmp_ratio = 1
-    max_block_table_num = (s2 + block_size - 1) // block_size
-    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1)
-    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8)
-    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2)))
-    key_dequant_scale = key_dequant_scale.to(torch.float16)
-    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8)
-    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16)
-    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16)
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32) \
-                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32)
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32) \
-                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32)
-    max_seqlen_q = actual_seq_lengths_query.max().item()
-    max_seqlen_k = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.custom.npu_stem_indexer_metadata (
-                                    actual_seq_lengths_query = actual_seq_lengths_query.npu(),
-                                    actual_seq_lengths_key = actual_seq_lengths_key.npu(),
-                                    num_heads_q = n1,
-                                    num_heads_k = n2,
-                                    head_dim = d,
-                                    query_quant_mode = query_quant_mode,
-                                    key_quant_mode = key_quant_mode,
-                                    batch_size = b,
-                                    max_seqlen_q = max_seqlen_q,
-                                    max_seqlen_k = max_seqlen_k,
-                                    layout_query = layout_query,
-                                    layout_key = layout_key,
-                                    sparse_count = sparse_count,
-                                    sparse_mode = sparse_mode,
-                                    pre_tokens = (1<<63)-1,
-                                    next_tokens = (1<<63)-1,
-                                    cmp_ratio = cmp_ratio,
-                                    device = 'npu:0')
+    qflat = torch.randn(b, q_heads, q_block_num, stem_stride * d, dtype=torch.bfloat16).npu()
+    kflat = torch.randn(b, kv_heads, k_block_num, stem_stride * d, dtype=torch.bfloat16).npu()
+    vbias = torch.randn(b, kv_heads, k_block_num, dtype=torch.float32).npu()
+    q_seq_lens = torch.full((b,), q_seq_len, dtype=torch.int32).npu()
+    kv_seq_lens = torch.full((b,), kv_seq_len, dtype=torch.int32).npu()
+    num_prompt_tokens_tensor = torch.full((b,), num_prompt_tokens, dtype=torch.int32).npu()
 
-    sparse_indices, sparse_values = torch.ops.custom.npu_stem_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
-                                                    key_dequant_scale.npu(),
-                                                    actual_seq_lengths_query=actual_seq_lengths_query.npu(),
-                                                    actual_seq_lengths_key=actual_seq_lengths_key.npu(),
-                                                    block_table=block_table.npu(),
-                                                    metadata = metadata,
-                                                    query_quant_mode=query_quant_mode,
-                                                    key_quant_mode=key_quant_mode,
-                                                    layout_query=layout_query,
-                                                    layout_key=layout_key, sparse_count=sparse_count,
-                                                    sparse_mode=sparse_mode, pre_tokens=(1<<63)-1,
-                                                    next_tokens=(1<<63)-1, cmp_ratio=cmp_ratio)
-    ```
--   aclgarph调用
+    # 1. 前置分核：生成分核调度 metadata，shape 固定为 [2048]
+    metadata = torch.ops.cann_ops_transformer.stem_indexer_metadata(
+        q_seq_lens, kv_seq_lens, q_heads, kv_heads,
+        causal=True, stem_block_size=stem_block_size, dim_qkflat=d, window_size=4)
 
-    ```python
-    import torch
-    import torch_npu
-    import numpy as np
-    import torch.nn as nn
-    import math
-    import torchair
-    import custom_ops
-    from torchair.configs.compiler_config import CompilerConfig
-
-    n1 = 64
-    n2 = 1
-    d = 128
-    block_size = 128
-    layout_key = "PA_BSND"
-    layout_query = "BSND"
-    query_quant_mode = 0
-    key_quant_mode = 0
-    np.random.seed(0)
-    # -------------
-    b = 24
-    t = None
-    s1 = 4
-    s2 = 512
-    act_seq_q = None
-    act_seq_k = None
-    sparse_mode = 3
-    sparse_count = 512
-    pre_tokens=(1<<63)-1
-    next_tokens=(1<<63)-1
-    cmp_ratio = 4
-    max_block_table_num = (s2 + block_size - 1) // block_size
-    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1).npu()
-    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8).npu()
-    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2))).npu()
-    key_dequant_scale = key_dequant_scale.to(torch.float16).npu()
-    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8).npu()
-    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16).npu()
-    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16).npu()
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu() \
-                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu() \
-                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32).npu()
-    max_seqlen_q = actual_seq_lengths_query.max().item()
-    max_seqlen_k = actual_seq_lengths_key.max().item()
-
-    class QLINetwork(nn.Module):
-        def __init__(self):
-            super(QLINetwork, self).__init__()
-
-        def forward(self, query, key, weights, q_scale, k_scale, query_quant_mode, key_quant_mode,
-                    batch_size, num_heads_q, num_heads_k, head_dim,
-                    actual_seq_lengths_query=None, actual_seq_lengths_key=None,
-                    block_table=None, layout_query='BSND', layout_key='BSND',
-                    sparse_count=512, sparse_mode=3, pre_tokens=(1<<63)-1,
-                    next_tokens=(1<<63)-1, cmp_ratio=cmp_ratio, return_value=False):
-            metadata = torch.ops.custom.npu_stem_indexer_metadata(
-                                    actual_seq_lengths_query = actual_seq_lengths_query,
-                                    actual_seq_lengths_key = actual_seq_lengths_key,
-                                    num_heads_q = num_heads_q,
-                                    num_heads_k = num_heads_k,
-                                    head_dim = head_dim,
-                                    query_quant_mode = query_quant_mode,
-                                    key_quant_mode = key_quant_mode,
-                                    batch_size = batch_size,
-                                    max_seqlen_q = max_seqlen_q,
-                                    max_seqlen_k = max_seqlen_k,
-                                    layout_query = layout_query,
-                                    layout_key = layout_key,
-                                    sparse_count = sparse_count,
-                                    sparse_mode = sparse_mode,
-                                    pre_tokens = (1<<63)-1,
-                                    next_tokens = (1<<63)-1,
-                                    cmp_ratio = cmp_ratio,
-                                    device = 'npu:0')
-
-            sparse_indices, sparse_values = torch.ops.custom.npu_stem_indexer(query, key, weights,
-                                                        q_scale, k_scale,
-                                                        actual_seq_lengths_query=actual_seq_lengths_query,
-                                                        actual_seq_lengths_key=actual_seq_lengths_key,
-                                                        block_table=block_table, metadata=metadata,
-                                                        query_quant_mode=query_quant_mode,
-                                                        key_quant_mode=key_quant_mode,
-                                                        layout_query=layout_query,
-                                                        layout_key=layout_key, sparse_count=sparse_count,
-                                                        sparse_mode=sparse_mode,pre_tokens=pre_tokens,
-                                                        next_tokens=next_tokens, cmp_ratio=cmp_ratio,
-                                                        return_value=return_value)
-            return sparse_indices
-
-
-    config = CompilerConfig()
-    config.mode = "reduce-overhead"
-    npu_backend = torchair.get_npu_backend(compiler_config=config)
-    torch._dynamo.reset()
-    npu_mode = torch.compile(QLINetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
-    sparse_indices = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
-                        query_quant_mode, key_quant_mode, b, n1, n2, d,
-                        actual_seq_lengths_query=actual_seq_lengths_query,
-                        actual_seq_lengths_key=actual_seq_lengths_key,
-                        block_table=block_table,
-                        layout_query=layout_query, layout_key=layout_key,
-                        sparse_count=sparse_count, sparse_mode=sparse_mode,
-                        pre_tokens=pre_tokens, next_tokens=next_tokens,
-                        cmp_ratio=cmp_ratio, return_value=False)
+    # 2. 主算子：块级打分与动态选块
+    sparse_indices, sparse_seq_len = torch.ops.cann_ops_transformer.stem_indexer(
+        qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens_tensor, metadata,
+        causal=True, stem_block_size=stem_block_size, stem_stride=stem_stride, alpha=1.0,
+        initial_blocks=4, window_size=4,
+        k_block_num_rate_medium=0.2, k_block_num_bias_medium=30,
+        k_block_num_rate_large=0.1, k_block_num_bias_large=30)
     ```
 
 更多使用示例见[pytest示例](./tests/pytest/README.md)。

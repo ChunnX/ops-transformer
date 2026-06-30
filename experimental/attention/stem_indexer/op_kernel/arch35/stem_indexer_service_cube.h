@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file lightning_indexer_service_cube.h
+ * \file stem_indexer_service_cube.h
  * \brief use 5 buffer for matmul l1, better pipeline
  */
 #ifndef stem_indexer_SERVICE_CUBE_H
@@ -214,8 +214,8 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     l0cBufIdx_++;
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET); 
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2);
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET);
 }
 
 template <typename SIT>
@@ -233,7 +233,7 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * 2048 + kGmOffset], nd2nzPara);  
+             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.FLATTEN_DIM + kGmOffset], nd2nzPara);
 }
 
 // batch, n2, g, s1, d

@@ -21,7 +21,7 @@ namespace SICommon {
 enum class SI_LAYOUT : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNSD = 2, 
+    PA_BNSD = 2,
     BNSD = 3
 };
 
@@ -104,6 +104,8 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // 无效索引
     static constexpr int INVALID_IDX = -1;
+    // qflat/kflat 最后一维 = stem_stride(16) * head_dim(128) = 2048
+    static constexpr uint32_t FLATTEN_DIM = 2048U;
 
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
@@ -128,16 +130,17 @@ struct ConstInfo {
     uint64_t qSeqSize = 1ULL;          // q最大S长度
     uint32_t usedCoreNum = 0U;
     uint32_t causal = 1U;
-    uint32_t stemBlockSize = 128U;
-    uint32_t stemStride = 16U;
-    uint32_t initialBlocks = 4U;
-    uint32_t windowSize = 4U;
-    float rSquare = 1.0f / 64.0f;
-    float alpha = 1.0f;
-    float kBlockNumRateMedium = 0.2f;
-    uint32_t kBlockNumBiasMedium = 30U;
-    float kBlockNumRateLarge = 0.1f;
-    uint32_t kBlockNumBiasLarge = 30U;
+    // 以下为 tiling 强制固定的常量，提为 static constexpr，避免大结构体实例的 scalar 开销
+    static constexpr uint32_t stemBlockSize = 128U;
+    static constexpr uint32_t stemStride = 16U;
+    static constexpr uint32_t initialBlocks = 4U;
+    static constexpr uint32_t windowSize = 4U;
+    static constexpr float rSquare = 1.0f / 64.0f;  // 1/(stem_block_size/stem_stride)^2 = 1/64
+    float alpha = 1.0f;  // TPD 衰减系数，运行时可配
+    static constexpr float kBlockNumRateMedium = 0.2f;
+    static constexpr uint32_t kBlockNumBiasMedium = 30U;
+    static constexpr float kBlockNumRateLarge = 0.1f;
+    static constexpr uint32_t kBlockNumBiasLarge = 30U;
     uint32_t kCacheBlockSize = 0;      // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     SI_LAYOUT outputLayout;            // 输出的格式
@@ -205,7 +208,7 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace SICommon
 
 // bank冲突优化
-// david 256KB bank layout
+// 256KB bank layout
 // shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
 // stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
 #define UB_BLOCK              32   // 32B
