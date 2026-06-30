@@ -47,7 +47,8 @@ constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t BF16_BYTE_SIZE = 2;
 constexpr int64_t ALPHA_SIZE_3 = 3;
-constexpr int64_t N_SIZE_4 = 4;
+constexpr int64_t N_SIZE_MIN = 0;
+constexpr int64_t N_SIZE_MAX = 8;
 
 using namespace ge;
 using namespace std;
@@ -380,7 +381,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
                     n * n + 2 * n, gradBiasShape.GetDimNum(), gradBiasShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n != N_SIZE_4, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, N must be 4, but got %ld", n),
+    OP_CHECK_IF(n < N_SIZE_MIN || n > N_SIZE_MAX, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, N must be within the range [0, 8], but got %ld", n),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
