@@ -32,10 +32,9 @@ public:
 private:
     __aicore__ inline void CopyIn(int64_t progress);
     __aicore__ inline void CopyOut(int64_t progress);
-    __aicore__ inline void CopyOutRemain();
     __aicore__ inline void SyncAll();
     __aicore__ inline void AssistInit();
-    __aicore__ inline void ZeroOutRange(int64_t startIndex, int64_t rowCount);
+    __aicore__ inline void ZeroOutAllOutput();
     __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
@@ -96,11 +95,18 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::AssistInit()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutRange(int64_t startIndex, int64_t rowCount)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutAllOutput()
 {
+    int64_t perCoreRows = Ceil(this->outputRows_, this->coreNum_);
+    int64_t startIndex = this->blockIdx_ * perCoreRows;
+    int64_t endIndex = Min(startIndex + perCoreRows, this->outputRows_);
+    int64_t rowCount = endIndex - startIndex;
     if (rowCount <= 0) {
         return;
     }
+
+    // DropPad padding rows may never be touched by gather_out. Pre-clear the whole output once, then
+    // synchronize before valid rows are written, avoiding many small expert-gap clears.
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         GlobalTensor<uint8_t> zeroGm;
         zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXUint8Gm_.GetPhyAddr() + startIndex * this->cols_,
@@ -168,9 +174,6 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             this->tokenCount_ = this->expertCapacity_;
         }
         if (this->lastExpertId_ < expertIdx) {
-            int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
-            int64_t zeroEnd = expertIdx * this->expertCapacity_;
-            ZeroOutRange(zeroStart, zeroEnd - zeroStart);
             this->lastExpertId_ = expertIdx;
             this->tokenCount_ = 0;
         }
@@ -193,24 +196,6 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
     }
     copyInQueue_.FreeTensor(inLocal);
     copyOutQueue_.FreeTensor(outLocal);
-}
-
-template <typename T>
-__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
-{
-    if (this->blockIdx_ != this->srcToDstTilingData_->needCoreNum - 1) {
-        return;
-    }
-    if (this->lastExpertId_ < 0) {
-        this->lastExpertId_ = 0;
-        this->tokenCount_ = 0;
-    }
-    if (this->tokenCount_ > this->expertCapacity_) {
-        this->tokenCount_ = this->expertCapacity_;
-    }
-    int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
-    int64_t zeroEnd = this->expertNum_ * this->expertCapacity_;
-    ZeroOutRange(zeroStart, zeroEnd - zeroStart);
 }
 
 template <typename T>
@@ -305,6 +290,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
 template <typename T>
 __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
 {
+    ZeroOutAllOutput();
+    this->SyncAll();
+
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
         AssistInit();
         currentLoopRows_ = perLoopRows_;
@@ -315,7 +303,6 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
             CopyIn(loop);
             CopyOut(loop);
         }
-        CopyOutRemain();
     }
     this->SyncAll();
 }
