@@ -553,8 +553,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     DataCopyExtParams loadParams{1U, static_cast<uint32_t>(sendTotalNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(topkIdsTensor_, srcGlobalTensor, loadParams, loadPad);
-    PipeBarrier<PIPE_ALL>();
-    DumpTensor(topkIdsTensor_, rankId_, sendTotalNum_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
@@ -778,6 +776,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) + relayOffset;
+    AscendC::PRINTF("[MegaMoe][L1Send] rank=%u peer=%u block=%u targetServer=%u slot=%d token=%d relayOff=%llu\n",
+        rankId_, peerRank, blockIdx_, targetServerForSender, slot, tokenIdx,
+        static_cast<unsigned long long>(relayOffset));
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
@@ -900,13 +901,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
+    uint32_t waitLoop = 0;
     do {
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
             remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
         PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
+        if ((waitLoop & 1023U) == 0U) {
+            AscendC::PRINTF("[MegaMoe][L2Wait] rank=%u relayRank=%u block=%u buf=%d ready=%d remoteOff=%llu flagOff=%llu\n",
+                rankId_, relayRank, blockIdx_, bufferIdx, readyValue,
+                static_cast<unsigned long long>(remoteCopyOffset),
+                static_cast<unsigned long long>(flagOffset));
+        }
+        ++waitLoop;
         if (readyValue == int32_t(1)) {
+            AscendC::PRINTF("[MegaMoe][L2WaitDone] rank=%u relayRank=%u block=%u buf=%d loop=%u remoteOff=%llu\n",
+                rankId_, relayRank, blockIdx_, bufferIdx, waitLoop,
+                static_cast<unsigned long long>(remoteCopyOffset));
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
             break;
         }
