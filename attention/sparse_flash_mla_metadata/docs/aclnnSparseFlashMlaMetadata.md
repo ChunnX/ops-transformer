@@ -196,7 +196,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于按cmp_len * cmpRatio + residual恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>在C4A/CSA、C128A/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -256,7 +256,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>输入样本批量大小。</td>
-      <td>默认值为0。layoutQ为TND时从cuSeqLensQ推断，无需手动指定。</td>
+      <td>传入0时表示从cuSeqLensQ推断；layoutQ为TND时无需手动指定。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>maxSeqlenQ（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中q的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>传入0时表示由接口推导。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -276,7 +276,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中oriKv的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>传入0时表示由接口推导。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>maxSeqlenCmpKv（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中cmpKv的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>传入0时表示由接口推导。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -296,7 +296,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
       <td>从oriKv中筛选的稀疏token个数。</td>
-      <td>当前暂不支持，默认值为0，当前仅支持0。</td>
+      <td>当前暂不支持传入非0值，仅支持0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -306,7 +306,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
       <td>从cmpKv中筛选的稀疏token个数。</td>
-      <td>C4A场景下仅支持512或1024，C1A/C128A场景下为0。</td>
+      <td>C4A/CSA场景下仅支持512或1024，C1A/SWA、C128A/HCA场景下为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A场景传4，C128A场景传128。</td>
+      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A/CSA场景传4，C128A/HCA场景传128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -326,7 +326,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和oriKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。默认值为4。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -336,7 +336,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。默认值为3。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -346,7 +346,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriWinLeft（int64_t）</td>
       <td>输入</td>
       <td>滑动窗口向左扩展的token数。</td>
-      <td>支持-1或非负数，其中-1表示窗口不受限。默认值为127。</td>
+      <td>支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -356,7 +356,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriWinRight（int64_t）</td>
       <td>输入</td>
       <td>滑动窗口向右扩展的token数。</td>
-      <td>支持-1或非负数，其中-1表示窗口不受限。默认值为0。</td>
+      <td>支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -376,7 +376,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>标识输入KV的数据排布格式。</td>
-      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>hasOriKv（bool）</td>
       <td>输入</td>
       <td>是否传入oriKv。</td>
-      <td>默认值为true。</td>
+      <td>根据是否传入oriKv设置。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>是否传入cmpKv。</td>
-      <td>C1A场景为false，C4A/C128A场景为true。默认值为true。</td>
+      <td>C1A/SWA场景为false，C4A/CSA、C128A/HCA场景为true。根据是否传入cmpKv设置。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -487,7 +487,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>oriWinLeft不为127，或oriWinRight不为0。</td>
       </tr>
       <tr>
-        <td>C1A场景cmpRatio不为1，或cmpRatio与C4A/C128A场景不匹配。</td>
+        <td>C1A/SWA场景cmpRatio不为1，或cmpRatio与C4A/CSA、C128A/HCA场景不匹配。</td>
       </tr>
       <tr>
         <td>cmpTopk不为0、512或1024。</td>
@@ -610,7 +610,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - layoutKvOptional为PA_BBND时，`sequsedOriKvOptional`必须传入。BSND场景可选传入`sequsedOriKvOptional`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqlensOriKvOptional`表达oriKv序列边界。
   - layoutKvOptional为TND时，`cuSeqlensOriKvOptional`必须传入；若hasCmpKv为true，`cuSeqlensCmpKvOptional`也必须传入。
   - `sequsedCmpKvOptional`为所有layoutKvOptional下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
-  - `cmpResidualKvOptional`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
+  - `cmpResidualKvOptional`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在C4A/CSA、C128A/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
 
@@ -699,7 +699,7 @@ int main()
 {
   // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
-  int32_t deviceId = 5;
+  int32_t deviceId = 0;
   aclrtContext context = nullptr;
   aclrtStream stream = nullptr;
   auto ret = Init(deviceId, &context, &stream);
