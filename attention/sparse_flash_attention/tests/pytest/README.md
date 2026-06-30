@@ -50,8 +50,8 @@
 
 #### 前置要求
 
-1、 确认torch_npu为最新版本
-2、 参考[Attention融合算子Experimental使用说明](https://gitcode.com/cann/ops-transformer/blob/master/attention/Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
+1. 完成环境安装和环境变量配置，具体操作请参考：[环境部署](../../../../docs/zh/install/quick_install.md)
+2. torch_npu安装包下载路径（需及时更换为最新版本）：[Attention融合算子Experimental使用说明](../../../../experimental/attention/Attention融合算子Experimental使用说明.md)
 
 #### custom包调用
 
