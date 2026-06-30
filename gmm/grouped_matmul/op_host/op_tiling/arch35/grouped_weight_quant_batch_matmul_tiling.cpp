@@ -184,6 +184,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDtypeSingleXMultiWeightSing
                 return false);
     return true;
 }
+
 bool GroupedWeightQuantBatchMatmulTiling::IsNzFormat(const gert::TilingContext *context, uint32_t attrIdx,
                                                      size_t idx) const
 {
