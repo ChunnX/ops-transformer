@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file sparse_flash_mla_csa_block_cube.h
@@ -527,10 +527,10 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1HCA(
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
-                        static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
-                        static_cast<uint32_t>(constInfo.dSize),   // singleK
-                        0,    // isLeftTranspose
-                        1     // isRightTranspose
+                     static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
+                     static_cast<uint32_t>(constInfo.dSize),   // singleK
+                     0,    // isLeftTranspose
+                     1     // isRightTranspose
                     };
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(),                // mm1B直接用tensor的数据
@@ -718,10 +718,10 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
-                        static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
-                        static_cast<uint32_t>(constInfo.dSize),   // singleK
-                        0,    // isLeftTranspose
-                        1     // isRightTranspose
+                     static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
+                     static_cast<uint32_t>(constInfo.dSize),   // singleK
+                     0,    // isLeftTranspose
+                     1     // isRightTranspose
                     };
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(),                // mm1B直接用tensor的数据

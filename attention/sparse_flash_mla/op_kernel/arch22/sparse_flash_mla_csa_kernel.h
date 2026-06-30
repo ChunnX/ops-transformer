@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file sparse_flash_mla_csa_kernel.h
@@ -666,7 +666,8 @@ __aicore__ inline void SparseFlashMlaCsa<SMLAT>::CalcParams(uint32_t loop, uint3
         }
     }
 
-    info.actualSingleProcessSInnerSizeAlign = SMLAAlign(info.actualSingleProcessSInnerSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
+    info.actualSingleProcessSInnerSizeAlign =
+        SMLAAlign(info.actualSingleProcessSInnerSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
     if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
