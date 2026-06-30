@@ -984,7 +984,6 @@ public:
         }
         uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
         int64_t calculateSize = vecMSize * fp32BaseSize;
-        int64_t calculateSize = runInfo.actVecMSize * fp32BaseSize;
         // 是否要改成halfMRealSize
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
         // flashDecodeS2Idx?nBufferStartM?
