@@ -322,9 +322,9 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
     const aclTensor *indicesContiguous = nullptr;
     int64_t fullTokenNum = 0;
     CHECK_RET(PrepareIndicesForV3(
-            tokens, indices, &tokensContiguous, &indicesContiguous,
-            &fullTokenNum, uniqueExecutor.get()),
-            ACLNN_ERR_INNER_NULLPTR);
+        tokens, indices, &tokensContiguous, &indicesContiguous,
+        &fullTokenNum, uniqueExecutor.get()),
+        ACLNN_ERR_INNER_NULLPTR);
 
     aclTensor *fullExpandedX = nullptr;
     aclTensor *fullExpandedRowIdx = nullptr;
@@ -337,7 +337,9 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
         &fullExpandedScale, &activeExpertRange, uniqueExecutor.get()),
         ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor *expandedXOut = nullptr, *expandedRowIdxOut = nullptr, *expandedScale = nullptr;
+    const aclTensor *expandedXOut = nullptr;
+    const aclTensor *expandedRowIdxOut = nullptr;
+    const aclTensor *expandedScale = nullptr;
     CHECK_RET(CallMoeInitRoutingV3AndUnpack(
         tokensContiguous, indicesContiguous, fullTokenNum, quantMode,
         fullExpandedX, fullExpandedRowIdx, expertTokensCount,
