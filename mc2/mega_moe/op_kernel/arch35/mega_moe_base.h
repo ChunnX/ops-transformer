@@ -22,13 +22,10 @@
 #include "mega_moe_workspace_info.h"
 
 struct Mc2MoeContext {
-    uint32_t epRankId = 0;
-    uint32_t rankSizePerServer = 0;
-    uint64_t kfcContextAddr = 0; // 通信API所需的地址
-    uint64_t epHcclBuffer[1024] = {};
-    uint64_t hcommHandle[1024] = {};   // 支持ROCE或者URMA
-    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
-    bool isCrossServer = false;
+    uint32_t epRankId;
+    uint32_t epRankSize;
+    uint64_t winSize;
+    uint64_t epHcclBuffer[1024];
 };
 
 struct GMMAddrInfo {
