@@ -109,7 +109,7 @@ __aicore__ inline void CombineTokensLayered(
             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
         AscendC::DataCopyPad(gmLocalD,
             l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-        AscendC::PipeBarrier<MTE3>();
+        AscendC::PipeBarrier<PIPE_MTE3>();
         // 三元组区: 紧跟数据之后
         gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
