@@ -331,6 +331,18 @@ void FlashAttnTilingImpl::SetFATilingData()
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    // 仅tensorv2(view输入)携带strides信息, 用于kvcache非连续场景的偏移计算
+    if (!faInfo_->isTensorV1) {
+        if (faInfo_->keyStrides != nullptr) {
+            tilingData_.baseTiling.flashAttnBaseParams.keyStrides.bnStride = faInfo_->keyStrides->GetStride(0);
+            tilingData_.baseTiling.flashAttnBaseParams.keyStrides.n2Stride = faInfo_->keyStrides->GetStride(1);
+        }
+        if (faInfo_->valueStrides != nullptr) {
+            tilingData_.baseTiling.flashAttnBaseParams.valueStrides.bnStride = faInfo_->valueStrides->GetStride(0);
+            tilingData_.baseTiling.flashAttnBaseParams.valueStrides.n2Stride = faInfo_->valueStrides->GetStride(1);
+        }
+    }
 }
 
 bool FlashAttnTilingImpl::CheckNeedInitOutput() const

@@ -340,10 +340,18 @@ struct CommonConstInfo {
     bool needInitOutput;
 };
 
+struct FaStridesConstInfo {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
     uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    FaStridesConstInfo keyStrides;
+    FaStridesConstInfo valueStrides;
 };
 
 struct LseConstInfo {

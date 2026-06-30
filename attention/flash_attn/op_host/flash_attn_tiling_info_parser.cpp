@@ -190,6 +190,18 @@ void FaInfoParser::GetInputParaInfo()
     GetOptionalInputParaInfo();
 }
 
+ge::graphStatus FaInfoParser::GetStrides()
+{
+    // 用opbase版本判断：老版本opbase的输入非view, 视为tensorv1, key/value必然连续
+    if (context_->InputIsView(KEY_INDEX) == false) {
+        isTensorV1_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
+    keyStrides_ = context_->GetInputStride(KEY_INDEX);
+    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+    return ge::GRAPH_SUCCESS;
+}
+
 void FaInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
@@ -529,6 +541,10 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.softmaxScale = softmaxScale_;
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
+    faInfo.keyStrides = keyStrides_;
+    faInfo.valueStrides = valueStrides_;
+    faInfo.isTensorV1 = isTensorV1_;
+
     GenerateFeatureInfo(faInfo);
     GenerateLayoutInfo(faInfo);
 }
@@ -606,6 +622,10 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
     GetKeyTSize();
 
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
 

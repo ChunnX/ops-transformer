@@ -257,6 +257,12 @@ public:
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
 
+    // kvcache strides (tensor v2 view inputs). isTensorV1 == true means old opbase
+    // without view info, key/value are guaranteed contiguous.
+    const gert::Stride *keyStrides = nullptr;
+    const gert::Stride *valueStrides = nullptr;
+    bool isTensorV1 = false;
+
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKvType = ge::DT_FLOAT16;
