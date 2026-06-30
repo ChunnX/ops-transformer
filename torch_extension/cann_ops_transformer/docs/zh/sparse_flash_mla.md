@@ -22,7 +22,7 @@
 
   `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
-  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、block table、sinks等输入。
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
   2. 调用`sparse_flash_mla_metadata`生成`metadata`。
   3. 调用`sparse_flash_mla`，将上一步得到的`metadata`传入主算子。
 
