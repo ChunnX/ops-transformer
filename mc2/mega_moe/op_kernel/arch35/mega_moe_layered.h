@@ -781,7 +781,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + readyOffset,
-        srcMetaPtr + 1, sizeof(int32_t));
+        GM_ADDR(srcMetaPtr + 1), sizeof(int32_t));
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
     PipeBarrier<PIPE_ALL>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
