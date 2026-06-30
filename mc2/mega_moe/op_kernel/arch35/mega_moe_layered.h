@@ -777,11 +777,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) + relayOffset;
     uint64_t readyOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
+    GM_ADDR srcReadyAddr = recordAddr + readyOffset;
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + readyOffset,
-        GM_ADDR(srcMetaPtr + 1), sizeof(int32_t));
+        srcReadyAddr, sizeof(int32_t));
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
     PipeBarrier<PIPE_ALL>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
