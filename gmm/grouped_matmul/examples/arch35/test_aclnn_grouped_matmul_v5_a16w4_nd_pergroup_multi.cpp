@@ -94,7 +94,12 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    if (ret != ACL_SUCCESS) {
+        aclrtFree(*deviceAddr);
+        *deviceAddr = nullptr;
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+        return ret;
+    }
 
     std::vector<int64_t> strides(shape.size(), 1L);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
@@ -115,7 +120,14 @@ int CreateAclTensorListMulti(const std::vector<std::vector<T>> &hostDataList,
     deviceAddrList.resize(size, nullptr);
     for (int i = 0; i < size; i++) {
         int ret = CreateAclTensor(hostDataList[i], shapes[i], &deviceAddrList[i], dataType, &tensors[i]);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        if (ret != ACL_SUCCESS) {
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(deviceAddrList[j]);
+                deviceAddrList[j] = nullptr;
+            }
+            return ret;
+        }
     }
     *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
@@ -177,16 +189,29 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t actType = 0L;
 
     // x: BFLOAT16, 多tensor
-    std::vector<std::vector<int16_t>> xHostDataList = {
-        std::vector<int16_t>(m0 * k, 10), std::vector<int16_t>(m1 * k, 10)};
+    std::vector<std::vector<int16_t>> xHostDataList;
+    for (int64_t i = 0; i < 2; i++) {
+        int64_t mi = (i == 0) ? m0 : m1;
+        std::vector<int16_t> data(mi * k);
+        for (int64_t j = 0; j < mi * k; j++) {
+            data[j] = static_cast<int16_t>((j + i * 50) % 100 + 1);
+        }
+        xHostDataList.push_back(data);
+    }
     ret = CreateAclTensorListMulti(xHostDataList, xShapes, xDeviceAddrList, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> xPtr(x, aclDestroyTensorList);
     DeviceAddrListGuard xDeviceAddrGuard(xDeviceAddrList);
 
     // weight: INT4, 多tensor, 每个element 4 bit, 用int8存储
-    std::vector<std::vector<int8_t>> weightHostDataList = {
-        std::vector<int8_t>(k * n / 2, 17), std::vector<int8_t>(k * n / 2, 17)};
+    std::vector<std::vector<int8_t>> weightHostDataList;
+    for (int64_t i = 0; i < 2; i++) {
+        std::vector<int8_t> data(k * n / 2);
+        for (int64_t j = 0; j < k * n / 2; j++) {
+            data[j] = static_cast<int8_t>((j + i * 37) % 256);
+        }
+        weightHostDataList.push_back(data);
+    }
     ret = CreateAclTensorListMulti(weightHostDataList, weightShapes, weightDeviceAddrList, aclDataType::ACL_INT4,
                                    &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -194,16 +219,28 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     DeviceAddrListGuard weightDeviceAddrGuard(weightDeviceAddrList);
 
     // bias: FLOAT32, 多tensor (A16W4场景x为BF16时bias支持BFLOAT16/FLOAT32，通用通路默认期望FLOAT)
-    std::vector<std::vector<float>> biasHostDataList = {
-        std::vector<float>(n, 1.0f), std::vector<float>(n, 1.0f)};
+    std::vector<std::vector<float>> biasHostDataList;
+    for (int64_t i = 0; i < 2; i++) {
+        std::vector<float> data(n);
+        for (int64_t j = 0; j < n; j++) {
+            data[j] = j * 0.5f + 1.0f + i * 10.0f;
+        }
+        biasHostDataList.push_back(data);
+    }
     ret = CreateAclTensorListMulti(biasHostDataList, biasShapes, biasDeviceAddrList, aclDataType::ACL_FLOAT, &bias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> biasPtr(bias, aclDestroyTensorList);
     DeviceAddrListGuard biasDeviceAddrGuard(biasDeviceAddrList);
 
     // antiquantScale: BFLOAT16, pergroup 2D (G_i, N), 多tensor
-    std::vector<std::vector<int16_t>> antiquantScaleHostDataList = {
-        std::vector<int16_t>(g * n, 1), std::vector<int16_t>(g * n, 1)};
+    std::vector<std::vector<int16_t>> antiquantScaleHostDataList;
+    for (int64_t i = 0; i < 2; i++) {
+        std::vector<int16_t> data(g * n);
+        for (int64_t j = 0; j < g * n; j++) {
+            data[j] = static_cast<int16_t>((j + i * 3) % 5 + 1);
+        }
+        antiquantScaleHostDataList.push_back(data);
+    }
     ret = CreateAclTensorListMulti(antiquantScaleHostDataList, antiquantScaleShapes, antiquantScaleDeviceAddrList,
                                    aclDataType::ACL_BF16, &antiquantScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -212,13 +249,19 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     DeviceAddrListGuard antiquantScaleDeviceAddrGuard(antiquantScaleDeviceAddrList);
 
     // antiquantOffset: BFLOAT16, pergroup 2D (G_i, N), 多tensor（多多多场景通用通路要求antiquantOffset非空）
-    std::vector<std::vector<int16_t>> antiquantOffsetHostDataList = {
-        std::vector<int16_t>(g * n, 0), std::vector<int16_t>(g * n, 0)};
+    std::vector<std::vector<int16_t>> antiquantOffsetHostDataList;
+    for (int64_t i = 0; i < 2; i++) {
+        std::vector<int16_t> data(g * n);
+        for (int64_t j = 0; j < g * n; j++) {
+            data[j] = static_cast<int16_t>((j + i * 7) % 4);
+        }
+        antiquantOffsetHostDataList.push_back(data);
+    }
     ret = CreateAclTensorListMulti(antiquantOffsetHostDataList, antiquantOffsetShapes, antiquantOffsetDeviceAddrList,
                                    aclDataType::ACL_BF16, &antiquantOffset);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantOffsetPtr(antiquantOffset,
-                                                                                             aclDestroyTensorList);
+                                                                                              aclDestroyTensorList);
     DeviceAddrListGuard antiquantOffsetDeviceAddrGuard(antiquantOffsetDeviceAddrList);
 
     // y: BFLOAT16, 多tensor

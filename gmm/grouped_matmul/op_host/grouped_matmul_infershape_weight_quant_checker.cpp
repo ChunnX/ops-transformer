@@ -79,9 +79,7 @@ bool GroupedMatmulWeightQuantChecker::IsA16W4Pergroup(const ge::DataType xDtype,
     }
 
     auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, tensorIdx);
-    if (antiquantScaleShape == nullptr) {
-        return false;
-    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, antiquantScaleShape);
     auto antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
     return antiquantScaleDimNum == ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE;
 }
@@ -437,6 +435,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckCaseMultiScenario(const ge
                 continue;
             }
             auto wShape_i = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, i);
+            OP_CHECK_NULL_WITH_CONTEXT(context, wShape_i);
             int64_t kSize = wShape_i->GetDim(wKDimIdx);
             int64_t groupNum = antiquantScaleShape->GetDim(0);
             OP_CHECK_IF(groupNum <= 0,

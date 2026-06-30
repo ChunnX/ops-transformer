@@ -77,7 +77,12 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    if (ret != ACL_SUCCESS) {
+        aclrtFree(*deviceAddr);
+        *deviceAddr = nullptr;
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+        return ret;
+    }
 
     std::vector<int64_t> strides(shape.size(), 1L);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
@@ -93,12 +98,19 @@ int CreateAclTensorList(const std::vector<T> &hostData, const std::vector<std::v
                         void **deviceAddr, aclDataType dataType, aclTensorList **tensor)
 {
     int size = shapes.size();
-    aclTensor *tensors[size];
+    std::vector<aclTensor *> tensors(size, nullptr);
     for (int i = 0; i < size; i++) {
-        int ret = CreateAclTensor(hostData, shapes[i], deviceAddr + i, dataType, tensors + i);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        int ret = CreateAclTensor(hostData, shapes[i], deviceAddr + i, dataType, &tensors[i]);
+        if (ret != ACL_SUCCESS) {
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(*(deviceAddr + j));
+                *(deviceAddr + j) = nullptr;
+            }
+            return ret;
+        }
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 
@@ -158,28 +170,40 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t actType = 0L;
 
     // x: BFLOAT16
-    std::vector<int16_t> xHostData(m * k, 10);
+    std::vector<int16_t> xHostData(m * k);
+    for (int64_t i = 0; i < m * k; i++) {
+        xHostData[i] = static_cast<int16_t>(i % 100 + 1);
+    }
     ret = CreateAclTensorList(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> xPtr(x, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
 
     // weight: INT4, 每个element 4 bit, 用int8存储, 2 elements per byte
-    std::vector<int8_t> weightHostData(e * k * n / 2, 17);
+    std::vector<int8_t> weightHostData(e * k * n / 2);
+    for (int64_t i = 0; i < e * k * n / 2; i++) {
+        weightHostData[i] = static_cast<int8_t>(i % 256);
+    }
     ret = CreateAclTensorList(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_INT4, &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightPtr(weight, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
 
     // bias: FLOAT32 (A16W4场景x为BF16时bias支持BFLOAT16/FLOAT32，通用通路默认期望FLOAT)
-    std::vector<float> biasHostData(e * n, 1.0f);
+    std::vector<float> biasHostData(e * n);
+    for (int64_t i = 0; i < e * n; i++) {
+        biasHostData[i] = i * 0.5f + 1.0f;
+    }
     ret = CreateAclTensorList(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_FLOAT, &bias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> biasPtr(bias, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> biasDeviceAddrPtr(biasDeviceAddr, aclrtFree);
 
     // antiquantScale: BFLOAT16, pergroup 3D (E, G, N)
-    std::vector<int16_t> antiquantScaleHostData(e * g * n, 1);
+    std::vector<int16_t> antiquantScaleHostData(e * g * n);
+    for (int64_t i = 0; i < e * g * n; i++) {
+        antiquantScaleHostData[i] = static_cast<int16_t>(i % 5 + 1);
+    }
     ret = CreateAclTensorList(antiquantScaleHostData, antiquantScaleShape, &antiquantScaleDeviceAddr,
                               aclDataType::ACL_BF16, &antiquantScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
