@@ -60,10 +60,10 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 static void DumpMeta(void* data) {
     int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
     optiling::detail::FaMetaData faMetadata(data, sectionNum);
-    printf("sectionNum:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX));
-    printf("isFd:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_IS_FD_INDEX));
-    printf("mBaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX));
-    printf("s2BaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX));
+    printf("sectionNum:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX));
+    printf("isFd:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_IS_FD_INDEX));
+    printf("mBaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_M_BASE_SIZE_INDEX));
+    printf("s2BaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX));
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // FA Metadata Generate
         printf("sectionIdx:%d\n",sectionId);

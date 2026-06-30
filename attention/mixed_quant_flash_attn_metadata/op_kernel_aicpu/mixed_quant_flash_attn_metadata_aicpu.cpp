@@ -266,18 +266,18 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
     }
     uint32_t sectionNum = splitRes.sectionNum;
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
-    faMetadata.SetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
+    faMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
 
-    faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 0);
+    faMetadata.SetHeadMetadata(optiling::HEAD_IS_FD_INDEX, 0);
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         if (fdSplitRes.usedVecNum > 0) {
-            faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 1);
+            faMetadata.SetHeadMetadata(optiling::HEAD_IS_FD_INDEX, 1);
         }
     }
 
-    faMetadata.SetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
-    faMetadata.SetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
+    faMetadata.SetHeadMetadata(optiling::HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
+    faMetadata.SetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
 
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // Clear

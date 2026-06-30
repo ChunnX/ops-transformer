@@ -54,7 +54,7 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
-    int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
+    inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
