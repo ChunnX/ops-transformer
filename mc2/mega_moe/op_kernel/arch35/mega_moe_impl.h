@@ -29,6 +29,7 @@
 #include "blaze/gemm/block/block_scheduler_swizzle.h"
 #include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
 #include "blaze/prologue/block_prologue_mx_fp8fp4.h"
+#include "mega_moe_imp_base.h"
 
 #include "mega_moe_combine_send.h"
 
