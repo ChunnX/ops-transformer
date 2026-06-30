@@ -96,8 +96,8 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>tokens</td>
       <td>输入</td>
       <td>输入token特征。</td>
-      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li><li>INT8仅支持Ascend 950，按非量化方式处理。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
       <td>≥2</td>
       <td>√</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>输出</td>
       <td>根据indices进行扩展并排序过的tokens。</td>
       <td><ul><li>支持空tensor。</li><li>要求是一个维度大于等于2的Tensor，第一维的大小为min(num_tokens * topK, numOutTokens)。</li><li>除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。</li><li>数据类型同tokens。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
       <td>≥2</td>
       <td>×</td>
@@ -264,6 +264,7 @@ aclnnStatus aclnnMoeTokenPermute(
     
 ## 约束说明
 
+- INT8类型的tokens和permuteTokensOut仅支持Ascend 950，且二者数据类型必须一致。
 - 确定性计算：
   - aclnnMoeTokenPermute默认确定性实现。
 
@@ -366,7 +367,8 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeTokenPermute第一段接口
-    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut, sortedIndicesOut, &workspaceSize, &executor);
+    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut,
+                                               sortedIndicesOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
