@@ -857,11 +857,17 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInf
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-
+    const char *commMode = attrs->GetAttrPointer<char>(ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_FOR_INVALID_VALUE(opName_, "group", "\"\"", "non-empty string"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"),
+                    return ge::GRAPH_FAILED);
+    const size_t maxLength = 4UL;
+    OP_TILING_CHECK((strncmp(commMode, "aiv", maxLength) != 0),
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commMode, "aiv"),
                     return ge::GRAPH_FAILED);
     info.rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     rankSize = info.rankSize;

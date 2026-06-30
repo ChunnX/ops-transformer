@@ -225,7 +225,15 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::SetHcclTiling()
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                             static_cast<int32_t>(contextInfo_.args_.geCType)),
                     return ge::GRAPH_FAILED;);
-
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commMode == nullptr,
+                    OP_LOGE(context_->GetNodeName(),
+                    "GetAttrPointer for ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX failed"),
+                    return ge::GRAPH_FAILED);
+    const size_t maxLength = 7UL;
+    OP_TILING_CHECK((strncmp(commMode, "ai_cpu", maxLength) != 0),
+                    OP_LOGE(context_->GetNodeName(), "comm_mode only support 'ai_cpu'."),
+                    return ge::GRAPH_FAILED);
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
