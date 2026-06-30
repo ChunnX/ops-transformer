@@ -38,7 +38,7 @@ enum class SparseMode : uint8_t {
 };
 
 enum class ValidSocVersion {
-    ASCEND910B = 0,
+    ASCEND910 = 0,
     ASCEND950,
     RESERVED_VERSION = 99999
 };
@@ -91,7 +91,7 @@ private:
     std::string layoutK_ = "BSND";
     int32_t maskMode_ = 0;
     uint32_t attentionMode_ = 0;
-    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
+    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910;
 
     int64_t preToken_ = INT64_MAX;
     int64_t nextToken_ = INT64_MAX;
@@ -261,7 +261,7 @@ inline int32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetQuery
 inline ValidSocVersion SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ProcessSocVersion()
 {
     if (socVersion_.find("Ascend910") != std::string::npos) {
-        return ValidSocVersion::ASCEND910B;
+        return ValidSocVersion::ASCEND910;
     } else {
         return ValidSocVersion::ASCEND950; 
     }
@@ -281,7 +281,7 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit(
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
     validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
+    if (validSocVersion_ == ValidSocVersion::ASCEND910) {
         s2BaseSize_ = 2048U;
     } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
         s2BaseSize_ = 128U;
