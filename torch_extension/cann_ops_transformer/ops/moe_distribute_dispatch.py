@@ -103,6 +103,12 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
             return shape
 
+        def is_ascend950():
+            try:
+                return "Ascend950" in torch_npu.npu.get_device_name()
+            except Exception:
+                return False
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_moe_distribute_dispatch_meta(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
                                                 ccl_buffer_size, scales=None, x_active_mask=None, expert_scales=None,
@@ -202,7 +208,10 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
             expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
             dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode)
-            if tp_world_size == 0:
+            if is_ascend950():
+                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, max(a, a * tp_world_size), h)
+                dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
+            elif tp_world_size == 0:
                 dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
             elif tp_world_size == 1:
                 dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, a, h)
