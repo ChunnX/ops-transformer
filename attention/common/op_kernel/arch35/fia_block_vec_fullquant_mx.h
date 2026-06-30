@@ -960,7 +960,8 @@ public:
     {
         // Copy sum to gm
         LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
-        FaVectorApi::BroadcastMaxSum(sumOutTensor, sumUb, runInfo.actVecMSize);
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        FaVectorApi::BroadcastMaxSum(sumOutTensor, sumUb, vecMSize);
         sumBrdcst.template EnQue(sumOutTensor);
         sumBrdcst.template DeQue<float>();
         DataCopy(softmaxFDSumGm[gmOffset], sumOutTensor, calculateSize);
@@ -968,7 +969,7 @@ public:
 
         // Copy max to gm
         LocalTensor<float> maxOutTensor = maxBrdcst.template AllocTensor<float>();
-        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxUb, runInfo.actVecMSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxUb, vecMSize);
         maxBrdcst.template EnQue(maxOutTensor);
         maxBrdcst.template DeQue<float>();
         DataCopy(softmaxFDMaxGm[gmOffset], maxOutTensor, calculateSize);
