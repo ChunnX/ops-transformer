@@ -96,7 +96,8 @@ public:
                 uint32_t loopBasicIdx = topK < trunkLen ?
                          (loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256)) :
                          ((loopIdx - 1) * trunkLen);
-                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, // 2：pingpong
+                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], // 2：pingpong
+                    hisValueLocal, mrgValueLocal,
                     tmpIndexLocal, hisIndexLocal[loopIdx % 2], // 2：pingpong
                     topK,
                     loopBasicIdx,
