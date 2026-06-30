@@ -193,7 +193,7 @@ private:
     }
 
     __aicore__ inline void FixpipeSegmentToAivUb(uint64_t segmentRows, uint64_t dstBaseRow, uint32_t bufferId,
-                                                 uint64_t l0cBaseOffset, LocalTensor<float> qkAfterCubeUb)
+                                                 uint64_t l0cBaseOffset, const LocalTensor<float> &qkAfterCubeUb)
     {
         if (segmentRows == 0U) {
             return;
