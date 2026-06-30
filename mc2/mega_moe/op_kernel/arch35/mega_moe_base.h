@@ -196,6 +196,7 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
         if (ReadGmByPassDCache(sig_addr) == cmp_val) {
             return;
         }
+        AscendC::Nop<800>();
     } while (true);
 }
 

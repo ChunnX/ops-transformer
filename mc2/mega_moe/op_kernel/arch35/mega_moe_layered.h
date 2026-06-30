@@ -906,6 +906,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
             remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
+        AscendC::Nop<800>();
         PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         if ((waitLoop & 1023U) == 0U) {
