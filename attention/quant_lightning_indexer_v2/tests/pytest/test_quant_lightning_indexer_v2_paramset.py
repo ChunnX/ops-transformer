@@ -53,7 +53,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset": [None],
+        "run_mode": ["eager"]
     },
 
     # Ascend950 hifp8 场景: BSND query + PA_BBND key
