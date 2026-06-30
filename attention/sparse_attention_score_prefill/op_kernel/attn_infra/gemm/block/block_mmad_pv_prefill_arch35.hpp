@@ -100,6 +100,7 @@ struct BlockMmadPVPrefillArch35 {
               uint32_t blockSize, uint32_t D, uint32_t groupSize)
     {
         uint32_t vBufBytes = blockSize * D * sizeof(ElementV);
+        AscendC::printf("----------init------------:%d, %d\n", l1StartAddr, vBufBytes);
         l1VTensor_ = resource.l1Buf.template GetBufferByByte<ElementV>(l1StartAddr);
         l1PTensor_ = resource.l1Buf.template GetBufferByByte<ElementP>(l1StartAddr + vBufBytes);
 
@@ -132,36 +133,17 @@ struct BlockMmadPVPrefillArch35 {
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID2);
     }
 
-    template <class TensorP, class TensorO>
+    template <class TensorO>
     __aicore__ inline
-    void operator()(TensorP &ubPTensor, TensorO &ubOTensor,
+    void operator()(TensorO &ubOTensor,
                     uint32_t groupSize, uint32_t validSize, uint32_t D,
                     Arch::CrossCoreFlag &smToMm2Flag, Arch::CrossCoreFlag &mm2ToWsFlag)
     {
         uint32_t M = groupSize;
         uint32_t N = D;
         uint32_t K = validSize;
-
-        static constexpr uint32_t ELE_PER_C0 = 32 / sizeof(ElementP);
-
+        AscendC::printf("000000000000000000000000000\n");
         WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
-
-        uint32_t pRows = M;
-        uint32_t pCols = K;
-        uint32_t pColsAligned = RoundUp(pCols, ELE_PER_C0);
-        AscendC::Nd2NzParams pCopyParams;
-        pCopyParams.ndNum = 1;
-        pCopyParams.nValue = pRows;
-        pCopyParams.dValue = pCols;
-        pCopyParams.srcNdMatrixStride = 0;
-        pCopyParams.srcDValue = pColsAligned;
-        pCopyParams.dstNzC0Stride = RoundUp(pRows, (uint32_t)16);
-        pCopyParams.dstNzNStride = 1;
-        pCopyParams.dstNzMatrixStride = 0;
-
-        AscendC::DataCopy(l1PTensor_, ubPTensor.data(), pCopyParams);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorO>;
         CopyL0CToDst copyL0CToDst;
@@ -174,7 +156,7 @@ struct BlockMmadPVPrefillArch35 {
         uint32_t nL0Num = CeilDiv(N, L0_TILE_N);
         uint32_t mL0Num = CeilDiv(M, L0_TILE_M);
         uint32_t kL0Num = CeilDiv(K, L0_TILE_K);
-
+        AscendC::printf("11111111111111111111111111111111\n");
         for (uint32_t nL0Itr = 0; nL0Itr < nL0Num; nL0Itr++) {
             uint32_t nAct = (nL0Itr == nL0Num - 1) ? (N - nL0Itr * L0_TILE_N) : L0_TILE_N;
             uint32_t l0CBufId = nL0Itr % L0_STAGES;
@@ -182,44 +164,42 @@ struct BlockMmadPVPrefillArch35 {
 
             auto l0CLayout = tla::MakeLayoutL0C(M, nAct);
             auto l0CTensorTla = tla::MakeTensor(l0CTensor_[l0CBufId], l0CLayout, Arch::PositionL0C{});
-
+            AscendC::printf("22222222222222222222222222222222\n");
             for (uint32_t mL0Itr = 0; mL0Itr < mL0Num; mL0Itr++) {
                 uint32_t mAct = (mL0Itr == mL0Num - 1) ? (M - mL0Itr * L0_TILE_M) : L0_TILE_M;
                 auto l0CTile = GetTile(l0CTensorTla,
                     tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(mAct, nAct));
-
+                AscendC::printf("33333333333333333333333333333333\n");
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0Num; kL0Itr++) {
                     uint32_t kAct = (kL0Itr == kL0Num - 1) ? (K - kL0Itr * L0_TILE_K) : L0_TILE_K;
                     uint32_t l0ABufId = kL0Itr % L0_STAGES;
                     uint32_t l0BBufId = kL0Itr % L0_STAGES;
                     uint32_t l0AEventId = l0ABufId;
                     uint32_t l0BEventId = l0BBufId + 2;
-
+                    AscendC::printf("44444444444444444444444444444444\n");
                     auto l1PSubTile = GetTile(l1PTensorTla,
                         tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K),
                         tla::MakeShape(mAct, kAct));
                     auto l0ALayout = tla::MakeLayout<ElementP, LayoutTagL0A>(mAct, kAct);
                     auto l0ATensorTla = tla::MakeTensor(
                         l0ATensor_[l0ABufId], l0ALayout, Arch::PositionL0A{});
-
+                    AscendC::printf("55555555555555555555555555555555\n");
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     copyL1ToL0A(l0ATensorTla, l1PSubTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-
+                    AscendC::printf("66666666666666666666666666666666\n");
                     auto l1VSubTile = GetTile(l1VTensorTla,
                         tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N),
                         tla::MakeShape(kAct, nAct));
                     auto l0BLayout = tla::MakeLayout<ElementV, LayoutTagL0B>(kAct, nAct);
                     auto l0BTensorTla = tla::MakeTensor(
                         l0BTensor_[l0BBufId], l0BLayout, Arch::PositionL0B{});
-
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     copyL1ToL0B(l0BTensorTla, l1VSubTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-
                     bool initMmad = (kL0Itr == 0);
                     uint32_t mAligned = RoundUp(mAct, 16);
-
+                    AscendC::printf("77777777777777777777777777777777\n");
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
                     if (mL0Itr == 0 && kL0Itr == 0) {
@@ -229,24 +209,32 @@ struct BlockMmadPVPrefillArch35 {
                              mAligned, nAct, kAct, initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    AscendC::printf("88888888888888888888888888888888\n");
+                    if ((mL0Itr == mL0Num - 1U) && (nL0Itr == nL0Num - 1U) &&
+                        (kL0Itr == kL0Num - 1U)) {
+                        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
+                    }
                 }
             }
-
             if (nL0Itr == 0) {
                 WaitCrossCoreSync<4, PIPE_FIX>(mm2ToWsFlag);
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-
+            AscendC::printf("99999999999999999999999999999999\n");  
             uint32_t mFixPAligned8 = RoundUp(M, 8U);
             uint32_t nFixPAligned8 = RoundUp(nAct, 8U);
             auto ubOTile = GetTile(ubOTensor,
                 tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
+            AscendC::printf("10101010101010101010101010101010\n");
             copyL0CToDst(ubOTile, l0CTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
+        AscendC::printf("aaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
         SetCrossCoreSync<4, PIPE_FIX>(mm2ToWsFlag);
+        AscendC::printf("bbbbbbbbbbbbbbbbbbbbbbb\n");
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
+        AscendC::printf("cccccccccccccccccccccccc\n");
     }
 };
 

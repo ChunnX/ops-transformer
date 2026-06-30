@@ -107,6 +107,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     print("[test_bf16_single_batch_small]")
     self._run_npu_test(
         batch=1, q_seqlens=[4], kv_seqlens=[512],
+        #q_heads=8, kv_heads=2, top_k=1)
         q_heads=8, kv_heads=2, top_k=3)
 
   def test_bf16_single_batch_medium(self):
