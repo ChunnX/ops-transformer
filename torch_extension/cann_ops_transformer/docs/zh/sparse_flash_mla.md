@@ -228,7 +228,7 @@ sparse_flash_mla(
 - 默认支持确定性计算。
 - 默认支持batch invariance。
 
-## 调用说明
+## 调用示例
 
 ### C1A/BSND输入
 

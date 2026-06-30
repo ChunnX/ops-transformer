@@ -191,7 +191,7 @@ mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 默认支持确定性计算。
 
-## 调用说明
+## 调用示例
 
 - 单算子模式调用：
 
