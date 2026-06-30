@@ -1253,10 +1253,11 @@ def qliv2_output_single(params, is_batch = False):
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).cpu()
 
     # ======================== cpu golden 生成 ========================
-    if "950" not in soc_version:
-        seqused_q_int = None
-        seqused_k_int = None
-        output_idx_offset = None
+    # if "950" not in soc_version:
+    seqused_q_int = None
+    seqused_k_int = None
+    output_idx_offset = None
+
     cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_cpu, weights, query_dequant_scale, key_dequant_scale_cpu, cu_seqlens_q_tensor, cu_seqlens_k_tensor, seqused_q_int, seqused_k_int, block_table, output_idx_offset, mxfp8_flag)
     cpu_result, _ = torch.sort(cpu_result)
     # ======================== metadata 构造 ========================

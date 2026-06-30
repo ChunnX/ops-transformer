@@ -48,7 +48,7 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0, 6]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset": [[8,1]]
     },
     # QLI_L0_1_64_1_8_2048_128_TND_PA_BBND_FP8_E4M3FN_000001
     "red_2":{
@@ -84,7 +84,7 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-1, 1]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset": [[8,1]]
     },
     # QLI_L0_156_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000002
     "red_3":{
@@ -120,7 +120,7 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0, 9]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset": [[326,1]]
     },
     # QLI_L0_56_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000003
     "red_4":{
@@ -155,8 +155,8 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 5]],
         "k_scale_datarange":[[0, 2]],
         "cmp_ratio":[4],
-        "return_value":[0],
-        "output_idx_offset": [None]
+        "return_value":[1],
+        "output_idx_offset": [[114,1]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000004
     "red_5":{
@@ -174,7 +174,7 @@ TEST_PARAMS = {
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
         "actual_seq_dtype": [torch.int32],
-        "cu_seqlens_q": [[0,3117,5429,6417,10513]],
+        "cu_seqlens_q": [[0,1,2,4,8]],
         "cu_seqlens_k": [None],
         "seqused_q": [None],
         "seqused_k": [[77,77,77,4096]],
@@ -191,8 +191,8 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 9]],
         "k_scale_datarange":[[-2, 2]],
         "cmp_ratio":[4],
-        "return_value":[0],
-        "output_idx_offset": [None]
+        "return_value":[1],
+        "output_idx_offset": [[8,1]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000005
     "red_6":{
@@ -210,7 +210,7 @@ TEST_PARAMS = {
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
         "actual_seq_dtype": [torch.int32],
-        "cu_seqlens_q": [[0,4096]],
+        "cu_seqlens_q": [[0,5,6,7,8]],
         "cu_seqlens_k": [None],
         "seqused_q": [None],
         "seqused_k": [[81,81,81,4096]],
@@ -227,8 +227,8 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 1]],
         "k_scale_datarange":[[0, 4]],
         "cmp_ratio":[4],
-        "return_value":[0],
-        "output_idx_offset": [None]
+        "return_value":[1],
+        "output_idx_offset": [[8,1]]
     }
 }
 
