@@ -479,7 +479,7 @@ __aicore__ inline void GroupMatmul2(
                     (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
                 AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
                 if constexpr (IsLayered) {
-                    MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                    MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
                         mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
                 } else {
                     MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
