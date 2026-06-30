@@ -89,6 +89,31 @@ def test_copy_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype):
     return main
 
 
+# ==============================================================================
+# 测试 4: T.copy 动态索引做 gather (无 if 保护, 纯动态)
+# ==============================================================================
+@tilelang.jit(pass_configs=pass_configs)
+def test_copy_dynamic_gather_raw(B, S1, K, DQuery, input_dtype, calc_dtype):
+    """不检查 idx>=0, 直接做动态索引 copy"""
+
+    @T.prim_func
+    def main(
+        Key: T.Tensor((B, S1, 1, DQuery), input_dtype),
+        SparseIndices: T.Tensor((B, S1, 1, K), "int32"),
+        GatherKey: T.Tensor((B, S1, K, DQuery), input_dtype),
+    ):
+        with T.Kernel(1, is_npu=True) as (cid, vid):
+            with T.Scope("V"):
+                key_ub = T.alloc_ub((1, DQuery), input_dtype)
+                for s1_id in T.serial(S1):
+                    for k_id in T.serial(K):
+                        idx = SparseIndices[0, s1_id, 0, k_id]
+                        T.copy(Key[0, idx, 0, 0:DQuery], key_ub)      # 无条件, 可能负索引
+                        T.copy(key_ub, GatherKey[0, s1_id, k_id, 0:DQuery])
+
+    return main
+
+
 if __name__ == "__main__":
     B, S1, S2, K, DQuery, DQI = 1, 1, 2048, 2048, 512, 128
     input_dtype = "float16"
@@ -99,9 +124,16 @@ if __name__ == "__main__":
     print("=" * 70)
     try:
         func1 = test_copy_dynamic_gather(B, S1, K, DQuery, input_dtype, calc_dtype)
-        print("编译成功 (未触发预期错误)")
+        print("JIT 编译成功")
+        key = torch.randn(B, S1, 1, DQuery, dtype=torch.float16).npu()
+        si = torch.randint(-1, S2, (B, S1, 1, K), dtype=torch.int32).npu()
+        out = torch.zeros(B, S1, K, DQuery, dtype=torch.float16).npu()
+        torch.npu.synchronize()
+        func1(key, si, out)
+        torch.npu.synchronize()
+        print("运行成功")
     except Exception as e:
-        print(f"编译失败: {e}")
+        print(f"失败: {type(e).__name__}: {e}")
 
     print()
     print("=" * 70)
@@ -109,9 +141,16 @@ if __name__ == "__main__":
     print("=" * 70)
     try:
         func2 = test_atomic_add_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
-        print("编译成功 (未触发预期错误)")
+        print("JIT 编译成功")
+        sa = torch.randn(B, S1, K, DQI, dtype=torch.float32).npu()
+        si = torch.randint(-1, S2, (B, S1, 1, K), dtype=torch.int32).npu()
+        out = torch.zeros(B, S2, 1, DQI, dtype=torch.float32).npu()
+        torch.npu.synchronize()
+        func2(sa, si, out)
+        torch.npu.synchronize()
+        print("运行成功")
     except Exception as e:
-        print(f"编译失败: {e}")
+        print(f"失败: {type(e).__name__}: {e}")
 
     print()
     print("=" * 70)
@@ -119,6 +158,30 @@ if __name__ == "__main__":
     print("=" * 70)
     try:
         func3 = test_copy_dynamic_scatter(B, S1, S2, K, DQI, calc_dtype)
-        print("编译成功 (未触发预期错误)")
+        print("JIT 编译成功")
+        sa = torch.randn(B, S1, K, DQI, dtype=torch.float32).npu()
+        si = torch.randint(-1, S2, (B, S1, 1, K), dtype=torch.int32).npu()
+        out = torch.zeros(B, S2, 1, DQI, dtype=torch.float32).npu()
+        torch.npu.synchronize()
+        func3(sa, si, out)
+        torch.npu.synchronize()
+        print("运行成功")
     except Exception as e:
-        print(f"编译失败: {e}")
+        print(f"失败: {type(e).__name__}: {e}")
+
+    print()
+    print("=" * 70)
+    print("测试 4: T.copy 动态索引做 gather (无 if idx>=0 保护)")
+    print("=" * 70)
+    try:
+        func4 = test_copy_dynamic_gather_raw(B, S1, K, DQuery, input_dtype, calc_dtype)
+        print("JIT 编译成功")
+        key = torch.randn(B, S1, 1, DQuery, dtype=torch.float16).npu()
+        si = torch.full((B, S1, 1, K), 0, dtype=torch.int32).npu()  # 全部有效索引
+        out = torch.zeros(B, S1, K, DQuery, dtype=torch.float16).npu()
+        torch.npu.synchronize()
+        func4(key, si, out)
+        torch.npu.synchronize()
+        print("运行成功")
+    except Exception as e:
+        print(f"失败: {type(e).__name__}: {e}")
