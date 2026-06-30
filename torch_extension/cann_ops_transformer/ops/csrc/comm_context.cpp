@@ -194,11 +194,6 @@ public:
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
-        if (commAlg == "urma") {
-            protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        } else {
-            protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-        }
         GetCommProtocol(hcclHandle, protocol);
 
         CommContext commContextStruct;
