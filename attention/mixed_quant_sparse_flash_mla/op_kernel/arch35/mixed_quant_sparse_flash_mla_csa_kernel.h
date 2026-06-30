@@ -9,16 +9,16 @@
 */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_scfa_kernel.h
+ * \file mixed_quant_sparse_flash_mla_csa_kernel.h
  * \brief
  */
 
-#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
-#define MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "mixed_quant_sparse_flash_mla_kvcache.h"
-#include "mixed_quant_sparse_flash_mla_scfa_block_cube.h"
-#include "mixed_quant_sparse_flash_mla_scfa_block_vector.h"
+#include "mixed_quant_sparse_flash_mla_csa_block_cube.h"
+#include "mixed_quant_sparse_flash_mla_csa_block_vector.h"
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "../mixed_quant_sparse_flash_mla_metadata.h"
@@ -49,10 +49,10 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
-class MixedQuantSparseFlashMlaScfa {
+class MixedQuantSparseFlashMlaCsa {
 public:
     ARGS_TRAITS;
-    __aicore__ inline MixedQuantSparseFlashMlaScfa() {};
+    __aicore__ inline MixedQuantSparseFlashMlaCsa() {};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
@@ -135,7 +135,7 @@ private:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Init(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
@@ -183,7 +183,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::GetSeqLen(
+__aicore__ inline int64_t MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::GetSeqLen(
     int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
     GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize)
 {
@@ -197,7 +197,7 @@ __aicore__ inline int64_t MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockTy
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ParseTilingData(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ParseTilingData(
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv,
     __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
@@ -290,7 +290,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitGlobalBuffer(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedQ,
@@ -304,7 +304,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitMMResBuf(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitMMResBuf(
     __gm__ uint8_t *workspace)
 {
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
@@ -339,13 +339,13 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitLocalBuffer()
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeConstexpr()
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
@@ -380,7 +380,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Process()
 {
     // SyncAll Cube和Vector都需要调用
     if (this->constInfo.needInit) {
@@ -390,7 +390,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ProcessMainLoop()
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
     FdRunInfo fdRunInfo;
@@ -562,7 +562,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
+__aicore__ inline bool MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
     RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint, int64_t s2EndPoint,
     bool isFirstS2RangeTask, bool isLastS2RangeTask)
 {
@@ -615,7 +615,7 @@ __aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ParseFdRunInfo(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ParseFdRunInfo(
     FdRunInfo &fdRunInfo)
 {
     uint32_t aivIdx = static_cast<uint32_t>(this->constInfo.aivIdx);
@@ -634,7 +634,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
     int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
@@ -647,7 +647,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
     int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
@@ -687,14 +687,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+__aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
     RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
@@ -719,4 +719,4 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     }
 }
 }
-#endif // MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
