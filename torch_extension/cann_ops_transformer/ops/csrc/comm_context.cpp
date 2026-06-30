@@ -251,7 +251,7 @@ public:
         ASCEND_LOGI("CheckProtocolSupport success!");
     }
 
-    void CheckIsCrossSuperNode(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum,
+    void CheckIsCrossSuperNode(const HcclComm &commHandle, const uint32_t *layerList, uint32_t &layerNum,
                                CommProtocol &protocol, uint32_t srcRankId)
     {
         uint32_t netLinkNum = 0;
@@ -295,7 +295,7 @@ public:
         ASCEND_LOGI("Cross-server confirmed, use URMA protocol for cross-server communication");
     }
 
-    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList,
+    void CheckProtocolSupport(const HcclComm &commHandle, const uint32_t *layerList,
                               uint32_t &layerNum, CommProtocol &protocol)
     {
         uint32_t srcRankId = 0;
