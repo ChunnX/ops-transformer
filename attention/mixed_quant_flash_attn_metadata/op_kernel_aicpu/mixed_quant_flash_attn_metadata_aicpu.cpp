@@ -266,7 +266,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
         return false;
     }
     uint32_t sectionNum = splitRes.sectionNum;
-    bool isS1G = (layoutQ_ == "BSND" || layoutQ_ == "BSH" || layoutQ_ == "TND");
+    bool isS1G = (param.mode == load_balance::BalanceMode::BN2_S1G);
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum,
         static_cast<uint32_t>(aicCoreNum_), static_cast<uint32_t>(aivCoreNum_));
     faMetadata.SetHeadMetadata(optiling::HEAD_AIC_CORE_NUM_INDEX, static_cast<uint32_t>(aicCoreNum_));
