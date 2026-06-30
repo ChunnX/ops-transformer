@@ -217,6 +217,11 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < 0) && (*opParamInfo_.maxSeqlenQ != -1),
+                OP_LOGE(opName_, "input attr max_seqlens_q must = -1 or > 0, "
+                        "but now max_seqlen_q is %ld.",
+                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -337,18 +342,19 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 OP_LOGE(opName_, "cmp_ratio is not 1 and mask_mode is not 0, "
                     "input cmp_residual_k must not be null"),
                 return ge::GRAPH_FAILED);
+            // cmpResidualK 传入时校验数据类型
+            if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+                OP_CHECK_IF(opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
+                    return ge::GRAPH_FAILED);
+            }
         } else {
             OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr,
                 OP_LOGE(opName_, "cmp_ratio is 1 or mask_mode is 0, "
                     "input cmp_residual_k must be null"),
                 return ge::GRAPH_FAILED);
         }
-        // cmpResidualK 传入时校验数据类型
-        if (opParamInfo_.cmpResidualK.tensor != nullptr) {
-            OP_CHECK_IF(opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
-                return ge::GRAPH_FAILED);
-        }
+        
     }
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor == nullptr,
@@ -412,7 +418,9 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
     uint32_t kShapeDim = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
     uint32_t weightsShapeDim = opParamInfo_.weights.shape->GetStorageShape().GetDimNum();
+    uint32_t outputIdxOffsetShapeDim = opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDimNum();
     uint32_t outShapeDim = opParamInfo_.attenOut.shape->GetStorageShape().GetDimNum();
+    uint32_t sparseValuesShapeDim = opParamInfo_.valuesOut.shape->GetStorageShape().GetDimNum();
     uint32_t qExpectShapeDim = DIM_NUM_FOUR;
     uint32_t kExpectShapeDim = DIM_NUM_FOUR;
     if (qLayout_ == DataLayout::TND) {
@@ -428,9 +436,17 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of query's shape should be %u, but now is %u",
                 qExpectShapeDim, qShapeDim),
                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!(outputIdxOffsetShapeDim == qExpectShapeDim - 1),
+               OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u", qExpectShapeDim - 1,
+                outputIdxOffsetShapeDim),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
                 qExpectShapeDim, outShapeDim),
+               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
+               OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+                qExpectShapeDim, sparseValuesShapeDim),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(weightsShapeDim == qExpectShapeDim - 1),
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", qExpectShapeDim - 1,
@@ -640,8 +656,11 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
     // -----------------------check T-------------------
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
-                (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
-                OP_LOGE(opName_, "TND case input query, weights and sparse_indices dim 0 are %u, %ld, %ld "
+                (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize) ||
+                (opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize) ||
+                (opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDim(0) != qTsize),
+                OP_LOGE(opName_, "TND case input query, weights, sparse_indices, sparse_values "
+                    "and output_idx_offset dim 0 are %u, %ld, %ld "
                     "respectively, they must be same.",
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
@@ -732,9 +751,15 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                OP_LOGE(opName_, "input query and output sparse_indices shape n2 dim must be same,"),
                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+               OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same,"),
+               return ge::GRAPH_FAILED);
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr topk."),
+               return ge::GRAPH_FAILED);
+    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+               OP_LOGE(opName_, "output sparse_values shape last dim must be same as attr topk."),
                return ge::GRAPH_FAILED);
     // -----------------------check metadata-------------------
     OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) &&
