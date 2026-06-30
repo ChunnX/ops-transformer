@@ -313,6 +313,12 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
             "BlockNum should be greater than or equal to T, Current values: BlockNum=%u, T=%u.",
             tilingData_.sBlockNum, tilingData_.t),
             return ge::GRAPH_FAILED);
+
+    uint64_t batchHeadTaskNum = static_cast<uint64_t>(tilingData_.b) * static_cast<uint64_t>(tilingData_.nv);
+    if (batchHeadTaskNum > 0 && batchHeadTaskNum < tilingData_.vectorCoreNum) {
+        tilingData_.vectorCoreNum = static_cast<uint32_t>(batchHeadTaskNum);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
