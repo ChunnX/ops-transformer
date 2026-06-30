@@ -744,7 +744,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非s2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+        // 左矩阵复用时，需等待上轮MTE1读取完成，避免event计数器持续累积溢出
+        mm1A.Wait<HardEvent::MTE1_MTE2>();
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知 // 是否可以省略
     }
     // 加载当前轮的右矩阵到L1
@@ -879,7 +880,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非s2的第一次循环直接复用Q
         mm1B = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+        // 左矩阵复用时，需等待上轮MTE1读取完成，避免event计数器持续累积溢出
+        mm1B.Wait<HardEvent::MTE1_MTE2>();
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知 // 是否可以省略
     }
 
@@ -978,7 +980,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+        // 左矩阵复用时，需等待上轮MTE1读取完成，避免event计数器持续累积溢出
+        mm1A.Wait<HardEvent::MTE1_MTE2>();
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     }
 
@@ -1100,7 +1103,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
             mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
         } else { // 非s2的第一次循环直接复用Q
             mm1A = l1QBuffers.GetPre();
-            // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+            // 左矩阵复用时，需等待上轮MTE1读取完成，避免event计数器持续累积溢出
+            mm1A.Wait<HardEvent::MTE1_MTE2>();
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
         // 加载当前轮的右矩阵到L1
@@ -1194,7 +1198,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
         mm1B = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+        // 左矩阵复用时，需等待上轮MTE1读取完成，避免event计数器持续累积溢出
+        mm1B.Wait<HardEvent::MTE1_MTE2>();
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
     }
     // 加载当前轮的左矩阵到L1
