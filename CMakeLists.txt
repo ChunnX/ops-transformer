@@ -24,7 +24,7 @@ init_cann_project()
 if(NOT ASCEND_INSTALL_PATH AND DEFINED ENV{ASCEND_HOME_PATH})
     set(ASCEND_INSTALL_PATH $ENV{ASCEND_HOME_PATH})
 endif()
-
+ 
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
 option(ENABLE_CCACHE              "Enable ccache capability"        ON)
