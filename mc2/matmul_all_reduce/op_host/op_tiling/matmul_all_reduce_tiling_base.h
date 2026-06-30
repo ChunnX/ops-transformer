@@ -201,6 +201,7 @@ protected:
     void SetCommQuantScale();
     void GetAtomicAddData();
     bool CheckBiasShape(const uint64_t nValue) const;
+    virtual bool IsPerTensorDequantScale(const gert::Shape& dequantShape) const;
     bool CheckDequantScaleShape(const uint64_t nValue) const;
     bool CheckDequantScalePerBlock(const gert::StorageShape* dequantScaleShape) const;
     bool CheckPerblockShape(const uint64_t mValue, const uint64_t kValue) const;

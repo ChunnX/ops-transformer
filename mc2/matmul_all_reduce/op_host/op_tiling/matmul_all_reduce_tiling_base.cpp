@@ -593,6 +593,11 @@ bool MatmulAllReduceTilingBase::AnalyzeAttrs()
     return true;
 }
 
+bool MatmulAllReduceTilingBase::IsPerTensorDequantScale(const gert::Shape& dequantShape) const
+{
+    return dequantShape.GetDimNum() == 1 && dequantShape.GetDim(0) == 1;
+}
+
 void MatmulAllReduceTilingBase::SetQuantData()
 {
     // 判断是否是量化场景，以及per-tensor还是per-channel
@@ -601,7 +606,7 @@ void MatmulAllReduceTilingBase::SetQuantData()
     if (matrixDequant != nullptr) {
         isQuantKey_ = true;
         const auto& dequantShape = matrixDequant->GetStorageShape();
-        isPerTensor_ = (dequantShape.GetDimNum() == 1 && dequantShape.GetDim(0) == 1);
+        isPerTensor_ = IsPerTensorDequantScale(dequantShape);
         quantType_ = isPerTensor_ ? Mc2QuantType::PER_TENSOR : Mc2QuantType::PER_CHANNEL;
 
         // perblock要求2维scale
@@ -1312,8 +1317,9 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
         return CheckMXScenarioScaleShape(nValue, GetKValue(), dequantScaleShape, false, false);
     }
 
+    bool perTensorShapeOk = IsPerTensorDequantScale(dequantScaleShape->GetStorageShape());
     OP_TILING_CHECK(
-        !((quantType_ == Mc2QuantType::PER_TENSOR && scaleShapeSize == 1) ||
+        !((quantType_ == Mc2QuantType::PER_TENSOR && perTensorShapeOk) ||
         (quantType_ == Mc2QuantType::PER_CHANNEL && scaleShapeSize == nValue)),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             opName_, "dequantScale(x2Scale)",
