@@ -17,6 +17,7 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "op_kernel/math_util.h"
 
 using namespace AscendC;
 
@@ -160,7 +161,7 @@ private:
         c1_ = tilingData->c1;
         BSNN = batchSize_ * seqLength_ * n_ * n_;
         BSN = batchSize_ * seqLength_ * n_;
-        c1Align_ = CeilDiv(c_, c0_);
+        c1Align_ = Ops::Base::CeilDiv(c_, c0_);
         cTail_ = max((c_ - (c1Align_ - 1) * c0_), static_cast<int64_t>(0));
 
         cTailAlign_ = AlignUp(cTail_, ELEMENTS_SIZE_PER_BLOCK);
@@ -264,8 +265,10 @@ private:
                                   sizeof(float));
             pipe_->InitBuffer(OutQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 8);
             auto ubSizeRemain =
-                CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK) * ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
-                CeilDiv(tileCoreBS_ * n_, ELEMENTS_SIZE_PER_BLOCK) * ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
+                Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
+                    ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
+                Ops::Base::CeilDiv(tileCoreBS_ * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
+                    ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
                 onceTask_ * n_ * c0_ * sizeof(float) * 2 + onceTask_ * c0_ * sizeof(float);
 
             pipe_->InitBuffer(tempBuf_, ubSizeRemain); // grad_y: n_ * c0_
@@ -285,10 +288,12 @@ private:
             onceTask_ = tileCoreBS_ / INNER_SPILT_NUM;
 
             int32_t offset = 0;
-            int32_t brcbAlign = CeilDiv(tileCoreBS_ * n_, ELEMENTS_SIZE_PER_BLOCK);
+            int32_t brcbAlign = static_cast<int32_t>(
+                Ops::Base::CeilDiv(tileCoreBS_ * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
             preBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_REPEAT, offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_REPEAT * sizeof(float);
-            brcbAlign = CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK);
+            brcbAlign = static_cast<int32_t>(
+                Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
             dRsqrtBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_REPEAT, offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_REPEAT * sizeof(float);
             gradYCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * c0_, offset);
@@ -312,13 +317,14 @@ private:
             dhatLocal_ =
                 tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_) * 2, offset); // dbais + dscale
             offset += tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_) * sizeof(float) * 2;
-            brcbAlign = CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK);
+            brcbAlign = static_cast<int32_t>(
+                Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
             rsqrtbrcbLocal_ =
                 tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_BLOCK * (n_ * n_ + PRE_POST_NUM * n_), offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_BLOCK * (n_ * n_ + PRE_POST_NUM * n_) * sizeof(float);
             hat2Scale = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_), offset);
             offset += tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_) * sizeof(float);
-            dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (2 * n_), offset);
+            dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_), offset);
             offset += tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_) * sizeof(float);
             hatLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_), offset);
             offset += tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_) * sizeof(float);
@@ -381,7 +387,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
 
     int64_t iterRowSumOffset = (skIterCount_ - 1) * 2 * BSN + taskOffset * n_;
     int64_t iterColSumOffset = ((skIterCount_ - 1) * 2 + 1) * BSN + taskOffset * n_;
-    int32_t brcbAlign = CeilDiv(tileTaskCount * n_, ELEMENTS_SIZE_PER_BLOCK);
+    int32_t brcbAlign = static_cast<int32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(tileTaskCount) * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
     for (int32_t iter = skIterCount_ - 1; iter > 0; iter--) {
         auto skRowNormLocal_ = SKInQueue.AllocTensor<T>();
         auto skRowSumLocal_ = skRowNormLocal_[tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK];
@@ -1005,7 +1012,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
              taskOffset += aivNum_ * tileCoreBS_) {
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
-            tileRepeatTimes_ = CeilDiv(tileTaskCount * 2 * n_, ELEMENTS_SIZE_PER_REPEAT);
+            tileRepeatTimes_ = Ops::Base::CeilDiv(static_cast<int64_t>(tileTaskCount) * 2 * n_,
+                                                  static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
             if (tileTaskCount > 0) {
                 int32_t innerId = 0;
                 Duplicate(dPrePostTempLocal_, 0.f, tileCoreBS_ * n_ * 2);
@@ -1026,7 +1034,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
                 for (int64_t taskOffsetInner = 0; taskOffsetInner < tileTaskCount; taskOffsetInner += onceTask_) {
                     int32_t tileTaskCountInner =
                         min(static_cast<int32_t>(onceTask_), static_cast<int32_t>(tileTaskCount - taskOffsetInner));
-                    int32_t brcbAlign = CeilDiv(tileTaskCount * n_, ELEMENTS_SIZE_PER_BLOCK);
+                    int32_t brcbAlign = static_cast<int32_t>(Ops::Base::CeilDiv(
+                        static_cast<int64_t>(tileTaskCount) * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
                     int32_t offset = 0;
                     auto preLocal_ = inputGradQueue.AllocTensor<T>();
                     DataCopyPad(
@@ -1039,12 +1048,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
                     const uint32_t srcShape[2] = {static_cast<uint32_t>(tileTaskCount * n_), 1}; // 源数据shape
                     const uint32_t dstShape[2] = {static_cast<uint32_t>(tileTaskCount * n_),
                                                   ELEMENTS_SIZE_PER_BLOCK}; // broadcast数据shape
-                    preBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * 8, offset);
                     Brcb(preBrcbLocal_, preLocal_, brcbAlign, {static_cast<uint8_t>(1), static_cast<uint8_t>(8)});
                     inputGradQueue.FreeTensor(preLocal_);
 
                     offset += brcbAlign * 8 * sizeof(float);
-                    brcbAlign = CeilDiv(tileTaskCount, ELEMENTS_SIZE_PER_BLOCK);
+                    brcbAlign = static_cast<int32_t>(Ops::Base::CeilDiv(
+                        static_cast<int64_t>(tileTaskCount), static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)));
 
                     offset += brcbAlign * 8 * sizeof(float);
 
@@ -1059,7 +1068,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
             }
         }
 
-        tileRepeatTimes_ = CeilDiv(tileCoreBS_ * 2 * n_, ELEMENTS_SIZE_PER_REPEAT);
+        tileRepeatTimes_ = Ops::Base::CeilDiv(tileCoreBS_ * 2 * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
         ComputeScaleBias();
 
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
@@ -1085,10 +1094,11 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
     if constexpr (DETERMINISTIC == true) {
         SyncAll<false>();
         if ASCEND_IS_AIV {
-            int64_t useCoreNum = min(static_cast<int64_t>(CeilDiv(totalTasks_, tileCoreBS_)), aivNum_);
+            int64_t useCoreNum =
+                min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, (n_ * n_ + PRE_POST_NUM * n_));
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
-            useCoreNum = CeilDiv(useCoreNum, 2);
+            useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
             ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum,
                                  (n_ * n_ + PRE_POST_NUM * n_) * (n_ * c_));
         }

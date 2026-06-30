@@ -49,7 +49,6 @@ private:
     // feature
     ge::graphStatus CheckFeatureAlibi(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureIFAMLA(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureFP8GQAFullquant(const FiaTilingInfo &fiaInfo);
 
     // multipara
     ge::graphStatus CheckActualSeqLenQTNDLastData(const FiaTilingInfo &fiaInfo);

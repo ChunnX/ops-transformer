@@ -58,8 +58,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "cfa_tnd": {
-        "testcase_name": ["cfa_tnd"],
+    "hca_tnd": {
+        "testcase_name": ["hca_tnd"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -86,8 +86,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_decode":{
-        "testcase_name": ["scfa_decode"],
+    "csa_decode":{
+        "testcase_name": ["csa_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -114,8 +114,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_decode_pa":{
-        "testcase_name": ["scfa_decode_pa"],
+    "csa_decode_pa":{
+        "testcase_name": ["csa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -145,8 +145,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_g128_test_decode":{
-        "testcase_name": ["scfa_g128_test_decode"],
+    "csa_g128_test_decode":{
+        "testcase_name": ["csa_g128_test_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -178,8 +178,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_g128_test_decode_B1":{
-        "testcase_name": ["scfa_g128_test_decode_B1"],
+    "csa_g128_test_decode_B1":{
+        "testcase_name": ["csa_g128_test_decode_B1"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -211,8 +211,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_g128_test_decode_B16": {
-        "testcase_name": ["scfa_g128_test_decode_B16"],
+    "csa_g128_test_decode_B16": {
+        "testcase_name": ["csa_g128_test_decode_B16"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -242,8 +242,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "scfa_g64_test_prefill":{
-        "testcase_name": ["scfa_g64_test_prefill"],
+    "csa_g64_test_prefill":{
+        "testcase_name": ["csa_g64_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -275,8 +275,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_g128_test_prefill":{
-        "testcase_name": ["scfa_g128_test_prefill"],
+    "csa_g128_test_prefill":{
+        "testcase_name": ["csa_g128_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -308,8 +308,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "scfa_g128_test_prefill_padding":{
-        "testcase_name": ["scfa_g128_test_prefill_padding"],
+    "csa_g128_test_prefill_padding":{
+        "testcase_name": ["csa_g128_test_prefill_padding"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -339,8 +339,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "scfa_g128_test_prefill_TND":{
-        "testcase_name": ["scfa_g128_test_prefill_TND"],
+    "csa_g128_test_prefill_TND":{
+        "testcase_name": ["csa_g128_test_prefill_TND"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -368,8 +368,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "cmp_scfa_g64_test_prefill":{
-        "testcase_name": ["cmp_scfa_g64_test_prefill"],
+    "cmp_csa_g64_test_prefill":{
+        "testcase_name": ["cmp_csa_g64_test_prefill"],
         "layout_q": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
