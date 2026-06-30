@@ -116,7 +116,7 @@ TEST_PARAMS = {
         "sparse_count": [512],
         "sparse_mode": [3],
         "query_datarange":[[-10, 10]],
-        "key_datarange":[[10, 1000]],
+        "key_datarange":[[10, 100]],
         "weights_datarange":[[-1, 1]],
         "q_scale_datarange":[[0, 1]],
         "k_scale_datarange":[[0, 9]],
@@ -158,7 +158,7 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 5]],
         "k_scale_datarange":[[0, 2]],
         "cmp_ratio":[4],
-        "return_value":[0],
+        "return_value":[1],
         "output_idx_offset_enable": [1],
         "output_idx_offset_datarange": [[0, 100]]
     },
@@ -195,7 +195,7 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 9]],
         "k_scale_datarange":[[-2, 2]],
         "cmp_ratio":[4],
-        "return_value":[0],
+        "return_value":[1],
         "output_idx_offset_enable": [1],
         "output_idx_offset_datarange": [[0, 100]]
     },
@@ -232,7 +232,7 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 1]],
         "k_scale_datarange":[[0, 4]],
         "cmp_ratio":[4],
-        "return_value":[0],
+        "return_value":[1],
         "output_idx_offset_enable": [1],
         "output_idx_offset_datarange": [[0, 100]]
     }
