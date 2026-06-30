@@ -4,6 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
+|<term>Ascend 950DT</term>            |    √    |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>            |    √    |
 
 ## 功能说明<a name="zh-cn_topic_0000002203575833_section14441124184110"></a>
@@ -63,7 +64,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002203575833_section45077510411"></a>
 
 ```
-npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank = 0) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank = 0, y_dtype=None, x_dtype=None, scales_dtype=None) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002203575833_section112637109429"></a>
@@ -96,6 +97,18 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 -   **expert\_token\_nums\_type** (`int`)：可选参数，表示输出`expert_token_nums`的值类型，取值范围[0, 1]，0表示每个专家收到token数量的前缀和，1表示每个专家收到的token数量（默认）。
 
 -   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
+
+-   **y\_dtype** (`int`)：可选参数。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：预留参数，当前版本不支持，传默认值None即可。
+    - <term>Ascend 950DT</term>：表示`expand_x`输出的数据类型枚举。默认值为None，当`quant_mode`不为0时应当指定，不指定默认为`int8`类型。
+
+-   **x\_dtype** (`int`)：可选参数。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：预留参数，当前版本不支持，传默认值None即可。
+    - <term>Ascend 950DT</term>：表示输入`x`的数据类型枚举。默认值为None，当其为PyTorch原生不支持的数据类型时需通过该参数指定。
+
+-   **scales\_dtype** (`int`)：可选参数。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：预留参数，当前版本不支持，传默认值None即可。
+    - <term>Ascend 950DT</term>：表示`dynamic_scales`输出的数据类型枚举。默认值为None，当其为PyTorch原生不支持的数据类型时需通过该参数指定。
 
 ## 输出说明<a name="zh-cn_topic_0000002203575833_section22231435517"></a>
 
