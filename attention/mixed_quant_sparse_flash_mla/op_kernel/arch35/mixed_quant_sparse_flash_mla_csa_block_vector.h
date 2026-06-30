@@ -933,7 +933,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
         if (runInfo.isCmp) {
             realKeyOffset = runInfo.boIdx * constInfo.cmpS2Size * constInfo.n2Size * constInfo.dSizeVInput + \
                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
-        } esle {
+        } else {
             realKeyOffset = runInfo.boIdx * constInfo.S2Size * constInfo.n2Size * constInfo.dSizeVInput + \
                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
         }
