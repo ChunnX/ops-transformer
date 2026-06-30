@@ -106,9 +106,9 @@ const char *DtypeName(ge::DataType dtype)
 const char *QkvLayoutName(uint64_t qkvLayout)
 {
     switch (qkvLayout) {
-        case QKV_RRC_LAYOUT_NTD:
+        case QKV_K_SCALE_LAYOUT_NTD:
             return QKV_LAYOUT_NTD;
-        case QKV_RRC_LAYOUT_TND:
+        case QKV_K_SCALE_LAYOUT_TND:
             return QKV_LAYOUT_TND;
         default:
             return "INVALID";
@@ -136,7 +136,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateHeadNums() cons
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateScalarInputs() const
 {
-    OP_CHECK_IF(input_.qkvLayout != QKV_RRC_LAYOUT_NTD && input_.qkvLayout != QKV_RRC_LAYOUT_TND,
+    OP_CHECK_IF(input_.qkvLayout != QKV_K_SCALE_LAYOUT_NTD && input_.qkvLayout != QKV_K_SCALE_LAYOUT_TND,
                 OP_LOGE_FOR_INVALID_VALUE(opName_, "qkv_layout", QkvLayoutName(input_.qkvLayout), "NTD or TND"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
@@ -263,7 +263,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQkvAndGammaShap
 {
     const uint64_t numQkHeads = input_.numQHeads + input_.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input_.numVHeads;
-    const bool isNtd = input_.qkvLayout == QKV_RRC_LAYOUT_NTD;
+    const bool isNtd = input_.qkvLayout == QKV_K_SCALE_LAYOUT_NTD;
     const uint64_t qkvHeadDim = static_cast<uint64_t>(input_.qkv.shape.GetDim(isNtd ? 0 : 1));
     const uint64_t qkvTokenDim = static_cast<uint64_t>(input_.qkv.shape.GetDim(isNtd ? 1 : 0));
     const uint64_t expectedDim0 = isNtd ? numQkvHeads : input_.totalTokens;
@@ -875,11 +875,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseQkvLayoutAttr()
         return ge::GRAPH_FAILED;
     }
     if (std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0) {
-        input_.qkvLayout = QKV_RRC_LAYOUT_NTD;
+        input_.qkvLayout = QKV_K_SCALE_LAYOUT_NTD;
         return ge::GRAPH_SUCCESS;
     }
     if (std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0) {
-        input_.qkvLayout = QKV_RRC_LAYOUT_TND;
+        input_.qkvLayout = QKV_K_SCALE_LAYOUT_TND;
         return ge::GRAPH_SUCCESS;
     }
     OP_LOGE_FOR_INVALID_VALUE(opName_, "qkv_layout", qkvLayout, "NTD or TND");
@@ -902,7 +902,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(
     const auto &cosSinShape = input_.cosSin.shape;
     const auto &cuSeqLenShape = input_.cuSeqLen.shape;
     const auto &kCacheShape = input_.kCache.shape;
-    const bool isNtd = input_.qkvLayout == QKV_RRC_LAYOUT_NTD;
+    const bool isNtd = input_.qkvLayout == QKV_K_SCALE_LAYOUT_NTD;
     const int64_t qkvHeadDim = qkvShape.GetDim(isNtd ? 0 : 1);
     const int64_t qkvTokenDim = qkvShape.GetDim(isNtd ? 1 : 0);
     OP_CHECK_IF(qkvHeadDim <= 0 || qkvTokenDim <= 0 || qkvShape.GetDim(2) <= 0,
