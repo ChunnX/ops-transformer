@@ -4,17 +4,19 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
  * \file mega_moe_imp_base.h
- * \brief
+ * \brief Device-only includes + MegaMoeImpl constexpr constants (shared by host tiling & device kernel).
  */
 
 #ifndef MEGA_MOE_IMP_BASE_H
 #define MEGA_MOE_IMP_BASE_H
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
 
 #include "kernel_tiling/kernel_tiling.h"
@@ -28,8 +30,12 @@
 #include "blaze/gemm/block/block_scheduler_swizzle.h"
 #include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
 #include "blaze/prologue/block_prologue_mx_fp8fp4.h"
+#endif
+
 namespace MegaMoeImpl {
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
+#endif
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
