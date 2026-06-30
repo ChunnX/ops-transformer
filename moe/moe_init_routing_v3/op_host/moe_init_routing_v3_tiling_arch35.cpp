@@ -2145,13 +2145,13 @@ bool MoeInitRoutingV3Arch35TilingClass::UseCompactGatherOutDropPad(int64_t outpu
         return false;
     }
 
-    // compact 路径少扫 expandedRowIdx，但会按输出行重复读 X；原路径按源 row 只读一次 X。
     int64_t savedIndexScanBytes = (totalLength_ - outputRows) * static_cast<int64_t>(sizeof(int32_t));
     int64_t extraSourceRows = std::max(outputRows - n_, static_cast<int64_t>(0));
     int64_t rowCopyBytes = cols_ * inputXDtypeSize_ +
                            (isInputScale_ == 1 ? static_cast<int64_t>(sizeof(float)) : 0);
     int64_t extraCompactCopyBytes = extraSourceRows * rowCopyBytes;
-    return savedIndexScanBytes > extraCompactCopyBytes;
+    const int64_t RANDOM_ACCESS_WEIGHT = 4LL;
+    return savedIndexScanBytes > extraCompactCopyBytes * RANDOM_ACCESS_WEIGHT;
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadCoreSplitParams(
