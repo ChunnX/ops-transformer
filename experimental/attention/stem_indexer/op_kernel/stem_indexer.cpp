@@ -16,8 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #if !defined(__CCE_AICORE__) || (__CCE_AICORE__ == 310) || defined(__DAV_310R6__)
-    #include "arch35/stem_indexer_kernel.h"
-
+#include "arch35/stem_indexer_kernel.h"
 #endif
 #include "stem_indexer_template_tiling_key.h"
 using namespace SIKernel;
