@@ -709,3 +709,22 @@ IMPL_OP_OPTILING(MixedQuantSparseFlashMla)
     .TilingParse<QSMLACompileInfo>(TilingPrepareForMixedQuantSparseFlashMla);
 
 } // namespace optiling
+In file included from /home/c00948909/628/ops-transformer_2638/build/binary/ascend950/gen/kernel_meta_MixedQuantSparseFlashMla_5fe9ee3596b68836aa0a0d8a011e3083/kernel_meta/MixedQuantSparseFlashMla_5fe9ee3596b68836aa0a0d8a011e3083_kernel.cpp:6:
+In file included from /home/c00948909/628/ops-transformer_2638/build/binary/ascend950/src/mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla.cpp:19:
+/home/c00948909/628/ops-transformer_2638/build/binary/ascend950/src/mixed_quant_sparse_flash_mla/op_kernel/arch35/mixed_quant_sparse_flash_mla_csa_kernel.h:210:62: error: no member named 'cmpKvSeqSize' in 'MixedQuantSparseFlashMlaBaseParams'
+    constInfo.cmpS2Size = mixedQuantSparseFlashMlaBaseParams.cmpKvSeqSize;
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ^
+/home/c00948909/628/ops-transformer_2638/build/binary/ascend950/src/mixed_quant_sparse_flash_mla/op_kernel/arch35/mixed_quant_sparse_flash_mla_csa_kernel.h:170:11: note: in instantiation of member function 'BaseApi::MixedQuantSparseFlashMlaCsa<BaseApi::CSABlockCube<__bf16, __hif8, float, __bf16, false, false, QSMLA_LAYOUT::BSND, QSMLA_LAYOUT::TND, QSMLATemplateMode::SWA_TEMPLATE_MODE, true, SCALE_CONTIGUOUS_MODE::CONTIGUOUS, true>, BaseApi::CSABlockVecDummy<__bf16, __hif8, float, __bf16, false, false, QSMLA_LAYOUT::BSND, QSMLA_LAYOUT::TND, QSMLATemplateMode::SWA_TEMPLATE_MODE, true, SCALE_CONTIGUOUS_MODE::CONTIGUOUS, true>>::ParseTilingData' requested here
+    this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, sequsedOriKv, cuSeqlensCmpKv, sequsedCmpKv,
+          ^
+/home/c00948909/628/ops-transformer_2638/build/binary/ascend950/src/mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla.cpp:62:9: note: in instantiation of member function 'BaseApi::MixedQuantSparseFlashMlaCsa<BaseApi::CSABlockCube<__bf16, __hif8, float, __bf16, false, false, QSMLA_LAYOUT::BSND, QSMLA_LAYOUT::TND, QSMLATemplateMode::SWA_TEMPLATE_MODE, true, SCALE_CONTIGUOUS_MODE::CONTIGUOUS, true>, BaseApi::CSABlockVecDummy<__bf16, __hif8, float, __bf16, false, false, QSMLA_LAYOUT::BSND, QSMLA_LAYOUT::TND, QSMLATemplateMode::SWA_TEMPLATE_MODE, true, SCALE_CONTIGUOUS_MODE::CONTIGUOUS, true>>::Init' requested here
+        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+        ^
+/home/c00948909/628/ops-transformer_2638/build/binary/ascend950/src/mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla.cpp:33:12: note: expanded from macro 'QSMLA_OP_IMPL'
+        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable,           \
+           ^
+/home/c00948909/628/ops-transformer_2638/build/binary/ascend950/gen/kernel_meta_MixedQuantSparseFlashMla_5fe9ee3596b68836aa0a0d8a011e3083/kernel_meta/MixedQuantSparseFlashMla_5fe9ee3596b68836aa0a0d8a011e3083_kernel.cpp:1033:5: note: in instantiation of function template specialization 'mixed_quant_sparse_flash_mla_270368_tilingkey<0, 0, 1, 0, 1, 1, 1>' requested here
+    mixed_quant_sparse_flash_mla<TEMPLATE_PARAMS>(q_in__, ori_kv_in__, cmp_kv_in__, ori_sparse_indices_in__, cmp_sparse_indices_in__, ori_block_table_in__, cmp_block_table_in__, cu_seqlens_q_in__, cu_seqlens_ori_kv_in__, cu_seqlens_cmp_kv_in__, seqused_q_in__, seqused_ori_kv_in__, seqused_cmp_kv_in__, cmp_residual_kv_in__, ori_topk_length_in__, cmp_topk_length_in__, sinks_in__, metadata_in__, attn_out_out_, softmax_lse_out_, usrWorkspace, tiling);
+    ^
+<command line>:74:38: note: expanded from here
+#define mixed_quant_sparse_flash_mla mixed_quant_sparse_flash_mla_270368_tilingkey
