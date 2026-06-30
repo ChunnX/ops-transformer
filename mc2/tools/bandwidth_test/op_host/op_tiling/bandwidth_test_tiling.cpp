@@ -169,8 +169,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     group = std::string(groupPtr);
-    tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
-    tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
+    tilingData.worldSize = static_cast<int32_t>(*worldSizePtr);
+    tilingData.maxBs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
