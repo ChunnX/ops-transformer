@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_kl_loss_grad_infershape.cpp
+ * \file dense_lightning_indexer_kl_loss_grad_infershape.cpp
  * \brief
  */
 
@@ -24,7 +24,6 @@ enum InputIdx {
     qEnum = 0,
     kEnum,
     wEnum,
-    sparseIndexEnum,
     attnSoftmaxL1NormEnum
 };
 
@@ -35,9 +34,9 @@ enum OutputIdx {
     softmaxOutEnum
 };
 
-ge::graphStatus InferShapeSparseLightningIndexerKLLossGrad(gert::InferShapeContext *context)
+ge::graphStatus InferShapeDenseLightningIndexerKLLossGrad(gert::InferShapeContext *context)
 {
-    OP_LOGI(context, "Start enter SparseLightningIndexerKLLossGrad infershape impl.");
+    OP_LOGI(context, "Start enter DenseLightningIndexerKLLossGrad infershape impl.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -67,9 +66,9 @@ ge::graphStatus InferShapeSparseLightningIndexerKLLossGrad(gert::InferShapeConte
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseLightningIndexerKLLossGrad(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeDenseLightningIndexerKLLossGrad(gert::InferDataTypeContext *context)
 {
-    OP_LOGI(context, "Start enter SparseLightningIndexerKLLossGrad infer dtype impl.");
+    OP_LOGI(context, "Start enter DenseLightningIndexerKLLossGrad infer dtype impl.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -81,7 +80,7 @@ ge::graphStatus InferDataTypeSparseLightningIndexerKLLossGrad(gert::InferDataTyp
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseLightningIndexerKLLossGrad)
-    .InferShape(InferShapeSparseLightningIndexerKLLossGrad)
-    .InferDataType(InferDataTypeSparseLightningIndexerKLLossGrad);
+IMPL_OP_INFERSHAPE(DenseLightningIndexerKLLossGrad)
+    .InferShape(InferShapeDenseLightningIndexerKLLossGrad)
+    .InferDataType(InferDataTypeDenseLightningIndexerKLLossGrad);
 } // namespace ops

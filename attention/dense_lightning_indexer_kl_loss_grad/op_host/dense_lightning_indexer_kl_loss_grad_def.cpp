@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_kl_loss_grad_def.cpp
+ * \file dense_lightning_indexer_kl_loss_grad_def.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class SparseLightningIndexerKLLossGrad : public OpDef {
+class DenseLightningIndexerKLLossGrad : public OpDef {
 public:
-    explicit SparseLightningIndexerKLLossGrad(const char *name) : OpDef(name)
+    explicit DenseLightningIndexerKLLossGrad(const char *name) : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -33,11 +33,6 @@ public:
         this->Input("w")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("attn_softmax_l1_norm")
@@ -104,10 +99,8 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
-        this->AICore().AddConfig("ascend910b", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
 		this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
-OP_ADD(SparseLightningIndexerKLLossGrad);
+OP_ADD(DenseLightningIndexerKLLossGrad);
 } // namespace ops

@@ -1,4 +1,4 @@
-# aclnnSparseLightningIndexerKLLossGrad
+# aclnnDenseLightningIndexerKLLossGrad
 
 ## 产品支持情况
 
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：SparseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该接口接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本接口不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
+- 接口功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该接口接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本接口不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
 
 - 计算公式：
    用于取Top-k的value的Indexer logits可表示为：
@@ -66,10 +66,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnSparseLightningIndexerKLLossGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerKLLossGrad”接口执行计算。
 
 ```c++
-aclnnStatus aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
+aclnnStatus aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize(
     const aclTensor     *q,
     const aclTensor     *k,
     const aclTensor     *w,
@@ -94,14 +94,14 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
 ```
 
 ```c++
-aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
+aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
     aclrtStream stream)
 ```
 
-## aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize
+## aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize
 
 - **参数说明:**
 
@@ -255,7 +255,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>metadataOptional</td>
                 <td>可选输入</td>
-                <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
+                <td>由aclnnDenseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
                 <td>传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
@@ -404,7 +404,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
         </tbody>
     </table>
 
-## aclnnSparseLightningIndexerKLLossGrad
+## aclnnDenseLightningIndexerKLLossGrad
 
 - **参数说明：**
 
@@ -430,7 +430,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>workspaceSize</td>
                 <td>输入</td>
-                <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize获取。</td>
+                <td>在Device侧申请的workspace大小，由第一段接口aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize获取。</td>
             </tr>
             <tr>
                 <td>executor</td>
@@ -452,8 +452,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
-    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
@@ -583,8 +583,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_sparse_lightning_indexer_kl_loss_grad.h"
-#include "aclnnop/aclnn_sparse_lightning_indexer_kl_loss_grad_metadata.h"
+#include "aclnnop/aclnn_dense_lightning_indexer_kl_loss_grad.h"
+#include "aclnnop/aclnn_dense_lightning_indexer_kl_loss_grad_metadata.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -752,11 +752,11 @@ int main() {
 
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;
-  ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
+  ret = aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, t1, t2, numHeadsQ, numHeadsK, headDim, topk,
       layoutQ, layoutK, maskMode, cmpRatio, metadata, &metadataWorkspaceSize, &metadataExecutor);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
+            LOG_PRINT("aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
 
   void* metadataWorkspaceAddr = nullptr;
@@ -764,18 +764,18 @@ int main() {
     ret = aclrtMalloc(&metadataWorkspaceAddr, metadataWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate metadata workspace failed. ERROR: %d\n", ret); return ret);
   }
-  ret = aclnnSparseLightningIndexerKLLossGradMetadata(metadataWorkspaceAddr, metadataWorkspaceSize,
+  ret = aclnnDenseLightningIndexerKLLossGradMetadata(metadataWorkspaceAddr, metadataWorkspaceSize,
                                                      metadataExecutor, stream);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadata failed. ERROR: %d\n", ret); return ret);
+            LOG_PRINT("aclnnDenseLightningIndexerKLLossGradMetadata failed. ERROR: %d\n", ret); return ret);
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
-  ret = aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
+  ret = aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize(
       q, k, w, sparseIndices, attnSoftmaxL1Norm, cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, metadata,
       layoutQ, layoutK, maskMode, cmpRatio, dq, dk, dw, softmaxOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize failed. ERROR: %d\n", ret);
+            LOG_PRINT("aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
 
   void* workspaceAddr = nullptr;
@@ -783,9 +783,9 @@ int main() {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  ret = aclnnSparseLightningIndexerKLLossGrad(workspaceAddr, workspaceSize, executor, stream);
+  ret = aclnnDenseLightningIndexerKLLossGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnSparseLightningIndexerKLLossGrad failed. ERROR: %d\n", ret); return ret);
+            LOG_PRINT("aclnnDenseLightningIndexerKLLossGrad failed. ERROR: %d\n", ret); return ret);
 
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

@@ -9,15 +9,15 @@
  */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_cube_block.h
+ * \file dense_lightning_indexer_kl_loss_grad_cube_block.h
  * \brief
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_CUBE_BLOCK_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_CUBE_BLOCK_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_CUBE_BLOCK_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_CUBE_BLOCK_H
 
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
-#include "sparse_lightning_indexer_kl_loss_grad_regbase_common.h"
+#include "dense_lightning_indexer_kl_loss_grad_regbase_common.h"
 namespace Slig {
 using T = float;
 
@@ -64,7 +64,7 @@ public:
     BuffersPolicy3buff<BufferType::L0C> commonL0CBuf;
     BuffersPolicySingleBuffer<BufferType::L0C> mm4L0CSpecialBuf;
 
-    SLIGradConstInfo constInfo{};
+    DLIKGradConstInfo constInfo{};
 
     __aicore__ inline SligBlockCube(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
@@ -72,23 +72,23 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res);
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, SLIGradRunInfo &runInfo,
-        SLIGradConstInfo &constInfo, SLIGradKRunInfo &syRunInfo);
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo);
     __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradRunInfo &runInfo,
-        SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo);
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo);
     __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
-        SLIGradRunInfo &runInfo, SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo, bool isFixOut);
+        DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut);
 
 private:
     __aicore__ inline void CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor, GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN,
         uint32_t srcD, uint32_t srcDstride);
-    __aicore__ inline void CopyInMm1AToL1(LocalTensor<INPUT_T> &l1Tensor, const SLIGradRunInfo &info,
-        SLIGradConstInfo &constInfo);
-    __aicore__ inline void CopyInMm1ARopeToL1(LocalTensor<INPUT_T> &l1Tensor, const SLIGradRunInfo &info,
-        SLIGradConstInfo &constInfo);
-    __aicore__ inline void CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor, const SLIGradRunInfo &info,
-        SLIGradConstInfo &constInfo);
+    __aicore__ inline void CopyInMm1AToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
+        DLIKGradConstInfo &constInfo);
+    __aicore__ inline void CopyInMm1ARopeToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
+        DLIKGradConstInfo &constInfo);
+    __aicore__ inline void CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
+        DLIKGradConstInfo &constInfo);
     __aicore__ inline void CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor, uint64_t gatherOffset, uint32_t mSizeAct,
         uint32_t realDSize, uint32_t headOffset);
 };
@@ -149,7 +149,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyGmToL1(LocalTensor<INPU
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor,
-    const SLIGradRunInfo &info, SLIGradConstInfo &constInfo)
+    const DLIKGradRunInfo &info, DLIKGradConstInfo &constInfo)
 {
     auto srcGm = queryIndexGm[info.queryIndexTensorOffset];
     CopyGmToL1(l1Tensor, srcGm, constInfo.gSizeQueryIndex, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
@@ -166,8 +166,8 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, SLIGradRunInfo &runInfo,
-    SLIGradConstInfo &constInfo, SLIGradKRunInfo &syRunInfo)
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+    DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo)
 {
     uint32_t dSize = constInfo.dSizeQueryIndex;                          // 128
     uint32_t kSize = syRunInfo.kProcessSize;                             // 2048 / 256
@@ -233,8 +233,8 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradRunInfo &runInfo,
-    SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo)
 {
     uint32_t kSize = pRunInfo.kProcessSize;                             // 2048
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
@@ -301,8 +301,8 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm3(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradRunInfo &runInfo,
-    SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo, bool isFixOut)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+    DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut)
 {
     uint32_t kSize = pRunInfo.kProcessSize;                             // 2048
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
@@ -372,13 +372,13 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res){};
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, SLIGradRunInfo &runInfo,
-        SLIGradConstInfo &constInfo, SLIGradKRunInfo &syRunInfo){};
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo){};
     __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, SLIGradRunInfo &runInfo,
-        SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo){};
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo){};
     __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
-        SLIGradRunInfo &runInfo, SLIGradConstInfo &constInfo, SLIGradKRunInfo &pRunInfo, bool isFixOut){};
+        DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut){};
 };
 
 template <typename T> struct CubeBlockTraits; // 声明

@@ -9,34 +9,34 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_tiling_general_regbase.h
+ * \file dense_lightning_indexer_kl_loss_grad_tiling_general_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_GENERAL_REGBASE_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_GENERAL_REGBASE_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_GENERAL_REGBASE_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_GENERAL_REGBASE_H
 
 #include <numeric>
 #include <algorithm>
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
-#include "../sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
-#include "../../op_kernel/arch35/sparse_lightning_indexer_kl_loss_grad_template_tiling_key_regbase.h"
-#include "../../op_kernel/arch35/sparse_lightning_indexer_kl_loss_grad_tiling_regbase.h"
+#include "../dense_lightning_indexer_kl_loss_grad_tiling_common.h"
+#include "../../op_kernel/arch35/dense_lightning_indexer_kl_loss_grad_template_tiling_key_regbase.h"
+#include "../../op_kernel/arch35/dense_lightning_indexer_kl_loss_grad_tiling_regbase.h"
 #include "err/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
-class SparseLightningIndexerKLLossGradTilingGeneralRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class DenseLightningIndexerKLLossGradTilingGeneralRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseLightningIndexerKLLossGradTilingGeneralRegbase(gert::TilingContext *context)
+    explicit DenseLightningIndexerKLLossGradTilingGeneralRegbase(gert::TilingContext *context)
         : TilingBaseClass(context)
     {
         Reset();
     }
-    ~SparseLightningIndexerKLLossGradTilingGeneralRegbase() override = default;
+    ~DenseLightningIndexerKLLossGradTilingGeneralRegbase() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -162,8 +162,8 @@ protected:
     const char *layoutQuery;
     const char *layoutKey;
 
-    SparseLightningIndexerGradRegBaseTilingData *tilingData =
-        context_->GetTilingData<SparseLightningIndexerGradRegBaseTilingData>();
+    DenseLightningIndexerGradRegBaseTilingData *tilingData =
+        context_->GetTilingData<DenseLightningIndexerGradRegBaseTilingData>();
     SLIGradBaseParamsRegbase *sliGradBaseParams_ = &tilingData->baseParams;
     SLIGradMultiCoreParamsRegbase *sliGradMultiCoreParams_ = &tilingData->multiCoreParams;
 };

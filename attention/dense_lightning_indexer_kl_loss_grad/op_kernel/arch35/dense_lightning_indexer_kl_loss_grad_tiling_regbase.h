@@ -9,7 +9,7 @@
   */
 
 /* !
- * \file sparse_lightning_indexer_kl_loss_grad_tiling_regbase.h
+ * \file dense_lightning_indexer_kl_loss_grad_tiling_regbase.h
  * \brief
  */
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_REGBASE_TILING_H
@@ -344,7 +344,7 @@ public:
     SoftMaxTiling simpleSoftmaxPTilingData;
 };
 
-class SparseLightningIndexerGradRegBaseTilingData {
+class DenseLightningIndexerGradRegBaseTilingData {
 public:
     SLIGradBaseParamsRegbase baseParams;
     SLIGradMultiCoreParamsRegbase multiCoreParams;
@@ -352,4 +352,4 @@ public:
     SLIGradVecApiParamsRegbase vectorParams;
 };
 } // namespace optiling
-#endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_H
+#endif // DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_H
