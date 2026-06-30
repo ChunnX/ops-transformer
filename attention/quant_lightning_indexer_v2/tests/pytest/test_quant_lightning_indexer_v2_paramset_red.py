@@ -49,7 +49,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 8]]
+        "output_idx_offset_datarange": [[0, 100]]
     },
     # QLI_L0_1_64_1_8_2048_128_TND_PA_BBND_FP8_E4M3FN_000001
     "red_2":{
@@ -86,7 +86,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 8]]
+        "output_idx_offset_datarange": [[1, 2]]
     },
     # QLI_L0_156_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000002
     "red_3":{
@@ -123,7 +123,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 326]]
+        "output_idx_offset_datarange": [[0, 1]]
     },
     # QLI_L0_56_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000003
     "red_4":{
@@ -160,7 +160,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 114]]
+        "output_idx_offset_datarange": [[0, 100]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000004
     "red_5":{
@@ -197,7 +197,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 8]]
+        "output_idx_offset_datarange": [[0, 100]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000005
     "red_6":{
@@ -234,7 +234,7 @@ TEST_PARAMS = {
         "cmp_ratio":[4],
         "return_value":[0],
         "output_idx_offset_enable": [1],
-        "output_idx_offset_datarange": [[1, 8]]
+        "output_idx_offset_datarange": [[0, 100]]
     }
 }
 
