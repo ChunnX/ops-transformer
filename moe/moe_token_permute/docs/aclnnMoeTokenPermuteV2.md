@@ -124,34 +124,163 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 
 ## 调用示例
 
-下面示例展示非量化调用。量化调用时需要按`quantMode`调整`permuteTokensOut`和`expandedScaleOut`的数据类型及shape。
+下面示例展示非量化调用，完整代码见
+[`test_aclnn_moe_token_permute_v2.cpp`](../examples/test_aclnn_moe_token_permute_v2.cpp)。量化调用时需要按
+`quantMode`调整`permuteTokensOut`和`expandedScaleOut`的数据类型及shape。
 
 ```cpp
+#include "acl/acl.h"
 #include "aclnnop/aclnn_moe_token_permute_v2.h"
+#include <iostream>
+#include <vector>
 
-// 调用aclnnMoeTokenPermuteV2第一段接口
-ret = aclnnMoeTokenPermuteV2GetWorkspaceSize(
-    x,
-    indices,
-    numTokenOut,
-    padMode,
-    quantMode,
-    expandedXOut,
-    sortedIndicesOut,
-    expandedScaleOut,
-    &workspaceSize,
-    &executor);
-CHECK_RET(ret == ACL_SUCCESS,
-          LOG_PRINT("aclnnMoeTokenPermuteV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+#define CHECK_RET(cond, return_expr) \
+  do {                               \
+    if (!(cond)) {                   \
+      return_expr;                   \
+    }                                \
+  } while (0)
+#define LOG_PRINT(message, ...)     \
+  do {                              \
+    printf(message, ##__VA_ARGS__); \
+  } while (0)
 
-// 根据第一段接口计算出的workspaceSize申请device内存
-void* workspaceAddr = nullptr;
-if (workspaceSize > 0) {
-    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+int64_t GetShapeSize(const std::vector<int64_t>& shape) {
+    int64_t shapeSize = 1;
+    for (auto dim : shape) {
+        shapeSize *= dim;
+    }
+    return shapeSize;
 }
 
-// 调用aclnnMoeTokenPermuteV2第二段接口
-ret = aclnnMoeTokenPermuteV2(workspaceAddr, workspaceSize, executor, stream);
-CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteV2 failed. ERROR: %d\n", ret); return ret);
+int Init(int32_t deviceId, aclrtStream* stream) {
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return ACL_SUCCESS;
+}
+
+template <typename T>
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor) {
+    auto size = GetShapeSize(shape) * sizeof(T);
+    *deviceAddr = nullptr;
+    if (size > 0) {
+        auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+        ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    }
+
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
+    return ACL_SUCCESS;
+}
+
+int main() {
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    std::vector<int64_t> xShape = {3, 4};
+    std::vector<int64_t> indicesShape = {3, 2};
+    std::vector<int64_t> expandedXOutShape = {6, 4};
+    std::vector<int64_t> sortedIndicesOutShape = {6};
+    std::vector<int64_t> expandedScaleOutShape = {0};
+
+    void* xDeviceAddr = nullptr;
+    void* indicesDeviceAddr = nullptr;
+    void* expandedXOutDeviceAddr = nullptr;
+    void* sortedIndicesOutDeviceAddr = nullptr;
+    void* expandedScaleOutDeviceAddr = nullptr;
+    aclTensor* x = nullptr;
+    aclTensor* indices = nullptr;
+    aclTensor* expandedXOut = nullptr;
+    aclTensor* sortedIndicesOut = nullptr;
+    aclTensor* expandedScaleOut = nullptr;
+
+    std::vector<float> xHostData = {
+        0.1, 0.1, 0.1, 0.1,
+        0.2, 0.2, 0.2, 0.2,
+        0.3, 0.3, 0.3, 0.3
+    };
+    std::vector<int32_t> indicesHostData = {1, 2, 0, 1, 0, 2};
+    std::vector<float> expandedXOutHostData(24, 0);
+    std::vector<int32_t> sortedIndicesOutHostData(6, 0);
+    std::vector<float> expandedScaleOutHostData;
+
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, ACL_FLOAT, &x);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(indicesHostData, indicesShape, &indicesDeviceAddr, ACL_INT32, &indices);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr,
+                          ACL_FLOAT, &expandedXOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(sortedIndicesOutHostData, sortedIndicesOutShape, &sortedIndicesOutDeviceAddr,
+                          ACL_INT32, &sortedIndicesOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expandedScaleOutHostData, expandedScaleOutShape, &expandedScaleOutDeviceAddr,
+                          ACL_FLOAT, &expandedScaleOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    int64_t numOutTokens = 0;
+    bool paddedMode = false;
+    int64_t quantMode = -1;
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    ret = aclnnMoeTokenPermuteV2GetWorkspaceSize(
+        x, indices, numOutTokens, paddedMode, quantMode, expandedXOut, sortedIndicesOut, expandedScaleOut,
+        &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMoeTokenPermuteV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
+    void* workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+
+    ret = aclnnMoeTokenPermuteV2(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteV2 failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+    std::vector<float> expandedXData(24, 0);
+    ret = aclrtMemcpy(expandedXData.data(), expandedXData.size() * sizeof(float), expandedXOutDeviceAddr,
+                      expandedXData.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy expandedXOut failed. ERROR: %d\n", ret); return ret);
+    std::vector<int32_t> sortedIndicesData(6, 0);
+    ret = aclrtMemcpy(sortedIndicesData.data(), sortedIndicesData.size() * sizeof(int32_t),
+                      sortedIndicesOutDeviceAddr, sortedIndicesData.size() * sizeof(int32_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy sortedIndicesOut failed. ERROR: %d\n", ret); return ret);
+
+    aclDestroyTensor(x);
+    aclDestroyTensor(indices);
+    aclDestroyTensor(expandedXOut);
+    aclDestroyTensor(sortedIndicesOut);
+    aclDestroyTensor(expandedScaleOut);
+    aclrtFree(xDeviceAddr);
+    aclrtFree(indicesDeviceAddr);
+    aclrtFree(expandedXOutDeviceAddr);
+    aclrtFree(sortedIndicesOutDeviceAddr);
+    if (expandedScaleOutDeviceAddr != nullptr) {
+        aclrtFree(expandedScaleOutDeviceAddr);
+    }
+    if (workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return ACL_SUCCESS;
+}
 ```
