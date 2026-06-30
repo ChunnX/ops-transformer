@@ -776,6 +776,19 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad = results[2]
         loss_out = results[3]
 
+        # DEBUG: compare kernel-gathered KeyIndex vs host-gathered KeyIndex
+        _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"
+        if _DEBUG:
+            # Compute expected gather on host for comparison
+            _, expected_gki, _ = _preprocess_gather(
+                key, key_index, key_rope, sparse_indices,
+                B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
+            )
+            gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
+            print(f"[DEBUG] GatherKeyIndex_ws vs host_gather: max_diff={gki_diff.max().item():.6e}, mean_diff={gki_diff.mean().item():.6e}")
+            # Also check dQueryIndex_ws before cast
+            print(f"[DEBUG] dQueryIndex_ws: max={d_query_index_ws.max().item():.6e}, min={d_query_index_ws.min().item():.6e}, has_nan={torch.isnan(d_query_index_ws).any().item()}, has_inf={torch.isinf(d_query_index_ws).any().item()}")
+
         # Accumulate partial dWeight across K blocks
         d_weight = d_weight_partial.sum(dim=2)
         if weights_orig_dtype == torch.float32:
