@@ -65,16 +65,16 @@ public:
     
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer, LocalTensor<uint32_t>& indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
-        LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
-        hisIndexLocal[0] = hisIndexLocal1;
-        hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[QLICommon::Align(topK, (uint32_t)256)];
-        idx0Local = histogramsLocal[256]; // 256: 本地内存对齐基线
-        idx1Local = idx0Local[256]; // 256: 同上
-        idx2Local = idx1Local[256]; // 256: 同上
-        idx3Local = idx2Local[256]; // 256: 同上
-        nkValueLocal = idx3Local[256]; // 256: 同上
+        LocalTensor<uint32_t> hisIndex1 = indicesOutLocal;
+        LocalTensor<uint32_t> hisIndex2 = sharedTmpBuffer[0];
+        hisIndexLocal[0] = hisIndex1;
+        hisIndexLocal[1] = hisIndex2;
+        histogramsLocal = hisIndex2[QLICommon::Align(topK, (uint32_t)256)]; // 直方图
+        idxLocal0 = histogramsLocal[256]; // 256: 本地内存对齐基线
+        idxLocal1 = idxLocal0[256]; // 256: 同上
+        idxLocal2 = idxLocal1[256]; // 256: 同上
+        idxLocal3 = idxLocal2[256]; // 256: 同上
+        nkValueLocal = idxLocal3[256]; // 256: 同上
         tmpIndexLocal = nkValueLocal[64]; // 64: 单核/单线程输出元素容量（G维度切分阈值）
     }
 
@@ -84,33 +84,33 @@ public:
     {
         if (s2LoopNum == 1) {
             topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal,
-                                            mrgValueLocal, histogramsLocal, idx0Local, idx1Local,
-                                            idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                                            mrgValueLocal, histogramsLocal, idxLocal0, idxLocal1,
+                                            idxLocal2, idxLocal3, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, QLICommon::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, QLICommon::Align(topK, (uint32_t)256)); // topk对齐256
         } else {
             if (loopIdx == 0) {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal,
-                                              histogramsLocal, idx0Local, idx1Local, idx2Local,
-                                              idx3Local, nkValueLocal, topK, s2SeqLen);
+                                              histogramsLocal, idxLocal0, idxLocal1, idxLocal2,
+                                              idxLocal3, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2],
-                                  tmpIndexLocal, QLICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], // pingpong
+                                  tmpIndexLocal, QLICommon::Align(topK, (uint32_t)256)); // topk对齐256
             } else {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal,
-                                              histogramsLocal, idx0Local, idx1Local, idx2Local,
-                                              idx3Local, nkValueLocal, topK, s2SeqLen);
+                                              histogramsLocal, idxLocal0, idxLocal1, idxLocal2,
+                                              idxLocal3, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                    tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, // pingpong
+                    tmpIndexLocal, hisIndexLocal[loopIdx % 2], // pingpong
                     topK,
-                    loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256),
+                    loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), // topk对齐256
                     s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    if ((loopIdx + 1) % 2 == 1) {
-                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                            QLICommon::Align(topK, (uint32_t)256));
+                    if ((loopIdx + 1) % 2 == 1) { // pingpong
+                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // pingpong
+                            QLICommon::Align(topK, (uint32_t)256)); // topk对齐256
                     }
                 }
             }
@@ -119,10 +119,10 @@ public:
 private:
     LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
-    LocalTensor<uint32_t> idx0Local;        // 输入数据第1个8位Buf 256 * 4B
-    LocalTensor<uint32_t> idx1Local;        // 输入数据第2个8位Buf 256 * 4B
-    LocalTensor<uint32_t> idx2Local;        // 输入数据第3个8位Buf 256 * 4B
-    LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idxLocal0;        // 输入数据第1个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idxLocal1;        // 输入数据第2个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idxLocal2;        // 输入数据第3个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idxLocal3;        // 输入数据第4个8位Buf 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
     LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
     uint32_t topK = 512;
