@@ -223,15 +223,16 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
         return true;
     }
 
-    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
+        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
     if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
 
     int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) -
                        static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算Token
-    int32_t s1EndIdx =
-        info.maskFormat == MaskFormat::GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+    int32_t s1EndIdx = info.maskFormat == MaskFormat::GS ?
+        s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
 
     if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
         return true;
@@ -245,7 +246,8 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         return false;
     }
 
-    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
+        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
     if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
