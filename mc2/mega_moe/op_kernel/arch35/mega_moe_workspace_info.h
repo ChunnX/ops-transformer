@@ -23,7 +23,7 @@
 #define GM_ADDR uint8_t*
 #define HOST_DEVICE
 #endif
-#include "mega_moe_impl_base.h"
+#include "mega_moe_impl_bash.h"
 
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
