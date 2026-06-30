@@ -582,9 +582,13 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdKn(__local_mem__ xType *antiQuant
                                                  uint16_t bubNLen, uint16_t groupSize,
                                                  uint16_t antiQuantParamNStride)
 {
-    uint16_t nBubXTypeAlign = CeilAlign(bubNLen, static_cast<uint16_t>(BLOCK_CUBE));
-    uint16_t nLoop = CeilDivide(nBubXTypeAlign, static_cast<uint16_t>(VEC_MAX_ELEM_B16));
-    uint16_t groupNum = CeilDivide(ubLoopK, groupSize) - 1;
+    uint16_t nBubXTypeAlign = static_cast<uint16_t>(
+        (bubNLen + static_cast<uint16_t>(BLOCK_CUBE) - 1) / static_cast<uint16_t>(BLOCK_CUBE) *
+        static_cast<uint16_t>(BLOCK_CUBE));
+    uint16_t nLoop = static_cast<uint16_t>(
+        (nBubXTypeAlign + static_cast<uint16_t>(VEC_MAX_ELEM_B16) - 1) /
+        static_cast<uint16_t>(VEC_MAX_ELEM_B16));
+    uint16_t groupNum = static_cast<uint16_t>((ubLoopK + groupSize - 1) / groupSize) - 1;
     uint16_t groupTail = ubLoopK - groupNum * groupSize;
     uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
     int32_t weightOutStride =
@@ -664,7 +668,7 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdKn(__local_mem__ xType *antiQuant
 // Scale UB 布局: [G_tile, VEC_MAX_ELEM_B16]，stride = VEC_MAX_ELEM_B16
 // Scale 地址: base + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQuantScaleBasePhyAddr,
+__simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                        __local_mem__ xType *antiQuantOffsetBasePhyAddr,
                                                        __local_mem__ wType *weightLowBitPhyAddr0,
                                                        __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
@@ -680,9 +684,9 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *
                                                               MicroAPI::MaskMergeMode::ZEROING,
                                                               AscendC::RoundMode::UNKNOWN};
 
-    constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_128;
+    constexpr uint16_t GROUP_SIZE = 128;
     constexpr uint16_t INNER_STRIDE_WEIGHT = GROUP_SIZE >> 1;
-    uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
+    uint16_t groupNum = static_cast<uint16_t>((bubKLen + GROUP_SIZE - 1) / GROUP_SIZE);
     uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
     uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
     uint16_t weightOutAddrOffset =
@@ -723,7 +727,7 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *
 // NK PerGroup INT4 反量化 — gs=256 VF
 // 每个 group 256 K 元素 = 2 个向量寄存器，需 2 次 weight 加载、2 次输出
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQuantScaleBasePhyAddr,
+__simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                        __local_mem__ xType *antiQuantOffsetBasePhyAddr,
                                                        __local_mem__ wType *weightLowBitPhyAddr0,
                                                        __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
@@ -744,8 +748,8 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *
                                                                MicroAPI::MaskMergeMode::ZEROING,
                                                                AscendC::RoundMode::UNKNOWN};
 
-    constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_256;
-    uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
+    constexpr uint16_t GROUP_SIZE = 256;
+    uint16_t groupNum = static_cast<uint16_t>((bubKLen + GROUP_SIZE - 1) / GROUP_SIZE);
     uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize) >> 1;
     uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
     uint16_t weightOutAddrOffset =
@@ -792,7 +796,7 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *
 // NK PerGroup INT4 反量化 — gs=64 VF
 // 每个 group 64 K 元素 = 半个向量寄存器，需 Select 拼接相邻 2 个 group 的 scale
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQuantScaleBasePhyAddr,
+__simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                       __local_mem__ xType *antiQuantOffsetBasePhyAddr,
                                                       __local_mem__ wType *weightLowBitPhyAddr0,
                                                       __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
@@ -813,7 +817,7 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *a
                                                                MicroAPI::MaskMergeMode::ZEROING,
                                                                AscendC::RoundMode::UNKNOWN};
 
-    constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_64;
+    constexpr uint16_t GROUP_SIZE = 64;
     constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
     constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
     constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
@@ -887,7 +891,7 @@ __simd_callee__ inline void SelectNdNkGs32FourGroups(RegTensor<xType> &dstVreg, 
 }
 
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQuantScaleBasePhyAddr,
+__simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                       __local_mem__ xType *antiQuantOffsetBasePhyAddr,
                                                       __local_mem__ wType *weightLowBitPhyAddr0,
                                                       __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
@@ -914,11 +918,11 @@ __simd_callee__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *a
                                                                MicroAPI::MaskMergeMode::ZEROING,
                                                                AscendC::RoundMode::UNKNOWN};
 
-    constexpr uint16_t GROUP_SIZE = PERGROUP_SIZE_32;
+    constexpr uint16_t GROUP_SIZE = 32;
     constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
     constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
     constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
-    uint16_t innerExtend = CeilDivide(bubKLen, INNER_K_SIZE);
+    uint16_t innerExtend = static_cast<uint16_t>((bubKLen + INNER_K_SIZE - 1) / INNER_K_SIZE);
     uint16_t outerExtend = bubNLen;
     uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
     uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
