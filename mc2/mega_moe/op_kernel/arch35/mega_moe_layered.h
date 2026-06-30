@@ -553,6 +553,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     DataCopyExtParams loadParams{1U, static_cast<uint32_t>(sendTotalNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(topkIdsTensor_, srcGlobalTensor, loadParams, loadPad);
+    PipeBarrier<PIPE_ALL>();
+    DumpTensor(topkIdsTensor_, rankId_, sendTotalNum_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
@@ -1784,19 +1786,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
                 Level1DispatchUrma(localExpertId + 1);
                 SendCntCal(localExpertId + 1, nextSendCnt);
-                // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-                //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                //     TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-                // }
+                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                }
             }
         }
 
         // GMM1 consumer 消费 expert e。
-        // if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-        //     continue;
-        // }
-        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        // GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
     }
     // EndSync(vecSetSyncCom_);
     // if constexpr(g_coreType == AIV) {
