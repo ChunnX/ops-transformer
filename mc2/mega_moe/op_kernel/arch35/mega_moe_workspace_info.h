@@ -219,14 +219,14 @@ struct WorkspaceInfo {
             uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(bfloat16_t)), (int64_t)ALIGN_32);
             //每个 token 含数据+三元组(32B)
             uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-            uint32_t maxDataSize = Ops::Base::CeilDiv(tilingData->bs *  maxDataSizePerToken, (int64_t)ALIGN_512) * tilingData->expertPerRank 
+            uint32_t maxDataSize = Ops::Base::CeilDiv((int64_t)(tilingData->bs *  maxDataSizePerToken), (int64_t)ALIGN_512) * tilingData->expertPerRank 
                                                         * tilingData->epWorldSize;
             workspaceSize += maxDataSize;
 
-            
+
             combineCommNotifyPtr = base + workspaceSize;
             // 每个 expert 分配一个 int32 通知
-            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)tilingData->epWorldSize * sizeof(int32_t), (int64_t)ALIGN_512);
+            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
             workspaceSize += maxNotifySize;
         }
     }
