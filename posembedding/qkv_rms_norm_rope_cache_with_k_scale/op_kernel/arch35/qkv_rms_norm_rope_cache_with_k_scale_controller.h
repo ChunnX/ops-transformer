@@ -29,13 +29,13 @@ public:
     {
         uint32_t cubeIndex = GetBlockIdx();
         if ASCEND_IS_AIV {
-            cubeIndex /= QKV_RRC_MIX_AIV_PER_AIC;
+            cubeIndex /= QKV_K_SCALE_MIX_AIV_PER_AIC;
         }
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
         QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> basicBlock;
-        TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM];
+        TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
         basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
                         tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize,
@@ -86,8 +86,8 @@ private:
         }
 
         tile.tokenSize = MinU64(MinU64(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
-        tile.cubeTokenSize = AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
-        tile.cubeHalfTokenSize = tile.cubeTokenSize / QKV_RRC_MIX_AIV_PER_AIC;
+        tile.cubeTokenSize = AlignUp(tile.tokenSize, QKV_K_SCALE_MIX_AIV_PER_AIC);
+        tile.cubeHalfTokenSize = tile.cubeTokenSize / QKV_K_SCALE_MIX_AIV_PER_AIC;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = tilingData->kvHeadNum;
         if ASCEND_IS_AIC {
@@ -107,7 +107,7 @@ private:
     __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> &basicBlock,
                                            const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
                                            const TokenRange &range,
-                                           TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM]) const
+                                           TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
     {
         uint64_t localTileId = 0U;
         for (uint64_t tokenOffset = range.begin; tokenOffset < range.end;) {
@@ -127,21 +127,21 @@ private:
         return localTileId;
     }
 
-    __aicore__ inline void InitTileParamBuffer(TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM]) const
+    __aicore__ inline void InitTileParamBuffer(TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
     {
-        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
+        for (uint32_t bufferId = 0U; bufferId < QKV_K_SCALE_DOUBLE_BUFFER_NUM; ++bufferId) {
             ResetTileParam(tileParam[bufferId]);
         }
     }
 
     __aicore__ inline uint32_t GetProcessId(uint64_t tileId) const
     {
-        return static_cast<uint32_t>(tileId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+        return static_cast<uint32_t>(tileId & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
     }
 
     __aicore__ inline uint32_t GetLastProcessId(uint64_t tileId) const
     {
-        return static_cast<uint32_t>((tileId + QKV_RRC_DOUBLE_BUFFER_NUM - 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+        return static_cast<uint32_t>((tileId + QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
     }
 };
 

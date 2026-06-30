@@ -70,7 +70,12 @@ public:
         this->Attr("qkv_layout").AttrType(REQUIRED).String();
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
-        this->AICore().AddConfig("ascend950");
+        OpAICoreConfig config950;
+        config950.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "qkv_rms_norm_rope_cache_with_k_scale_apt");
+        this->AICore().AddConfig("ascend950", config950);
     }
 };
 

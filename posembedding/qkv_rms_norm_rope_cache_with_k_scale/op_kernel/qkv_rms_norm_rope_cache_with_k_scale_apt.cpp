@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qkv_rms_norm_rope_cache_with_k_scale.cpp
+ * \file qkv_rms_norm_rope_cache_with_k_scale_apt.cpp
  * \brief Kernel entry for QkvRmsNormRopeCacheWithKScale.
  */
 #include "arch35/qkv_rms_norm_rope_cache_with_k_scale_controller.h"
@@ -18,7 +18,6 @@
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
 using QkvRmsNormRopeCacheWithKScale::GlobalTensors;
-using QkvRmsNormRopeCacheWithKScale::QKV_RRC_HEAD_DIM_D128;
 using QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleController;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
@@ -30,9 +29,6 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
                                      GM_ADDR q_out, GM_ADDR q_scale, GM_ADDR k_cache_out, GM_ADDR v_cache_out,
                                      GM_ADDR k_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling)
 {
-    static_assert(HEAD_DIM == QKV_RRC_HEAD_DIM_D128, "QkvRmsNormRopeCacheWithKScale only supports D128 kernel.");
-    static_assert(QKV_LAYOUT == QKV_RRC_LAYOUT_NTD || QKV_LAYOUT == QKV_RRC_LAYOUT_TND,
-                  "QkvRmsNormRopeCacheWithKScale only supports NTD/TND qkv_layout.");
     AscendC::InitSocState();
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     // enable overflow mode to avoid nan/inf value

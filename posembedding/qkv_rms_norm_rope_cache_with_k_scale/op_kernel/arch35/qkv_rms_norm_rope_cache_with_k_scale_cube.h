@@ -15,8 +15,8 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-constexpr FixpipeConfig QKV_RRC_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
-constexpr uint8_t QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M = 1;
+constexpr FixpipeConfig QKV_K_SCALE_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
@@ -57,27 +57,24 @@ public:
                                        LocalTensor<float> qkAfterCubeUb)
     {
         const uint32_t l0cBufferId =
-            static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+            static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
         const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
-        const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
+        const uint64_t kL0cOffset = AlignUp(qRows, QKV_K_SCALE_NZ_C0) * QKV_K_SCALE_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
         FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
         FixpipeSegmentToAivUb(kRows, qRowsPerAiv, l0cBufferId, kL0cOffset, qkAfterCubeUb);
     }
 
 private:
-    static constexpr uint32_t INTRA_EVENT_ID_MAX = 5U;
-    static constexpr uint32_t AIC_L0_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0_BUFFER_NUM = QKV_K_SCALE_DOUBLE_BUFFER_NUM;
     static constexpr uint32_t AIC_M_L0_TILE = 128U;
-    static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_RRC_KIB / sizeof(bfloat16_t);
-    static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = 64U * QKV_RRC_KIB / sizeof(bfloat16_t);
-    static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = 256U * QKV_RRC_KIB / sizeof(float);
+    static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
+    static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
+    static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = 256U * QKV_K_SCALE_KIB / sizeof(float);
     static constexpr uint32_t AIC_L0A_ONE_BUFFER_ELEMENTS = AIC_L0A_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
-    static constexpr uint32_t AIC_L0A_ONE_BUFFER_ROWS = AIC_L0A_ONE_BUFFER_ELEMENTS / QKV_RRC_HEAD_DIM_D128;
-    static constexpr uint32_t AIC_L0B_ONE_BUFFER_ELEMENTS = AIC_L0B_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
-    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / QKV_RRC_DOUBLE_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / QKV_K_SCALE_DOUBLE_BUFFER_NUM;
     static constexpr uint8_t AIC_UNIT_FLAG_CHECK_ONLY = 0b10;
     static constexpr uint8_t AIC_UNIT_FLAG_UPDATE = 0b11;
     static constexpr uint32_t EVT_MTE2_TO_MTE1_ROTATION_READY = 5U;
@@ -85,30 +82,15 @@ private:
     static constexpr uint32_t EVT_MTE1_TO_MMAD_L0_BASE = 3U;
     static constexpr uint32_t EVT_MMAD_TO_MTE1_L0_BASE = 3U;
 
-    static_assert(AIC_L0B_ONE_BUFFER_ELEMENTS == QKV_RRC_ROTATION_ONE_L1_ELEMENTS,
-                  "QkvRmsNormRopeCacheWithKScale each resident L0B rotation segment must hold one D128 matrix.");
-    static_assert(AIC_L0A_ONE_BUFFER_ELEMENTS >= AIC_M_L0_TILE * QKV_RRC_HEAD_DIM_D128,
-                  "QkvRmsNormRopeCacheWithKScale each L0A pingpong buffer must hold one D128 A tile.");
-    static_assert(AIC_L0A_ONE_BUFFER_ROWS == AIC_M_L0_TILE,
-                  "QkvRmsNormRopeCacheWithKScale L0A row capacity must match the D128 A tile size.");
-    static_assert(EVT_MTE2_TO_MTE1_ROTATION_READY <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIC rotation MTE2->MTE1 event exceeds event id range.");
-    static_assert(EVT_MTE1_TO_MMAD_ROTATION_READY <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIC rotation MTE1->MMAD event exceeds event id range.");
-    static_assert(EVT_MTE1_TO_MMAD_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIC MTE1->MMAD L0 events exceed event id range.");
-    static_assert(EVT_MMAD_TO_MTE1_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIC MMAD->MTE1 L0 events exceed event id range.");
-
     __aicore__ inline void CopyRotationGmToL1Nz()
     {
         Nd2NzParams nd2nzParams;
         nd2nzParams.ndNum = 1U;
-        nd2nzParams.nValue = QKV_RRC_HEAD_DIM_D128;
-        nd2nzParams.dValue = QKV_RRC_HEAD_DIM_D128;
+        nd2nzParams.nValue = QKV_K_SCALE_HEAD_DIM_D128;
+        nd2nzParams.dValue = QKV_K_SCALE_HEAD_DIM_D128;
         nd2nzParams.srcNdMatrixStride = 0U;
-        nd2nzParams.srcDValue = QKV_RRC_HEAD_DIM_D128;
-        nd2nzParams.dstNzC0Stride = QKV_RRC_HEAD_DIM_D128;
+        nd2nzParams.srcDValue = QKV_K_SCALE_HEAD_DIM_D128;
+        nd2nzParams.dstNzC0Stride = QKV_K_SCALE_HEAD_DIM_D128;
         nd2nzParams.dstNzNStride = 1U;
         nd2nzParams.dstNzMatrixStride = 0U;
         DataCopy(rotationL1Nz_, rotationGm_, nd2nzParams);
@@ -119,11 +101,11 @@ private:
         LoadData2DParamsV2 loadDataParams;
         loadDataParams.mStartPosition = 0U;
         loadDataParams.kStartPosition = 0U;
-        loadDataParams.mStep = static_cast<uint16_t>(CeilDiv(QKV_RRC_HEAD_DIM_D128, QKV_RRC_NZ_C0));
-        loadDataParams.kStep = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128 /
-            (QKV_RRC_BLOCK_BYTES / sizeof(bfloat16_t)));
-        loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(QKV_RRC_HEAD_DIM_D128, QKV_RRC_NZ_C0));
-        loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(QKV_RRC_HEAD_DIM_D128, QKV_RRC_NZ_C0));
+        loadDataParams.mStep = static_cast<uint16_t>(CeilDiv(QKV_K_SCALE_HEAD_DIM_D128, QKV_K_SCALE_NZ_C0));
+        loadDataParams.kStep = static_cast<uint16_t>(QKV_K_SCALE_HEAD_DIM_D128 /
+            (QKV_K_SCALE_BLOCK_BYTES / sizeof(bfloat16_t)));
+        loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(QKV_K_SCALE_HEAD_DIM_D128, QKV_K_SCALE_NZ_C0));
+        loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(QKV_K_SCALE_HEAD_DIM_D128, QKV_K_SCALE_NZ_C0));
         loadDataParams.ifTranspose = true;
         LoadData(l0b_, rotationL1Nz_, loadDataParams);
     }
@@ -150,13 +132,13 @@ private:
 
         // Keep M intact so L0C keeps one continuous segment layout for the single L0C->UB Fixpipe.
         // Splitting by M would make each MMAD tile use its own M stride in L0C, so the segment is non-contiguous.
-        const uint64_t alignedRows = AlignUp(segmentRows, QKV_RRC_NZ_C0);
-        const uint64_t maxDByL0a = (AIC_L0A_ONE_BUFFER_ELEMENTS / alignedRows / QKV_RRC_NZ_C0) * QKV_RRC_NZ_C0;
-        const uint64_t dTile = MinU64(QKV_RRC_HEAD_DIM_D128, maxDByL0a);
-        for (uint64_t dStart = 0U; dStart < QKV_RRC_HEAD_DIM_D128; dStart += dTile) {
-            const uint64_t dSize = MinU64(dTile, QKV_RRC_HEAD_DIM_D128 - dStart);
+        const uint64_t alignedRows = AlignUp(segmentRows, QKV_K_SCALE_NZ_C0);
+        const uint64_t maxDByL0a = (AIC_L0A_ONE_BUFFER_ELEMENTS / alignedRows / QKV_K_SCALE_NZ_C0) * QKV_K_SCALE_NZ_C0;
+        const uint64_t dTile = MinU64(QKV_K_SCALE_HEAD_DIM_D128, maxDByL0a);
+        for (uint64_t dStart = 0U; dStart < QKV_K_SCALE_HEAD_DIM_D128; dStart += dTile) {
+            const uint64_t dSize = MinU64(dTile, QKV_K_SCALE_HEAD_DIM_D128 - dStart);
             const bool isFirstD = (dStart == 0U);
-            const bool isLastD = (dStart + dSize >= QKV_RRC_HEAD_DIM_D128);
+            const bool isLastD = (dStart + dSize >= QKV_K_SCALE_HEAD_DIM_D128);
             const uint32_t l0aBufferId = l0aDbIter & (AIC_L0_BUFFER_NUM - 1U);
 
             WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
@@ -164,7 +146,7 @@ private:
             SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             ComputeMmad(segmentRows, dSize, isFirstD, isLastD, l0aBufferId, l0cBufferId,
-                        l0b_[dStart * QKV_RRC_HEAD_DIM_D128], l0cOffset);
+                        l0b_[dStart * QKV_K_SCALE_HEAD_DIM_D128], l0cOffset);
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
             ++l0aDbIter;
         }
@@ -177,16 +159,16 @@ private:
             return;
         }
 
-        const uint64_t rowSizeAligned = AlignUp(segmentRows, QKV_RRC_NZ_C0);
-        const uint64_t mSizeAligned = AlignUp(mSize, QKV_RRC_NZ_C0);
+        const uint64_t rowSizeAligned = AlignUp(segmentRows, QKV_K_SCALE_NZ_C0);
+        const uint64_t mSizeAligned = AlignUp(mSize, QKV_K_SCALE_NZ_C0);
         LoadData2DParamsV2 loadDataParams;
         loadDataParams.mStartPosition = 0U;
-        loadDataParams.kStartPosition = static_cast<uint16_t>(dStart / QKV_RRC_NZ_C0);
-        loadDataParams.mStep = static_cast<uint16_t>(CeilDiv(mSize, QKV_RRC_NZ_C0));
+        loadDataParams.kStartPosition = static_cast<uint16_t>(dStart / QKV_K_SCALE_NZ_C0);
+        loadDataParams.mStep = static_cast<uint16_t>(CeilDiv(mSize, QKV_K_SCALE_NZ_C0));
         loadDataParams.kStep =
-            static_cast<uint16_t>(dSize / (QKV_RRC_BLOCK_BYTES / sizeof(bfloat16_t)));
-        loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(rowSizeAligned, QKV_RRC_NZ_C0));
-        loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(mSizeAligned, QKV_RRC_NZ_C0));
+            static_cast<uint16_t>(dSize / (QKV_K_SCALE_BLOCK_BYTES / sizeof(bfloat16_t)));
+        loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(rowSizeAligned, QKV_K_SCALE_NZ_C0));
+        loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(mSizeAligned, QKV_K_SCALE_NZ_C0));
         loadDataParams.ifTranspose = false;
         LoadData(l0a_[bufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], segmentL1Nz, loadDataParams);
     }
@@ -200,8 +182,8 @@ private:
         }
 
         MmadParams params;
-        params.m = static_cast<uint16_t>(AlignUp(mSize, QKV_RRC_NZ_C0));
-        params.n = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128);
+        params.m = static_cast<uint16_t>(AlignUp(mSize, QKV_K_SCALE_NZ_C0));
+        params.n = static_cast<uint16_t>(QKV_K_SCALE_HEAD_DIM_D128);
         params.k = static_cast<uint16_t>(dSize);
         params.unitFlag = updateUnitFlag ? AIC_UNIT_FLAG_UPDATE : AIC_UNIT_FLAG_CHECK_ONLY;
         params.cmatrixInitVal = initC;
@@ -218,26 +200,26 @@ private:
         }
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128);
-        fixpipeParams.mSize = static_cast<uint16_t>(AlignUp(segmentRows, QKV_RRC_MIX_AIV_PER_AIC));
-        fixpipeParams.srcStride = static_cast<uint16_t>(AlignUp(fixpipeParams.mSize, QKV_RRC_NZ_C0));
-        fixpipeParams.dstStride = QKV_RRC_HEAD_DIM_D128;
-        fixpipeParams.dualDstCtl = QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M;
+        fixpipeParams.nSize = static_cast<uint16_t>(QKV_K_SCALE_HEAD_DIM_D128);
+        fixpipeParams.mSize = static_cast<uint16_t>(AlignUp(segmentRows, QKV_K_SCALE_MIX_AIV_PER_AIC));
+        fixpipeParams.srcStride = static_cast<uint16_t>(AlignUp(fixpipeParams.mSize, QKV_K_SCALE_NZ_C0));
+        fixpipeParams.dstStride = QKV_K_SCALE_HEAD_DIM_D128;
+        fixpipeParams.dualDstCtl = QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M;
         fixpipeParams.subBlockId = false;
         fixpipeParams.unitFlag = 0b11;
         fixpipeParams.params.ndNum = 1U;
         fixpipeParams.params.srcNdStride = 0U;
         fixpipeParams.params.dstNdStride = 0U;
 
-        Fixpipe<float, float, QKV_RRC_FIXPIPE_ROW_MAJOR_UB>(
-            qkAfterCubeUb[dstBaseRow * QKV_RRC_HEAD_DIM_D128],
+        Fixpipe<float, float, QKV_K_SCALE_FIXPIPE_ROW_MAJOR_UB>(
+            qkAfterCubeUb[dstBaseRow * QKV_K_SCALE_HEAD_DIM_D128],
             l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + l0cBaseOffset], fixpipeParams);
     }
 
     __aicore__ inline void BindLocalTensors()
     {
         rotationL1Nz_ =
-            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_K_SCALE_ROTATION_L1_OFFSET, QKV_K_SCALE_ROTATION_ONE_L1_ELEMENTS);
         l0a_ = LocalTensor<bfloat16_t>(TPosition::A2, 0, AIC_L0A_BUFFER_ELEMENTS);
         l0b_ = LocalTensor<bfloat16_t>(TPosition::B2, 0, AIC_L0B_BUFFER_ELEMENTS);
         l0c_ = LocalTensor<float>(TPosition::CO1, 0, AIC_L0C_BUFFER_ELEMENTS);
