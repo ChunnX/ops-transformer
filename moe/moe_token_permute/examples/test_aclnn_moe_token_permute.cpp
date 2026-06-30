@@ -9,7 +9,7 @@
  */
 
 #include "acl/acl.h"
-#include "aclnnop/aclnn_moe_token_permute.h"
+#include "aclnnop/aclnn_moe_token_permute_v2.h"
 #include <iostream>
 #include <vector>
 
@@ -44,12 +44,15 @@ template <typename T>
 int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
     auto size = GetShapeSize(shape) * sizeof(T);
-    // 调用aclrtMalloc申请device侧内存
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    *deviceAddr = nullptr;
+    if (size > 0) {
+        // 调用aclrtMalloc申请device侧内存
+        auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+        // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
+        ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    }
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
@@ -73,46 +76,56 @@ int main() {
     std::vector<int64_t> idxShape = {3, 2};
     std::vector<int64_t> expandedXOutShape = {6, 4};
     std::vector<int64_t> idxOutShape = {6};
+    std::vector<int64_t> expandedScaleOutShape = {0};
     void* xDeviceAddr = nullptr;
     void* indicesDeviceAddr = nullptr;
     void* expandedXOutDeviceAddr = nullptr;
     void* sortedIndicesOutDeviceAddr = nullptr;
+    void* expandedScaleOutDeviceAddr = nullptr;
     aclTensor* x = nullptr;
     aclTensor* indices = nullptr;
     int64_t numTokenOut = 0;
     bool padMode = false;
+    int64_t quantMode = -1;
 
     aclTensor* expandedXOut = nullptr;
     aclTensor* sortedIndicesOut = nullptr;
+    aclTensor* expandedScaleOut = nullptr;
     std::vector<float> xHostData = {0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 0.3, 0.3};
     std::vector<int> indicesHostData = {1, 2, 0, 1, 0, 2};
     std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> sortedIndicesOutHostData = {0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedScaleOutHostData = {};
     // 创建self aclTensor
-    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(indicesHostData, idxShape, &indicesDeviceAddr, aclDataType::ACL_INT32, &indices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_BF16, &expandedXOut);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sortedIndicesOutHostData, idxOutShape, &sortedIndicesOutDeviceAddr, aclDataType::ACL_INT32, &sortedIndicesOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expandedScaleOutHostData, expandedScaleOutShape, &expandedScaleOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &expandedScaleOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    // 调用aclnnMoeTokenPermute第一段接口
-    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut, sortedIndicesOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    // 调用aclnnMoeTokenPermuteV2第一段接口
+    ret = aclnnMoeTokenPermuteV2GetWorkspaceSize(x, indices, numTokenOut, padMode, quantMode, expandedXOut,
+                                               sortedIndicesOut, expandedScaleOut, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-    // 调用aclnnMoeTokenPermute第二段接口
-    ret = aclnnMoeTokenPermute(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermute failed. ERROR: %d\n", ret); return ret);
+    // 调用aclnnMoeTokenPermuteV2第二段接口
+    ret = aclnnMoeTokenPermuteV2(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteV2 failed. ERROR: %d\n", ret); return ret);
     // 4. 固定写法，同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
@@ -138,12 +151,16 @@ int main() {
     aclDestroyTensor(indices);
     aclDestroyTensor(expandedXOut);
     aclDestroyTensor(sortedIndicesOut);
+    aclDestroyTensor(expandedScaleOut);
 
     // 7. 释放device资源，需要根据具体API的接口定义修改
     aclrtFree(xDeviceAddr);
     aclrtFree(indicesDeviceAddr);
     aclrtFree(expandedXOutDeviceAddr);
     aclrtFree(sortedIndicesOutDeviceAddr);
+    if (expandedScaleOutDeviceAddr != nullptr) {
+        aclrtFree(expandedScaleOutDeviceAddr);
+    }
     if (workspaceSize > 0) {
       aclrtFree(workspaceAddr);
     }
