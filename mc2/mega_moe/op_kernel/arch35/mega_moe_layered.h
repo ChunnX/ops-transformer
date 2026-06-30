@@ -96,7 +96,8 @@ private:
     __aicore__ inline void ProcessCombine(GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx);
     __aicore__ inline bool PartitionCombineRanks(CombineRankCtx &ctx);
     __aicore__ inline void InitCombineRankInfo(CombineRankCtx &ctx, ExpertLoopState &gmm2State, uint32_t expertIdx);
-    __aicore__ inline void PollAndProcessCombineGroups(CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
+    __aicore__ inline void PollAndProcessCombineGroups(CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo,
+        uint32_t expertIdx);
     __aicore__ inline void ProcessCombineGroupBatch(CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo,
         uint32_t expertIdx, uint32_t currentRow, uint32_t batchCount, uint32_t rankIndex, uint32_t processedCnt);
     __aicore__ inline void DrainCombineUrmaChannels(CombineRankCtx &ctx);
@@ -182,7 +183,6 @@ private:
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     int64_t dispatchWinOffset_ = 0;
-
 
     static constexpr uint32_t ELEMS_PER_BYTE = (QuantMode == E2M1_QUANT) ? 2 : 1;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 2;
@@ -302,7 +302,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         static_cast<uint32_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
     sendWorkspaceServerBytes_ = static_cast<uint32_t>(ALIGN_32) + m_ * sendWorkspaceRecordBytes_;
-    
 }
 
 // =================================================================================================
@@ -531,7 +530,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
     int32_t iter = 0;
     GlobalTensor<uint8_t> dstGlobalTensor;
     for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        for(uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
+        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
             int32_t curExpertId = curRankId * expertPerRank_ + expertIdIndex;
             TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
             LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
@@ -547,8 +546,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
             maskBufI32.SetValue(countWordIdx, static_cast<int32_t>(sendCnt));  // 写入槽内 count
             SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>(); // count 对 MTE3 可见(V 已被 V_S 排空)
 
-            uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) + 
-                                 static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
+            uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
+                static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
             uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
                 static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
                 static_cast<uint64_t>(maskSlotSize_);
@@ -1123,7 +1122,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::TripleInf
 // =====================================================================================================
 template <TemplateMegaMoeLayeredTypeClass>
 template <AddrUpdateMode Mode>
-__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx)
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGroupParams(ExpertLoopState &state,
+    uint32_t expertIdx)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1299,7 +1299,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitCombi
     // rank 0..startRankId-1 的 cumsum (本核处理范围之前的行偏移)
     uint32_t cumsumBeforeRange = 0;
     for (uint32_t r = 0; r < ctx.startRankId; r++) {
-        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase +
+            r * maskSlotSize_ + maskAlignSize_);
         cumsumBeforeRange += AscendC::ReadGmByPassDCache(cntAddr);
     }
     // UB 布局: [startRow | tokenCnt | processedCnt], 跨 Phase 1/2 持续读写
@@ -1312,7 +1313,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitCombi
     ctx.totalTokensToProcess = 0;
     for (uint32_t i = 0; i < ctx.processRankNum; i++) {
         uint32_t r = ctx.startRankId + i;
-        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase +
+            r * maskSlotSize_ + maskAlignSize_);
         int32_t cnt = AscendC::ReadGmByPassDCache(cntAddr);
         ctx.rankInfoTensor.SetValue(i, cumsumBeforeRange + cumsumInRange);               // startRow
         ctx.rankInfoTensor.SetValue(ctx.processRankNum + i, cnt);                       // tokenCnt
@@ -1363,7 +1365,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PollAndPr
         uint32_t targetGroup = currentRow / L1_TILE_M_256;
         // 检查该 row group 是否完成 (非阻塞, 未完成则跳到下一个 rank)
         uint32_t groupCoreStart, groupCoreSize;
-        MegaMoeImpl::ComputeGroupRange(targetGroup, ctx.rowGroupsThisExpert, blockAivNum_, groupCoreStart, groupCoreSize);
+        MegaMoeImpl::ComputeGroupRange(targetGroup, ctx.rowGroupsThisExpert,
+            blockAivNum_, groupCoreStart, groupCoreSize);
         __gm__ int32_t* counterAddr = (__gm__ int32_t*)ctx.rowGroupComplete.GetPhyAddr()
             + expertIdx * maxRowGroupsStride_ + targetGroup * blockAivNum_ * INT_CACHELINE
             + groupCoreStart * INT_CACHELINE;
@@ -1571,7 +1574,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
             continue;
         }
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
-        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
+        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr,
+            (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }
@@ -1582,7 +1586,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 {
-    //1.本卡数据处理
+    // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendMaskBuffInit();
@@ -1658,7 +1662,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
         
         MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleOutType, QuantScaleOutType,false,true>(
+            QuantScaleOutType, QuantScaleOutType, false, true>(
             params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_,
             vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx);
         

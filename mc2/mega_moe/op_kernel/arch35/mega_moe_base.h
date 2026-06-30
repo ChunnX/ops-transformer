@@ -27,7 +27,7 @@ struct Mc2MoeContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer[1024] = {};
-    ChannelHandle hcommHandle[1024] = {};   //ROCE或者URMA通信所需句柄
+    ChannelHandle hcommHandle[1024] = {};   // ROCE或者URMA通信所需句柄
 };
 
 struct GMMAddrInfo {
@@ -75,7 +75,8 @@ struct PeermemInfo {
         combineSendPtr = base + offset;
     }
 
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte, uint32_t serverNum)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte,
+        uint32_t serverNum)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -99,7 +100,8 @@ struct PeermemInfo {
             static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
         uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32)) + ALIGN_32;
-        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t) * serverNum), (int64_t)ALIGN_512);
+        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t) * serverNum),
+            (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
     }
 };

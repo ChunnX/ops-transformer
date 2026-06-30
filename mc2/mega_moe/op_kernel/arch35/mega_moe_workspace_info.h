@@ -121,7 +121,7 @@ struct WorkspaceInfo {
     GM_ADDR dispatchDonePtr; // dispatch done
     GM_ADDR dispatchL2CommPtr; // dispatch l2 communication workspace
     GM_ADDR combineCommPtr; // combine communication workspace
-    GM_ADDR combineSendNotifyPtr; // combine send notify    
+    GM_ADDR combineSendNotifyPtr; // combine send notify
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -295,22 +295,21 @@ struct WorkspaceInfo {
         
         dispatchCursorPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
- 	             static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+ 	        static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
         
         dispatchDonePtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
- 	             static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+ 	        static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
         
         dispatchL2CommPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
- 	             static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
- 	             static_cast<int64_t>(ALIGN_512)); //TODO:
+ 	        static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes), static_cast<int64_t>(ALIGN_512)); //TODO:
         
         combineCommPtr = base + workspaceSize;
         // 每个 rank 的 workspace 大小: bs * expertPerRank 个 token, 每个 token 含数据+三元组(32B)
         int64_t maxDataLength = Ops::Base::CeilAlign(ALIGN_256 * SIZE_BF_16, ALIGN_32);
-        int64_t maxDataSize = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)ALIGN_256) * (ALIGN_32 + maxDataLength) * 
-                                                tilingData->bs * tilingData->expertPerRank * tilingData->epWorldSize;
+        int64_t maxDataSize = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)ALIGN_256) *
+            (ALIGN_32 + maxDataLength) * tilingData->bs * tilingData->expertPerRank * tilingData->epWorldSize;
         workspaceSize += maxDataSize;
         combineSendNotifyPtr = base + workspaceSize;
     }
