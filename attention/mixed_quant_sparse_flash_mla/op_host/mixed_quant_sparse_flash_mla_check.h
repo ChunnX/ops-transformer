@@ -77,8 +77,8 @@ enum class QSMLAAxis : uint32_t {
 
 enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
-    CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2
+    HCA_TEMPLATE_MODE = 1,
+    CSA_TEMPLATE_MODE = 2
 };
 
 enum class KvStorageMode : uint32_t {
@@ -480,8 +480,8 @@ private:
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
         const QSMLALayout &layout, const std::string &name) const;
     ge::graphStatus CheckSWAExistence();
-    ge::graphStatus CheckCFAExistence();
-    ge::graphStatus CheckSCFAExistence();
+    ge::graphStatus CheckHCAExistence();
+    ge::graphStatus CheckCSAExistence();
     ge::graphStatus CheckUnrequiredParaExistence() const;
 
     ge::graphStatus CheckKVShapeForBatchContinuous();

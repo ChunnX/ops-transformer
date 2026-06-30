@@ -599,9 +599,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
             return ge::GRAPH_FAILED);
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
     } else {
-        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);

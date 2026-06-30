@@ -132,11 +132,6 @@ private:
                                                  LocalTensor<uint8_t> &rmsNormShareTmpUb,
                                                  LocalTensor<float> &dequantScaleXLocal, RmsNormParam rmsNormParams,
                                                  CkvkrParams rmsNormAndScatterCkvParams);
-    __aicore__ inline void RmsNormAndQuantizeCkvMxfp8(LocalTensor<kvCacheType> &outputLocal,
-                                                      LocalTensor<uint8_t> &rmsNormShareTmpUb,
-                                                      LocalTensor<float> &dequantScaleXLocal,
-                                                      RmsNormParam rmsNormParams,
-                                                      CkvkrParams rmsNormAndScatterCkvParams);
     __aicore__ inline void ScatterCkv(LocalTensor<kvCacheType> &outputLocal, CkvkrParams rmsNormAndScatterCkvParams);
     __aicore__ inline void RmsNormRopeScatterCkvKr(int64_t tokenIndex, int64_t rmsNormCkvOffset, int64_t ropeKrOffset,
                                                    int64_t curVecToken);
@@ -335,8 +330,7 @@ MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_
     }
     if (baseParams_->queryNormFlag == 1U) {
         rmsNormCqResGm_.SetGlobalBuffer((__gm__ mmQcQrInputType *)queryNormOut);
-        if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
-                      std::is_same<mmQcQrInputType, HIF8>::value) {
+        if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
             dequantScaleQNormGm_.SetGlobalBuffer((__gm__ dequantScaleQNormType *)dequantScaleQNormOut);
         }
     }
@@ -352,8 +346,7 @@ MlaPrologV3SplitM<MLAPT>::ScaleInit(__gm__ uint8_t *dequantScaleX, __gm__ uint8_
                                     __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
                                     __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *kNopeClipAlpha)
 {
-    if constexpr (std::is_same<mmInputType, int8_t>::value || std::is_same<mmInputType, FP8E4M3>::value ||
-                  std::is_same<mmInputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<mmInputType, dequantScaleType, false>()) {
         dequantScaleXGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleX);
         dequantScaleWDqGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleWDq);
         dequantScaleWDkvkrGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleWDkvkr);
@@ -488,9 +481,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::VectorBufferInit()
         quantScaleCkrLocal_ = quantScaleCkrBuffer_.Get<float>();
     }
 
-    if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                  std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
-                  std::is_same<rmsNormCkvOutputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>()) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                       (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
             pipe_->InitBuffer(quantScaleCkvBuffer_, ALIGN_BLOCK_SIZE);
@@ -622,8 +613,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::WorkspaceInit(__gm__ uint8_t *w
                        baseParams_->mm2BlockNum * sizeof(mmCkvKrOutputType);
 
     mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + workspaceOffset)); // aicOffset.qcQrResOffset
-    if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
-                  std::is_same<mmQcQrInputType, HIF8>::value) {
+    
+    if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
                            static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
                            baseParams_->mm3BlockNum * sizeof(mmQcQrOutputType);
@@ -1104,10 +1095,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyGlobalParams()
     DataCopy(rmsnormGammaCkvLocal_, rmsnormGammaCkvGm_, baseParams_->headSizeCkv);
 
     // quantScaleCkv
-    if constexpr ((std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                   std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
-                   std::is_same<rmsNormCkvOutputType, HIF8>::value) &&
-                  !isPertile) {
+    
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>() && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                       (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
             DataCopyExtParams quantCopyParams{1, sizeof(float), 0, 0, 0};
@@ -1171,9 +1160,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
                                       baseParams_->qcQrScale,
                                       baseParams_->isQcQrScaleEnable};
 
-        if constexpr (std::is_same<rmsNormCqOutputType, int8_t>::value ||
-                      std::is_same<rmsNormCqOutputType, FP8E4M3>::value ||
-                      std::is_same<rmsNormCqOutputType, HIF8>::value) {
+                                      
+        if constexpr (IsFullQuantMode<rmsNormCqOutputType, dequantScaleType, false>()) {
             RmsNormDynamicQuant<mmCqOutputType, rmsNormGammaType, float, rmsNormComputType, rmsNormCqOutputType,
                                 dequantScaleType>(outputLocal, dequantScaleQcQr[scaleOffset],
                                                   mmCqResGm_[rmsNormCqOffset], rmsnormGammaCqLocal_,
@@ -1299,14 +1287,9 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
         baseParams_->isKcScaleEnable,      // isScaleEnable
     };
 
-    if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                  (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && !isFp8E8m0) ||
-                  std::is_same<rmsNormCkvOutputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>()) {
         RmsNormAndQuantizeCkv(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal, rmsNormParams,
                               rmsNormAndScatterCkvParams);
-    } else if constexpr (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && isFp8E8m0) {
-        RmsNormAndQuantizeCkvMxfp8(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal, rmsNormParams,
-                                   rmsNormAndScatterCkvParams);
     } else {
         RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, rmsNormCkvOutputType, dequantScaleType>(
             outputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
@@ -1340,10 +1323,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
         dequantScaleXLocal, sharedBuf, rmsNormParams);
 
-    AscendC::DataSyncBarrier<MemDsbT::UB>();
-    float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
+    DataSyncBarrier<MemDsbT::UB>();
 
     if constexpr (isPertile) {
+        float kNopeClipAlpha = isFp8E8m0 ? 1.0f : kNopeClipAlphaGm_.GetValue(0);
         PerTileQuantParams perTileQuantParams = {
             static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
             static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
@@ -1356,63 +1339,20 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         } else {
             QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
         }
-        AscendC::PipeBarrier<PIPE_V>();
-    } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                         std::is_same<mmCkvKrOutputType, float>::value) {
-        Rectangle rectangleParams{
-            static_cast<uint32_t>(vectorRow_),               // row
-            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
-            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
-        };
-        QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
     } else {
         Rectangle rectangleParams{
             static_cast<uint32_t>(vectorRow_),               // row
             static_cast<uint32_t>(baseParams_->headSizeCkv), // col
             static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
-        QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
+        if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
+                         std::is_same<mmCkvKrOutputType, float>::value) {
+            QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
+        } else {
+            QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
+        }
     }
-}
-
-template <typename MLAPT>
-__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkvMxfp8(LocalTensor<kvCacheType> &outputLocal,
-                                                                            LocalTensor<uint8_t> &rmsNormShareTmpUb,
-                                                                            LocalTensor<float> &dequantScaleXLocal,
-                                                                            RmsNormParam rmsNormParams,
-                                                                            CkvkrParams rmsNormAndScatterCkvParams)
-{
-    LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
-    LocalTensor<uint8_t> sharedBuf =
-        inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
-    RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
-        inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
-        dequantScaleXLocal, sharedBuf, rmsNormParams);
-
-    AscendC::DataSyncBarrier<MemDsbT::UB>();
-
-    if constexpr (isPertile) {
-        float defaultAlpha = 1.0f;
-        PerTileQuantParams perTileQuantParams = {
-            static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
-            static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
-            defaultAlpha,                      // alpha，mxfp8不需要传入knopeclipalpha
-            static_cast<uint32_t>(vectorRow_), // row
-            baseParams_->headSizeCkv           // col
-        };
-        QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
-        Rectangle rectangleParams{
-            static_cast<uint32_t>(vectorRow_),               // row
-            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
-            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
-        };
-        QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename MLAPT>

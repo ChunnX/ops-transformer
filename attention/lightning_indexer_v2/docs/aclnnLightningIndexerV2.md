@@ -50,7 +50,7 @@ aclnnStatus aclnnLightningIndexerV2GetWorkspaceSize(
     char                *layoutK,
     int64_t              maskMode,
     int64_t              cmpRatio,
-    bool                 returnValue,
+    int64_t              returnValue,
     const aclTensor     *sparseIndices,
     const aclTensor     *sparseValues,
     uint64_t            *workspaceSize,
@@ -264,7 +264,7 @@ aclnnStatus aclnnLightningIndexerV2(
   <td>-</td>
   </tr>
   <tr>
-  <td>returnValue（bool）</td>
+  <td>returnValue（int64_t）</td>
   <td>输入</td>
   <td>代表是否需要返回Indices对应的Values值。</td>
   <td><ul><li>0代表不返回，1代表返回值。</li><li>建议值是0。</li></ul></td>

@@ -50,7 +50,7 @@ cann_ops_transformer.causal_conv1d_fn(
 |--------|----------|-----------|------|----------|-------------|
 | x | Tensor | 必选 | 输入序列。 | float16、bfloat16 | [batch, seq_len, dim]（固定batch）或 [cu_seq_len, dim]（变长） |
 | weight | Tensor | 必选 | 卷积权重。 | 同x | [kW, dim]，kW∈{2, 3, 4} |
-| bias | Tensor | 必选 | 卷积偏置。 | 同x | [dim] |
+| bias | Tensor | 必选 | 卷积偏置，None 表示不使用。 | 同x | [dim] |
 | conv_states | Tensor | 必选 | 卷积状态缓存，计算后原地更新。 | 同x | [num_cache_lines, state_len, dim]，state_len ≥ kW-1 |
 | query_start_loc | Tensor | 必选 | 变长序列起始位置索引。变长场景必须提供，固定batch场景可传空Tensor。 | int32 | [batch+1] |
 | cache_indices | Tensor | 可选 | 缓存索引，指定每个序列对应的缓存状态在conv_states中的索引。默认None使用恒等映射。 | int32 | [batch] |
