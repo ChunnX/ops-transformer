@@ -18,10 +18,8 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
-
-void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
-                                const aclTensor *&placeHolder)
+void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+                                          const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (returnSoftmaxLse == false) {
         std::vector<int64_t> shape = {0};
@@ -34,7 +32,6 @@ void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTen
     }
 }
 
-// sinks shape为{0}时置nullptr
 void MixQuantFlashAttnProcessSinks(const aclTensor *&sinksOptional)
 {
     if (sinksOptional != nullptr) {
@@ -45,8 +42,6 @@ void MixQuantFlashAttnProcessSinks(const aclTensor *&sinksOptional)
         }
     }
 }
-
-} // namespace
 
 #ifdef __cplusplus
 }

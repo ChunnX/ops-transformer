@@ -83,11 +83,6 @@ static constexpr uint32_t MQFA_CV_RATIO = 2;
 static constexpr uint32_t MQFA_BYTE_BLOCK = 32;
 static constexpr uint32_t MQFA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
-__aicore__ constexpr uint64_t Align64Func(uint64_t data)
-{
-    return (data + 63) >> 6 << 6;
-}
-
 struct MixedQuantCommonConstInfo {
     uint32_t bSize;
     uint64_t t1Size;
