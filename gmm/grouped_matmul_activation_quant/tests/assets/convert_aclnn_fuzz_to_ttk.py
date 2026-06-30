@@ -5,7 +5,7 @@ Convert GroupedMatmulActivationQuant aclnn_fuzz cases to TTK csv cases.
 
 Example:
     python gmm/grouped_matmul_activation_quant/tests/assets/convert_aclnn_fuzz_to_ttk.py \
-        menkan.xlsx -o group_matmul_activation_quant_mxfp8_aclnn_converted.csv
+        menkan.xslx --sheet net -o net_ttk.csv
 """
 
 import argparse
@@ -50,6 +50,9 @@ TTK_COLUMNS = [
 
 OP_NAME = "grouped_matmul_activation_quant"
 ACLNN_NAME = "aclnnGroupedMatmulActivationQuantWeightNz"
+DEFAULT_INPUT_FILE = Path("menkan.xslx")
+DEFAULT_OUTPUT_FILE = Path("net_ttk.csv")
+DEFAULT_SHEET_NAME = "net"
 INPUT_NUM = 6
 OUTPUT_NUM = 2
 DEFAULT_PRECISION_TOLERANCES = ((0.01, 0.01), (0.01, 0.01))
@@ -156,7 +159,7 @@ def read_csv_rows(path):
 
 def read_rows(path, sheet_name=None):
     suffix = path.suffix.lower()
-    if suffix in (".xlsx", ".xlsm"):
+    if suffix in (".xlsx", ".xlsm", ".xslx"):
         yield from read_xlsx_rows(path, sheet_name)
     elif suffix == ".csv":
         yield from read_csv_rows(path)
@@ -348,15 +351,21 @@ def convert_file(input_path, output_path, sheet_name=None, limit=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Convert GMMAQ aclnn_fuzz xlsx/csv cases to TTK csv format.")
-    parser.add_argument("input", type=Path, help="Input aclnn_fuzz .xlsx/.xlsm/.csv file, for example menkan.xlsx.")
+    parser.add_argument(
+        "input",
+        type=Path,
+        nargs="?",
+        default=DEFAULT_INPUT_FILE,
+        help="Input aclnn_fuzz .xlsx/.xlsm/.csv file. Defaults to menkan.xslx.",
+    )
     parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        default=Path("group_matmul_activation_quant_mxfp8_aclnn_converted.csv"),
+        default=DEFAULT_OUTPUT_FILE,
         help="Output TTK csv path.",
     )
-    parser.add_argument("--sheet", default=None, help="Worksheet name for .xlsx/.xlsm input. Defaults to active sheet.")
+    parser.add_argument("--sheet", default=DEFAULT_SHEET_NAME, help="Worksheet name for .xlsx/.xlsm input.")
     parser.add_argument("--limit", type=int, default=None, help="Convert at most N cases, useful for smoke tests.")
     args = parser.parse_args()
 
