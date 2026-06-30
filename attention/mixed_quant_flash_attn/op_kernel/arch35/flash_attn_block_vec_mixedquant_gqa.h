@@ -230,6 +230,11 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
+
+    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
+    {
+        // TODO: 待后续填充实现（零序列长度时清零输出）
+    }
 };
 
 } // namespace BaseApi

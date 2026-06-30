@@ -23,11 +23,14 @@
 #include "../utils/mixed_quant_flash_attn_common_def.h"
 
 #include "../../../common/op_kernel/const_def.h"
+#include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/arch35/fia_public_define_arch35.h"
 #include "../../../common/op_kernel/buffer_manager.h"
 #include "../../../common/op_kernel/buffers_policy.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "../../../common/op_kernel/vector_common.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -41,6 +44,16 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
 using namespace fa_base_matmul;
+
+template <inferFaLayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr UbFormat GetOutUbFormatMQ()
+{
+    if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BSND || LAYOUT == inferFaLayOutTypeEnum::LAYOUT_TND) {
+        return UbFormat::S1G;
+    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
+        return UbFormat::GS1;
+    }
+}
 
 namespace BaseApi {
 
@@ -83,7 +96,8 @@ public:
     static constexpr uint32_t PRELOAD_N = 2;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1, "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 2,
+                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 2 for 3-stage pipeline");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
@@ -385,8 +399,384 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum) {
             return;
         }
+
         GetFASectionInfo(sectionIdx);
-        // TODO: 待后续填充实现（任务调度 + Cube/Vec计算循环）
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+
+        createdTaskCount = 0;
+        uint32_t executedTaskCount = 0;
+        mloop = 0;
+        accGS1Loops = 0;
+        headS2Split = false;
+        tailS2Split = false;
+
+        uint32_t bN2Cur = bN2Start_;
+        uint32_t gS1Cur = gS1OStart_;
+        uint32_t s2Cur = s2OStart_;
+        prevBN2Idx = bN2Cur;
+        prevGS1Idx = gS1Cur;
+
+        bool shouldDispatchTask = true;
+        uint32_t validTaskCount = 0;
+        while (shouldDispatchTask || validTaskCount) {
+            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
+            if (shouldDispatchTask) {
+                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
+                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    createdTaskCount++;
+                    validTaskCount++;
+                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                    if ASCEND_IS_AIV {
+                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                    }
+                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                    continue;
+                } else {
+                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                    continue;
+                }
+            }
+            if (validTaskCount) {
+                ExecuteTask(executedTaskCount, taskRunInfo);
+                executedTaskCount++;
+                if (executedTaskCount > PRELOAD_N + 1) {
+                    validTaskCount--;
+                }
+            }
+        }
+    }
+
+    __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+    {
+        return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
+    }
+
+    __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+    {
+        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+        uint32_t bIdx = bN2Cur / constInfo.n2Size;
+        if (isFirstTask || prevBIdx != bIdx) {
+            prevBIdx = bIdx;
+            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
+                actSeqLensKv = SeqLenFromTensorListMQ(keyPtr, bIdx);
+            } else {
+                if constexpr (LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND) {
+                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
+                } else {
+                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
+                }
+            }
+            if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
+                actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
+            } else {
+                actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
+            }
+        }
+        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+            if (gS1Cur == 0 && s2Cur == 0) {
+                return TASK_DEAL_MODE::DEAL_ZERO;
+            }
+            return TASK_DEAL_MODE::SKIP_ZERO;
+        }
+        if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
+            if constexpr (!HAS_MASK) {
+                CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
+            } else {
+                CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+            }
+            prevBN2Idx = bN2Cur;
+            prevGS1Idx = gS1Cur;
+        }
+
+        if (curS2Start < curS2End && s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
+        }
+
+        if (s2Cur < curS2Start || s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::SKIP;
+        }
+
+        if (s2Cur == curS2Start) {
+            mloop++;
+        }
+
+        return TASK_DEAL_MODE::CREATE_TASK;
+    }
+
+    __aicore__ inline uint64_t SeqLenFromTensorListMQ(__gm__ uint8_t *keyPtr, uint32_t bIndex)
+    {
+        uint64_t dimInfo[4];
+        AscendC::TensorDesc<__gm__ uint8_t> keyTensorDesc;
+        ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+        keyTensorDesc.SetShapeAddr(&dimInfo[0]);
+        keyListTensorDesc.GetDesc(keyTensorDesc, bIndex);
+        if constexpr (LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_BSND) {
+            return keyTensorDesc.GetShape(1);
+        } else {
+            return keyTensorDesc.GetShape(2);
+        }
+    }
+
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
+                                                 int64_t &nextTokenLeftUp)
+    {
+        preTokenLeftUp = constInfo.preTokens;
+        nextTokenLeftUp = constInfo.nextTokens;
+        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
+                                        constInfo.sparseMode);
+
+        if (constInfo.sparseMode == fa_base_vector::BAND) {
+            preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
+        }
+
+        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
+        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
+        }
+    }
+
+    __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+    {
+        curS2Start = 0U;
+        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
+
+        if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+            headS2Split = s2OStart_ != 0U;
+            curS2Start = s2OStart_;
+        }
+
+        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+            tailS2Split = s2OEnd_ != 0U;
+            curS2End = s2OEnd_;
+        }
+    }
+
+    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+    {
+        int64_t preTokenLeftUp = 0;
+        int64_t nextTokenLeftUp = 0;
+        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+
+        int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
+        int64_t s1GLastToken =
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+            1;
+        int64_t s1FirstToken = 0;
+        int64_t s1LastToken = 0;
+        if constexpr (GetOutUbFormatMQ<LAYOUT_Q>() == UbFormat::S1G) {
+            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
+            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+        } else {
+            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
+                s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ);
+                s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
+            } else {
+                s1FirstToken = 0;
+                s1LastToken = static_cast<int64_t>(actSeqLensQ);
+            }
+        }
+
+        uint32_t s2StartWithSparse = 0U;
+        uint32_t s2EndWithSparse = 0U;
+        int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
+        int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+            curS2Start = 0U;
+            curS2End = 0U;
+            return;
+        }
+        s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+        s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+
+        s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
+        s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
+
+        curS2Start = s2StartWithSparse;
+        curS2End = s2EndWithSparse;
+
+        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) {
+            headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
+        }
+        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) {
+            tailS2Split = s2OEnd_ > 0U ? true : false;
+            curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
+        }
+        return;
+    }
+
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    {
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+        RunInfoX &runInfoNegNMinus1 = taskRunInfo[(loop - PRELOAD_N - 1) & PRELOAD_TASK_CACHE_MASK];
+
+        if (runInfo0.isValid) {
+            if ASCEND_IS_AIV {
+                AntiquantKey(runInfo0);
+            } else {
+                ComputeMm1(runInfo0);
+            }
+        }
+
+        if (loop >= PRELOAD_N) {
+            if (runInfoNegN.isValid) {
+                if ASCEND_IS_AIV {
+                    ComputeVec1(runInfoNegN);
+                    AntiquantValue(runInfoNegN);
+                } else {
+                    ComputeMm2(runInfoNegN);
+                }
+            }
+        }
+
+        if (loop >= PRELOAD_N + 1) {
+            if (runInfoNegNMinus1.isValid) {
+                if ASCEND_IS_AIV {
+                    ComputeVec2(runInfoNegNMinus1);
+                }
+                runInfoNegNMinus1.isValid = false;
+            }
+        }
+    }
+
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void AntiquantValue(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    {
+        // TODO: 待后续填充实现
+    }
+
+    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
+                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    {
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];
+        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
+        runInfo.isValid = true;
+    }
+
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    {
+        info.loop = loop;
+        info.mloop = mloop;
+        info.bIdx = bN2Cur / constInfo.n2Size;
+        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.gS1Idx = gS1Cur * mBaseSize;
+        if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_BSND || LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
+            info.s1Idx = info.gS1Idx / constInfo.gSize;
+        } else {
+            info.s1Idx = info.gS1Idx % actSeqLensQ;
+        }
+        info.s2Idx = s2Cur * s2BaseSize;
+        info.actS1Size = actSeqLensQ;
+        info.actS2Size = actSeqLensKv;
+
+        info.actMSize = mBaseSize;
+        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
+            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+        }
+        info.actSingleLoopS2Size = s2BaseSize;
+        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
+            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        }
+        info.actSingleLoopS2SizeAlign =
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(MQFA_BYTE_BLOCK / sizeof(INPUT_T)));
+        if (constInfo.isKvContinuous) {
+            info.isChangeBatch = false;
+        } else {
+            if (loop == 0) {
+                info.isChangeBatch = true;
+            } else {
+                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+            }
+        }
+
+        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+
+        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        info.isS2SplitCore = false;
+        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+        info.isLastS2Loop = (s2Cur + 1 == curS2End);
+
+        info.actVecMSize = (info.actMSize + 1) >> 1;
+        info.vecMbaseIdx = 0;
+        if (constInfo.subBlockIdx == 1) {
+            info.vecMbaseIdx = info.actVecMSize;
+            info.actVecMSize = info.actMSize - info.actVecMSize;
+        }
+
+        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
+            info.isS2SplitCore = true;
+        } else {
+            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+                info.isS2SplitCore = true;
+            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+                info.isS2SplitCore = true;
+                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
+            }
+        }
+    }
+
+    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
+                                          uint32_t &s2Cur)
+    {
+        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+
+        if (s2Cur + 1 < s2LoopTimes) {
+            s2Cur++;
+            return;
+        }
+
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
+            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+            accGS1Loops++;
+        }
+
+        s2Cur = 0;
+        if (gS1Cur + 1 < gS1LoopTimes) {
+            gS1Cur++;
+            return;
+        }
+
+        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+            accGS1Loops++;
+        }
+
+        gS1Cur = 0;
+        bN2Cur++;
     }
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
