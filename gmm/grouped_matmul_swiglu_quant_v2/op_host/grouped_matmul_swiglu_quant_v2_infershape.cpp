@@ -31,12 +31,8 @@ const int64_t DIM_LEN = 2;
 const int64_t SPLIT_RATIO = 2;
 const int64_t OUT_DIM_LEN = 3;
 const int64_t N_SPLIT_RATIO = 128;
-<<<<<<< HEAD
-constexpr int64_t MX_WEIGHTSCALE_MULTI_DIM = 3;
-=======
 const int64_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
 const int64_t MX_SINGLE_WEIGHT_SCALE_DIM = 4;
->>>>>>> 单多单
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_DTYPE = 3UL;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_MODE = 2UL;
 constexpr size_t GMMSQ_INDEX_ATTR_TRANSPOSE_WEIGHT = 4UL;
@@ -65,21 +61,6 @@ bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
     return DavidSupportedInputDtypes.find(dtype) != DavidSupportedInputDtypes.end();
 }
 
-static bool IsMxA8W4MultiWeightScenario(gert::InferShapeContext *context, const gert::Shape *weightScaleShape,
-                                        const gert::RuntimeAttrs *attrs)
-{
-    const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
-    if (quantModePtr == nullptr || *quantModePtr != static_cast<int64_t>(QUANT_MODE_MX_TYPE)) {
-        return false;
-    }
-    if (weightScaleShape->GetDimNum() != MX_WEIGHTSCALE_MULTI_DIM) {
-        return false;
-    }
-    auto xDtype = context->GetDynamicInputDesc(X_INDEX, 0)->GetDataType();
-    auto weightDtype = context->GetDynamicInputDesc(WEIGHT_INDEX, 0)->GetDataType();
-    return xDtype == ge::DataType::DT_FLOAT8_E4M3FN && weightDtype == ge::DataType::DT_FLOAT4_E2M1;
-}
-
 static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeContext *context)
 {
     const gert::Shape *xShape = context->GetDynamicInputShape(X_INDEX, 0);
@@ -106,18 +87,7 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
 
     auto outScaleShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
-<<<<<<< HEAD
-    auto attrs = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    bool isMxA8W4MultiWeight = IsMxA8W4MultiWeightScenario(context, weightScaleShape, attrs);
-    if (nDimIndex == OUT_DIM_LEN || isMxA8W4MultiWeight) {
-        const bool *transposeWeightPtr = attrs->GetBool(WEIGHTSCALE_INDEX);
-        const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
-        nDimIndex = transposeWeight ? weightScaleShape->GetDimNum() - OUT_DIM_LEN :
-                                        weightScaleShape->GetDimNum() - DIM_LEN;
-=======
     if (*quantModePtr == QUANT_MODE_MX_TYPE) {
->>>>>>> 单多单
         int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
         int64_t n = 0;
         if (dimValue == DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE) {
