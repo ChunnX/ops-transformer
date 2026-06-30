@@ -208,9 +208,9 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
 
     CHECK_RET(MoeTokenPermuteCheck::CheckNotNull(tokens, indices, permuteTokensOut, sortedIndicesOut),
               ACLNN_ERR_PARAM_NULLPTR);
-    bool useMoeInitRoutingV3 = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950 &&
+    bool isRegbaseCalled = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950 &&
                                tokens->GetDataType() == DataType::DT_INT8;
-    if (useMoeInitRoutingV3) {
+    if (isRegbaseCalled) {
         CHECK_RET(MoeTokenPermuteCheck::CheckDtypeValidInt8Regbase(
             tokens, indices, permuteTokensOut, sortedIndicesOut),
             ACLNN_ERR_PARAM_INVALID);
