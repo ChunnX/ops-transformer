@@ -125,6 +125,7 @@ def causal_conv1d_update(
         num_accepted_tokens (Tensor, optional): 投机解码中每个 batch 已接受的 token 数，
             shape 为 [batch]，int32，仅 kW=4 支持，默认 None。
         query_start_loc (Tensor, optional): 变长序列起始位置索引，shape 为 [batch+1]，int32，默认 None。
+            提供时，batch 大小由 query_start_loc.size(0)-1 决定，而非由 x 的 shape 推导。
         max_query_len (int): 最大查询长度，-1 表示不限制，默认 -1。
         null_block_id (int): 无效缓存槽位标记 ID，conv_state_indices[i]==null_block_id 时跳过该序列，默认 0。
         block_idx_last_scheduled_token (Tensor, optional): 最后调度 token 块索引，shape 为 [batch]，int32，默认 None。
