@@ -1112,6 +1112,7 @@ __aicore__ inline void VFProcessCombFragRLessVLUseFourUnfoldGradout(const LocalT
         RegTensor<float> sum2;
         RegTensor<float> sum3;
         RegTensor<float> sum4;
+        RegTensor<float> sumOut;
         UnalignReg uMix;
         uint32_t sreg = dim2;
         MaskReg pregLoop = UpdateMask<float>(sreg);
@@ -1131,8 +1132,9 @@ __aicore__ inline void VFProcessCombFragRLessVLUseFourUnfoldGradout(const LocalT
                 Exp(mix, mix, pregLoop);
                 ReduceSum(sum, mix, pregLoop);
                 // store sumOut[0][j] j -> 1~dim1
+                Adds(sumOut, sum, eps, pregOne);
                 DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                    sumOutLocalAddr + i * dim2Align + j, sum, pregOne);
+                    sumOutLocalAddr + i * dim2Align + j, sumOut, pregOne);
                 Duplicate(sum, sum, pregLoop);
                 Div(mix, mix, sum, pregLoop);
                 Adds(mix, mix, eps, pregLoop);

@@ -86,4 +86,4 @@ $$
 
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_attention_update](./examples/test_aclnn_attention_update.cpp) | 通过[`aclnnAttentionUpdate`](./docs/aclnnAttentionUpdate.md)接口方式调用AttentionUpdate算子。 |
+| aclnn接口 | [test_aclnn_attention_update](./examples/test_aclnn_attention_update.cpp) | 通过[aclnnAttentionUpdate](./docs/aclnnAttentionUpdate.md)接口方式调用AttentionUpdate算子。 |

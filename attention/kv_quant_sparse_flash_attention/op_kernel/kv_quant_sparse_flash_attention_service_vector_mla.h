@@ -68,14 +68,14 @@ public:
     __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
     __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
                                         const RunInfo &runInfo);
-    __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
-                                    int64_t realS2Idx2, const RunInfo &runInfo);
-    __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                        uint64_t startId, uint64_t endId);
     __aicore__ inline void SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                      uint64_t startId, uint64_t endId);
+    __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
+                                    int64_t realS2Idx2, const RunInfo &runInfo);
+    __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
+                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
                                           int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
     // ================================Vector1==========================================
@@ -95,17 +95,19 @@ public:
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t mStartRow,
-                                            uint32_t mDealSize);
+    __aicore__ inline void ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo,
+                                            uint32_t mStartRow, uint32_t mDealSize);
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
     __aicore__ inline void Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                          uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+                                          uint32_t dealRowCount, uint32_t columnCount,
+                                          uint32_t actualColumnCount);
     __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                             uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+                                             uint32_t dealRowCount, uint32_t columnCount,
+                                             uint32_t actualColumnCount);
     __aicore__ inline uint64_t CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx);
     __aicore__ inline void GetConfusionTransposeTiling(int64_t numR, int64_t numC, const uint32_t stackBufferSize,
                                                        const uint32_t typeSize, ConfusionTransposeTiling &tiling);
@@ -519,10 +521,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
         return;
     }
     uint32_t qsfaMSplitSize = info.actualSingleProcessSInnerSize == 0 ?
-        16 : BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
+        16 : (BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign);
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
-    qsfaMSplitSize = qsfaMSplitSize / 8 * 8;
+    qsfaMSplitSize = qsfaMSplitSize >> 3U << 3U;
 
     if (qsfaMSplitSize > mSplitInfo.vecDealM) {
         qsfaMSplitSize = mSplitInfo.vecDealM;
@@ -534,8 +536,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = 1;
         dataCopyParams.blockLen = 256 * sizeof(int32_t);
-        dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
+        dataCopyParams.srcStride = 0;
         DataCopyPadExtParams<int32_t> padParams;
         // 额外偏移128个元素，避免不同loop下v0和v1互相影响
         DataCopyPad(v0ValidSizeUb_[128], kvValidSizeGm_[info.loop % MERGE_CACHE_GM_BUF_NUM * (128 * 2)],
@@ -601,7 +603,7 @@ QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, in
         return;
     }
     int64_t validS2Count =
-        (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
+        ((realS2Idx + constInfo.sparseBlockSize > s2IdLimit) ? (s2IdLimit - realS2Idx) : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams;
 
     intriParams.blockCount = validS2Count;
@@ -715,9 +717,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
         DataCopyParams params;
         params.blockCount = dealRow;
         params.blockLen = 1;
+        params.dstStride = 0;
         params.srcStride = (constInfo.headDim * sizeof(KV_T) + constInfo.headDimRope * sizeof(K_ROPE_T)) /
             ConstInfo::BUFFER_SIZE_BYTE_32B;
-        params.dstStride = 0;
         LocalTensor<T> tmpAntiQuantScale = antiQuantScale[ConstInfo::BUFFER_SIZE_BYTE_1K];
         DataCopy(tmpAntiQuantScale, oriQuantScaleTensor, params);
         PipeBarrier<PIPE_V>();
@@ -1029,8 +1031,8 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::Proce
     for (uint32_t qsfaI = 0; qsfaI < qsfaNBufferLoopTimes; qsfaI++) {
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = qsfaI;
-        mSplitInfo.nBufferStartM = qsfaI * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (qsfaI + 1 != qsfaNBufferLoopTimes) ? constInfo.nBufferMBaseSize : qsfaNBufferTail;
+        mSplitInfo.nBufferStartM = qsfaI * constInfo.nBufferMBaseSize;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
             (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
@@ -1091,8 +1093,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::GetConfusionTransposeTiling(
 template <typename QSFAT>
 __aicore__ inline void
 QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                            uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                            uint32_t actualColumnCount)
+                                            uint32_t wsMStart, uint32_t dealRowCount,
+                                            uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1101,16 +1103,15 @@ QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> 
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
     uint64_t offset = accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim + // taskoffset
-                      // 份数offset
-                      info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim +
-                      wsMStart * actualColumnCount; // m轴offset
+        info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim + // 份数offset
+        wsMStart * actualColumnCount; // m轴offset
     GlobalTensor<T> dst = accumOutGm[offset];
     if (info.actualSingleProcessSInnerSize == 0) {
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = dealRowCount;
         dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-        dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
+        dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
         DataCopyPad(dst, tmp, dataCopyParams);
     } else {
         matmul::InitOutput<T>(dst, dealRowCount * actualColumnCount, ConstInfo::FLOAT_ZERO);
@@ -1156,17 +1157,16 @@ QSFAVectorService<QSFAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T>
 template <typename QSFAT>
 __aicore__ inline void
 QSFAVectorService<QSFAT>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                         uint32_t dealRowCount, uint32_t columnCount,
-                                         uint32_t actualColumnCount)
+                                         uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    if constexpr (FLASH_DECODE) {
+    if constexpr (!FLASH_DECODE) {
+        Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+    } else {
         if (info.tndIsS2SplitCore) {
             Bmm2FDDataCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         } else {
             Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         }
-    } else {
-        Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
     }
 }
 

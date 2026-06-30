@@ -857,33 +857,28 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 {
     int64_t tokenXOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeX);
     int64_t dequantScaleXOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeX) / 32;
+    GlobalTensor<dequantScaleType> scaleAGm{};
+    GlobalTensor<dequantScaleType> scaleBGmDq{};
+    GlobalTensor<dequantScaleType> scaleBGmDkvKr{};
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+        scaleAGm = dequantScaleXGm_[dequantScaleXOffset];
+        scaleBGmDq = dequantScaleWDqGm_[aicOffset.dequantScaleWDqOffset];
+        scaleBGmDkvKr = dequantScaleWDkvkrGm_[aicOffset.dequantScaleWDkvKrOffset];
+    }
     // MatmulCq ──> RmsNorm(Cq)
     // [32, 7168] * [7168, 1536] = [32, 1536]
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
-        MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
-            mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
-            mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum}, dequantScaleXGm_[dequantScaleXOffset],
-            dequantScaleWDqGm_[aicOffset.dequantScaleWDqOffset]);
-    } else {
-        MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
-            mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
-            mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum});
-    }
+    MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
+        mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
+        mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum}, scaleAGm, scaleBGmDq);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
     CrossCoreWaitFlag(FINISH_VEC_CKVKR);
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
-        MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
-            mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
-            weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum},
-            dequantScaleXGm_[dequantScaleXOffset], dequantScaleWDkvkrGm_[aicOffset.dequantScaleWDkvKrOffset]);
-    } else {
-        MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
-            mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
-            weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum});
-    }
+    MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
+        mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
+        weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum},
+        scaleAGm, scaleBGmDkvKr);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
 
@@ -1431,7 +1426,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormCq(int64_t tokenIndex,
         RmsNormParam rmsNormParams = {
             baseParams_->reciprocalCq,      // reciprocal
             baseParams_->epsilonCq,         // epsilon
-            (uint32_t)vectorRow_,           // row
+            static_cast<uint32_t>(vectorRow_),           // row
             baseParams_->headSizeCq,        // col
             baseParams_->qcQrScale,         // scale
             baseParams_->isQcQrScaleEnable, // isScaleEnable
@@ -1595,7 +1590,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
     RmsNormParam rmsNormParams = {
         baseParams_->reciprocalCkv,   // reciprocal
         baseParams_->epsilonCkv,      // epsilon
-        (uint32_t)vectorRow_,         // row
+        static_cast<uint32_t>(vectorRow_),         // row
         baseParams_->headSizeCkv,     // col
         baseParams_->kcScale,         // scale
         baseParams_->isKcScaleEnable, // isScaleEnable
@@ -1662,17 +1657,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkv(LocalTe
     } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                             std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -1710,9 +1705,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkvMxfp8(
         AscendC::PipeBarrier<PIPE_V>();
     } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -1788,9 +1783,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
         sinLocal = sinLocal_[baseParams_->dimHeadRope * ropeAndScatterKrParams.curVecTokenIdx];
     }
     Rectangle ropeParams{
-        (uint32_t)vectorRow_,               // row
-        (uint32_t)baseParams_->dimHeadRope, // col
-        (uint32_t)stride                    // stride
+        static_cast<uint32_t>(vectorRow_),               // row
+        static_cast<uint32_t>(baseParams_->dimHeadRope), // col
+        static_cast<uint32_t>(stride)                    // stride
     };
     if constexpr ((std::is_same<mmCkvKrOutputType, int32_t>::value ||
                    (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) &&
@@ -1960,9 +1955,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     }
 
     Rectangle ropeParams{
-        (uint32_t)baseParams_->numHeadSize, // row
-        (uint32_t)baseParams_->dimHeadRope, // col
-        (uint32_t)stride                    // stride
+        static_cast<uint32_t>(baseParams_->numHeadSize), // row
+        static_cast<uint32_t>(baseParams_->dimHeadRope), // col
+        static_cast<uint32_t>(stride)                    // stride
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
@@ -2023,9 +2018,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitNGroupCase(int64_t
     LocalTensor<uint8_t> ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
 
     Rectangle ropeParams{
-        (uint32_t)col,   // row
-        (uint32_t)col,   // col
-        (uint32_t)stride // stride
+        static_cast<uint32_t>(col),   // row
+        static_cast<uint32_t>(col),   // col
+        static_cast<uint32_t>(stride) // stride
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVectorBlockNum_; curVecTokenIdx++) {
@@ -2070,7 +2065,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitN(const RopeQrSpli
     Rectangle ropeParams{
         ropeCnt,                                // row
         colQr,                                  // col
-        (uint32_t)ropeQrSplitNParams.ropeStride // stride
+        static_cast<uint32_t>(ropeQrSplitNParams.ropeStride) // stride
     };
 
     GlobalTensor<mmQcQrOutputType> inputGmRope = mmQcQrResGm_[ropeQrSplitNParams.ropeQrOffset];
@@ -2167,11 +2162,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     LocalTensor<float> scale2Local = dequantTool_.deQuantScaleCqLocal_;
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
-    // 可以和inputLocal共享内存地址，减少UB使用
-    LocalTensor<float> computeLocal = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> scaleLocal = inputLocal[count + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<float>();
-    // outputLocal比scaleLocal占用UB少，且不会同时使用，故可以复用UB内存
-    LocalTensor<mmQnInputType> outputLocal = scaleLocal.template ReinterpretCast<mmQnInputType>();
+    LocalTensor<mmQnInputType> outputLocal = scaleLocal[colQcSingle].template ReinterpretCast<mmQnInputType>();
 
     Rectangle dequantParams{
         row,         //  row
@@ -2182,14 +2174,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
     DataCopy(inputLocal, inputGm[dequantQcQrSplitN.inputOffset], inputCopyParams);
-    DataCopy(scaleLocal, scale1Gm[dequantQcQrSplitN.inputOffset], colQc / cvRatio_);
+    DataCopy(scaleLocal, scale1Gm[dequantQcQrSplitN.inputOffset], colQcSingle);
     SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     // cast
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    Dequant(computeLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    // cast
-    Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+    Dequant<mmQcQrOutputType, mmQnInputType>(outputLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     // copy out
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -2360,9 +2349,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcSplitNGroupCase(int6
     uint32_t dstStride = baseParams_->headSizeQc - curCol;
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     Rectangle rectangleParams{
-        (uint32_t)mmQcQrParam_.m,         // row
-        (uint32_t)curCol,                 // col
-        (uint32_t)baseParams_->headSizeQc // columnStride
+        static_cast<uint32_t>(mmQcQrParam_.m),         // row
+        static_cast<uint32_t>(curCol),                 // col
+        static_cast<uint32_t>(baseParams_->headSizeQc) // columnStride
     };
     DequantSplitNQc(mmQcQrResDequantGm_[mmQnPreDequantResOffset], mmQcQrResGm_[mmQnPreDequantOffset],
                     deqScaleQcQrW_[qcQrScaleOffset], dequantTool_.deQuantScaleCqLocal_, shareTmpUb, rectangleParams,

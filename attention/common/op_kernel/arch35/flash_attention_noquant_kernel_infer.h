@@ -475,7 +475,8 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
         if ASCEND_IS_AIV {
             SyncAll();
             this->vecBlock.InitFDBuffers(this->constInfo);
-            this->vecBlock.FlashDecodeCompute(this->constInfo, this->keyGm, this->actualSeqKvlenAddr);
+            this->vecBlock.FlashDecodeCompute(this->constInfo, this->keyGm, this->actualSeqQlenAddr,
+                                              this->actualSeqKvlenAddr);
         }
     }
 }

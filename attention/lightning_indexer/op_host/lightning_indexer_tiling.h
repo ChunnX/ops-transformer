@@ -23,7 +23,7 @@
 #include "tiling/tiling_api.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
-
+#include "op_host/tiling_util.h"
 namespace optiling {
 // ------------------公共定义--------------------------
 enum class DataLayout : uint32_t {

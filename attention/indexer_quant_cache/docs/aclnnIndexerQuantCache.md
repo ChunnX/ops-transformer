@@ -19,7 +19,7 @@
 
 - 计算公式：
 
-  对`x`的最后一维（d轴）按每128个元素一组（MX-FP4模式为每32个元素一组）计算每组的amax，并量化为目标dtype，记第g组为$x_g$：
+  对`x`的最后一维（d轴）按量化粒度计算每组的amax，并量化为目标dtype，记第g组为$x_g$（MX-FP8/MX-FP4模式每32个元素一组；Normal/HiFloat8模式整行一组）：
 
   $$
   scale_g = \frac{\max(|x_g|)}{Q\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
@@ -33,15 +33,16 @@
 - 示例：
 
   ```
-  cache shape:        [2048, 128]
-  cache_scale shape:  [2048, 1]
+  # cache/cache_scale 均为 4D [blockNum, blockSize, 1, headDim]; num_slots = blockNum*blockSize = 2048
+  cache shape:        [128, 16, 1, 128]   # headDim=128 >= d(128)
+  cache_scale shape:  [128, 16, 1, 1]     # mode1 scaleCol=1
   x shape:            [1024, 128]
   slot_mapping shape: [1024]
   quantMode = 1
   roundScale = true
   xScale = 1.0
-  cache out shape:        [2048, 128]   (原地更新)
-  cache_scale out shape:  [2048, 1]     (原地更新)
+  cache out shape:        [128, 16, 1, 128]   (原地更新)
+  cache_scale out shape:  [128, 16, 1, 1]     (原地更新)
   ```
 
 ## 函数原型
@@ -98,22 +99,22 @@ aclnnStatus aclnnIndexerQuantCache(
     <tr>
       <td>cacheRef（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>表示当前层的KV Cache向量缓存，原地更新，对应计算公式中的量化目标。MX-FP4模式下为uint8，每字节打包2个fp4值。</td>
-      <td><li>不支持空Tensor。</li><li>既是输入也是输出（原地操作）。</li><li>数据类型需与quantMode匹配。</li></td>
+      <td>表示当前层的分页KV Cache，原地更新，对应计算公式中的量化目标。<b>仅支持四维</b>（shape、headDim长度规则详见约束说明）。MX-FP4模式下cache为FP4（每字节打包2个fp4值）。</td>
+      <td><li>不支持空Tensor。</li><li>既是输入也是输出（原地操作）。</li><li>数据类型需与quantMode匹配。</li><li><b>仅支持四维</b>[blockNum, blockSize, 1, headDim]，dim2固定为1，仅在<b>blockNum维支持非连续</b>（分页）。</li></td>
       <td>FLOAT8_E4M3FN、FLOAT8_E5M2、UINT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
       <td>ND</td>
-      <td>[num_slots, d]</td>
-      <td>×</td>
+      <td>[blockNum, blockSize, 1, headDim]（num_slots = blockNum × blockSize）</td>
+      <td>√（仅blockNum维）</td>
     </tr>
     <tr>
       <td>cacheScaleRef（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>表示每块量化的scale因子，原地更新，对应计算公式中scale。</td>
-      <td><li>不支持空Tensor。</li><li>既是输入也是输出（原地操作）。</li><li>数据类型需与quantMode匹配。</li></td>
+      <td>表示每块量化的scale因子，原地更新，对应计算公式中scale。<b>仅支持四维</b>，规则同cache，headDim须 ≥ scaleCol（详见约束说明）。</td>
+      <td><li>不支持空Tensor。</li><li>既是输入也是输出（原地操作）。</li><li>数据类型需与quantMode匹配。</li><li><b>仅支持四维</b>[blockNum, blockSize, 1, headDim]，dim2固定为1，headDim ≥ scaleCol，仅在<b>blockNum维支持非连续</b>（分页）。</li></td>
       <td>FLOAT、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>[num_slots, CeilDiv(d, 128)]</td>
-      <td>×</td>
+      <td>[blockNum, blockSize, 1, scaleHeadDim]（scaleHeadDim ≥ scaleCol）</td>
+      <td>√（仅blockNum维）</td>
     </tr>
     <tr>
       <td>x（const aclTensor*）</td>
@@ -187,7 +188,7 @@ aclnnStatus aclnnIndexerQuantCache(
     </tr>
   </tbody></table>
 
-  - 数据类型组合需匹配量化模式：quantMode=0，cache为FP8且scale为FLOAT8_E8M0；quantMode=1/2时，cache为FP8/UINT8且scale为FLOAT；quantMode=1，cache为FP4且scale为FLOAT8_E8M0。
+  - 数据类型组合需匹配量化模式：quantMode=0，cache为FP8且scale为FLOAT8_E8M0；quantMode=1/2时，cache为FP8/UINT8且scale为FLOAT；quantMode=3，cache为FP4且scale为FLOAT8_E8M0。
 
 - **返回值**
 
@@ -247,11 +248,15 @@ aclnnStatus aclnnIndexerQuantCache(
 ## 约束说明
 
 - 确定性计算：aclnnIndexerQuantCache默认确定性实现。
-- 仅支持 <term>Ascend 950PR/Ascend 950DT</term> 平台。
-- cacheRef与cacheScaleRef均为原地操作（in-place），调用前后须分别为同一tensor。
 - 数据类型组合需与quantMode匹配：Normal/HiFloat8模式cacheScale为FLOAT；MX-FP8/MX-FP4模式cacheScale为FLOAT8_E8M0；MX-FP4模式cache为FP4（uint8打包）。
+- **cache 与 cacheScale均仅支持四维shape** `[blockNum, blockSize, 1, headDim]`，倒数第二维固定为1（每token一个量化向量），不支持其他维数；num_slots = blockNum × blockSize。
+- cache/cacheScale**仅在blockNum维支持非连续**（分页）：各block可不紧密排布，但block内（blockSize、headDim维）须连续。
+- **headDim长度约束**：
+  - **cache.headDim ≥ d**（MX-FP4模式以fp4元素计，d个fp4值占 ⌈d/2⌉ 字节）。
+  - **cacheScale.headDim ≥ scaleCol**，scaleCol：MX-FP8/MX-FP4（quantMode=0/3）为 ⌈d/32⌉；Normal/HiFloat8（quantMode=1/2）为 1。
+  - 示例：d=128、quantMode=0 → scaleCol=4 → cache.headDim ≥ 128 且 cacheScale.headDim ≥ 4。
+- x的最后一维（d轴）须能被32整除且 d ≤ 8192。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
-- x的最后一维（d轴）按每128个元素一组进行逐块量化；MX-FP4（quantMode=3）按每32个元素一组（标准MX块）量化出一个float8_e8m0 scale。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
 ## 调用示例
@@ -324,8 +329,9 @@ int main() {
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2.构造输入与输出，需要根据API的接口自定义构造（此处以 Normal 模式为例）
-    std::vector<int64_t> cacheShape = {2048, 128};      // KV Cache（float8_e4m3fn）
-    std::vector<int64_t> scaleShape = {2048, 1};        // 每块 scale（float32）
+    // cache/cacheScale 为 4D [blockNum, blockSize, 1, headDim]; num_slots = 128*16 = 2048
+    std::vector<int64_t> cacheShape = {128, 16, 1, 128}; // KV Cache（float8_e4m3fn），headDim=128 >= d
+    std::vector<int64_t> scaleShape = {128, 16, 1, 1};   // 每块 scale（float32），mode1 scaleCol=1
     std::vector<int64_t> xShape = {1024, 128};          // 待量化激活
     std::vector<int64_t> slotShape = {1024};            // slot 索引映射
     void* cacheDeviceAddr = nullptr;
