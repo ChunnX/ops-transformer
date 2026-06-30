@@ -322,14 +322,24 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
     OP_TILING_CHECK(commModeStr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
     const size_t maxLength = 7UL;
-    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'ai_cpu', 'ccu'");
-        return ge::GRAPH_FAILED;
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -337,12 +347,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
 uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;
-    if (npuArch_ == NpuArch::DAV_3510) {
-        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
