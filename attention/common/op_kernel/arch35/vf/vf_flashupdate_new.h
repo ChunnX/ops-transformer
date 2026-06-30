@@ -218,7 +218,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
-    constexpr float hifp8ScaleValueRec = 1 / 32768.0f;
+    constexpr float hifp8ScaleValueRec = 1 / 16.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
