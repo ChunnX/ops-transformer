@@ -86,7 +86,14 @@ void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
         const aclTensor *inputTensor = (*tensorList)[idx];
         op::Shape viewShape = inputTensor->GetViewShape();
         shape.SetScalar();
-        if (viewShape.GetDimNum() < MX_SPLIT_M_SCALE_DIM) {
+        if (viewShape.GetDimNum() < MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
+            continue;
+        }
+        if (viewShape.GetDimNum() == MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
+            aclTensor *tensor =
+                executor->CreateView(inputTensor, viewShape, inputTensor->GetViewOffset()); // use executor to create tensor
+            tensor->SetStorageFormat(inputTensor->GetStorageFormat());
+            newTensorList.emplace_back(tensor);
             continue;
         }
         shape.AppendDim(viewShape.GetDim(0));

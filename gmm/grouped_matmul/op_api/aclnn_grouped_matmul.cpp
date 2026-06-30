@@ -2656,10 +2656,14 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
             gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!scaleTensorList.empty()) {
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!scaleTensorList.empty()) {
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         }
     }
     // 伪量化场景antiquantscale为3维或4维时，需要手动转置为正确shape
@@ -2674,7 +2678,9 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         } else {
             gmm::CreateContiguousTensorList(params.antiquantScaleOptional, antiSTensorList, executorPtr);
         }
-        params.antiquantScaleOptional = executorPtr->AllocTensorList(antiSTensorList.data(), antiSTensorList.size());
+        if (!antiSTensorList.empty()) {
+            params.antiquantScaleOptional = executorPtr->AllocTensorList(antiSTensorList.data(), antiSTensorList.size());
+        }
     }
 }
 
