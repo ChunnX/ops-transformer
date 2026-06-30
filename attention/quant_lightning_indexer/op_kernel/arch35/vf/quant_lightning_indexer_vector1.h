@@ -386,45 +386,6 @@ template <typename QK_T>
 __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
                                               __ubuf__ QK_T* qk_,
                                               const uint32_t qkVLStride,
-                                              __ubuf__ float* weight_,
-                                              __ubuf__ float* kScale_,
-                                              __ubuf__ float* qScale_,
-                                              const int gSize)
-{
-    AscendC::MicroAPI::RegTensor<float> regwBrc;
-    AscendC::MicroAPI::RegTensor<float> regQK[2];
-    AscendC::MicroAPI::RegTensor<float> regW;
-    AscendC::MicroAPI::RegTensor<int32_t> regQKInt32[2];
-    AscendC::MicroAPI::RegTensor<float> regQScale;
-    AscendC::MicroAPI::RegTensor<float> regKScale[2];
-    AscendC::MicroAPI::RegTensor<float> regSum0[2];
-    AscendC::MicroAPI::RegTensor<float> regSum1[2];
-    AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    FloatSortConstCtx<float> fp32Ctx;
-    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
-
-    AscendC::MicroAPI::LoadAlign<float>(regW, weight_);
-    AscendC::MicroAPI::LoadAlign<float>(regQScale, qScale_);
-    AscendC::MicroAPI::Mul(regW, regW, regQScale, maskAllB32);
-
-    DuplicateZero(regSum0, maskAllB32);
-    DuplicateZero(regSum1, maskAllB32);
-
-    MicroAPI::LoadAlign<float>(regKScale[0], kScale_);
-    MicroAPI::LoadAlign<float>(regKScale[1], kScale_ + 64);
-
-    ReduceSumLoopBody<QK_T>(regQK, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32,
-        qk_, qkVLStride, gSize);
-
-    ReduceSumFinalize(regSum0, regSum1, regKScale, maskAllB32, fp32Ctx, out_);
-}
-
-// float in uint32 out
-template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
-                                              __ubuf__ QK_T* qk_,
-                                              const uint32_t qkVLStride,
                                               __ubuf__ half* weight_,
                                               __ubuf__ half* kScale_,
                                               __ubuf__ half* qScale_,
@@ -459,51 +420,6 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
     DuplicateZero(regSum1, maskAllB32);
 
     LoadKScaleFP16(regKScaleFP16, regKScale, maskAllB16, kScale_);
-
-    ReduceSumLoopBody<QK_T>(regQK, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32,
-        qk_, qkVLStride, gSize);
-
-    ReduceSumFinalize(regSum0, regSum1, regKScale, maskAllB32, fp32Ctx, out_);
-}
-
-// float in uint32 out
-template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
-                                              __ubuf__ QK_T* qk_,
-                                              const uint32_t qkVLStride,
-                                              __ubuf__ bfloat16_t* weight_,
-                                              __ubuf__ float* kScale_,
-                                              __ubuf__ float* qScale_,
-                                              const int gSize)
-{
-    AscendC::MicroAPI::RegTensor<float> regwBrc;
-    AscendC::MicroAPI::RegTensor<float> regQK[2];
-    AscendC::MicroAPI::RegTensor<bfloat16_t> regWBF16;
-    AscendC::MicroAPI::RegTensor<float> regW;
-    AscendC::MicroAPI::RegTensor<float> regQScale;
-    AscendC::MicroAPI::RegTensor<float> regKScale[2];
-    AscendC::MicroAPI::RegTensor<int32_t> regQKInt32[2];
-    AscendC::MicroAPI::RegTensor<float> regSum0[2];
-    AscendC::MicroAPI::RegTensor<float> regSum1[2];
-    AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    FloatSortConstCtx<float> fp32Ctx;
-    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
-
-    constexpr static MicroAPI::CastTrait castTraitBF16ToFP32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    AscendC::MicroAPI::LoadAlign<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regWBF16, weight_);
-    AscendC::MicroAPI::Cast<float, bfloat16_t, castTraitBF16ToFP32>(regW, regWBF16, maskAllB16);
-    AscendC::MicroAPI::LoadAlign<float>(regQScale, qScale_);
-    AscendC::MicroAPI::Mul(regW, regW, regQScale, maskAllB32);
-
-    DuplicateZero(regSum0, maskAllB32);
-    DuplicateZero(regSum1, maskAllB32);
-
-    MicroAPI::LoadAlign<float>(regKScale[0], kScale_);
-    MicroAPI::LoadAlign<float>(regKScale[1],
-                               kScale_ + 64);
 
     ReduceSumLoopBody<QK_T>(regQK, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32,
         qk_, qkVLStride, gSize);
@@ -704,125 +620,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
                        bf16Ctx, maskAllB16, out0_, out1_);
 }
 
-// float in uint32 out
-template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
-                                               __ubuf__ uint32_t* out1_,
-                                               uint32_t outStride,
-                                               __ubuf__ QK_T* qk0_,
-                                               __ubuf__ QK_T* qk1_,
-                                               uint32_t qkVLStride,
-                                               uint32_t qkStride,
-                                               __ubuf__ float* weight0_,
-                                               __ubuf__ float* weight1_,
-                                               uint32_t weightStride,
-                                               __ubuf__ float* weightFloat_,
-                                               __ubuf__ float* kScale_,
-                                               uint32_t kScaleStride,
-                                               __ubuf__ float* qScale0_,
-                                               __ubuf__ float* qScale1_,
-                                               uint32_t qScaleStride,
-                                               const int gSize)
-{
-    AscendC::MicroAPI::RegTensor<float> regwBrc[2];
-    AscendC::MicroAPI::RegTensor<float> regQK0[2];
-    AscendC::MicroAPI::RegTensor<float> regQK1[2];
-    AscendC::MicroAPI::RegTensor<float> regW[2];
-    AscendC::MicroAPI::RegTensor<int32_t> regQK0Int32[2];
-    AscendC::MicroAPI::RegTensor<int32_t> regQK1Int32[2];
-    AscendC::MicroAPI::RegTensor<float> regQScale[2];
-    AscendC::MicroAPI::RegTensor<float> regKScale[2];
-    AscendC::MicroAPI::RegTensor<float> regSum0[2];
-    AscendC::MicroAPI::RegTensor<float> regSum1[2];
-    AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    FloatSortConstCtx<float> fp32Ctx;
-    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
-
-    AscendC::MicroAPI::LoadAlign<float>(regW[0], weight0_);
-    AscendC::MicroAPI::LoadAlign<float>(regW[1], weight1_);
-    AscendC::MicroAPI::LoadAlign<float>(regQScale[0], qScale0_);
-    AscendC::MicroAPI::LoadAlign<float>(regQScale[1], qScale1_);
-    AscendC::MicroAPI::Mul(regW[0], regW[0], regQScale[0], maskAllB32);
-    AscendC::MicroAPI::Mul(regW[1], regW[1], regQScale[1], maskAllB32);
-    // regW[0]与weight1混合使用
-    AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(weight1_, regW[1], maskAllB32);
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    DuplicateZero(regSum0, maskAllB32);
-    DuplicateZero(regSum1, maskAllB32);
-
-    MicroAPI::LoadAlign<float>(regKScale[0], kScale_);
-    MicroAPI::LoadAlign<float>(regKScale[1], kScale_ + 64);
-
-    ReduceSum2LoopBody<QK_T>(regQK0, regQK1, regQK0Int32, regQK1Int32, regwBrc, regW,
-        regSum0, regSum1, maskAllB32, qk0_, qk1_, qkVLStride, weight1_, gSize);
-
-    ReduceSum2Finalize(regSum0, regSum1, regKScale, maskAllB32, fp32Ctx, out0_, out1_);
-}
-
-// 计算S1=2
-// float in uint32 out
-template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
-                                               __ubuf__ uint32_t* out1_,
-                                               uint32_t outStride,
-                                               __ubuf__ QK_T* qk0_,
-                                               __ubuf__ QK_T* qk1_,
-                                               uint32_t qkVLStride,
-                                               uint32_t qkStride,
-                                               __ubuf__ bfloat16_t* weight0_,
-                                               __ubuf__ bfloat16_t* weight1_,
-                                               uint32_t weightStride,
-                                               __ubuf__ float* weightFloat_,
-                                               __ubuf__ float* kScale_,
-                                               uint32_t kScaleStride,
-                                               __ubuf__ float* qScale0_,
-                                               __ubuf__ float* qScale1_,
-                                               uint32_t qScaleStride,
-                                               const int gSize)
-{
-    AscendC::MicroAPI::RegTensor<float> regwBrc[2];
-    AscendC::MicroAPI::RegTensor<float> regQK0[2], regQK1[2];
-    AscendC::MicroAPI::RegTensor<int32_t> regQK0Int32[2], regQK1Int32[2];
-    AscendC::MicroAPI::RegTensor<float> regW[2];
-    AscendC::MicroAPI::RegTensor<bfloat16_t> regWBF16[2];
-
-    AscendC::MicroAPI::RegTensor<float> regQScale[2];
-    AscendC::MicroAPI::RegTensor<float> regKScale[2];
-    AscendC::MicroAPI::RegTensor<float> regSum0[2];
-    AscendC::MicroAPI::RegTensor<float> regSum1[2];
-    AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    FloatSortConstCtx<float> fp32Ctx;
-    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
-
-    constexpr static MicroAPI::CastTrait castTraitBF16ToFP32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    AscendC::MicroAPI::LoadAlign<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regWBF16[0], weight0_);
-    AscendC::MicroAPI::LoadAlign<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regWBF16[1], weight1_);
-    AscendC::MicroAPI::Cast<float, bfloat16_t, castTraitBF16ToFP32>(regW[0], regWBF16[0], maskAllB16);
-    AscendC::MicroAPI::Cast<float, bfloat16_t, castTraitBF16ToFP32>(regW[1], regWBF16[1], maskAllB16);
-
-    AscendC::MicroAPI::LoadAlign<float>(regQScale[0], qScale0_);
-    AscendC::MicroAPI::LoadAlign<float>(regQScale[1], qScale1_);
-    AscendC::MicroAPI::Mul(regW[0], regW[0], regQScale[0], maskAllB32);
-    AscendC::MicroAPI::Mul(regW[1], regW[1], regQScale[1], maskAllB32);
-    // regW[0]与weight1混合使用
-    AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(weightFloat_, regW[1], maskAllB32);
-    AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-    DuplicateZero(regSum0, maskAllB32);
-    DuplicateZero(regSum1, maskAllB32);
-
-    MicroAPI::LoadAlign<float>(regKScale[0], kScale_);
-    MicroAPI::LoadAlign<float>(regKScale[1], kScale_ + 64);
-
-    ReduceSum2LoopBody<QK_T>(regQK0, regQK1, regQK0Int32, regQK1Int32, regwBrc, regW,
-        regSum0, regSum1, maskAllB32, qk0_, qk1_, qkVLStride, weightFloat_, gSize);
-
-    ReduceSum2Finalize(regSum0, regSum1, regKScale, maskAllB32, fp32Ctx, out0_, out1_);
-}
-
 // 计算S1=2
 // float in uint32 out
 template <typename QK_T>
@@ -918,32 +715,16 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
         auto qk1 = qk + qkStride;
         auto out1 = out + outStride;
 
-        if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
-            printf("int8 qkdtype branch, uint32 vec1out!!!!!\n");
-            MulWeightAndReduceSum2(out, out1, outStride,
-                                qk, qk1, qkVLStride, qkStride,
-                                weight, weight1, weightStride, weightFloat,
-                                kScale, kScaleStride,
-                                qScale, qScale1, qScaleStride,
-                                gSize);
-        } else {
-            MulWeightAndReduceSum2(out, out1, outStride,
-                                qk, qk1, qkVLStride, qkStride,
-                                weight, weight1, weightStride, weightFloat,
-                                kScale, kScaleStride,
-                                qScale, qScale1, qScaleStride,
-                                gSize);
-        }
+        MulWeightAndReduceSum2(out, out1, outStride,
+                            qk, qk1, qkVLStride, qkStride,
+                            weight, weight1, weightStride, weightFloat,
+                            kScale, kScaleStride,
+                            qScale, qScale1, qScaleStride,
+                            gSize);
     } else {
-        if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
-            printf("int8 qkdtype branch, uint32 vec1out!!!!!\n");
-            MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
-        } else {
-            MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
-        }
+        MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
     }
 }
-
 }
 
 #endif
