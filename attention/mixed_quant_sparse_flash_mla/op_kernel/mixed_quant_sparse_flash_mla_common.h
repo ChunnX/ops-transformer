@@ -31,8 +31,8 @@ enum class QSMLA_LAYOUT {
 
 enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
-    CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2
+    HCA_TEMPLATE_MODE = 1,
+    CSA_TEMPLATE_MODE = 2
 };
 
 enum class SCALE_CONTIGUOUS_MODE {

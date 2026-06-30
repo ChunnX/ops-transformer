@@ -38,7 +38,7 @@ def _set_case(module, case):
     module.BLOCK_SIZE = int(case.get("block_size", module.BLOCK_SIZE))
     module.SPARSE_MODE = int(case.get("sparse_mode", module.SPARSE_MODE))
     module.INPUT_LAYOUT = case.get("input_layout", "NTD_TND")
-    module.Q_SCALE_LAYOUT = case.get("q_scale_layout", "TN")
+    module.Q_SCALE_LAYOUT = case.get("q_scale_layout", "NT")
     module.KV_CACHE_LAYOUT = case.get("kv_cache_layout", "BnNBsD")
     module.P_SCALE = float(case["p_scale"])
 

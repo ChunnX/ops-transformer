@@ -166,7 +166,8 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
     }
 }
 
-template <bool hasAtten, bool enableKVPrefix, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isInfer = false, bool hasRope = false>
+template <bool hasAtten, bool enableKVPrefix, DTemplateType dTemplateType = DTemplateType::Aligned128,
+    bool isInfer = false, bool hasRope = false, bool isFd = false>
 __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
@@ -203,6 +204,9 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
             }
         } else {
             s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+        }
+        if constexpr (isFd) {
+            s2Offset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
         }
         if constexpr (isInfer) {
             if (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
@@ -341,13 +345,14 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 }
 #endif
                                       
-template <bool hasAtten, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool enableKVPrefix = false, bool isMxfp8FullQuant = false>
-__aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
-                                                      AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
+template <bool hasAtten, bool enableKVPrefix = false, bool isFd = false, bool hasRope = false, bool isInfer = false,
+    DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
+__aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten == true) {
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
-            return ComputeOffsetForNoCompress<hasAtten, enableKVPrefix, dTemplateType, isInfer>(runInfo, constInfo, attenMaskInfo);
+            return ComputeOffsetForNoCompress<hasAtten, enableKVPrefix, dTemplateType, isInfer, hasRope, isFd>(runInfo, constInfo, attenMaskInfo);
         }
         if (constInfo.layoutType == (uint32_t)LayOutTypeEnum::LAYOUT_TND && !isInfer) {
             // compress mode
@@ -459,6 +464,9 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 s2Offset += subLoop * (constInfo.s2BaseSize / 2);
             }
         }
+        if constexpr (isFd) {
+            s2Offset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
+        }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset;
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
@@ -515,17 +523,6 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
         }
         return ret;
     }
-}
-
-template <bool hasAtten, bool enableKVPrefix = false, bool isFd = false, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
-__aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
-    AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
-{
-    auto result = ComputeAttenMaskInnerOffset<hasAtten, hasRope, isInfer, dTemplateType, enableKVPrefix, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
-    if constexpr (isFd) {
-        result += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
-    }
-    return result;
 }
 
 template <bool hasAtten, bool isFd = false, bool hasRope = false, bool isInfer = false>

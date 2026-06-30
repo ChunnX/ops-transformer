@@ -17,8 +17,8 @@
 #define SPARSE_FLASH_MLA_SWA_KERNEL_H
 #include "sparse_flash_mla_common_arch35.h"
 #include "sparse_flash_mla_kvcache.h"
-#include "sparse_flash_mla_scfa_block_cube.h"
-#include "sparse_flash_mla_scfa_block_vector.h"
+#include "sparse_flash_mla_csa_block_cube.h"
+#include "sparse_flash_mla_csa_block_vector.h"
 #include "kernel_operator.h"
 #include "../sparse_flash_mla_metadata.h"
 
@@ -280,7 +280,14 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
         }
         int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
                 actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
-        if (s1Size > s2Size || (LAYOUT_T == SMLA_LAYOUT::TND && hasActualSeqQlen)) {
+        int64_t expectQs;
+        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+            expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ,
+                actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+        } else {
+            expectQs = constInfo.s1Size;
+        }
+        if (s1Size > s2Size || s1Size < expectQs) {
             constInfo.needInit = 1;
             break;
         }

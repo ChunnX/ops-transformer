@@ -46,16 +46,18 @@ namespace {
     const static int64_t THREE_DIMS = 3LL;
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
+    const static int64_t MIN_TOPK = 1LL;
+    const static int64_t MAX_TOPK = 16LL;
     const static int64_t MIN_BS = 1LL;
     const static int64_t MAX_BS = 512LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t MAX_H = 8LL * 1024LL;  // 8K
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
-    const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -90,6 +92,7 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -932,9 +935,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(topkIdsDim1 != 6LL && topkIdsDim1 != 8LL,
+    OP_TILING_CHECK(topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(),
-            "only support 6/8"),
+            "only support [1, 16]"),
         return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);

@@ -25,12 +25,6 @@ namespace optiling {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
 constexpr uint32_t FD_TOLERANCE_RATIO = 2U;
 
-enum BlockType : uint32_t {
-    NORMAL_BLOCK = 0,
-    TAIL_BLOCK,
-    BLOCK_MAX_TYPE
-};
-
 enum class SparseMode : uint8_t {
     DEFAULT_MASK = 0,
     ALL_MASK,
@@ -41,6 +35,12 @@ enum class SparseMode : uint8_t {
     TREE = 9,
 };
 
+enum BlockType : uint32_t {
+    NORMAL_BLOCK = 0,
+    TAIL_BLOCK,
+    BLOCK_MAX_TYPE
+};
+
 template<class T>
 using Range = std::pair<T, T>;
 
@@ -48,21 +48,21 @@ template<class T>
 using BlockCost = std::array<std::array<T, static_cast<size_t>(BLOCK_MAX_TYPE)>, static_cast<size_t>(BLOCK_MAX_TYPE)>;
 
 template<typename T>
-T Clip(T value, T minValue, T maxValue)
-{
-    if (value < minValue) {
-        return minValue;
-    }
-    if (value > maxValue) {
-        return maxValue;
-    }
-    return value;
-}
-
-template<typename T>
 inline bool IsWithinTolerance(T limit, T tolerance, T value)
 {
     return limit + tolerance >= value;
+}
+
+template<typename T>
+T Clip(T value, T minVal, T maxVal)
+{
+    if (value < minVal) {
+        return minVal;
+    }
+    if (value > maxVal) {
+        return maxVal;
+    }
+    return value;
 }
 
 // 分核功能模块输入：输入case的基本信息
@@ -194,18 +194,6 @@ struct BatchCache {
     BlockCost<int64_t> typeCost {};
 };
 
-// 分核功能模块内部使用：记录当前行（S1G）的临时信息
-struct S1GCache {
-    uint32_t bIdx { 0U };
-    uint32_t s1GIdx { 0U };
-    uint32_t s2Start { 0U };
-    uint32_t s2End { 0U };
-    int64_t s1GCost { 0 };
-    int64_t s1GLastBlockCost { 0 };
-    uint32_t s1GBlock { 0U };
-    int64_t s1GNormalBlockCost { 0 };
-};
-
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
 struct CoreCache {
     int64_t costLimit { 0 };  // 负载上限
@@ -213,19 +201,30 @@ struct CoreCache {
     uint32_t block { 0U };      // 已分配块数
 };
 
+// 分核功能模块内部使用：记录当前行（S1G）的临时信息
+struct S1GCache {
+    uint32_t bIdx { 0U };
+    uint32_t s1GIdx { 0U };
+    uint32_t s2Start { 0U };
+    uint32_t s2End { 0U };
+    int64_t s1GCost { 0 };
+    uint32_t s1GBlock { 0U };
+    int64_t s1GNormalBlockCost { 0 };
+    int64_t s1GLastBlockCost { 0 };
+};
+
 // 分核功能模块内部使用：记录分配过程中的上下文信息
 struct AssignContext {
+    uint32_t curCoreIdx { 0U };
     uint32_t curBIdx { 0U };
     uint32_t curBN2Idx { 0U };
     uint32_t curS1GIdx { 0U };
     uint32_t curS2Idx { 0U };
-    uint32_t curCoreIdx { 0U };
     int64_t unassignedCost { 0 };
     uint32_t usedCoreNum { 0U };
     uint32_t curKvSplitPart { 1U };
-
-    int64_t bN2Cost { 0 };
     uint32_t bN2Block { 0U };
+    int64_t bN2Cost { 0 };
     bool isFinished { false };
     BatchCache batchCache {};
     S1GCache s1GCache {};
