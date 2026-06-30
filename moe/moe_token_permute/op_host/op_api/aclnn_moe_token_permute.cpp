@@ -135,6 +135,7 @@ static aclnnStatus BuildMoeInitRoutingV3Executor(
     auto expertTokensCount = uniqueExecutor->AllocTensor(
         expertTokensShape, DataType::DT_INT64, Format::FORMAT_ND);
 
+    // MoeInitRoutingV3 requires an expandedScale output descriptor even though MoeTokenPermute does not expose it.
     op::Shape fullExpandedScaleShape;
     fullExpandedScaleShape.AppendDim(fullTokenNum);
     auto fullExpandedScale = uniqueExecutor->AllocTensor(
@@ -154,9 +155,7 @@ static aclnnStatus BuildMoeInitRoutingV3Executor(
         expertTokensCount, fullExpandedScale, uniqueExecutor.get());
     auto expandedXOut = std::get<0>(result);
     auto expandedRowIdxOut = std::get<1>(result);
-    auto expandedScaleOut = std::get<3>(result);
-    CHECK_RET(expandedXOut != nullptr && expandedRowIdxOut != nullptr && expandedScaleOut != nullptr,
-              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(expandedXOut != nullptr && expandedRowIdxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     FVector<int64_t> expandedXOffsets(permuteTokensOut->GetViewShape().GetDimNum(), 0);
     auto expandedXSize = ToShapeVector(permuteTokensOut->GetViewShape());
