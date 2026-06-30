@@ -191,7 +191,7 @@ __aicore__ inline void CombineQuantizedTokensByUrma(
 
     AscendC::GlobalTensor<QuantOutType> gmRemoteD;
     GM_ADDR dstPeermemPtr = params.workspaceInfo.combineCommPtr + static_cast<uint64_t>(toRankId) * quantRowSize * 
-                                params.tilingData->bs * params.tilingData->expertPerRank * sizeof(QuantOutType);
+        params.tilingData->bs * params.tilingData->expertPerRank * sizeof(QuantOutType);
     if(toRankId == rankId) {
         dstPeermemPtr = params.peermemInfo.combineSendPtr;
     }                            

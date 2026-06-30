@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mega_moe.h
+ * \file mega_moe_layered.h
  * \brief
  */
 
