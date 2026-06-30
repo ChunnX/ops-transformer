@@ -313,7 +313,7 @@ def trans_float_tensor_to_hifuint8_point(in_tensor, round_mode="round", over_mod
 
 def trans_hifuint8_tensor_to_float(in_tensor, over_mode=True):
     """
-    将 HiF8 编码的 uint8 Tensor 批量转换为 float32 Tensor (支持 CPU/GPU 矢量化)
+    将 HiF8 编码的 uint8 Tensor 批量转换为 float32 Tensor
     """
     shape = in_tensor.shape
     x = in_tensor.reshape(-1).to(torch.int32)
