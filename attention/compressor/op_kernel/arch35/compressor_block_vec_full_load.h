@@ -59,6 +59,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
+    __aicore__ inline void UpdateMRange(uint32_t mStart, uint32_t mEnd);
     // =================================执行计算=================================
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
@@ -257,6 +258,13 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::AllocEventID()
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::FreeEventID()
 {
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateMRange(uint32_t mStart, uint32_t mEnd)
+{
+    constInfo_.mStart = mStart;
+    constInfo_.mEnd = mEnd;
 }
 
 template <typename COMP>
@@ -1045,15 +1053,19 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1SplitInfo &splitInfo)
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
+    uint32_t mStartBatch = constInfo_.mStart / constInfo_.sSize;
+    uint32_t mEndBatch = (constInfo_.mEnd + constInfo_.sSize - 1) / constInfo_.sSize;
+    uint32_t effectiveBatchSize = min(mEndBatch, constInfo_.batchSize) - min(mStartBatch, constInfo_.batchSize);
+    effectiveBatchSize = max(effectiveBatchSize, 1U);
     splitInfo.dBaseSize =
-        constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, constInfo_.batchSize)));
+        constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, effectiveBatchSize)));
     if (constInfo_.kBaseNum > 1) {
         splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
     // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
-    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), constInfo_.batchSize);
+    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), effectiveBatchSize);
 }
 
 template <typename COMP>
@@ -1062,7 +1074,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
     uint32_t groupNum = splitInfo.vec1GroupNum;
-    uint32_t totalDealBatchNum = constInfo_.batchSize;
+    uint32_t mStartBatch = constInfo_.mStart / constInfo_.sSize;
+    uint32_t mEndBatch = (constInfo_.mEnd + constInfo_.sSize - 1) / constInfo_.sSize;
+    uint32_t totalDealBatchNum = min(mEndBatch, constInfo_.batchSize) - min(mStartBatch, constInfo_.batchSize);
 
     if (blockIdx < groupSize * (totalDealBatchNum % groupNum)) {
         splitInfo.dealBatchNum = totalDealBatchNum / groupNum + 1;
@@ -1074,26 +1088,23 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution
         splitInfo.dealBatchNum = 0;
         splitInfo.preDealBatchNum = totalDealBatchNum;
     }
+    splitInfo.preDealBatchNum += min(mStartBatch, constInfo_.batchSize);
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(Vec1SplitInfo &splitInfo)
 {
     splitInfo.preCompressedCnt = 0;
-    splitInfo.dealSeqStartIdx = splitInfo.preDealBatchNum * constInfo_.sSize;
+    uint32_t mStartBatch = constInfo_.mStart / constInfo_.sSize;
+    splitInfo.dealSeqStartIdx = (splitInfo.preDealBatchNum - mStartBatch) * constInfo_.sSize;
     splitInfo.curBStart = splitInfo.preDealBatchNum;
     splitInfo.dealSeqCnt = splitInfo.dealBatchNum * constInfo_.sSize;
     splitInfo.curSStart = 0;
     totalCompressedCnt_ = 0;
-    uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
-    for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
+    for (uint32_t curB = splitInfo.curBStart; curB < splitInfo.curBStart + splitInfo.dealBatchNum; curB++) {
         uint32_t startPos = GetStartPos(curB);
         uint32_t seqLength = GetSeqLength(curB);
-        if (curB < splitInfo.curBStart) {
-            splitInfo.preCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
-        } else {
-            totalCompressedCnt_ += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
-        }
+        totalCompressedCnt_ += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
     }
     totalCompressedCnt_ += splitInfo.preCompressedCnt;
 }

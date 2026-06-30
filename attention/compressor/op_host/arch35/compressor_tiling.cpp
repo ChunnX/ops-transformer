@@ -181,7 +181,7 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 512) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -204,6 +204,7 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
             uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
             baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
         }
+        baseParams_->mLoopNum = (mBaseNum + baseParams_->coreGroupNum - 1) / baseParams_->coreGroupNum;
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
             baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
             baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
@@ -221,14 +222,13 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 }
                 baseParams_->splitCoreParam[i].mStart = 0;
                 baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
-                baseParams_->mLoopNum = 1;
             } else {
                 baseParams_->splitCoreParam[i].kStart = 0;
                 baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
+                uint32_t groupIdx = i / dBaseNum;
+                baseParams_->splitCoreParam[i].mStart = groupIdx * innerSplitParams_->mBaseSize;
                 baseParams_->splitCoreParam[i].mEnd =
-                    baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
-                baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
+                    min(baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize, baseParams_->tokenSize);
             }
         }
     } else {

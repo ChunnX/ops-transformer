@@ -43,6 +43,7 @@ public:
     __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm);
     __aicore__ inline void AllocEventID(TPipe *pipe);
     __aicore__ inline void FreeEventID(TPipe *pipe);
+    __aicore__ inline void UpdateMRange(uint32_t mStart, uint32_t mEnd);
     __aicore__ inline void ComputeMm1(const RunInfo &info);
 
 private:
@@ -214,6 +215,13 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::FreeEventID(TPipe *pip
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT2);
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT3);
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockCubeFullLoad<COMP>::UpdateMRange(uint32_t mStart, uint32_t mEnd)
+{
+    constInfo_.mStart = mStart;
+    constInfo_.mEnd = mEnd;
 }
 
 template <typename COMP>
