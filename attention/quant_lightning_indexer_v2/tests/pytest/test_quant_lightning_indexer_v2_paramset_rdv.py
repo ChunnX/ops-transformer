@@ -54,7 +54,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+PA+mask0+s2小于一个基本块: b=1,s1=1,s2=120,g=64,blockSize=128,sparse=100,mask=0,ratio=1
     "rdv_2":{
@@ -90,7 +91,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+PA+mask3+s2不整除基本块: b=1,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
     "rdv_3":{
@@ -126,7 +128,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+PA+mask3+刚好满核: b=64,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
     "rdv_4":{
@@ -162,7 +165,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+PA+mask3+满核还多: b=65,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
     "rdv_5":{
@@ -198,7 +202,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # TND+PA+mask0+s2切成大于基本块临界值: b=1,s1=3,s2=513,g=4,blockSize=896,sparse=512,mask=0,ratio=64
     "rdv_6":{
@@ -234,7 +239,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+mask0+不传seqused+s2切成小于基本块临界值: b=2,s1=16,s2=3967,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
     "rdv_7":{
@@ -270,7 +276,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # TND+mask3+s2为一半基本块: b=4,s1=64,s2=512,g=64,blockSize=768,sparse=511,mask=3,ratio=32
     "rdv_8":{
@@ -306,7 +313,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # TND+PA+mask3+大batch+s2切成大于基本块临界值: b=48,s1=48,s2=2049,g=5,blockSize=1024,sparse=513,mask=3,ratio=128
     "rdv_9":{
@@ -342,7 +350,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # BSND+mask0+s2不整除基本块但是整除16: b=2,s1=15,s2=4000,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
     "rdv_10":{
@@ -378,7 +387,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     # TND+mask0+s2仅最后一个batch整除基本块: b=4,s1=49,s2=2051,g=64,blockSize=640,sparse=2048,mask=0,ratio=16
     "rdv_11":{
@@ -414,7 +424,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
 }
 

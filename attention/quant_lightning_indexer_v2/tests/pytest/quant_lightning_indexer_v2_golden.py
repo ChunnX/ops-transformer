@@ -960,7 +960,7 @@ def qliv2_output_single(params, is_batch = False):
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+    k_scale_datarange, cmp_ratio, return_value, output_idx_offset_enable, output_idx_offset_datarange = params
 
     if is_batch:
         if qk_dtype == 'INT8':
@@ -984,8 +984,10 @@ def qliv2_output_single(params, is_batch = False):
             seqused_q = ast.literal_eval(seqused_q)
         if seqused_k is not None:
             seqused_k = ast.literal_eval(seqused_k)
-        if output_idx_offset is not None:
-            output_idx_offset = ast.literal_eval(output_idx_offset)
+        if output_idx_offset_enable is not None:
+            output_idx_offset_enable = ast.literal_eval(output_idx_offset_enable)
+        if output_idx_offset_datarange is not None:
+            output_idx_offset_datarange = ast.literal_eval(output_idx_offset_datarange)
         if cmp_residual_k is not None:
             cmp_residual_k = ast.literal_eval(cmp_residual_k)
         if query_datarange is not None:
@@ -1246,18 +1248,22 @@ def qliv2_output_single(params, is_batch = False):
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).cpu()
 
     # ======================== output_idx_offset tensor 构造 ========================
-    if output_idx_offset is not None:
+    output_idx_offset = None
+    if output_idx_offset_enable and output_idx_offset_datarange is not None:
         if layout_query == "BSND":
-            output_idx_offset = torch.tensor(output_idx_offset).reshape(batch_size, q_seq, 1).to(torch.int32).cpu()
+            num_elements = batch_size * q_seq
+            offset_values = np.random.randint(
+                output_idx_offset_datarange[0], output_idx_offset_datarange[1] + 1, size=num_elements
+            ).tolist()
+            output_idx_offset = torch.tensor(offset_values).reshape(batch_size, q_seq, 1).to(torch.int32).cpu()
         elif layout_query == "TND":
-            output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).cpu()
+            num_elements = q_t_size
+            offset_values = np.random.randint(
+                output_idx_offset_datarange[0], output_idx_offset_datarange[1] + 1, size=num_elements
+            ).tolist()
+            output_idx_offset = torch.tensor(offset_values).reshape(q_t_size, 1).to(torch.int32).cpu()
 
     # ======================== cpu golden 生成 ========================
-    # if "950" not in soc_version:
-    seqused_q_int = None
-    seqused_k_int = None
-    output_idx_offset = None
-
     cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_cpu, weights, query_dequant_scale, key_dequant_scale_cpu, cu_seqlens_q_tensor, cu_seqlens_k_tensor, seqused_q_int, seqused_k_int, block_table, output_idx_offset, mxfp8_flag)
     cpu_result, _ = torch.sort(cpu_result)
     # ======================== metadata 构造 ========================

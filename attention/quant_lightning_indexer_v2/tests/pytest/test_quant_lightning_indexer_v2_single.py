@@ -31,7 +31,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
         "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
         "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value",
-        "output_idx_offset"
+        "output_idx_offset_enable", "output_idx_offset_datarange"
     ]
     param_values = [
         locals()["param_batch_size"],
@@ -66,7 +66,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_k_scale_datarange"],
         locals()["param_cmp_ratio"],
         locals()["param_return_value"],
-        locals()["param_output_idx_offset"]
+        locals()["param_output_idx_offset_enable"],
+        locals()["param_output_idx_offset_datarange"]
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -109,13 +110,14 @@ def test_qliv2(param_combinations):   # 初始化参数和tensor
     k_scale_datarange = param_combinations['k_scale_datarange']
     cmp_ratio = param_combinations['cmp_ratio']
     return_value = param_combinations['return_value']
-    output_idx_offset = param_combinations['output_idx_offset']
+    output_idx_offset_enable = param_combinations['output_idx_offset_enable']
+    output_idx_offset_datarange = param_combinations['output_idx_offset_datarange']
     torch_npu.npu.set_device(0)
     test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
                 block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
                 seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                 sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-                k_scale_datarange, cmp_ratio, return_value, output_idx_offset
+                k_scale_datarange, cmp_ratio, return_value, output_idx_offset_enable, output_idx_offset_datarange
 
     # 获得cpu结果(真值)和算子结果（测试值）
     cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)

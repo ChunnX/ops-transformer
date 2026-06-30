@@ -272,7 +272,7 @@ def check_result(expect, result, topk_value, params):
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+    k_scale_datarange, cmp_ratio, return_value, output_idx_offset_enable, output_idx_offset_datarange = params
     
     # Q 侧个体长度
     def _cu_seqlens_to_lengths(cu_list):
@@ -470,7 +470,7 @@ def check_result_return_value(expect, result, params):
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+    k_scale_datarange, cmp_ratio, return_value, output_idx_offset_enable, output_idx_offset_datarange = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]

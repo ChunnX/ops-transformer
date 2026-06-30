@@ -48,7 +48,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0, 6]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [[8,1]]
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 8]]
     },
     # QLI_L0_1_64_1_8_2048_128_TND_PA_BBND_FP8_E4M3FN_000001
     "red_2":{
@@ -84,7 +85,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-1, 1]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [[8,1]]
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 8]]
     },
     # QLI_L0_156_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000002
     "red_3":{
@@ -120,7 +122,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0, 9]],
         "cmp_ratio":[4],
         "return_value":[0],
-        "output_idx_offset": [[326,1]]
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 326]]
     },
     # QLI_L0_56_64_1_4_2048_128_TND_PA_BBND_FP8_E4M3FN_000003
     "red_4":{
@@ -155,8 +158,9 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 5]],
         "k_scale_datarange":[[0, 2]],
         "cmp_ratio":[4],
-        "return_value":[1],
-        "output_idx_offset": [[114,1]]
+        "return_value":[0],
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 114]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000004
     "red_5":{
@@ -191,8 +195,9 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 9]],
         "k_scale_datarange":[[-2, 2]],
         "cmp_ratio":[4],
-        "return_value":[1],
-        "output_idx_offset": [[8,1]]
+        "return_value":[0],
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 8]]
     },
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000005
     "red_6":{
@@ -227,8 +232,9 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0, 1]],
         "k_scale_datarange":[[0, 4]],
         "cmp_ratio":[4],
-        "return_value":[1],
-        "output_idx_offset": [[8,1]]
+        "return_value":[0],
+        "output_idx_offset_enable": [1],
+        "output_idx_offset_datarange": [[1, 8]]
     }
 }
 

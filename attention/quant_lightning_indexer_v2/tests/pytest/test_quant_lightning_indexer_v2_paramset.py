@@ -53,7 +53,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
     "mxfp8_2":{
         "batch_size": [2],
@@ -88,7 +89,8 @@ TEST_PARAMS = {
         "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0],
-        "output_idx_offset": [None]
+        "output_idx_offset_enable": [0],
+        "output_idx_offset_datarange": [[0, 0]]
     },
 }
 
