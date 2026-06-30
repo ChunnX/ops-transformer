@@ -1251,7 +1251,7 @@ private:
             static_cast<int32_t>(n2),
             static_cast<int32_t>(L1TileShape::N),
             shmem,
-            static_cast<int32_t>(peermemInfo.offsetD),
+            peermemInfo.offsetD,
             tokenPerExpertLayout
         };
 
@@ -1480,7 +1480,7 @@ private:
 
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
-            uint32_t paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
+            int64_t paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
             workspaceOffset += paddedExpertNumAligned * params.EP * sizeof(int32_t);
             // workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;

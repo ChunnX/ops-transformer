@@ -65,14 +65,14 @@ public:
         int32_t n0;
         int32_t rank;
         HcclShmem<true> shmem;
-        int32_t offsetD;
+        int64_t offsetD;
         int32_t serverId;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_,
-        LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<true>& shmem_, int32_t offsetD_,
+        LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<true>& shmem_, int64_t offsetD_,
         int32_t serverId_ = 0) :
         ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_),
         expertPerRank(expertPerRank_),rank(rank_), layoutC(layoutC_), n2(n2_), n0(n0_),
