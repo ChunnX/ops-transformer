@@ -121,6 +121,7 @@
 |[aclnnMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnMatmulAllReduceV2.md)|完成MatMul计算与AllReduce通信融合。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnMatmulReduceScatter](../../mc2/matmul_reduce_scatter/docs/aclnnMatmulReduceScatter.md)|完成mm + reduce_scatter_base计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnMatmulReduceScatterV2](../../mc2/matmul_reduce_scatter_v2/docs/aclnnMatmulReduceScatterV2.md)|aclnnMatmulReduceScatterV2接口是对[aclnnMatmulReduceScatter](../../mc2/matmul_reduce_scatter/docs/aclnnMatmulReduceScatter.md)接口的功能扩展。|默认确定性实现| 默认确定性实现 |
+|[aclnnMixedQuantSparseFlashMla](../../attention/mixed_quant_sparse_flash_mla/docs/aclnnMixedQuantSparseFlashMla.md)|支持量化场景下SWA、CSA、HCA三类Attention计算场景。|默认确定性实现| 默认确定性实现 |
 |[aclnnMixedQuantSparseFlashMlaMetadata](../../attention/mixed_quant_sparse_flash_mla_metadata/docs/aclnnMixedQuantSparseFlashMlaMetadata.md)| aclnnMixedQuantSparseFlashMla接口的前置接口，用于计算aclnnMixedQuantSparseFlashMla的负载均衡。| - | 默认确定性实现 |
 |[aclnnMlaPreprocess](../../attention/mla_preprocess/docs/aclnnMlaPreprocess.md)|Multi-Head Latent Attention前处理的计算。|默认确定性实现| - |
 |[aclnnMlaPreprocessV2](../../attention/mla_preprocess_v2/docs/aclnnMlaPreprocessV2.md)|推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：|默认确定性实现| - |
@@ -218,7 +219,7 @@
 |[aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)|更新KvCache中指定位置的key和value。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
-|[aclnnSparseFlashMla](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|支持C1A、C4A、C128A三类Attention计算场景。|默认确定性实现| 默认确定性实现 |
+|[aclnnSparseFlashMla](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|支持SWA、CSA、HCA三类Attention计算场景。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashMlaMetadata](../../attention/sparse_flash_mla_metadata/docs/aclnnSparseFlashMlaMetadata.md)|生成aclnnSparseFlashMla主算子使用的任务切分metadata。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashMlaGrad](../../attention/sparse_flash_mla_grad/docs/aclnnSparseFlashMlaGrad.md)|计算SparseFlashMla训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认非确定性实现，不支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启| 默认确定性实现 |

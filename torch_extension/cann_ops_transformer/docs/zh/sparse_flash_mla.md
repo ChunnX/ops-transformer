@@ -2,26 +2,30 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-- <term>Atlas 推理系列产品</term>：不支持
-- <term>Atlas 训练系列产品</term>：不支持
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
 - 接口功能：
 
+  `sparse_flash_mla_metadata`接口用于生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续sparse_flash_mla算子使用。
+
   `sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
-  - **C1A（Sliding Window Attention，SWA）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
-  - **C4A（Compressed Sparse Attention，CSA）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
-  - **C128A（Heavily Compressed Attention，HCA）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
+  - **SWA（Sliding Window Attention）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
+  - **CSA（Compressed Sparse Attention）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
+  - **HCA（Heavily Compressed Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
   `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
-  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、block table、sinks等输入。
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
   2. 调用`sparse_flash_mla_metadata`生成`metadata`。
   3. 调用`sparse_flash_mla`，将上一步得到的`metadata`传入主算子。
 
@@ -197,8 +201,12 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
   - `layout_q`支持"BSND"和"TND"；`layout_q="BSND"`时，`q`必须为4维；`layout_q="TND"`时，`q`必须为3维且必须传入`cu_seqlens_q`。
   - `layout_kv`支持"BSND"、"TND"和"PA_BBND"；`layout_kv="BSND"`或`layout_kv="PA_BBND"`时，`ori_kv`和`cmp_kv`必须为4维；`layout_kv="TND"`时，`ori_kv`和`cmp_kv`必须为3维。
   - `layout_kv="TND"`时必须传入`cu_seqlens_ori_kv`；传入`cmp_kv`时，还必须传入`cu_seqlens_cmp_kv`。
+  - 参数`cu_seqlens_q`、`cu_seqlens_ori_kv`及`cu_seqlens_cmp_kv`要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+  - 参数`seqused_q`、`seqused_ori_kv`、`seqused_cmp_kv`要求其值表示每个Batch中的有效token数。
+  - 参数`cmp_residual_kv`需满足`cmp_residual_kv\[i\]` < `cmp_ratio`。
   - `layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时，还必须传入`cmp_block_table`。
   - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
+  - `ori_mask_mode`及`cmp_mask_mode`所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode参数说明.md)。
   - `metadata`固定为1024个INT32元素，`topk_value_mode`仅支持1，`ori_sparse_indices`、`ori_topk_length`和`cmp_topk_length`当前版本不支持传入非空Tensor。
   - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
 
@@ -208,17 +216,18 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
     - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
     - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
     - PageAttention的block_size支持16的倍数，且不超过1024。
+
   - 产品型号约束如下：
     - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`不支持1。
-  - C1A：
+  - SWA：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
     - `cmp_topk`传0，`cmp_mask_mode`传0。
-  - C4A：
+  - CSA：
     - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
     - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
-  - C128A：
+  - HCA：
     - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
     - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
@@ -230,7 +239,7 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 
 ## 调用说明
 
-### C1A，BSND输入
+### SWA，BSND输入
 
 ```python
 import math
@@ -247,7 +256,7 @@ S2 = 64
 N1 = 64
 N2 = 1
 D = 512
-cmp_ratio = 1  # C1A示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
+cmp_ratio = 1  # SWA示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
 
 q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
@@ -295,7 +304,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### C128A，BSND输入
+### HCA，BSND输入
 
 ```python
 import math
@@ -367,7 +376,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### C4A，TND输入并使能cmp_residual_kv
+### CSA，TND输入并使能cmp_residual_kv
 
 ```python
 import math
@@ -452,7 +461,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### CP切分示例，TND + C4A，rank0切开第二个seq
+### CP切分示例，TND + CSA，rank0切开第二个seq
 
 下面示例用单进程顺序模拟两个CP rank，说明全局TND数据与每个rank入参之间的关系。假设全局有2个序列，`cmp_ratio=4`：
 
