@@ -777,8 +777,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) + relayOffset;
     uint64_t readyOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
-    hcomm_.WriteWithNotifyNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
-        mxQuantTokenScaleAlignBytes_, dstAddr + readyOffset, static_cast<uint64_t>(1));
+    hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
+        mxQuantTokenScaleAlignBytes_);
+    hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
+    hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + readyOffset,
+        srcMetaPtr + 1, sizeof(int32_t));
+    hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
+    PipeBarrier<PIPE_ALL>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
 
@@ -863,7 +868,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
         return;
     }
-    PRINTF("Level1DispatchUrma: localExpertId=%d", localExpertId);
     uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
     uint32_t senderCoreStart = blockNum_ - senderCoreNum;
