@@ -15,12 +15,25 @@
 
 #ifndef MEGA_MOE_IMPL_H
 #define MEGA_MOE_IMPL_H
+#include "kernel_operator.h"
 
+#include "kernel_tiling/kernel_tiling.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "lib/matmul_intf.h"
+#include "block_epilogue_swiglu_mx_quant.h"
+#include "mega_moe_base.h"
+
+#include "tensor_api/tensor.h"
+#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_scheduler_swizzle.h"
+#include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
+#include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 
 #include "mega_moe_impl_base.h"
 #include "mega_moe_combine_send.h"
 
 namespace MegaMoeImpl {
+using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 // =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
 // =================================================================================================
