@@ -285,7 +285,7 @@ static aclnnStatus CheckShapeSameLengthTensorList(const aclTensorList *tensorLis
                "Dim %lu value of %s[%lu] should be equal with dim %lu value of %s[%lu], but now is %ld and %ld respectively.",
                dimIds[0], tensorType[0].c_str(), i, dimIds[1], tensorType[1].c_str(), i, dimValue1, dimValue2);
   }
-  return ACLNN_SUCCESS;
+  return ACLNN_SUCCESS; 
 }
 
 static aclnnStatus CheckShapeDiffLengthTensorList(const aclTensorList *longTensorList,
