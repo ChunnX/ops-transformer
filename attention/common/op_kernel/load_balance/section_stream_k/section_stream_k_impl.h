@@ -600,7 +600,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
         }
         tmpResult.Clear();
 
-        if (m_param.fdOn || computeContext.gridInfo.sectionNum > 1U) {
+        if (m_param.fdOn) {
             ScheduleFa(faWithFdConfig, computeContext, tmpResult);
             if (tmpResult.maxCost < bestResultWithFd.maxCost) {
                 bestResultWithFd = tmpResult;
