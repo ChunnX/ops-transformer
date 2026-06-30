@@ -70,6 +70,7 @@ private:
     int64_t colLoops_;
     int64_t isInputScale_;
     int64_t quantMode_;
+    int64_t useCompactOutputRows_ = 0;
 
     int64_t tokenCount_ = 0;
     int32_t lastExpertId_ = -1;
@@ -130,11 +131,13 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutAllOutput()
         SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     }
 
-    GlobalTensor<int32_t> sourceRowGm;
-    sourceRowGm.SetGlobalBuffer((__gm__ int32_t *)outputToSrcRowGm_.GetPhyAddr() + startIndex, rowCount);
-    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    InitGlobalMemory(sourceRowGm, rowCount, static_cast<int32_t>(-1));
-    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    if (this->useCompactOutputRows_ == 1) {
+        GlobalTensor<int32_t> sourceRowGm;
+        sourceRowGm.SetGlobalBuffer((__gm__ int32_t *)outputToSrcRowGm_.GetPhyAddr() + startIndex, rowCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        InitGlobalMemory(sourceRowGm, rowCount, static_cast<int32_t>(-1));
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
 }
 
 template <typename T>
@@ -185,12 +188,13 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
 
-            // Reuse the 32B-aligned local base address for the compact map store.
-            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
-            outLocal.SetValue(0, outOffset / this->k_);
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyPad(outputToSrcRowGm_[index], outLocal, copyParams);
-            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            if (this->useCompactOutputRows_ == 1) {
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+                outLocal.SetValue(0, outOffset / this->k_);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                DataCopyPad(outputToSrcRowGm_[index], outLocal, copyParams);
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            }
             this->tokenCount_++;
         }
     }
@@ -226,6 +230,7 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeIni
     this->k_ = tilingData->k;
     this->quantMode_ = tilingData->quantMode;
     this->isInputScale_ = tilingData->isInputScale;
+    this->useCompactOutputRows_ = tilingData->gatherOutComputeParamsOp.useCompactGatherOutDropPad;
 
     if (this->blockIdx_ == this->srcToDstTilingData_->needCoreNum - 1) {
         this->coreRows_ = this->srcToDstTilingData_->lastCoreRows;
