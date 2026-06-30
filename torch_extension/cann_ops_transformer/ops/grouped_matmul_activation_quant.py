@@ -94,13 +94,27 @@ def _get_effective_x_ge_dtype(x, x_dtype):
     return _TORCH_DTYPE_TO_GE_DTYPE.get(x.dtype)
 
 
-def _resolve_quant_mode(quant_mode, x, x_dtype):
+def _get_effective_tensor_ge_dtype(tensor, dtype):
+    if dtype is not None:
+        return _normalize_attr_dtype(dtype)
+    if tensor is None:
+        return None
+    return _TORCH_DTYPE_TO_GE_DTYPE.get(tensor.dtype)
+
+
+def _resolve_quant_mode(quant_mode, x, x_scale, x_dtype, x_scale_dtype):
     x_ge_dtype = _get_effective_x_ge_dtype(x, x_dtype)
-    if quant_mode is None and x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2):
+    x_scale_ge_dtype = _get_effective_tensor_ge_dtype(x_scale, x_scale_dtype)
+    if quant_mode is not None:
+        if quant_mode != "MX":
+            raise ValueError("quant_mode 参数当前仅支持为 MX")
+        return quant_mode
+    if x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2) and x_scale_ge_dtype == GE_DTYPE_FLOAT8_E8M0:
         return "MX"
-    if quant_mode is not None and quant_mode != "MX":
-        raise ValueError("输入FP8且quant_mode为None时，自动将quant_mode推导为MX，quant_mode显式传值时必须为MX")
-    return quant_mode
+    raise ValueError(
+        "当前数据类型组合无法匹配到该算子支持的任何一种量化模式，"
+        f"x数据类型：{x_ge_dtype}，x_scale数据类型：{x_scale_ge_dtype}"
+    )
 
 
 def _resolve_y_dtype(y_dtype, x, x_dtype):
@@ -144,7 +158,7 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                                                  dst_type_max=0.0, x_dtype=None,
                                                  weight_dtype=None, weight_scale_dtype=None,
                                                  x_scale_dtype=None):
-            quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
+            quant_mode = _resolve_quant_mode(quant_mode, x, x_scale, x_dtype, x_scale_dtype)
             torch._check(len(weight) == 1 and weight[0] is not None,
                          lambda: "weight only supports one non-null tensor in current MXFP8 mode.")
             torch._check(len(weight_scale) == 1 and weight_scale[0] is not None,
@@ -225,9 +239,8 @@ def grouped_matmul_activation_quant(
             ``(M, ceil(K / 64), 2)``。
         group_list_type (int): group_list语义类型，当前支持0或1。
         tuning_config (List[int], optional): 预留调优参数。
-        quant_mode (str, optional): 量化模式。输入FP8且quant_mode为None时，自动将quant_mode推导为
-            ``"MX"``，quant_mode显式传值时必须为
-            ``"MX"``。
+        quant_mode (str, optional): 量化模式。显式传值时当前仅支持 ``"MX"``；为None时，
+            若x数据类型为FP8且x_scale数据类型为FLOAT8_E8M0，则自动推导为 ``"MX"``。
         y_dtype (torch.dtype, optional): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
             ``torch.float8_e5m2``；为None时默认推导为x的数据类型。
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。

@@ -56,7 +56,7 @@ def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, 
     if quant_mode in (None, ""):
         quant_mode = "MX"
     if quant_mode != "MX":
-        raise ValueError("当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX")
+        raise ValueError("quant_mode 参数当前仅支持为 MX")
     if x_scale is None:
         raise ValueError("x_scale is required for MX quant mode.")
 

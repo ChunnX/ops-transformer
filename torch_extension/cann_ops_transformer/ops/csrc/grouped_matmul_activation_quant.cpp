@@ -226,11 +226,15 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     aclDataType xScaleAclDtype = GetTensorAclDataType(xScaleDtype, xScale);
     c10::string_view quantModeView = quantModeOptional.value_or("");
     std::string quantMode(quantModeView.data(), quantModeView.size());
-    if (!quantModeOptional.has_value() && (xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2)) {
+    if (quantModeOptional.has_value()) {
+        TORCH_CHECK(quantMode == "MX", "quant_mode 参数当前仅支持为 MX");
+    } else {
+        TORCH_CHECK((xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2) &&
+                        xScaleAclDtype == ACL_FLOAT8_E8M0,
+            "当前数据类型组合无法匹配到该算子支持的任何一种量化模式，x数据类型：",
+            static_cast<int64_t>(xAclDtype), "，x_scale数据类型：", static_cast<int64_t>(xScaleAclDtype));
         quantMode = "MX";
     }
-    TORCH_CHECK(!quantModeOptional.has_value() || quantMode == "MX",
-        "输入FP8且quant_mode为None时，自动将quant_mode推导为MX，quant_mode显式传值时必须为MX");
     int64_t yDtypeValue = ResolveYGeDtype(yDtype, xAclDtype);
 
     at::Tensor y;
