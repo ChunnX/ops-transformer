@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V；对Q/K执行RMSNorm、Half-and-Half RoPE和共享`rotation`矩阵乘，再动态量化为FP8 E4M3FN；Q分支输出`q_out`和`q_scale`，K分支按`slot_mapping`更新`k_cache`与`k_scale_cache`；V分支按`v_scale`缩放后量化为FP8 E4M3FN，并更新`v_cache`。
+- 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V；对Q/K执行RMSNorm、RoPE和共享`rotation`矩阵乘，再动态量化为FP8 E4M3FN；Q分支输出`q_out`和`q_scale`，K分支按`slot_mapping`更新`k_cache`与`k_scale_cache`；V分支按`v_scale`缩放后量化为FP8 E4M3FN，并更新`v_cache`。
 - 使用场景：推理场景下PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>上`D=128`的实现。
 - 计算公式：
 
@@ -29,7 +29,7 @@
   y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
   $$
 
-  Q/K分支采用Half-and-Half RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行RoPE：
+  Q/K分支执行RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行RoPE：
 
   $$
   y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
