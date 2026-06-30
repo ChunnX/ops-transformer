@@ -212,7 +212,7 @@ private:
         (QuantMode == E2M1_QUANT),
         fp8_e4m3fn_t, QuantOutType>::type;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
