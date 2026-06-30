@@ -114,7 +114,7 @@ __aicore__ inline void CombineTokensLayered(
         gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
             dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
         AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_E>(0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     }
 }
