@@ -13,7 +13,16 @@
 
 ## 功能说明
 
-- 接口功能：`SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+- 接口功能：
+  `SparseFlashMlaMetadata`接口用于生成一个任务列表`metadata`，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseFlashMla`算子使用。主算子必须传入该`metadata`。
+
+  `SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`MixedQuantSparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`MixedQuantSparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
@@ -416,7 +425,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -426,7 +435,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>标识输入oriKvOptional和cmpKvOptional的数据排布格式。</td>
-      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -446,7 +455,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>returnSoftmaxLse（bool）</td>
       <td>输入</td>
       <td>是否返回softmaxLse。</td>
-      <td>支持true或false，默认值为false。</td>
+      <td>支持true或false。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

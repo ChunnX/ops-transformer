@@ -13,7 +13,16 @@
 
 ## 功能说明
 
-- 接口功能：`MixedQuantSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。该算子适用于大语言模型推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+- 接口功能：
+  `MixedQuantSparseFlashMlaMetadata`接口用于生成一个任务列表`metadata`，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`MixedQuantSparseFlashMla`算子使用。主算子必须传入该`metadata`。
+  
+  `MixedQuantSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。与`SparseFlashMla`的区别在于，本算子支持KV的per-token-group量化输入。该算子适用于大语言模型推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`MixedQuantSparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`MixedQuantSparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
@@ -168,7 +177,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>SWA/CSA/HCA场景必须传入。量化KV布局由`quantMode`决定：`quant_mode`为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；`quant_mode`为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。</td>
+      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quant_mode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。</td>
       <td>详见quantMode</td>
       <td>ND</td>
       <td>
@@ -358,7 +367,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。默认值为None。</td>
+      <td>1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -438,7 +447,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -448,7 +457,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>标识输入oriKvOptional和cmpKvOptional的数据排布格式。</td>
-      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -468,7 +477,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>returnSoftmaxLse（bool）</td>
       <td>输入</td>
       <td>是否返回softmaxLse。</td>
-      <td>支持true或false，默认值为false。</td>
+      <td>支持true或false。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -781,7 +790,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>输入样本批量大小。</td>
-      <td>默认值为0。layoutQ为TND时从cuSeqLensQ推断，无需手动指定。</td>
+      <td>layoutQ为TND时从cuSeqLensQ推断，无需手动指定。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -791,7 +800,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>maxSeqlenQ（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中q的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -801,7 +810,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中oriKv的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -811,7 +820,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>maxSeqlenCmpKv（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中cmpKv的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -821,7 +830,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
       <td>从oriKv中筛选的稀疏token个数。</td>
-      <td>当前暂不支持，默认值为0。</td>
+      <td>当前暂不支持。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -901,7 +910,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -911,7 +920,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>标识输入KV的数据排布格式。</td>
-      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -921,7 +930,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>hasOriKv（bool）</td>
       <td>输入</td>
       <td>是否传入oriKv。</td>
-      <td>默认值为true。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -931,7 +940,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>是否传入cmpKv。</td>
-      <td>SWA场景为false，CSA/HCA场景为true。默认值为true。</td>
+      <td>SWA场景为false，CSA/HCA场景为true。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
