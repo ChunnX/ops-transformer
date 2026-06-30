@@ -171,6 +171,7 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
+        qb_batch = math.ceil(q_lengths[batch_idx] / case["sparse_q_block_size"])
         for qb_idx in range(qb_max):
             allowed = _allowed_blocks(
                 case["mask_mode"], qb_idx, case["sparse_q_block_size"], case["sparse_kv_block_size"],
@@ -178,7 +179,7 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
             for n2_idx in range(n2):
                 for group_idx in range(group):
                     head_idx = n2_idx * group + group_idx
-                    if case["sparse_pattern"] == "empty_tail" and qb_idx == qb_max - 1:
+                    if (case["sparse_pattern"] == "empty_tail" and qb_idx == qb_batch - 1) or qb_idx >= qb_batch:
                         selected = []
                     else:
                         selected = _select_blocks(allowed, sparse_count, case["sparse_pattern"], rng)
