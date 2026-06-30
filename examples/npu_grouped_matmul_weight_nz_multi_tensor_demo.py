@@ -23,12 +23,12 @@ def main():
     group_type = 0
     group_list_type = 1
 
-    x = torch.ones((m, k), dtype=torch.float8_e4m3fn, device=device)
+    x = torch.ones((m, k), dtype=torch.int8, device=device).to(torch.float8_e4m3fn)
     group_list = torch.tensor([m0, m1], dtype=torch.int64, device=device)
 
     # Each expert has one independent weight tensor.
-    weight0_nd = torch.ones((n, k), dtype=torch.float32)
-    weight1_nd = torch.ones((n, k), dtype=torch.float32)
+    weight0_nd = torch.ones((n, k), dtype=torch.int8).to(torch.float8_e4m3fn)
+    weight1_nd = torch.ones((n, k), dtype=torch.int8).to(torch.float8_e4m3fn)
     weight = [
         make_weight_nz_fp8(weight0_nd),
         make_weight_nz_fp8(weight1_nd),
