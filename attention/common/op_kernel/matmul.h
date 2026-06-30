@@ -15,6 +15,8 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
+#include "tensor_api/tensor.h"
+#include "utils/debug/asc_dump.h"
 using namespace AscendC;
 
 namespace fa_base_matmul {
@@ -707,6 +709,57 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
  
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  
+    l0aBuffer.Set<HardEvent::M_MTE1>();
+    l0bBuffer.Set<HardEvent::M_MTE1>();
+}
+
+// 切K
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename TensorAL1, typename TensorBL1, typename TensorCL0C>
+__aicore__ inline void MatMulTensorAPI(const TensorAL1 &aL1Tensor, const TensorBL1 &bL1Tensor, 
+                                       L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const TensorCL0C &cL0Tensor,
+                                       const MMParam &param)
+{
+    // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
+    Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
+    l0aBuffer.Wait<HardEvent::M_MTE1>();
+    auto L0ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<A>>(param.singleM, baseK);
+    auto L0ATensor = l0aBuffer.GetTensor<A>(L0ALayout);
+    auto CopyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
+    AscendC::Te::Copy(CopyL12L0A, L0ATensor, aL1Tensor);
+    l0aBuffer.Set<HardEvent::MTE1_M>();
+
+    Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
+    l0bBuffer.Wait<HardEvent::M_MTE1>();
+    auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<B>>(baseK, param.singleN);
+    auto L0BTensor = l0bBuffer.GetTensor<B>(L0BLayout);
+    auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
+    AscendC::Te::Copy(CopyL12L0B, L0BTensor, bL1Tensor);
+    l0bBuffer.Set<HardEvent::MTE1_M>();
+
+    l0aBuffer.Wait<HardEvent::MTE1_M>();
+    l0bBuffer.Wait<HardEvent::MTE1_M>();
+
+    AscendC::Te::MmadParams mmadParams;
+    mmadParams.m = param.singleM;
+    if (param.realM != 0) {
+        mmadParams.m = param.realM;
+    }
+    mmadParams.n = param.singleN;
+    mmadParams.k = baseK;
+    if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
+        mmadParams.m = 16;
+    }
+    mmadParams.cmatrixInitVal = param.isOutKFisrt;
+    if (param.unitFlag != 0) {
+        mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+    }
+    AscendC::Te::Mmad(
+        AscendC::Te::MmadAtom<
+            AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault>>{}.with(mmadParams), 
+        cL0Tensor, L0ATensor, L0BTensor);
+
+    // matmul完成后，通知mte1可以开始搬运新数据到L0A
     l0aBuffer.Set<HardEvent::M_MTE1>();
     l0bBuffer.Set<HardEvent::M_MTE1>();
 }

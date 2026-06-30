@@ -34,9 +34,9 @@ enum class ScaleTrans {
     DN2NZ = 2
 };
 
-template <typename Q_T, L1Format FORMAT>
+template <typename Q_T, L1Format FORMAT, typename L1TensorType>
 struct FaL1Tensor {
-    LocalTensor<Q_T> tensor;
+    L1TensorType tensor;
     uint32_t rowCount;
 };
 

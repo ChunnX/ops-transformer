@@ -30,7 +30,7 @@ enum class UbFormat
     S1G = 1,
 };
 
-template <typename OUT_T, bool ROW_PAD = true>
+template <typename OUT_T, bool ROW_PAD = true, typename UbTensorType = LocalTensor<OUT_T>>
 struct FaUbTensor {
     LocalTensor<OUT_T> tensor;
     uint32_t rowCount;

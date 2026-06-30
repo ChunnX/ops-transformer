@@ -213,69 +213,69 @@ __aicore__ inline constexpr bool IsSupportPse()
 }
 
 // post quant 拷贝
-struct PostQuantInfo_V2 {
-    uint32_t gSize;
-    uint32_t dSize;
-    uint32_t s1Size; // actualS1
-    uint32_t n2Idx;
-    uint32_t gS1Idx;
-    uint32_t gS1DealSize;
-    uint32_t colCount;
-};
+// struct PostQuantInfo_V2 {
+//     uint32_t gSize;
+//     uint32_t dSize;
+//     uint32_t s1Size; // actualS1
+//     uint32_t n2Idx;
+//     uint32_t gS1Idx;
+//     uint32_t gS1DealSize;
+//     uint32_t colCount;
+// };
 
-template <typename PARAM_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
-__aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor,
-                                 PostQuantInfo_V2 &postQuantInfo)
-{
-    OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+// template <typename PARAM_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
+// __aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor,
+//                                  PostQuantInfo_V2 &postQuantInfo)
+// {
+//     OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
 
-    if constexpr (UB_FORMAT == UbFormat::S1G) {
-        uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
-        uint32_t gIdxStart = postQuantInfo.gS1Idx % offsetCalculator.GetDimG();
-        uint32_t s1IdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) / offsetCalculator.GetDimG();
-        uint32_t gIdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) % offsetCalculator.GetDimG();
+//     if constexpr (UB_FORMAT == UbFormat::S1G) {
+//         uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
+//         uint32_t gIdxStart = postQuantInfo.gS1Idx % offsetCalculator.GetDimG();
+//         uint32_t s1IdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) / offsetCalculator.GetDimG();
+//         uint32_t gIdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) % offsetCalculator.GetDimG();
 
-        if (s1IdxEnd - s1IdxStart > 1) {
-            // 存在完整中间段, 拷贝完整G
-            uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
-            uint32_t blockCount = offsetCalculator.GetDimG();
-            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
-                                            offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
-                                            postQuantInfo.colCount);
-        } else {
-            // 处理第一段S1
-            uint32_t headSize = 0;
-            if (s1IdxStart == s1IdxEnd) {
-                headSize = gIdxEnd - gIdxStart;
-            } else {
-                headSize = offsetCalculator.GetDimG() - gIdxStart;
-            }
-            uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], headSize, offsetCalculator.GetDimD(),
-                                            offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+//         if (s1IdxEnd - s1IdxStart > 1) {
+//             // 存在完整中间段, 拷贝完整G
+//             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
+//             uint32_t blockCount = offsetCalculator.GetDimG();
+//             CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
+//                                             offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+//                                             postQuantInfo.colCount);
+//         } else {
+//             // 处理第一段S1
+//             uint32_t headSize = 0;
+//             if (s1IdxStart == s1IdxEnd) {
+//                 headSize = gIdxEnd - gIdxStart;
+//             } else {
+//                 headSize = offsetCalculator.GetDimG() - gIdxStart;
+//             }
+//             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
+//             CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], headSize, offsetCalculator.GetDimD(),
+//                                             offsetCalculator.GetStrideG(), postQuantInfo.colCount);
 
-            // 处理第二段S1
-            if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
-                offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
-                uint32_t ubOffset = headSize * postQuantInfo.colCount;
+//             // 处理第二段S1
+//             if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
+//                 offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
+//                 uint32_t ubOffset = headSize * postQuantInfo.colCount;
 
-                CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset], gIdxEnd,
-                                                offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
-                                                postQuantInfo.colCount);
-            }
-        }
-    } else {
-        uint32_t gIdxStart = postQuantInfo.gS1Idx / postQuantInfo.s1Size;
-        uint32_t s1IdxStart = postQuantInfo.gS1Idx % postQuantInfo.s1Size;
+//                 CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset], gIdxEnd,
+//                                                 offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+//                                                 postQuantInfo.colCount);
+//             }
+//         }
+//     } else {
+//         uint32_t gIdxStart = postQuantInfo.gS1Idx / postQuantInfo.s1Size;
+//         uint32_t s1IdxStart = postQuantInfo.gS1Idx % postQuantInfo.s1Size;
 
-        uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-        // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
-        CopySingleMatrixNDToND<PARAM_T>(
-            dstUb, srcTensor.gmTensor[offset],
-            ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
-            offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
-    }
-}
+//         uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
+//         // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
+//         CopySingleMatrixNDToND<PARAM_T>(
+//             dstUb, srcTensor.gmTensor[offset],
+//             ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
+//             offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+//     }
+// }
 
 // ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
 template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>

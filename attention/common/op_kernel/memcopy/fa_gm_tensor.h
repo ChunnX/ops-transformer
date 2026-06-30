@@ -26,9 +26,9 @@
 
 using AscendC::GlobalTensor;
 
-template <typename Q_T, GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
+template <typename Q_T, GmFormat FORMAT, typename GmTensorType, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
 struct FaGmTensor {
-    GlobalTensor<Q_T> gmTensor;
+    GmTensorType gmTensor;
     OffsetCalculator<FORMAT, ACTLEN_T, WITH_ZERO_HEAD> offsetCalculator;
 };
 
