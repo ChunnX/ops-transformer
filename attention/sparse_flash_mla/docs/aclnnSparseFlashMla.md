@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：`SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持C1A（Sliding Window Attention，SWA）、C4A（Compressed Sparse Attention，CSA）、C128A（Heavily Compressed Attention，HCA）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
+- 接口功能：`SparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持C1A/SWA（Sliding Window Attention）、C4A/CSA（Compressed Sparse Attention）、C128A/HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。
 
 - 计算公式：
 
@@ -25,7 +25,7 @@
 
   - 滑动窗口部分（oriKv）：对第$i_{S1}$个Query token，其因果对角线位置为$\text{ori\_threshold} = S2_{act} - S1_{act} + i_{S1} + 1$，窗口范围为$[\max(\text{ori\_threshold} - \text{ori\_win\_left} - 1, 0), \text{ori\_threshold} + \text{ori\_win\_right})$。
 
-  - 压缩KV部分（cmpKv）：因果边界阈值为$\text{cmp\_threshold} = \lfloor \frac{\text{ori\_threshold}}{\text{cmp\_ratio}} \rfloor$。C128A场景取$[0, \text{cmp\_threshold})$内的连续压缩KV；C4A场景通过TopK索引从压缩KV中按需收集，仅保留$\text{begin\_idx} < \text{cmp\_threshold}$的块。
+  - 压缩KV部分（cmpKv）：因果边界阈值为$\text{cmp\_threshold} = \lfloor \frac{\text{ori\_threshold}}{\text{cmp\_ratio}} \rfloor$。C128A/HCA场景取$[0, \text{cmp\_threshold})$内的连续压缩KV；C4A/CSA场景通过TopK索引从压缩KV中按需收集，仅保留$\text{begin\_idx} < \text{cmp\_threshold}$的块。
 
   注意力计算采用Online Softmax（Flash Attention V2），S2方向按512分块循环，sinks作为每行softmax的初始最大值：
 
@@ -166,7 +166,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>C1A/C4A/C128A场景必须传入。</td>
+      <td>C1A/SWA、C4A/CSA、C128A/HCA场景必须传入。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>C4A/C128A场景必须传入，C1A场景不传入。</td>
+      <td>C4A/CSA、C128A/HCA场景必须传入，C1A/SWA场景不传入。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>C4A场景必须传入，C1A/C128A场景不传入。</td>
+      <td>C4A/CSA场景必须传入，C1A/SWA、C128A/HCA场景不传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpBlockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>C4A/C128A场景且layoutKv为PA_BBND时必须传入。</td>
+      <td>C4A/CSA、C128A/HCA场景且layoutKv为PA_BBND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, cmp_max_block_num_per_batch)</td>
@@ -306,7 +306,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在C4A/CSA、C128A/HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A场景传4，C128A场景传128。</td>
+      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，C4A/CSA场景传4，C128A/HCA场景传128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。C1A场景下该参数不生效。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。C1A/SWA场景下该参数不生效。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -545,7 +545,7 @@ aclnnStatus aclnnSparseFlashMla(
         <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
       </tr>
       <tr>
-        <td>C1A场景cmpRatio不为1，或cmpRatio与C4A/C128A场景不匹配。</td>
+        <td>C1A/SWA场景cmpRatio不为1，或cmpRatio与C4A/CSA、C128A/HCA场景不匹配。</td>
       </tr>
       <tr>
         <td>oriWinLeft不为127，或oriWinRight不为0。</td>
@@ -662,9 +662,9 @@ aclnnStatus aclnnSparseFlashMla(
 
   | 场景 | oriKvOptional | cmpKvOptional | cmpSparseIndicesOptional | 说明 |
   | :--- | :----- | :----- | :----------------- | :--- |
-  | C1A   | 必须传入 | 不传入 | 不传入 | 仅滑动窗口注意力 |
-  | C4A   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
-  | C128A | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
+  | C1A/SWA   | 必须传入 | 不传入 | 不传入 | 仅滑动窗口注意力 |
+  | C4A/CSA   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
+  | C128A/HCA | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
 
 - Layout约束
 
@@ -680,6 +680,21 @@ aclnnStatus aclnnSparseFlashMla(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file test_aclnn_sparse_flash_mla.cpp
+ * \brief SparseFlashMla + SparseFlashMlaMetadata 算子调用示例（C4A/CSA）
+ */
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -849,12 +864,11 @@ int main()
   std::vector<int64_t> cmpBlockTableShape = {B, (cmpKvLen + cmpBlockSize - 1) / cmpBlockSize};
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
-  std::vector<int64_t> cmpResidualKvShape = {B};
   std::vector<int64_t> sinksShape = {N1};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T1, N1, D};
   std::vector<int64_t> softmaxLseShape = {T1, N1, 1};
-  // 对全部 optional 输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
+  // 对全部 5 个输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
   std::vector<int64_t> emptyShape = {0};
 
   void* qDeviceAddr = nullptr;
@@ -868,10 +882,6 @@ int main()
   void* cuSeqLensCmpKvDeviceAddr = nullptr;
   void* seqUsedQDeviceAddr = nullptr;
   void* seqUsedOriKvDeviceAddr = nullptr;
-  void* seqUsedCmpKvDeviceAddr = nullptr;
-  void* cmpResidualKvDeviceAddr = nullptr;
-  void* oriTopkLengthDeviceAddr = nullptr;
-  void* cmpTopkLengthDeviceAddr = nullptr;
   void* sinksDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
@@ -888,10 +898,6 @@ int main()
   aclTensor* cuSeqLensCmpKv = nullptr;
   aclTensor* seqUsedQ = nullptr;
   aclTensor* seqUsedOriKv = nullptr;
-  aclTensor* seqUsedCmpKv = nullptr;
-  aclTensor* cmpResidualKv = nullptr;
-  aclTensor* oriTopkLength = nullptr;
-  aclTensor* cmpTopkLength = nullptr;
   aclTensor* sinks = nullptr;
   aclTensor* metadata = nullptr;
   aclTensor* attnOut = nullptr;
@@ -920,7 +926,6 @@ int main()
   }
   std::vector<int32_t> emptyHostData;
   std::vector<int32_t> seqUsedOriKvHostData(B, static_cast<int32_t>(s2Act));
-  std::vector<int32_t> cmpResidualKvHostData(B, 0);
   std::vector<float> sinksHostData(N1, 1.0f);
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
@@ -960,14 +965,6 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(seqUsedOriKvHostData, seqUsedOriKvShape, &seqUsedOriKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedOriKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &seqUsedCmpKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedCmpKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &oriTopkLengthDeviceAddr, aclDataType::ACL_INT32, &oriTopkLength);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &cmpTopkLengthDeviceAddr, aclDataType::ACL_INT32, &cmpTopkLength);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
@@ -986,8 +983,8 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv, seqUsedCmpKv,
-      cmpResidualKv, oriTopkLength, cmpTopkLength,
+      seqUsedQ, seqUsedOriKv,
+      nullptr, nullptr, nullptr, nullptr,
       N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
@@ -1027,7 +1024,7 @@ int main()
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
       layoutQ, layoutKv,
-      1, 0, 0,
+      1,
       false,
       attnOut, softmaxLse,
       &workspaceSize, &executor);
@@ -1064,7 +1061,7 @@ int main()
   aclDestroyTensor(metadata);
   aclDestroyTensor(attnOut);
   aclDestroyTensor(softmaxLse);
-
+  
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(oriKvDeviceAddr);
