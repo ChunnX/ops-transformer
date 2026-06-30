@@ -69,7 +69,7 @@ public:
     }
 
     __aicore__ inline void ComputeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                       LocalTensor<float> qkPreprocessUb, uint32_t outputBufferId)
+                                       const LocalTensor<float> &qkPreprocessUb, uint32_t outputBufferId)
     {
         const uint32_t inputBufferId = static_cast<uint32_t>((inputBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         if (tile.aivTokenSize == 0U) {
@@ -103,7 +103,7 @@ public:
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
     }
 
-    __aicore__ inline void PostprocessQk(const TileParam &tile, LocalTensor<float> qkAfterCubeUb,
+    __aicore__ inline void PostprocessQk(const TileParam &tile, const LocalTensor<float> &qkAfterCubeUb,
                                          uint32_t outputBufferId)
     {
         if (tile.aivTokenSize == 0U) {
@@ -247,7 +247,7 @@ private:
     }
 
     __aicore__ inline void BuildRopeBf16NzUb(const TileParam &tile, uint32_t inputBufferId,
-                                             LocalTensor<float> qkPreprocessUb)
+                                             const LocalTensor<float> &qkPreprocessUb)
     {
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[inputBufferId * QKV_K_SCALE_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> gamma = gammaUb_;
@@ -300,7 +300,7 @@ private:
     }
 
     __aicore__ inline void CopyRopeBf16NzUbToL1Nz(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1,
-                                                  LocalTensor<float> qkPreprocessUb)
+                                                  const LocalTensor<float> &qkPreprocessUb)
     {
         if (tile.aivTokenSize == 0U) {
             return;
@@ -367,7 +367,8 @@ private:
         }
     }
 
-    __aicore__ inline void QuantQToFp8(const TileParam &tile, LocalTensor<float> qkAfterCube, LocalTensor<float> qScale)
+    __aicore__ inline void QuantQToFp8(const TileParam &tile, const LocalTensor<float> &qkAfterCube,
+                                       const LocalTensor<float> &qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         // Q dynamic quant keeps two VF entries. NTD writes compact contiguous head-major q/q_scale
@@ -385,7 +386,8 @@ private:
         }
     }
 
-    __aicore__ inline void QuantKToFp8(const TileParam &tile, LocalTensor<float> qkAfterCube, LocalTensor<float> kScale)
+    __aicore__ inline void QuantKToFp8(const TileParam &tile, const LocalTensor<float> &qkAfterCube,
+                                       const LocalTensor<float> &kScale)
     {
         const uint64_t kRowOffset = tile.cubeHalfTokenSize * qHeadNum_ * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
@@ -412,8 +414,8 @@ private:
             outputTokenStrideBytes);
     }
 
-    __aicore__ inline void StoreQOutputs(const TileParam &tile, LocalTensor<float> qkAfterCube,
-                                         LocalTensor<float> qScale)
+    __aicore__ inline void StoreQOutputs(const TileParam &tile, const LocalTensor<float> &qkAfterCube,
+                                         const LocalTensor<float> &qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         if constexpr (IS_TND) {
@@ -430,8 +432,8 @@ private:
         }
     }
 
-    __aicore__ inline void ScatterKOutputs(const TileParam &tile, LocalTensor<float> qkAfterCube,
-                                           LocalTensor<float> kScale)
+    __aicore__ inline void ScatterKOutputs(const TileParam &tile, const LocalTensor<float> &qkAfterCube,
+                                           const LocalTensor<float> &kScale)
     {
         const uint64_t kRowOffset = tile.cubeHalfTokenSize * qHeadNum_ * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
