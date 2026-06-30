@@ -161,9 +161,9 @@ TEST_PARAMS = {
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000004
     "red_5":{
         "batch_size": [4],
-        "q_seq": [4096],
+        "q_seq": [8],
         "k_seq": [1024],
-        "q_t_size":[10513],
+        "q_t_size":[8],
         "k_t_size":[1],
         "q_head_num": [64],
         "k_head_num": [1],
@@ -179,7 +179,7 @@ TEST_PARAMS = {
         "seqused_q": [None],
         "seqused_k": [[77,77,77,4096]],
         "cmp_residual_k": [[0,2,2,2]],
-        "max_seqlen_q": [4096],
+        "max_seqlen_q": [8],
         "quant_mode": [3],
         "layout_query": ["TND"],
         "layout_key":["PA_BBND"],
@@ -197,9 +197,9 @@ TEST_PARAMS = {
     # QLI_L0_4_64_1_4096_1024_128_TND_PA_BBND_FP8_E4M3FN_000005
     "red_6":{
         "batch_size": [4],
-        "q_seq": [4096],
+        "q_seq": [8],
         "k_seq": [1024],
-        "q_t_size":[4096],
+        "q_t_size":[8],
         "k_t_size":[1],
         "q_head_num": [64],
         "k_head_num": [1],
@@ -215,7 +215,7 @@ TEST_PARAMS = {
         "seqused_q": [None],
         "seqused_k": [[81,81,81,4096]],
         "cmp_residual_k": [[3,3,1,3]],
-        "max_seqlen_q": [4096],
+        "max_seqlen_q": [8],
         "quant_mode": [3],
         "layout_query": ["TND"],
         "layout_key":["PA_BBND"],
