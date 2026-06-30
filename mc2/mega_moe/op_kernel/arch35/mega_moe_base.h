@@ -28,7 +28,6 @@ struct Mc2MoeContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
     uint64_t urmacclBuffer[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
-
 };
 
 struct GMMAddrInfo {
@@ -112,6 +111,8 @@ struct PeermemInfoUrma {
 
 struct CombineCommParams {
     uint32_t rankId;
+    Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
+    __gm__ Mc2MoeContext* mc2Context;
 };
 
 struct Params {
