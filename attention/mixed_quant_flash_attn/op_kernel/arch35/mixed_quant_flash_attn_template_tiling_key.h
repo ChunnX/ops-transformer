@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file flash_attn_template_tiling_key.h
- * \brief FlashAttn TilingKey定义（非量化，仅FP16/BF16）
+ * \file mixed_quant_flash_attn_template_tiling_key.h
+ * \brief MixedQuantFlashAttn TilingKey定义（5字段）
  */
 
-#ifndef TEMPLATE_TILING_KEY_FLASH_ATTN_H_
-#define TEMPLATE_TILING_KEY_FLASH_ATTN_H_
+#ifndef MIXED_QUANT_FLASH_ATTN_TEMPLATE_TILING_KEY_H_
+#define MIXED_QUANT_FLASH_ATTN_TEMPLATE_TILING_KEY_H_
 
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "../utils/flash_attn_common_def.h"
 #include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
-#include "flash_attn_tiling_data.h"
+#include "mixed_quant_flash_attn_tiling_data.h"
 
 #ifndef ORIG_DTYPE_QUERY
 #define ORIG_DTYPE_QUERY (DT_BF16)
@@ -64,6 +64,6 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCEN
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
                                      ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0),
                                      ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 1),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(MixedQuantFlashAttnTilingData)), );
 
-#endif // TEMPLATE_TILING_KEY_FLASH_ATTN_H_
+#endif // MIXED_QUANT_FLASH_ATTN_TEMPLATE_TILING_KEY_H_

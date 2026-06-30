@@ -30,7 +30,7 @@
 #include "../utils/flash_attn_common_def.h"
 #include "flash_attn_kernel_base_gqa_template.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
-#include "flash_attn_tiling_data.h"
+#include "mixed_quant_flash_attn_tiling_data.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // flash_attn_kernel_run: 5字段 tiling key → layout / s1 / s2 / d / dv / quantMode
@@ -103,7 +103,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 #endif
 
     // 5. Tiling 解析、实例化并执行
-    size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
+    // Host 侧使用 MixedQuantFlashAttnTilingData，kernel 侧使用 FlashAttnNoQuantTilingArch35
+    // 两者二进制布局一致，通过指针类型转换桥接
+    size_t offset = (size_t)(&((MixedQuantFlashAttnTilingData *)0)->baseTiling);
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 

@@ -15,8 +15,8 @@
 
 #include "kernel_operator.h"
 #include "arch35/flash_attn_entry_regbase.h"
-#include "arch35/flash_attn_template_tiling_key.h"
-#include "arch35/flash_attn_tiling_data.h"
+#include "arch35/mixed_quant_flash_attn_template_tiling_key.h"
+#include "arch35/mixed_quant_flash_attn_tiling_data.h"
 
 using namespace AscendC;
 
@@ -28,7 +28,7 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
            __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
            __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-    REGISTER_TILING_DEFAULT(optiling::FlashAttnTilingData);
+    REGISTER_TILING_DEFAULT(optiling::MixedQuantFlashAttnTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     (void)quantMode;

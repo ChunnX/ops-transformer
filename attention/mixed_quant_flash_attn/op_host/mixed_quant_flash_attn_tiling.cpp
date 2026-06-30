@@ -19,7 +19,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "mixed_quant_flash_attn_tiling.h"
 #include "mixed_quant_flash_attn_tiling_common.h"
-#include "../op_kernel/arch35/flash_attn_template_tiling_key.h"
+#include "../op_kernel/arch35/mixed_quant_flash_attn_template_tiling_key.h"
 #include "mixed_quant_flash_attn_tiling_info_parser.h"
 #include "checkers/fa_checker.h"
 #include "../../common/op_host/fia_tiling_templates_registry.h"
