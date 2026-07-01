@@ -349,12 +349,12 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
             // cmpResidualK 传入时校验维度 & 数据类型
             if (qLayout_ == DataLayout::BSND) {
                 OP_CHECK_IF(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO) !=
-                    opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetDimNum(),
+                    opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize(),
                     OP_LOGE(opName_, "when layout_q is BSND, input cmp_residual_k'shape must be (B,)"),
                     return ge::GRAPH_FAILED);
             } else if (qLayout_ == DataLayout::TND) {
-                OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetDimNum() !=
-                    opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetDimNum() - 1,
+                OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() - 1,
                     OP_LOGE(opName_, "when layout_q is TND, input cmp_residual_k's shape "
                     "must equal input cu_seqlens_q's shape - 1"),
                     return ge::GRAPH_FAILED);
@@ -380,17 +380,17 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
         if (npuArch_ == NpuArch::DAV_3510) {
             if (kLayout_ == DataLayout::BnBsND) {
                 // k为PA_BBND必传sequsedK, 用sequsedK的维度校验
-                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetDimNum() !=
-                    opParamInfo_.sequsedK.tensor->GetStorageShape().GetDimNum() + 1,
+                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.sequsedK.tensor->GetStorageShape().GetShapeSize() + 1,
                     OP_LOGE(opName_, "when layout_q is TND and layout_k is PA_BBND, "
-                        "input cuSeqlensQ's shape must equal sequsedK's shape + 1"),
+                        "input cu_seqlens_q's shape must equal seqused_k's shape + 1"),
                     return ge::GRAPH_FAILED);
             } else if (kLayout_ == DataLayout::TND){
                 // q、k都为TND, cuSeqlensQ与cuSeqlensK维度一致校验
-                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetDimNum() !=
-                    opParamInfo_.cuSeqlensK.tensor->GetStorageShape().GetDimNum(),
+                OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
+                    opParamInfo_.cuSeqlensK.tensor->GetStorageShape().GetShapeSize(),
                     OP_LOGE(opName_, "when layout_q is TND and layout_k is TND, "
-                        "input cuSeqlensQ'shape must equal cuSeqlensK's shape"),
+                        "input cu_seqlens_q'shape must equal cu_seqlens_k's shape"),
                     return ge::GRAPH_FAILED);
             }
             OP_CHECK_IF(opParamInfo_.cuSeqlensQ.desc->GetDataType() != ge::DT_INT32,
