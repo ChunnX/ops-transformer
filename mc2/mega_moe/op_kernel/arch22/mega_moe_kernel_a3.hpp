@@ -1322,7 +1322,7 @@ private:
                 MatrixCoord offsetC{0U, 0};
                 MatrixCoord shapeC{dequantSum1, params.problemShape.n()};
                 LayoutC layoutC;
-                layoutC = LayoutC{dequantSum1, params.problemShape.n()};
+                layoutC = LayoutC{dequantSum1, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
