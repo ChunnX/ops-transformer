@@ -51,13 +51,11 @@ class FunctionApi(BaseApi):
                                                       input_data.kwargs["numOutTokensOptional"],
                                                       input_data.kwargs["paddedModeOptional"])
             sorted_indices = sorted_indices.to(torch.int32)
-            expanded_scale = torch.empty((0,), dtype=torch.float32, device=device)
-            return permuted_tokens, sorted_indices, expanded_scale
+            return permuted_tokens, sorted_indices
         else:
             device = "cpu"
             permuted_tokens, sorted_indices = permute(input_data.kwargs["tokens"], input_data.kwargs["indices"],
                                                       input_data.kwargs["numOutTokensOptional"],
                                                       input_data.kwargs["paddedModeOptional"])
             sorted_indices = sorted_indices.to(torch.int32)
-            expanded_scale = torch.empty((0,), dtype=torch.float32, device=device)
-            return permuted_tokens, sorted_indices, expanded_scale
+            return permuted_tokens, sorted_indices
