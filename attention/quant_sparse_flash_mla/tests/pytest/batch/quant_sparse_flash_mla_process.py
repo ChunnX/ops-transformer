@@ -85,7 +85,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
 
     logging.info("program running in aclgraph mode.")
     logging.info(f"test_data:{params}")
-    logging.info("npu_quant_sparse_flash_mla_metadata...")
+    logging.info("quant_sparse_flash_mla_metadata...")
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
@@ -124,7 +124,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     metadata.npu()
 
     torch.npu.synchronize()
-    logging.info("npu_quant_sparse_flash_mla...")
+    logging.info("quant_sparse_flash_mla...")
     npu_result = npu_model(q=op_input['q'].npu() if op_input['q'] is not None else None,
                           ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                           cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
@@ -168,7 +168,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     torch_npu.npu.set_device(device_id)
 
     logging.info(f"test_data:{params}")
-    logging.info("npu_quant_sparse_flash_mla_metadata...")
+    logging.info("quant_sparse_flash_mla_metadata...")
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
@@ -205,7 +205,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     torch.npu.synchronize()
     metadata.npu()
 
-    logging.info("npu_quant_sparse_flash_mla...")
+    logging.info("quant_sparse_flash_mla...")
     npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,

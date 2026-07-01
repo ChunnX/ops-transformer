@@ -47,7 +47,7 @@
 |ori_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |cmp_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |sinks|可选输入|注意力下沉tensor|FLOAT32|ND|
-|metadata|可选输入|aicpu算子（npu_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
+|metadata|可选输入|aicpu算子（quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
 |qkv_quant_mode|可选属性|默认值为1，表示Q、K、V 的量化模式，当前仅支持1，1表示Q、K、V 输入为HIFLOAT8类型的per_tensor量化。|INT32|-|
 |softmax_scale|可选属性|默认值为None，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值|FLOAT32|-|
 |cmp_ratio|可选属性|默认值为None，表示对ori_kv的压缩率，kv压缩场景支持1~128，非kv压缩场景仅支持传1|INT32|-|
