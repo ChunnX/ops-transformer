@@ -76,7 +76,11 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
     MaskReg preg_src_mask = UpdateMask<float>(pltSrcN);
     MaskReg preg_src_mask_b16 = UpdateMask<uint16_t>(pltSrcN16);
     MaskReg preg_src_mask_b8 = CreateMask<T2, MaskPattern::ALL>();
-
+    
+    MaskReg preg1;
+    MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
+    MaskReg preg3;
+    MaskReg preg4;
     MaskReg preg_ori_src_n = UpdateMask<T>(pltOriginalN);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
     MaskReg preg_compare;
