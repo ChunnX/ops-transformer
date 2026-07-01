@@ -1775,12 +1775,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             PipeBarrier<PIPE_ALL>();
             SendCntCal(0, nextSendCnt);
             PipeBarrier<PIPE_ALL>();
-            if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
-                UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                PipeBarrier<PIPE_ALL>();
-                TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
-                PipeBarrier<PIPE_ALL>();
-            }
+            // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
+            //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+            //     PipeBarrier<PIPE_ALL>();
+            //     TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
+            //     PipeBarrier<PIPE_ALL>();
+            // }
         }
     }
 
@@ -1795,64 +1795,64 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
                 PipeBarrier<PIPE_ALL>();
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 PipeBarrier<PIPE_ALL>();
-                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                    PipeBarrier<PIPE_ALL>();
-                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-                    PipeBarrier<PIPE_ALL>();
-                }
+                // if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                //     PipeBarrier<PIPE_ALL>();
+                //     TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                //     PipeBarrier<PIPE_ALL>();
+                // }
             }
         }
 
         // GMM1 consumer 消费 expert e。
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        PipeBarrier<PIPE_ALL>();
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-        PipeBarrier<PIPE_ALL>();
+        // if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+        //     continue;
+        // }
+        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+        // PipeBarrier<PIPE_ALL>();
+        // GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        // PipeBarrier<PIPE_ALL>();
     }
-    EndSync(vecSetSyncCom_);
-    if constexpr(g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-            ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
-        }
-    }
+    // EndSync(vecSetSyncCom_);
+    // if constexpr(g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1) {
+    //         ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+    //     }
+    // }
 
-    // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    vecSetSyncCom_ = 0;
-    GMMAddrInfo gmm2AddrInfo;
-    ExpertLoopState gmm2State{initShape, initOffset, 0};
-    InitCombineBuffers();
+    // // 3. 本卡专家接收数据GroupMatmul2 & Combine
+    // vecSetSyncCom_ = 0;
+    // GMMAddrInfo gmm2AddrInfo;
+    // ExpertLoopState gmm2State{initShape, initOffset, 0};
+    // InitCombineBuffers();
 
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1) {
-            LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
-            hcomm_.Init(hcommTensor_, ALIGN_512);
-            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
-        }
-    }
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
-        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
-    }
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
-    }
-    PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
+    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
+    //     if (GetSubBlockIdx() == 1) {
+    //         LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+    //         hcomm_.Init(hcommTensor_, ALIGN_512);
+    //         MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
+    //     }
+    // }
+    // for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
+    //         continue;
+    //     }
+    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
+    //     GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
+    // }
+    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+    //     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
+    // }
+    // PipeBarrier<PIPE_ALL>();
+    // SyncAll<true>();
 
-    // 4. 本卡数据Unpermute
-    if constexpr(g_coreType == AIV) {
-        UnpermuteBuffInit();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        Unpermute();
-    }
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    // // 4. 本卡数据Unpermute
+    // if constexpr(g_coreType == AIV) {
+    //     UnpermuteBuffInit();
+    //     CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+    //     Unpermute();
+    // }
+    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
 }   // namespace MegaMoeImpl
