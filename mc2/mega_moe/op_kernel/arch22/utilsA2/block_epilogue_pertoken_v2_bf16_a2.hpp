@@ -97,7 +97,7 @@ public:
             source_scale_offset[i] = -1;
         }
         tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrTokenPerExpert));
-        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128), params.expertPerRank);
         is_ping = true;
     }
 
