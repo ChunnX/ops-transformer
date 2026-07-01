@@ -1246,7 +1246,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                     // cumsum + preSumBeforeRank + preSumRankInExpert
                                     info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 2 +
                                     info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * std::max(info.N,n2) * sizeof(int16_t) * 2 + // GMM1&2 Out
+                                    info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * 2 + // GMM1&2 Out
                                     info.maxRecvTokenNum * std::max(info.K, k2) + // swiglu out & quantizedToken
                                     info.worldSize * sizeof(int32_t) * 16; // sync
     } else if (archCode == SOC_ASCEND910B) {
