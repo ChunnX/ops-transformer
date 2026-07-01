@@ -485,14 +485,16 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
-                DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+                DQ_L0C_fp16 = T.alloc_L0C((Nidx1, k_block), input_dtype)
+                DQ_L0C_fp32 = T.alloc_L0C((Nidx1, k_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                         T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
-                        T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
-                        T.tile.atomic_add(dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
+                        T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C_fp16, transpose_B=False, init=True)
+                        T.tile.cast(DQ_L0C_fp32, DQ_L0C_fp16, "CAST_NONE", Nidx1 * k_block)
+                        T.tile.atomic_add(dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C_fp32)
 
                 T.set_cross_flag("FIX", 3)
 
