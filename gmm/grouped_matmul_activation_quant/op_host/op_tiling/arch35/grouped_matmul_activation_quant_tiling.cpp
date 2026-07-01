@@ -127,8 +127,8 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
     inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
     OP_CHECK_IF(inputParams_.groupListType != 0 && inputParams_.groupListType != 1,
-                OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, actual is %d.",
-                        inputParams_.groupListType),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "group_list_type",
+                    std::to_string(inputParams_.groupListType), "group_list_type must be 0 or 1"),
                 return false);
 
     const char *quantModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_QUANT_MODE);
@@ -147,19 +147,24 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
             activationTypePtr, quantMode.c_str(), *yDtypePtr, roundModePtr, *scaleAlgPtr,
             static_cast<int>(inputParams_.transB), inputParams_.groupListType);
     OP_CHECK_IF(quantMode != "MX",
-                OP_LOGE(context_->GetNodeName(), "quant_mode only supports MX, actual is %s.", quantMode.c_str()),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "quant_mode", quantMode, "MX"),
                 return false);
     OP_CHECK_IF(!IsFp8(yDtype),
-                OP_LOGE(context_->GetNodeName(), "y_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y_dtype",
+                    ge::TypeUtils::DataTypeToSerialString(yDtype), "FLOAT8_E4M3FN or FLOAT8_E5M2"),
                 return false);
     std::string roundMode(roundModePtr);
     OP_CHECK_IF(roundMode != "rint",
-                OP_LOGE(context_->GetNodeName(), "mxfp8 only supports round_mode rint."), return false);
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "round_mode", roundMode, "rint"), return false);
     OP_CHECK_IF(*scaleAlgPtr != SCALE_ALG_OCP && *scaleAlgPtr != SCALE_ALG_CUBLAS,
-                OP_LOGE(context_->GetNodeName(), "mxfp8 only supports scale_alg 0 or 1."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "scale_alg",
+                    std::to_string(*scaleAlgPtr), "scale_alg must be 0 or 1 when the quant mode is MX"),
+                return false);
     std::string activationType(activationTypePtr);
     OP_CHECK_IF(activationType != ACTIVATION_TYPE_GELU_TANH_STR,
-                OP_LOGE(context_->GetNodeName(), "activation_type only supports gelu_tanh."), return false);
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "activation_type", activationType,
+                                          ACTIVATION_TYPE_GELU_TANH_STR),
+                return false);
     roundMode_ = ROUND_MODE_RINT;
     scaleAlg_ = static_cast<uint8_t>(*scaleAlgPtr);
     activationType_ = ACTIVATION_TYPE_GELU_TANH;
@@ -172,19 +177,33 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
 {
     OP_CHECK_IF(!IsFp8(inputParams_.aDtype),
-                OP_LOGE(context_->GetNodeName(), "x must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                    "FLOAT8_E4M3FN or FLOAT8_E5M2 when the quant mode is MX"),
                 return false);
     OP_CHECK_IF(inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE(context_->GetNodeName(), "weight only supports FLOAT8_E4M3FN."),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "weight",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                    "FLOAT8_E4M3FN when the quant mode is MX"),
                 return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 ||
                     inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x_scale and weight_scale",
+                    std::string("x_scale=" +
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype) +
+                        ", weight_scale=" + ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype)),
+                    "x_scale and weight_scale must be FLOAT8_E8M0 when the quant mode is MX"),
                 return false);
     OP_CHECK_IF(!IsFp8OutputDtype(inputParams_.outDataDtype),
-                OP_LOGE(context_->GetNodeName(), "y must be FLOAT8_E4M3FN or FLOAT8_E5M2."), return false);
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
+                    "FLOAT8_E4M3FN or FLOAT8_E5M2 when the quant mode is MX"),
+                return false);
     OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context_->GetNodeName(), "y_scale must be FLOAT8_E8M0."), return false);
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y_scale",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
+                    "FLOAT8_E8M0 when the quant mode is MX"),
+                return false);
     return true;
 }
 
@@ -221,7 +240,10 @@ bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape 
 {
     OP_CHECK_IF(xScaleShape.GetDimNum() != MXFP_PER_TOKEN_SCALE_DIM_NUM ||
                     wScaleShape.GetDimNum() != MXFP_TYPE_M_SCALE_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(), "x_scale must be 3D and weight_scale must be 4D."),
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context_->GetNodeName(), "x_scale and weight_scale",
+                    std::string("x_scale=" + std::to_string(xScaleShape.GetDimNum()) +
+                                ", weight_scale=" + std::to_string(wScaleShape.GetDimNum())),
+                    "x_scale dim num must be 3 and weight_scale dim num must be 4"),
                 return false);
     auto expectedKBlocks = static_cast<int64_t>(
         Ops::Base::CeilDiv(static_cast<int64_t>(inputParams_.kSize), static_cast<int64_t>(MXFP_BASEK_FACTOR)));
@@ -234,12 +256,17 @@ bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape 
     OP_CHECK_IF(xScaleShape.GetDim(X_SCALE_M_DIM_INDEX) != static_cast<int64_t>(inputParams_.mSize) ||
                     xScaleShape.GetDim(X_SCALE_K_BLOCK_DIM_INDEX) != expectedKBlocks ||
                     xScaleShape.GetDim(X_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
-                OP_LOGE(context_->GetNodeName(), "x_scale shape must be (M, ceil(K/64), 2)."), return false);
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "x_scale",
+                    ShapeToDebugString(xScaleShape),
+                    std::string("(" + std::to_string(inputParams_.mSize) + ", " +
+                                std::to_string(expectedKBlocks) + ", 2)")),
+                return false);
     OP_CHECK_IF(wScaleShape.GetDim(WEIGHT_SCALE_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
                     wScaleN != static_cast<int64_t>(inputParams_.nSize) || wScaleK != expectedKBlocks ||
                     wScaleShape.GetDim(WEIGHT_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
-                OP_LOGE(context_->GetNodeName(),
-                        "weight_scale shape must be (E, ceil(K/64), N, 2) or (E, N, ceil(K/64), 2)."),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "weight_scale",
+                    ShapeToDebugString(wScaleShape),
+                    "weight_scale shape must be (E, ceil(K/64), N, 2) or (E, N, ceil(K/64), 2)"),
                 return false);
     return true;
 }
@@ -247,12 +274,18 @@ bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape 
 bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape &wStorageShape) const
 {
     OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
-                OP_LOGE(context_->GetNodeName(), "weight must use FRACTAL_NZ format."), return false);
+                OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "weight",
+                    ge::TypeUtils::FormatToSerialString(inputParams_.bFormat), "FRACTAL_NZ"),
+                return false);
     OP_CHECK_IF(wStorageShape.GetDimNum() != WEIGHT_NZ_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5D."), return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "weight storageShape",
+                    std::to_string(wStorageShape.GetDimNum()), std::to_string(WEIGHT_NZ_DIM_NUM)),
+                return false);
     OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_C0_DIM_INDEX) != WEIGHT_NZ_C0_DIM ||
                     wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != WEIGHT_NZ_LAST_DIM_FP8,
-                OP_LOGE(context_->GetNodeName(), "FP8 NZ weight storage tail dims must be 16 and 32."),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "weight storageShape",
+                    ShapeToDebugString(wStorageShape),
+                    "when the quant mode is MX, FP8 NZ weight storage tail dims must be 16 and 32"),
                 return false);
     auto kSize = static_cast<int64_t>(inputParams_.kSize);
     auto nSize = static_cast<int64_t>(inputParams_.nSize);
@@ -267,10 +300,11 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
     OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
                     wStorageShape.GetDim(WEIGHT_NZ_BLOCK1_DIM_INDEX) != expectedNBlock ||
                     wStorageShape.GetDim(WEIGHT_NZ_BLOCK2_DIM_INDEX) != expectedKBlock,
-                OP_LOGE(context_->GetNodeName(),
-                        "NZ weight storage shape mismatch, actual is %s, expected first three dims are [%lu, %ld, %ld].",
-                        ShapeToDebugString(wStorageShape).c_str(), inputParams_.groupNum, expectedNBlock,
-                        expectedKBlock),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "weight storageShape",
+                    ShapeToDebugString(wStorageShape),
+                    std::string("weight storageShape first three dims must be [" +
+                                std::to_string(inputParams_.groupNum) + ", " +
+                                std::to_string(expectedNBlock) + ", " + std::to_string(expectedKBlock) + "]")),
                 return false);
     return true;
 }
@@ -328,14 +362,15 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
             inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
-                OP_LOGE(inputParams_.opName,
-                        "N must be a multiple of %u, actual is %u. xOrigin=%s, xStorage=%s, weightOrigin=%s, "
-                        "weightStorage=%s, xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s.",
-                        N_SIZE_ALIGN, static_cast<uint32_t>(inputParams_.nSize),
-                        ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
-                        ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
-                        ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
-                        ShapeToDebugString(weightScaleStorageShape).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "N",
+                    std::to_string(inputParams_.nSize),
+                    std::string("N must be a multiple of 64; xOrigin=" + ShapeToDebugString(xShape) +
+                                ", xStorage=" + ShapeToDebugString(xStorageShape->GetStorageShape()) +
+                                ", weightOrigin=" + ShapeToDebugString(wShape) +
+                                ", weightStorage=" + ShapeToDebugString(weightStorageShape) +
+                                ", xScaleOrigin=" + ShapeToDebugString(xScaleShape) +
+                                ", weightScaleOrigin=" + ShapeToDebugString(wScaleShape) +
+                                ", weightScaleStorage=" + ShapeToDebugString(weightScaleStorageShape))),
                 return false);
     inputParams_.aQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
