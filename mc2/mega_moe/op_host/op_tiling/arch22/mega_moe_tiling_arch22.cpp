@@ -142,15 +142,12 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
 
     // ccl buff的承载的数据块 3（winIn）：
     // 同步flag
-    int64_t offsetFlag = 0;
-    if (isA3) {
-        offsetFlag = epWorldSize * ALIGN_512;
-    } else {
-        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant) + tailSync
+    int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync所用空间
+    if (!isA3) {
+        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
         int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
         int64_t allgatherFlag = isQuantRouting ? static_cast<int64_t>(0) : epWorldSize * 64;
-        int64_t tailSync = (epWorldSize * 16 + 1) * static_cast<int64_t>(sizeof(int32_t));
-        offsetFlag = dispatchFlag + allgatherFlag + tailSync;
+        offsetFlag += dispatchFlag + allgatherFlag;
     }
     return offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE;
 }
