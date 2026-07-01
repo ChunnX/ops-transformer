@@ -139,7 +139,7 @@ public:
     int64_t returnSoftmaxLse_ = 0;
 
     // 其他属性信息
-    float softmaxScale_ = 1.0;
+    float softmaxScale_ = 0.0f;
 
     // seqLen信息
     int64_t seqLenQDims_ = 0;

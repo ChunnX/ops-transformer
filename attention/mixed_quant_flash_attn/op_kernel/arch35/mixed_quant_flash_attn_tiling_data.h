@@ -97,17 +97,17 @@ struct MixedQuantFlashAttnMetaData {
 
 class MixedQuantFlashAttnTilingArch35 {
 public:
-    MixedQuantFlashAttnBaseParams flashAttnBaseParams;
-    MixedQuantFlashAttnAttenMaskParams flashAttnAttenMaskParams;
-    MixedQuantFlashAttnPageAttentionParams flashAttnPageAttentionParams;
-    MixedQuantFlashAttnWorkspaceParams flashAttnWorkspaceParams;
-    MixedQuantFlashAttnS1OuterSplitCoreParams flashAttnS1OuterSplitCoreParams;
+    MixedQuantFlashAttnBaseParams mixedQuantFlashAttnBaseParams;
+    MixedQuantFlashAttnAttenMaskParams mixedQuantFlashAttnAttenMaskParams;
+    MixedQuantFlashAttnPageAttentionParams mixedQuantFlashAttnPageAttentionParams;
+    MixedQuantFlashAttnWorkspaceParams mixedQuantFlashAttnWorkspaceParams;
+    MixedQuantFlashAttnS1OuterSplitCoreParams mixedQuantFlashAttnS1OuterSplitCoreParams;
 };
 
 class MixedQuantFlashAttnTilingData {
 public:
     MixedQuantFlashAttnTilingArch35 baseTiling;
-    MixedQuantFlashAttnMetaData flashAttnMetaData;
+    MixedQuantFlashAttnMetaData mixedQuantFlashAttnMetaData;
 };
 
 } // namespace optiling

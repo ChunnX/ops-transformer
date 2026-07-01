@@ -230,8 +230,8 @@ void MixedQuantFlashAttnTilingImpl::CalcWorkspaceSize()
         uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dSize;
         uint32_t fatmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
         workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float);
-        tilingData_.baseTiling.flashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
-        tilingData_.baseTiling.flashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+        tilingData_.baseTiling.mixedQuantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
+        tilingData_.baseTiling.mixedQuantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
     }
 
     OP_LOGI(faInfo_->opName, "Workspaces: %ld", workspaceSize_);
@@ -246,7 +246,7 @@ void MixedQuantFlashAttnTilingImpl::FillTiling()
 
 void MixedQuantFlashAttnTilingImpl::ComputeTilingData()
 {
-    tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
+    tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 
     if (tilingKeyInfo_.hasAttenMask) {
@@ -259,67 +259,67 @@ void MixedQuantFlashAttnTilingImpl::ComputeTilingData()
         }
         maskS2Size = faInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
         maskS1Size = faInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
-        tilingData_.baseTiling.flashAttnAttenMaskParams.attenMaskS1Size = maskS1Size;
-        tilingData_.baseTiling.flashAttnAttenMaskParams.attenMaskS2Size = maskS2Size;
+        tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.attenMaskS1Size = maskS1Size;
+        tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.attenMaskS2Size = maskS2Size;
     }
 
     if (faInfo_->pageAttentionFlag) {
         if (faInfo_->kvLayout == FaLayout::PA_BBND) {
-            tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
+            tilingData_.baseTiling.mixedQuantFlashAttnPageAttentionParams.paLayoutType = 1;
         } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
-            tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
+            tilingData_.baseTiling.mixedQuantFlashAttnPageAttentionParams.paLayoutType = 0;
         }
     }
 }
 
 void MixedQuantFlashAttnTilingImpl::SetFATilingData()
 {
-    tilingData_.baseTiling.flashAttnBaseParams.bSize = faInfo_->bSize;
-    tilingData_.baseTiling.flashAttnBaseParams.t1Size = faInfo_->qTSize;
-    tilingData_.baseTiling.flashAttnBaseParams.t2Size = faInfo_->kTSize;
-    tilingData_.baseTiling.flashAttnBaseParams.n2Size = faInfo_->n2Size;
-    tilingData_.baseTiling.flashAttnBaseParams.gSize = faInfo_->gSize;
-    tilingData_.baseTiling.flashAttnBaseParams.s1Size = faInfo_->s1Size;
-    tilingData_.baseTiling.flashAttnBaseParams.s2Size = faInfo_->s2Size;
-    tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
-    tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.bSize = faInfo_->bSize;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.t1Size = faInfo_->qTSize;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.t2Size = faInfo_->kTSize;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.n2Size = faInfo_->n2Size;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.gSize = faInfo_->gSize;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.s1Size = faInfo_->s1Size;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.s2Size = faInfo_->s2Size;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.dSize = faInfo_->qkHeadDim;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     float scaleValue = faInfo_->softmaxScale;
     if (scaleValue == 0.0f) {
         scaleValue = 1.0f / std::sqrt(static_cast<float>(faInfo_->qkHeadDim));
     }
-    tilingData_.baseTiling.flashAttnBaseParams.scaleValue = scaleValue;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = 0;
-    tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
-    tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
-    tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
-    tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
-    tilingData_.baseTiling.flashAttnBaseParams.coreNum = numBlocks_;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.scaleValue = scaleValue;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensKVSize = 0;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.isKvContinuous = true;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.coreNum = numBlocks_;
 
-    tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
-    tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
+    tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
+    tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.winRights = faInfo_->winRight;
     if (faInfo_->winLeft == -1) {
-        tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+        tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
     }
     if (faInfo_->winRight == -1) {
-        tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+        tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
-    tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
+    tilingData_.baseTiling.mixedQuantFlashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
     if (faInfo_->pageAttentionFlag) {
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
-    tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+    tilingData_.baseTiling.mixedQuantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     // 以下三种情况需要刷0
     // 1、存在seqUsedQ
     // 2、存在seqUsedKv(可能导致S2小于S1出现行无效)
     // 3、带mask且S2小于S1
     if (seqUsedQFlag_ || seqUsedKvFlag_ || ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
-        tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = true;
+        tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.needInitOutput = true;
     } else {
-        tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = false;
+        tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.needInitOutput = false;
     }
 }
 
@@ -334,63 +334,63 @@ ge::graphStatus MixedQuantFlashAttnTilingImpl::SetTilingData(MixedQuantFlashAttn
 void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
 {
     MixedQuantFlashAttnTilingArch35 &baseTiling = tilingData_.baseTiling;
-    MixedQuantFlashAttnBaseParams &flashAttnBaseParams = baseTiling.flashAttnBaseParams;
-    MixedQuantFlashAttnAttenMaskParams &flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
-    MixedQuantFlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
-    MixedQuantFlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
-    MixedQuantFlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    MixedQuantFlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
+    MixedQuantFlashAttnBaseParams &mixedQuantFlashAttnBaseParams = baseTiling.mixedQuantFlashAttnBaseParams;
+    MixedQuantFlashAttnAttenMaskParams &mixedQuantFlashAttnAttenMaskParams = baseTiling.mixedQuantFlashAttnAttenMaskParams;
+    MixedQuantFlashAttnPageAttentionParams &mixedQuantFlashAttnPageAttentionParams = baseTiling.mixedQuantFlashAttnPageAttentionParams;
+    MixedQuantFlashAttnWorkspaceParams &mixedQuantFlashAttnWorkspaceParams = baseTiling.mixedQuantFlashAttnWorkspaceParams;
+    MixedQuantFlashAttnS1OuterSplitCoreParams &mixedQuantFlashAttnS1OuterSplitCoreParams = baseTiling.mixedQuantFlashAttnS1OuterSplitCoreParams;
+    MixedQuantFlashAttnMetaData &mixedQuantFlashAttnMetaData = tilingData_.mixedQuantFlashAttnMetaData;
 
-    OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
-    OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
-    OP_LOGD(faInfo_->opName, "t2Size:%d", flashAttnBaseParams.t2Size);
-    OP_LOGD(faInfo_->opName, "n2Size:%d", flashAttnBaseParams.n2Size);
-    OP_LOGD(faInfo_->opName, "gSize:%d", flashAttnBaseParams.gSize);
-    OP_LOGD(faInfo_->opName, "s1Size:%d", flashAttnBaseParams.s1Size);
-    OP_LOGD(faInfo_->opName, "s2Size:%d", flashAttnBaseParams.s2Size);
-    OP_LOGD(faInfo_->opName, "dSize:%d", flashAttnBaseParams.dSize);
-    OP_LOGD(faInfo_->opName, "dSizeV:%d", flashAttnBaseParams.dSizeV);
-    OP_LOGD(faInfo_->opName, "dSizeRope:%d", flashAttnBaseParams.dSizeRope);
-    OP_LOGD(faInfo_->opName, "cuSeqLensQSize:%d", flashAttnBaseParams.cuSeqLensQSize);
-    OP_LOGD(faInfo_->opName, "cuSeqLensKVSize:%d", flashAttnBaseParams.cuSeqLensKVSize);
-    OP_LOGD(faInfo_->opName, "seqUsedQSize:%d", flashAttnBaseParams.seqUsedQSize);
-    OP_LOGD(faInfo_->opName, "seqUsedKvSize:%d", flashAttnBaseParams.seqUsedKvSize);
-    OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
-    OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
-    OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);
-    OP_LOGD(faInfo_->opName, "isKvContinuous:%d", flashAttnBaseParams.isKvContinuous);
-    OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", flashAttnBaseParams.isSoftMaxLseEnable);
-    OP_LOGD(faInfo_->opName, "coreNum:%d", flashAttnBaseParams.coreNum);
+    OP_LOGD(faInfo_->opName, "bSize:%d", mixedQuantFlashAttnBaseParams.bSize);
+    OP_LOGD(faInfo_->opName, "t1Size:%d", mixedQuantFlashAttnBaseParams.t1Size);
+    OP_LOGD(faInfo_->opName, "t2Size:%d", mixedQuantFlashAttnBaseParams.t2Size);
+    OP_LOGD(faInfo_->opName, "n2Size:%d", mixedQuantFlashAttnBaseParams.n2Size);
+    OP_LOGD(faInfo_->opName, "gSize:%d", mixedQuantFlashAttnBaseParams.gSize);
+    OP_LOGD(faInfo_->opName, "s1Size:%d", mixedQuantFlashAttnBaseParams.s1Size);
+    OP_LOGD(faInfo_->opName, "s2Size:%d", mixedQuantFlashAttnBaseParams.s2Size);
+    OP_LOGD(faInfo_->opName, "dSize:%d", mixedQuantFlashAttnBaseParams.dSize);
+    OP_LOGD(faInfo_->opName, "dSizeV:%d", mixedQuantFlashAttnBaseParams.dSizeV);
+    OP_LOGD(faInfo_->opName, "dSizeRope:%d", mixedQuantFlashAttnBaseParams.dSizeRope);
+    OP_LOGD(faInfo_->opName, "cuSeqLensQSize:%d", mixedQuantFlashAttnBaseParams.cuSeqLensQSize);
+    OP_LOGD(faInfo_->opName, "cuSeqLensKVSize:%d", mixedQuantFlashAttnBaseParams.cuSeqLensKVSize);
+    OP_LOGD(faInfo_->opName, "seqUsedQSize:%d", mixedQuantFlashAttnBaseParams.seqUsedQSize);
+    OP_LOGD(faInfo_->opName, "seqUsedKvSize:%d", mixedQuantFlashAttnBaseParams.seqUsedKvSize);
+    OP_LOGD(faInfo_->opName, "scaleValue:%f", mixedQuantFlashAttnBaseParams.scaleValue);
+    OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", mixedQuantFlashAttnBaseParams.iscuSeqLengthsNull);
+    OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", mixedQuantFlashAttnBaseParams.iscuSeqLengthsKVNull);
+    OP_LOGD(faInfo_->opName, "isKvContinuous:%d", mixedQuantFlashAttnBaseParams.isKvContinuous);
+    OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", mixedQuantFlashAttnBaseParams.isSoftMaxLseEnable);
+    OP_LOGD(faInfo_->opName, "coreNum:%d", mixedQuantFlashAttnBaseParams.coreNum);
 
-    OP_LOGD(faInfo_->opName, "maskMode:%d", flashAttnAttenMaskParams.sparseMode);
-    OP_LOGD(faInfo_->opName, "winLefts:%d", flashAttnAttenMaskParams.winLefts);
-    OP_LOGD(faInfo_->opName, "winRights:%d", flashAttnAttenMaskParams.winRights);
-    OP_LOGD(faInfo_->opName, "attenMaskS1Size:%d", flashAttnAttenMaskParams.attenMaskS1Size);
-    OP_LOGD(faInfo_->opName, "attenMaskS2Size:%d", flashAttnAttenMaskParams.attenMaskS2Size);
+    OP_LOGD(faInfo_->opName, "maskMode:%d", mixedQuantFlashAttnAttenMaskParams.sparseMode);
+    OP_LOGD(faInfo_->opName, "winLefts:%d", mixedQuantFlashAttnAttenMaskParams.winLefts);
+    OP_LOGD(faInfo_->opName, "winRights:%d", mixedQuantFlashAttnAttenMaskParams.winRights);
+    OP_LOGD(faInfo_->opName, "attenMaskS1Size:%d", mixedQuantFlashAttnAttenMaskParams.attenMaskS1Size);
+    OP_LOGD(faInfo_->opName, "attenMaskS2Size:%d", mixedQuantFlashAttnAttenMaskParams.attenMaskS2Size);
 
-    OP_LOGD(faInfo_->opName, "paLayoutType:%d", flashAttnPageAttentionParams.paLayoutType);
-    OP_LOGD(faInfo_->opName, "blockSize:%d", flashAttnPageAttentionParams.blockSize);
-    OP_LOGD(faInfo_->opName, "maxBlockNumPerBatch:%d", flashAttnPageAttentionParams.maxBlockNumPerBatch);
+    OP_LOGD(faInfo_->opName, "paLayoutType:%d", mixedQuantFlashAttnPageAttentionParams.paLayoutType);
+    OP_LOGD(faInfo_->opName, "blockSize:%d", mixedQuantFlashAttnPageAttentionParams.blockSize);
+    OP_LOGD(faInfo_->opName, "maxBlockNumPerBatch:%d", mixedQuantFlashAttnPageAttentionParams.maxBlockNumPerBatch);
 
-    OP_LOGD(faInfo_->opName, "accumOutSize:%d", flashAttnWorkspaceParams.accumOutSize);
-    OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
+    OP_LOGD(faInfo_->opName, "accumOutSize:%d", mixedQuantFlashAttnWorkspaceParams.accumOutSize);
+    OP_LOGD(faInfo_->opName, "logSumExpSize:%d", mixedQuantFlashAttnWorkspaceParams.logSumExpSize);
 
-    OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
+    OP_LOGD(faInfo_->opName, "totalSize:%d", mixedQuantFlashAttnS1OuterSplitCoreParams.totalSize);
 
     for (int aicIdx = 0; aicIdx < MQFA_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
-                flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
-                flashAttnMetaData.FAMetadata[aicIdx][4], flashAttnMetaData.FAMetadata[aicIdx][5],
-                flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
+                aicIdx, mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][0], mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][1],
+                mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][2], mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][3],
+                mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][4], mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][5],
+                mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][6], mixedQuantFlashAttnMetaData.FAMetadata[aicIdx][7]);
     }
 
     for (int aivIdx = 0; aivIdx < MQFA_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
-                flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],
-                flashAttnMetaData.FDMetadata[aivIdx][4], flashAttnMetaData.FDMetadata[aivIdx][5],
-                flashAttnMetaData.FDMetadata[aivIdx][6], flashAttnMetaData.FDMetadata[aivIdx][7]);
+                aivIdx, mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][0], mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][1],
+                mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][2], mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][3],
+                mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][4], mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][5],
+                mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][6], mixedQuantFlashAttnMetaData.FDMetadata[aivIdx][7]);
     }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
