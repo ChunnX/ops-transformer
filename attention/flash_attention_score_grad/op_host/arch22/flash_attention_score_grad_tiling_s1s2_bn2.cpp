@@ -567,7 +567,11 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetPseInfo()
         } else if (pseShapeDims == PSE_DIM_NUM_1 && isUnpad) {
             auto dim0 = storageShape.GetDim(DIM_0);
             int64_t shapeN1 = td_->opInfo.get_N2() * td_->opInfo.get_G();
-            bool isUnpadBN1S = isUnpad && (dim0 == tmpData_.t2 * shapeN1);
+            int64_t effectiveT2 = 0;
+            for (const auto &kvlen : tmpData_.actualSeqKvlen) {
+                effectiveT2 += kvlen;
+            }
+            bool isUnpadBN1S = isUnpad && (dim0 == effectiveT2 * shapeN1);
             bool isUnpadBNSS = isUnpad && (dim0 == tmpData_.sumS1S2Product * shapeN1);
             if (isUnpadBN1S) {
                 td_->opInfo.set_pseShapeType(PSE_SHAPE_TYPE_BN1S);
@@ -1764,8 +1768,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]"), return ge::GRAPH_FAILED);
             int64_t tempN2 = keyShape.GetDim(DIM_1);
             for (size_t i = 0; i < seqQShapeSize; i++) {
-                int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
-                int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
+                int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
+                int64_t kvSeqLen = (i == 0 ? kvValue[i] : std::max(int64_t(0), kvValue[i] - kvValue[i - 1]));
                 tmpData_.actualSeqQlen.push_back(qSeqLen);
                 tmpData_.actualSeqKvlen.push_back(kvSeqLen);
                 int64_t s1s2Product = tmpData_.actualSeqQlen[i] * tmpData_.actualSeqKvlen[i];
