@@ -40,6 +40,15 @@ const static int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
 const static int64_t ACTIVE_NUM_MIN_VALUE = static_cast<int64_t>(-1);
 const static int64_t EXPERT_CAPACITY_MIN_VALUE = static_cast<int64_t>(0);
 
+// Counting sort constants
+const static int64_t COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM = 128;
+const static int64_t COUNTING_SORT_FILTER_CHUNK_SIZE = 4096;
+const static int64_t COUNTING_SORT_VECTOR_FILTER_THRESHOLD = 64;
+const static int64_t COUNTING_SORT_ONE_REPEAT_COMPARE_NUM = 64;
+const static int64_t COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES = 64 * 1024; // 128KB
+const static int64_t COUNTING_SORT_MIN_N = 256;                         // 128KB
+const static int64_t COUNTING_SORT_MAX_N = 1024 * 1024;                 // 128KB
+
 const static int64_t INPUT_X_INDEX = 0;
 const static int64_t INPUT_EXPERT_IDX_INDEX = 1;
 const static int64_t INPUT_SCALE_INDEX = 2;
@@ -101,6 +110,9 @@ const static int64_t PERFORMANCE_MODE_BS_MAX = 8192;
 const static int64_t PERFORMANCE_MODE_RANGE_MAX = 32;
 const static int64_t PERFORMANCE_MODE_MAX_BATCH_SIZE_TOP_K = PERFORMANCE_MODE_BS_MAX * PERFORMANCE_MODE_TOP_K;
 const static int64_t PERFORMANCE_MODE_MAX_ONE_CORE_GATHER = 21845;
+
+const static int64_t ONE_BLOCK_ELEMENT = 8;
+const static int64_t COUNTING_SORT_THRESHOLD = 1536;
 
 const static int64_t gatherFirstN = 100;
 const static int64_t gatherFirstScale = 8;
@@ -196,6 +208,7 @@ private:
     void Tinlig4VBSMultiCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     void Tinlig4VBSOneCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     bool IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const;
+    bool ShouldEnableCountingSortByShape() const;
     bool IsFullLoad();
     int64_t IsGatherFirstFullLoad();
     void SetGatherTilingData(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t perCoreRows,
@@ -203,6 +216,11 @@ private:
     void SetGatherTilingDataCols(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t baseMaxCols, int64_t cols);
     void SetGatherTilingDataRows(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t perCoreRows,
                                  int64_t lastCoreRows, int64_t basePerLoopMaxRows);
+    void ComputeCountingSortTiling();
+    int64_t EstimateCountingSortFullLoadUB(int64_t coreTokenNum, int64_t coreEntries, int64_t expertCountStride,
+                                           int64_t filterNeedCoreNum, int64_t actualExpertNum);
+    void ComputeCountingSortCutOriginTiling(int64_t filterNeedCoreNum, int64_t filterPerCoreTokens,
+                                            int64_t expertCountStride, int64_t actualExpertNum);
     void Tiling4SrcToDstDropPadCompute();
     void Tiling4SrcToDstDropPadDynamicCompute();
     void Tiling4SrcToDstCompute();
@@ -238,6 +256,8 @@ private:
     int64_t gatherFirstFullload_ = 0;
     int64_t ep_ = 0;
     int64_t smoothType_ = 0;
+    int64_t countingSortFullLoad_ = -1;
+    size_t countingSortWorkspaceSize_ = 0;
 
     const gert::StorageShape *xShapePtr_ = nullptr;
     const gert::StorageShape *expertIdxShapePtr_ = nullptr;
@@ -275,7 +295,7 @@ void MoeInitRountingV3TilingBase::Reset()
 
 ge::graphStatus MoeInitRountingV3TilingBase::GetPlatformInfo()
 {
-    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV3CompileInfo*>(context_->GetCompileInfo());
+    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV3CompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "compileInfo"),
                 return ge::GRAPH_FAILED);
     aivNum = compileInfoPtr->aivNum;
@@ -294,10 +314,10 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
 
     dropPadMode_ = *dropPadModePtr_;
     moeInitRoutingV3TilingData.set_dropPadMode(dropPadMode_);
-    OP_CHECK_IF((dropPadMode_ != DROP_LESS) && (dropPadMode_ != DROP_PAD), 
-                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", std::to_string(dropPadMode_),
-                                           (std::to_string(DROP_LESS) + " or " + std::to_string(DROP_PAD))),
-                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF((dropPadMode_ != DROP_LESS) && (dropPadMode_ != DROP_PAD),
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", std::to_string(dropPadMode_),
+                                          (std::to_string(DROP_LESS) + " or " + std::to_string(DROP_PAD))),
+                return ge::GRAPH_FAILED);
 
     rowIdxTytpe_ = *rowIdxTypePtr_;
     moeInitRoutingV3TilingData.set_rowIdxType(rowIdxTytpe_);
@@ -307,26 +327,26 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     if (dropPadMode_ == DROP_LESS) {
         OP_CHECK_IF(activeNum_ < ACTIVE_NUM_MIN_VALUE,
                     OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_num", std::to_string(activeNum_),
-                                              ("greater than or equal to " +
-                                               std::to_string(ACTIVE_NUM_MIN_VALUE))),
+                                              ("greater than or equal to " + std::to_string(ACTIVE_NUM_MIN_VALUE))),
                     return ge::GRAPH_FAILED);
     }
 
     expertNum_ = *expertNumPtr_;
     moeInitRoutingV3TilingData.set_expertNum(expertNum_);
-    OP_CHECK_IF(expertNum_ <= 0,
-                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_num", std::to_string(expertNum_),
-                                          "greater than 0"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(activeExpertRangeListPtr_->GetSize() != ATTR_EXPERT_RANGE_DIM && activeExpertRangeListPtr_->GetSize() != 0,
+    OP_CHECK_IF(
+        expertNum_ <= 0,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_num", std::to_string(expertNum_), "greater than 0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(activeExpertRangeListPtr_->GetSize() != ATTR_EXPERT_RANGE_DIM &&
+                    activeExpertRangeListPtr_->GetSize() != 0,
                 OP_LOGE_WITH_INVALID_ATTR_SIZE(context_->GetNodeName(), "expert_range",
                                                std::to_string(activeExpertRangeListPtr_->GetSize()),
                                                (std::to_string(ATTR_EXPERT_RANGE_DIM) + " or 0(no input)")),
                 return ge::GRAPH_FAILED);
-    if(activeExpertRangeListPtr_->GetSize() == 0){
+    if (activeExpertRangeListPtr_->GetSize() == 0) {
         expertStart_ = 0;
         expertEnd_ = expertNum_;
-    }else {
+    } else {
         const int64_t *expertRangeList = reinterpret_cast<const int64_t *>(activeExpertRangeListPtr_->GetData());
         expertStart_ = expertRangeList[0];
         expertEnd_ = expertRangeList[1];
@@ -336,7 +356,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     moeInitRoutingV3TilingData.set_actualExpertNum(expertEnd_ - expertStart_);
     OP_LOGI(context_, "expert_start is: %ld, expert_end is: %ld, actualExpertNum is: %ld ", expertStart_, expertEnd_,
             expertEnd_ - expertStart_);
-    
+
     n_ = xShapePtr_->GetStorageShape().GetDim(0);
     expertCapacity_ = *expertCapacityPtr_;
     moeInitRoutingV3TilingData.set_expertCapacity(expertCapacity_);
@@ -350,31 +370,30 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
                     OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "row_idx_type", std::to_string(rowIdxTytpe_),
                                               "0 when drop_pad_mode is 1"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(expertStart_ != 0 || expertEnd_ != expertNum_,
-                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_range",
-                                              ("[" + std::to_string(expertStart_) + ", " +
-                                               std::to_string(expertEnd_) + "]"),
-                                              ("[0, " + std::to_string(expertNum_) +
-                                               "] when drop_pad_mode is 1")),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            expertStart_ != 0 || expertEnd_ != expertNum_,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_range",
+                                      ("[" + std::to_string(expertStart_) + ", " + std::to_string(expertEnd_) + "]"),
+                                      ("[0, " + std::to_string(expertNum_) + "] when drop_pad_mode is 1")),
+            return ge::GRAPH_FAILED);
     }
 
     expertTokensNumType_ = *expertTokensNumTypePtr_;
     moeInitRoutingV3TilingData.set_expertTokensNumType(expertTokensNumType_);
-    OP_CHECK_IF((expertTokensNumType_ != COUNT) && (expertTokensNumType_ != KEY_VALUE) && (expertTokensNumType_ != CUMSUM),
-                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_type",
-                                          std::to_string(expertTokensNumType_),
-                                          (std::to_string(COUNT) + ", " + std::to_string(KEY_VALUE) + " or " +
-                                           std::to_string(CUMSUM))),
+    OP_CHECK_IF((expertTokensNumType_ != COUNT) && (expertTokensNumType_ != KEY_VALUE) &&
+                    (expertTokensNumType_ != CUMSUM),
+                OP_LOGE_WITH_INVALID_ATTR(
+                    context_->GetNodeName(), "expert_tokens_num_type", std::to_string(expertTokensNumType_),
+                    (std::to_string(COUNT) + ", " + std::to_string(KEY_VALUE) + " or " + std::to_string(CUMSUM))),
                 return ge::GRAPH_FAILED);
 
     expertTokensNumFlag_ = *expertTokensNumFlagPtr_;
     if (dropPadMode_ == DROP_PAD && expertTokensNumFlag_) {
         OP_CHECK_IF(expertTokensNumType_ != COUNT,
-                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_type",
-                                              std::to_string(expertTokensNumType_),
-                            (std::to_string(COUNT) + "when DROP_MODE and expert_tokens_num_flag is true")),
-                            return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_ATTR(
+                        context_->GetNodeName(), "expert_tokens_num_type", std::to_string(expertTokensNumType_),
+                        (std::to_string(COUNT) + "when DROP_MODE and expert_tokens_num_flag is true")),
+                    return ge::GRAPH_FAILED);
     }
     if (expertTokensNumFlag_) {
         moeInitRoutingV3TilingData.set_expertTokensNumFlag(1);
@@ -388,7 +407,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertStart_ >= expertEnd_,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_start", std::to_string(expertStart_),
-                            ("less than " + std::to_string(expertEnd_))),
+                                          ("less than " + std::to_string(expertEnd_))),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertEnd_ > expertNum_,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_end", std::to_string(expertEnd_),
@@ -396,9 +415,9 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
                 return ge::GRAPH_FAILED);
     if (expertTokensNumType_ == KEY_VALUE) {
         OP_CHECK_IF(expertEnd_ > KV_MODE_EXPERT_IDX_MAX,
-                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_end", std::to_string(expertEnd_),
-                                              ("less than or equal to " +
-                                               std::to_string(KV_MODE_EXPERT_IDX_MAX) + " in KEY_VALUE mode")),
+                    OP_LOGE_WITH_INVALID_ATTR(
+                        context_->GetNodeName(), "expert_end", std::to_string(expertEnd_),
+                        ("less than or equal to " + std::to_string(KV_MODE_EXPERT_IDX_MAX) + " in KEY_VALUE mode")),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(expertEnd_ > EXPERT_IDX_MAX,
@@ -408,8 +427,8 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     }
     OP_CHECK_IF(quantMode_ != UN_QUANT && quantMode_ != DYNAMIC_QUANT && quantMode_ != STATIC_QUANT,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quant_mode", std::to_string(quantMode_),
-                                          (std::to_string(UN_QUANT) + ", " + std::to_string(DYNAMIC_QUANT) +
-                                           " or " + std::to_string(STATIC_QUANT))),
+                                          (std::to_string(UN_QUANT) + ", " + std::to_string(DYNAMIC_QUANT) + " or " +
+                                           std::to_string(STATIC_QUANT))),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(rowIdxTytpe_ != SCATTER && rowIdxTytpe_ != GATHER,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "row_idx_type", std::to_string(rowIdxTytpe_),
@@ -435,10 +454,10 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
                                              std::to_string(expertIdxShape.GetDimNum()), std::to_string(DIM_TWO)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(xShape.GetDim(0) != expertIdxShape.GetDim(0),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "x dim[0], expert_idx dim[0]",
-                                                       (std::to_string(xShape.GetDim(0)) + ", " +
-                                                        std::to_string(expertIdxShape.GetDim(0))),
-                                                       "input rows should be same"),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context_->GetNodeName(), "x dim[0], expert_idx dim[0]",
+                    (std::to_string(xShape.GetDim(0)) + ", " + std::to_string(expertIdxShape.GetDim(0))),
+                    "input rows should be same"),
                 return ge::GRAPH_FAILED);
 
     n_ = expertIdxShape.GetDim(0);
@@ -476,16 +495,14 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
         auto scaleShape = scaleShapePtr_->GetStorageShape();
         OP_LOGI(context_, "input scale shape: %s", Ops::Base::ToString(scaleShape).c_str());
         auto scaleDimNum = static_cast<int64_t>(scaleShape.GetDimNum());
-        OP_CHECK_IF(
-            scaleDimNum != 1, 
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum), "1"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDimNum != 1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum), "1"),
+                    return ge::GRAPH_FAILED);
         auto scaleDim0 = static_cast<int64_t>(scaleShape.GetDim(0));
-        OP_CHECK_IF(
-            scaleDim0 != n_, 
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0),
-                                      std::to_string(n_)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDim0 != n_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0),
+                                              std::to_string(n_)),
+                    return ge::GRAPH_FAILED);
     }
 
     if (quantMode_ == STATIC_QUANT) {
@@ -496,25 +513,22 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
         auto scaleShape = scaleShapePtr_->GetStorageShape();
         OP_LOGI(context_, "input scale shape: %s", Ops::Base::ToString(scaleShape).c_str());
         auto scaleDimNum = static_cast<int64_t>(scaleShape.GetDimNum());
-        OP_CHECK_IF(
-            scaleDimNum != 1, 
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum), "1"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDimNum != 1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum), "1"),
+                    return ge::GRAPH_FAILED);
         auto scaleDim0 = static_cast<int64_t>(scaleShape.GetDim(0));
-        OP_CHECK_IF(
-            scaleDim0 != 1, 
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0), "1"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDim0 != 1,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0), "1"),
+                    return ge::GRAPH_FAILED);
         auto offsetShape = offsetShapePtr_->GetStorageShape();
         OP_LOGI(context_, "input offset shape: %s", Ops::Base::ToString(offsetShape).c_str());
         auto offsetDimNum = static_cast<int64_t>(offsetShape.GetDimNum());
-        OP_CHECK_IF(
-            offsetDimNum != 1, 
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "offset", std::to_string(offsetDimNum), "1"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(offsetDimNum != 1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "offset", std::to_string(offsetDimNum), "1"),
+                    return ge::GRAPH_FAILED);
         auto offsetDim0 = static_cast<int64_t>(offsetShape.GetDim(0));
         OP_CHECK_IF(
-            offsetDim0 != 1, 
+            offsetDim0 != 1,
             OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "offset dim[0]", std::to_string(offsetDim0), "1"),
             return ge::GRAPH_FAILED);
     }
@@ -523,23 +537,20 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
         auto scaleShape = scaleShapePtr_->GetStorageShape();
         OP_LOGI(context_, "input scale shape: %s", Ops::Base::ToString(scaleShape).c_str());
         auto scaleDimNum = static_cast<int64_t>(scaleShape.GetDimNum());
-        OP_CHECK_IF(
-            scaleDimNum != NUM_TWO, 
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum),
-                                         std::to_string(NUM_TWO)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDimNum != NUM_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", std::to_string(scaleDimNum),
+                                                 std::to_string(NUM_TWO)),
+                    return ge::GRAPH_FAILED);
         auto scaleDim0 = static_cast<int64_t>(scaleShape.GetDim(0));
-        OP_CHECK_IF(
-            scaleDim0 != (expertEnd_ - expertStart_) && scaleDim0 != 1, 
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0),
-                                      (std::to_string(expertEnd_ - expertStart_) + " or 1")),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDim0 != (expertEnd_ - expertStart_) && scaleDim0 != 1,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(scaleDim0),
+                                              (std::to_string(expertEnd_ - expertStart_) + " or 1")),
+                    return ge::GRAPH_FAILED);
         auto scaleDim1 = static_cast<int64_t>(scaleShape.GetDim(1));
-        OP_CHECK_IF(
-            scaleDim1 != cols_, 
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[1]", std::to_string(scaleDim1),
-                                      std::to_string(cols_)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDim1 != cols_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[1]", std::to_string(scaleDim1),
+                                              std::to_string(cols_)),
+                    return ge::GRAPH_FAILED);
         if (scaleDim0 == 1) {
             smoothType_ = scale1H;
         } else {
@@ -558,13 +569,14 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckOutShape()
     const gert::Shape expandedRowIdxShape = context_->GetOutputShape(1)->GetStorageShape();
     OP_LOGI(context_, "expanded_row_idx shape: %s.", Ops::Base::ToString(expandedRowIdxShape).c_str());
     const gert::Shape expertTokensCountOrCumsumShape = context_->GetOutputShape(NUM_TWO)->GetStorageShape();
-    OP_LOGI(context_, "expert_tokens_count_or_cumsum shape: %s.", Ops::Base::ToString(expertTokensCountOrCumsumShape).c_str());
+    OP_LOGI(context_, "expert_tokens_count_or_cumsum shape: %s.",
+            Ops::Base::ToString(expertTokensCountOrCumsumShape).c_str());
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
     if (dropPadMode_ > 0) {
         OP_CHECK_IF(expandedXDimNum != NUM_THREE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX",
-                                                 std::to_string(expandedXDimNum), std::to_string(NUM_THREE)),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX", std::to_string(expandedXDimNum),
+                                                 std::to_string(NUM_THREE)),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(expandedXShape.GetDim(0) != expertNum_,
                     OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expandedX dim[0]",
@@ -575,15 +587,14 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckOutShape()
                                               std::to_string(expandedXShape.GetDim(1)),
                                               std::to_string(expertCapacity_)),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-                    expandedXShape.GetDim(NUM_TWO) != cols_,
+        OP_CHECK_IF(expandedXShape.GetDim(NUM_TWO) != cols_,
                     OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expandedX dim[2]",
                                               std::to_string(expandedXShape.GetDim(NUM_TWO)), std::to_string(cols_)),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(expandedXDimNum != DIM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX",
-                                                 std::to_string(expandedXDimNum), std::to_string(DIM_TWO)),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX", std::to_string(expandedXDimNum),
+                                                 std::to_string(DIM_TWO)),
                     return ge::GRAPH_FAILED);
         int64_t firstDim = totalLength_;
         firstDim = activeNum_ == 0 ? firstDim : std::min(firstDim, activeNum_);
@@ -601,20 +612,18 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckOutShape()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_row_idx",
                                              std::to_string(expandedRowIdxShape.GetDimNum()), std::to_string(DIM_ONE)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        expandedRowIdxShape.GetDim(0) != totalLength_,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_row_idx dim[0]",
-                                  std::to_string(expandedRowIdxShape.GetDim(0)), std::to_string(totalLength_)),
-        return ge::GRAPH_FAILED);
-
-    if(expertTokensNumFlag_){
-        if (expertTokensNumType_ == KEY_VALUE) {
-            OP_CHECK_IF(
-                expertTokensCountOrCumsumShape.GetDimNum() != DIM_TWO,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expert_tokens_count_or_cumsum",
-                                             std::to_string(expertTokensCountOrCumsumShape.GetDimNum()),
-                                             std::to_string(DIM_TWO)),
+    OP_CHECK_IF(expandedRowIdxShape.GetDim(0) != totalLength_,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_row_idx dim[0]",
+                                          std::to_string(expandedRowIdxShape.GetDim(0)), std::to_string(totalLength_)),
                 return ge::GRAPH_FAILED);
+
+    if (expertTokensNumFlag_) {
+        if (expertTokensNumType_ == KEY_VALUE) {
+            OP_CHECK_IF(expertTokensCountOrCumsumShape.GetDimNum() != DIM_TWO,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expert_tokens_count_or_cumsum",
+                                                     std::to_string(expertTokensCountOrCumsumShape.GetDimNum()),
+                                                     std::to_string(DIM_TWO)),
+                        return ge::GRAPH_FAILED);
             OP_CHECK_IF(expertTokensCountOrCumsumShape.GetDim(0) != expertNum_,
                         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expert_tokens_count_or_cumsum dim[0]",
                                                   std::to_string(expertTokensCountOrCumsumShape.GetDim(0)),
@@ -649,17 +658,18 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckOutShape()
                     return ge::GRAPH_FAILED);
         if (dropPadMode_ > 0) {
             OP_CHECK_IF(expandedScaleShape.GetDim(0) != expertNum_ * expertCapacity_,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_scale dim[0]",
-                                          std::to_string(expandedScaleShape.GetDim(0)),
-                                          std::to_string(expertNum_ * expertCapacity_)),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_scale dim[0]",
+                                                  std::to_string(expandedScaleShape.GetDim(0)),
+                                                  std::to_string(expertNum_ * expertCapacity_)),
+                        return ge::GRAPH_FAILED);
         } else {
             int64_t firstDim = totalLength_;
             firstDim = activeNum_ == 0 ? firstDim : std::min(firstDim, activeNum_);
             OP_CHECK_IF(expandedScaleShape.GetDim(0) != firstDim,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_scale dim[0]",
-                                          std::to_string(expandedScaleShape.GetDim(0)), std::to_string(firstDim)),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_scale dim[0]",
+                                                  std::to_string(expandedScaleShape.GetDim(0)),
+                                                  std::to_string(firstDim)),
+                        return ge::GRAPH_FAILED);
         }
     }
 
@@ -730,22 +740,25 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetShapeAttrsInfo()
 }
 
 void MoeInitRountingV3TilingBase::ShowTilingData()
-{   
-    int64_t isFullloadInt = 1 ? isFullload_ == true : 0;
-    OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, ep: %ld", isFullloadInt, gatherFirstFullload_, ep_);
+{
+    int64_t isFullloadInt = isFullload_ ? 1 : 0;
+    OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, ep: %ld, countingSortFullLoad: %ld", isFullloadInt,
+            gatherFirstFullload_, ep_, countingSortFullLoad_);
 }
 
-int64_t MoeInitRountingV3TilingBase::IsGatherFirstFullLoad() {
+int64_t MoeInitRountingV3TilingBase::IsGatherFirstFullLoad()
+{
     // 判断当前输入条件下，要不要先gather(剔除无效专家)再排序.
     if (ep_ == 0) {
         return 0;
-    } else if (n_ >= gatherFirstN && (expertEnd_-expertStart_) * gatherFirstScale <= expertNum_) {
+    } else if (n_ >= gatherFirstN && (expertEnd_ - expertStart_) * gatherFirstScale <= expertNum_) {
         return 1;
     }
     return 0;
 }
 
-bool MoeInitRountingV3TilingBase::IsFullLoad() {
+bool MoeInitRountingV3TilingBase::IsFullLoad()
+{
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
         ep_ = 0;
@@ -764,7 +777,7 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
     if (totalLength_ > sortLoopMaxElement || this->dropPadMode_ == 1) {
         return false;
     }
-    
+
     gatherFirstFullload_ = IsGatherFirstFullLoad();
     moeInitRoutingV3TilingData.set_gatherFirstFullload(gatherFirstFullload_);
     int64_t tileLength = Align(this->totalLength_, int64_t(sizeof(int32_t)));
@@ -772,7 +785,8 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
 
     int64_t sortSpace = sortNum * sizeof(int32_t) * ONE_CORE_SORT_BUFFER;
     int64_t rowIdxSpace = sortNum * sizeof(int32_t) * NUM_THREE;
-    int64_t expertSpace = Ops::Base::CeilDiv(this->expertNum_ * int64_t(sizeof(int64_t)), ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * NUM_TWO;
+    int64_t expertSpace =
+        Ops::Base::CeilDiv(this->expertNum_ * int64_t(sizeof(int64_t)), ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * NUM_TWO;
     int64_t gatherSpace = Ops::Base::CeilDiv(cols_ * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * perCoreTokens;
     int64_t remainUb = aicoreParams_.ubSize - sortSpace - rowIdxSpace - expertSpace - LENGTH_1024;
 
@@ -784,11 +798,199 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
         quantSpace = xAlignedCount * STATIC_QUANT_FULLLOAD_COLS_BUFFER * perCoreTokens;
         remainUb -= (gatherSpace + quantSpace);
     } else {
-        int64_t quantSpace = Ops::Base::CeilDiv(cols_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE  * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
+        int64_t quantSpace =
+            Ops::Base::CeilDiv(cols_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
         int64_t scaleOutSpace = ONE_BLOCK_BYTE * NUM_TWO;
         remainUb -= (quantSpace + scaleOutSpace);
     }
     return remainUb > 0;
+}
+
+bool MoeInitRountingV3TilingBase::ShouldEnableCountingSortByShape() const
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    bool expertNumValid = expertNum_ <= 1024;
+    bool dropPadValid =
+        (dropPadMode_ == DROP_PAD) || (dropPadMode_ == DROP_LESS && actualExpertNum * NUM_TWO <= expertNum_);
+    bool quantValid = quantMode_ != DYNAMIC_QUANT;
+    bool excludeNonDropPadSmallN = !(n_ <= 2560 && dropPadMode_ == DROP_LESS && quantMode_ == STATIC_QUANT);
+    bool excludeDropPadTinyN = !(dropPadMode_ == DROP_PAD && n_ < 512);
+    return expertNumValid && dropPadValid && quantValid && excludeNonDropPadSmallN && excludeDropPadTinyN;
+}
+
+void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N) {
+        return;
+    }
+
+    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER && ep_ == 1 && expertNum_ == ASSIST_NUM &&
+        (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX && quantMode_ == UN_QUANT &&
+        k_ == PERFORMANCE_MODE_TOP_K && dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT &&
+        actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) {
+        return;
+    }
+
+    if (!ShouldEnableCountingSortByShape()) {
+        return;
+    }
+
+    int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize);
+    int64_t filterPerCoreTokens = Ops::Base::CeilDiv(n_, aivNum);
+    int64_t filterNeedCoreNum = Ops::Base::CeilDiv(n_, filterPerCoreTokens);
+    int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, ONE_BLOCK_ELEMENT);
+    int64_t coreEntries = filterPerCoreTokens * k_;
+    int64_t fullLoadUB = EstimateCountingSortFullLoadUB(filterPerCoreTokens, coreEntries, expertCountStride,
+                                                        filterNeedCoreNum, actualExpertNum);
+
+    countingSortFullLoad_ =
+        (fullLoadUB <= ubSize - LENGTH_1024 && ep_ == 1 && quantMode_ == UN_QUANT && k_ == PERFORMANCE_MODE_TOP_K &&
+         dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT &&
+         actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) ?
+            1 :
+            0;
+    int64_t filterChunkSize = (countingSortFullLoad_ == 1) ? 0 : COUNTING_SORT_FILTER_CHUNK_SIZE;
+
+    if (countingSortFullLoad_ == 1) {
+        countingSortWorkspaceSize_ =
+            static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
+        moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_needCoreNum(filterNeedCoreNum);
+        moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_perCoreIndicesElements(filterPerCoreTokens);
+    } else {
+        ComputeCountingSortCutOriginTiling(filterNeedCoreNum, filterPerCoreTokens, expertCountStride, actualExpertNum);
+    }
+
+    OP_LOGI(context_,
+            "CountingSort tiling: countingSortFullLoad=%ld, filterNeedCoreNum=%ld, "
+            "filterPerCoreTokens=%ld, filterChunkSize=%ld, fullLoadUB=%ld, ubSize=%ld, "
+            "countingSortWorkspaceSize=%zu",
+            countingSortFullLoad_, filterNeedCoreNum, filterPerCoreTokens, filterChunkSize, fullLoadUB, ubSize,
+            countingSortWorkspaceSize_);
+}
+
+int64_t MoeInitRountingV3TilingBase::EstimateCountingSortFullLoadUB(int64_t coreTokenNum, int64_t coreEntries,
+                                                                    int64_t expertCountStride,
+                                                                    int64_t filterNeedCoreNum, int64_t actualExpertNum)
+{
+    int64_t colsAligned =
+        Ops::Base::CeilDiv(cols_ * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+    int64_t scaleSlotSize = ONE_BLOCK_BYTE / SIZE_FP32;
+    int64_t ub = 0;
+
+    ub += Ops::Base::CeilAlign(coreTokenNum * colsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(coreEntries * SIZE_INT32, ONE_BLOCK_BYTE);
+    if (isInputScale_) {
+        ub += Ops::Base::CeilAlign(coreTokenNum * scaleSlotSize * SIZE_FP32, ONE_BLOCK_BYTE);
+    }
+    ub += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(filterNeedCoreNum * expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)), ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(coreEntries * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
+
+    int64_t entriesAligned =
+        Ops::Base::CeilDiv(coreEntries, COUNTING_SORT_ONE_REPEAT_COMPARE_NUM) * COUNTING_SORT_ONE_REPEAT_COMPARE_NUM;
+    int64_t maskBytes = Ops::Base::CeilAlign(Ops::Base::CeilDiv(entriesAligned, ONE_BLOCK_ELEMENT), ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(entriesAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+    ub += maskBytes * NUM_THREE;
+    ub += Ops::Base::CeilAlign(entriesAligned * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_THREE;
+
+    return ub;
+}
+
+void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(int64_t filterNeedCoreNum,
+                                                                     int64_t filterPerCoreTokens,
+                                                                     int64_t expertCountStride, int64_t actualExpertNum)
+{
+    int64_t chunkAligned = Ops::Base::CeilAlign(COUNTING_SORT_FILTER_CHUNK_SIZE, ONE_BLOCK_ELEMENT);
+    int64_t persistentSize = Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    // Phase A: chunked filtering
+    int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+    int64_t maskBytesA =
+        Ops::Base::CeilAlign(Ops::Base::CeilDiv(chunkAligned, ONE_BLOCK_ELEMENT), static_cast<int64_t>(sizeof(int8_t)));
+    phaseASize += maskBytesA * NUM_THREE + Ops::Base::CeilAlign(chunkAligned * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_THREE;
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
+
+    // Phase B
+    int64_t phaseBSize = Ops::Base::CeilAlign(filterNeedCoreNum * expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseBSize += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseBSize += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)), ONE_BLOCK_BYTE);
+
+    // Phase C: compute colsLoops/perLoopCols based on remaining UB space
+    // When actualExpertNum is large (up to 10240), persistentSize grows significantly,
+    // so compute maxPerLoopCols from actual Phase C budget rather than fixed constant
+    int64_t phaseCBudget = static_cast<int64_t>(aicoreParams_.ubSize) - persistentSize - ONE_BLOCK_BYTE;
+
+    // Fixed Phase C overhead (independent of perLoopCols)
+    int64_t phaseCFixedOverhead = Ops::Base::CeilAlign(2048 * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE); // pairsBuf
+    phaseCFixedOverhead += ONE_BLOCK_BYTE;                                                           // idxBuf (32B)
+    if (dropPadMode_ != DROP_PAD) {
+        // Non-droppad: 3 stack arrays newPosArr/srcRowArr/origFlatIdxArr (int32_t[2048] each)
+        phaseCFixedOverhead += NUM_THREE * static_cast<int64_t>(2048) * SIZE_INT32;
+    }
+
+    // Per-element byte cost for all perLoopCols-dependent buffers
+    // 2 xBuf slots (double buffer) + quant buffers per mode
+    int64_t colBytesPerElement = NUM_TWO * inuptXDtypeSize_;
+    if (quantMode_ == STATIC_QUANT) {
+        colBytesPerElement += SIZE_FP32 + SIZE_INT8 * NUM_TWO; // quantFloat + quantInt8
+    } else if (isInputScale_) {
+        // unquant with inputScale: 2 scale slots (fixed 32B each)
+        phaseCFixedOverhead += Ops::Base::CeilAlign(ONE_BLOCK_ELEMENT * SIZE_FP32, ONE_BLOCK_BYTE) * NUM_TWO;
+    }
+
+    // Compute max perLoopCols from remaining budget (with alignment margin)
+    int64_t remainingForCols = phaseCBudget - phaseCFixedOverhead - LENGTH_1024;
+    int64_t dynamicMaxPerLoopCols = remainingForCols / colBytesPerElement;
+    // Align down to block boundary for element alignment
+    dynamicMaxPerLoopCols =
+        (dynamicMaxPerLoopCols * inuptXDtypeSize_ / ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+    int64_t maxPerLoopColsBytes =
+        std::min(dynamicMaxPerLoopCols * inuptXDtypeSize_, COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES);
+
+    int64_t csPerLoopCols =
+        (cols_ * inuptXDtypeSize_ > maxPerLoopColsBytes) ? (maxPerLoopColsBytes / inuptXDtypeSize_) : cols_;
+    int64_t csColsLoops = Ops::Base::CeilDiv(cols_, csPerLoopCols);
+    int64_t csLastLoopCols = cols_ - (csColsLoops - 1) * csPerLoopCols;
+    int64_t csPerLoopColsAligned =
+        Ops::Base::CeilDiv(csPerLoopCols * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+
+    if (csColsLoops > 1 && quantMode_ != UN_QUANT) {
+        countingSortFullLoad_ = -1;
+        return;
+    }
+
+    // Phase C size (accurate estimation matching kernel layout)
+    int64_t phaseCSize = phaseCFixedOverhead;
+    phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE) * NUM_TWO;
+    if (quantMode_ == STATIC_QUANT) {
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE) * NUM_TWO;
+        phaseCSize += ONE_BLOCK_BYTE;
+    }
+
+    int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});
+    OP_LOGI(context_, "totalUB is: %ld", totalUB);
+
+    // Set tiling params
+    auto gatherOp = &moeInitRoutingV3TilingData.gatherOutComputeParamsOp;
+    gatherOp->set_needCoreNum(filterNeedCoreNum);
+    gatherOp->set_perCoreIndicesElements(filterPerCoreTokens);
+    gatherOp->set_colsLoops(csColsLoops);
+    gatherOp->set_perLoopCols(csPerLoopCols);
+    gatherOp->set_lastLoopCols(csLastLoopCols);
+
+    // Workspace: pairs + expertCount
+    int64_t lastCoreTokens = n_ - (filterNeedCoreNum - 1) * filterPerCoreTokens;
+    int64_t maxCoreEntries = std::max(filterPerCoreTokens, lastCoreTokens) * k_;
+    int64_t pairsPerCore = Ops::Base::CeilAlign(maxCoreEntries, ONE_BLOCK_ELEMENT) * NUM_TWO;
+    size_t pairsWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(pairsPerCore) * sizeof(int32_t);
+    size_t expertCountWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
+    countingSortWorkspaceSize_ = pairsWorkspaceSize + expertCountWorkspaceSize;
 }
 
 bool MoeInitRountingV3TilingBase::IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const
@@ -836,74 +1038,72 @@ PerformanceMode MoeInitRountingV3TilingBase::GetPerformanceMode() const
     return result;
 }
 
-ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype() 
+ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype()
 {
     auto inputXDtype_ = context_->GetInputDesc(INPUT_X_INDEX)->GetDataType();
-    OP_CHECK_IF(inputXDtype_ != ge::DT_INT8 && inputXDtype_ != ge::DT_FLOAT16 && inputXDtype_ != ge::DT_BF16 && inputXDtype_ != ge::DT_FLOAT,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "inputXDtype_", Ops::Base::ToString(inputXDtype_).c_str(),
-                                  "INT8, FLOAT16, BF16 or FLOAT"),
+    OP_CHECK_IF(inputXDtype_ != ge::DT_INT8 && inputXDtype_ != ge::DT_FLOAT16 && inputXDtype_ != ge::DT_BF16 &&
+                    inputXDtype_ != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "inputXDtype_",
+                                          Ops::Base::ToString(inputXDtype_).c_str(), "INT8, FLOAT16, BF16 or FLOAT"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputXDtype_ == ge::DT_INT8 && quantMode_ != UN_QUANT,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "inputXDtype_",
-                                              Ops::Base::ToString(inputXDtype_).c_str(),
-                                              "quantization is not supported when input_X is INT8"),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "inputXDtype_",
+                                                      Ops::Base::ToString(inputXDtype_).c_str(),
+                                                      "quantization is not supported when input_X is INT8"),
                 return ge::GRAPH_FAILED);
 
     auto expertIdxDtype_ = context_->GetInputDesc(INPUT_EXPERT_IDX_INDEX)->GetDataType();
     OP_CHECK_IF(expertIdxDtype_ != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdxDtype_",
-                                  Ops::Base::ToString(expertIdxDtype_).c_str(),
-                                  "INT32"),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdxDtype_",
+                                          Ops::Base::ToString(expertIdxDtype_).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
-    
+
     if (quantMode_ == STATIC_QUANT) {
         auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
         OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
-                Ops::Base::ToString(scaleDtype_).c_str(), "FLOAT"),
-                return ge::GRAPH_FAILED);
-        
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
+                                              Ops::Base::ToString(scaleDtype_).c_str(), "FLOAT"),
+                    return ge::GRAPH_FAILED);
+
         auto offsetDtype_ = context_->GetOptionalInputDesc(INPUT_OFFSET_INDEX)->GetDataType();
         OP_CHECK_IF(offsetDtype_ != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offsetDtype_",
-                                      Ops::Base::ToString(offsetDtype_).c_str(),
-                                      "FLOAT"),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offsetDtype_",
+                                              Ops::Base::ToString(offsetDtype_).c_str(), "FLOAT"),
+                    return ge::GRAPH_FAILED);
     } else {
         if (scaleShapePtr_ != nullptr) {
             auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
             OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
-                                          Ops::Base::ToString(scaleDtype_).c_str(),
-                                          "FLOAT"),
-                    return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
+                                                  Ops::Base::ToString(scaleDtype_).c_str(), "FLOAT"),
+                        return ge::GRAPH_FAILED);
         }
     }
 
     auto expandedXDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_X_INDEX)->GetDataType();
-    OP_CHECK_IF(expandedXDtype_ != ge::DT_INT8 && expandedXDtype_ != ge::DT_FLOAT16 && expandedXDtype_ != ge::DT_BF16 && expandedXDtype_ != ge::DT_FLOAT,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedXDtype_",
-                                  Ops::Base::ToString(expandedXDtype_).c_str(),
-                                  "INT8, FLOAT16, BF16 or FLOAT"),
+    OP_CHECK_IF(expandedXDtype_ != ge::DT_INT8 && expandedXDtype_ != ge::DT_FLOAT16 && expandedXDtype_ != ge::DT_BF16 &&
+                    expandedXDtype_ != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedXDtype_",
+                                          Ops::Base::ToString(expandedXDtype_).c_str(), "INT8, FLOAT16, BF16 or FLOAT"),
                 return ge::GRAPH_FAILED);
-    
+
     auto expandedRowIdxDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_ROW_IDX_INDEX)->GetDataType();
     OP_CHECK_IF(expandedRowIdxDtype_ != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedRowIdxDtype_",
-                                  Ops::Base::ToString(expandedRowIdxDtype_).c_str(), "INT32"),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedRowIdxDtype_",
+                                          Ops::Base::ToString(expandedRowIdxDtype_).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
 
     auto expertTokensCountOrCusumDtype_ = context_->GetOutputDesc(OUTPUT_EXPERT_TOKENS_COUNT_INDEX)->GetDataType();
     OP_CHECK_IF(expertTokensCountOrCusumDtype_ != ge::DT_INT64,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertTokensCountOrCusumDtype_",
-                                  Ops::Base::ToString(expertTokensCountOrCusumDtype_).c_str(), "INT64"),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertTokensCountOrCusumDtype_",
+                                          Ops::Base::ToString(expertTokensCountOrCusumDtype_).c_str(), "INT64"),
                 return ge::GRAPH_FAILED);
-    
+
     if (quantMode_ == DYNAMIC_QUANT || (quantMode_ == UN_QUANT && scaleShapePtr_ != nullptr)) {
         auto expandedScaleDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_SCALE_INDEX)->GetDataType();
         OP_CHECK_IF(expandedScaleDtype_ != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedScaleDtype_",
-                                      Ops::Base::ToString(expandedScaleDtype_).c_str(), "FLOAT"),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedScaleDtype_",
+                                              Ops::Base::ToString(expandedScaleDtype_).c_str(), "FLOAT"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -911,7 +1111,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype()
 }
 
 ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
-{   
+{
     auto ret = CheckAttr();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
@@ -952,6 +1152,9 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
     Tiling4SrcToDstDropPadCompute();
     Tiling4GatherOutCompute();
     isFullload_ = IsFullLoad();
+    if (!isFullload_ && !IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
+        ComputeCountingSortTiling();
+    }
     ShowTilingData();
     return ge::GRAPH_SUCCESS;
 }
@@ -962,7 +1165,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoLibApiTiling()
 }
 
 uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
-{   
+{
     if (isEmptyTensor_) {
         return EMPTY_TENSOR_TILINGKEY;
     }
@@ -973,31 +1176,31 @@ uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
         } else if (quantMode_ == STATIC_QUANT) {
             return STATIC_QUANT_FULLLOAD_TILINGKEY;
         } else {
-            return (DYNAMIC_QUANT_FULLLOAD_TILINGKEY + ep_ * DYNAMIC_QUANT_EPFULLLOAD_TILINGKEY 
-                    + smoothType_ * DYNAMIC_QUANT_SMOOTHTYPE_FULLLOAD_TILINGKEY);
+            return (DYNAMIC_QUANT_FULLLOAD_TILINGKEY + ep_ * DYNAMIC_QUANT_EPFULLLOAD_TILINGKEY +
+                    smoothType_ * DYNAMIC_QUANT_SMOOTHTYPE_FULLLOAD_TILINGKEY);
         }
-    }
-    else if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
+    } else if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
         return PERFORMANCE_TILINGKEY_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168;
-    } else if (PerformanceMode::ONE_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
-               rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT) {
+    } else if (countingSortFullLoad_ == 1 ||
+               (PerformanceMode::ONE_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
+                rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT && countingSortFullLoad_ == -1)) {
         uint64_t sortMode = NUM_TWO;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
-    } else if (PerformanceMode::MULTI_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
-               rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT) {
+    } else if (countingSortFullLoad_ == 0 ||
+               (PerformanceMode::MULTI_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
+                rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT && countingSortFullLoad_ == -1)) {
         uint64_t sortMode = 3;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE);
+    } else {
+        return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
     }
-    return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
-                                 static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                 static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
-                                 static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
 }
 
 ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
@@ -1023,6 +1226,10 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
     }
     if (dropPadMode_ == DROP_PAD) {
         workspaceSize_ += expertIdxValueWorkspaceSize;
+    }
+    // Counting sort may need additional workspace
+    if (countingSortWorkspaceSize_ > workspaceSize_) {
+        workspaceSize_ = countingSortWorkspaceSize_;
     }
     OP_LOGI(context_, "Allocate workspaceSize is: %ld.", workspaceSize_);
     return ge::GRAPH_SUCCESS;
@@ -1057,13 +1264,13 @@ void MoeInitRountingV3TilingBase::Tinlig4VBSOneCoreCompute(MoeV3VBSComputeTiling
 
 void MoeInitRountingV3TilingBase::Tinlig4VBSMultiCoreCompute(MoeV3VBSComputeTilingData *tilingData)
 {
-    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, sortLoopMaxElement); // 向上取整
-    needCoreNum = static_cast<int64_t>(std::pow(NUM_FOUR, CeilLog4(needCoreNum)));     // 用到多核时，核数最多是4^x
-    needCoreNum = std::min(needCoreNum, aivNum);                                // 不能超过物理核数
+    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, sortLoopMaxElement);    // 向上取整
+    needCoreNum = static_cast<int64_t>(std::pow(NUM_FOUR, CeilLog4(needCoreNum))); // 用到多核时，核数最多是4^x
+    needCoreNum = std::min(needCoreNum, aivNum);                                   // 不能超过物理核数
 
     OP_CHECK_IF(needCoreNum == 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "needCoreNum",
-                                                       std::to_string(needCoreNum), "needCoreNum cannot be 0"),
+                                                      std::to_string(needCoreNum), "needCoreNum cannot be 0"),
                 return;);
     int64_t perCoreElements = (needCoreNum == 0) ? 0 : (totalLength_ / needCoreNum);
     int64_t alineFloorPerCoreElements = perCoreElements - perCoreElements % SORT32_ALIGN_ELEMENT;
@@ -1102,8 +1309,8 @@ void MoeInitRountingV3TilingBase::Tinlig4VBSMultiCoreCompute(MoeV3VBSComputeTili
     } while (tilingData->get_lastCoreLastLoopElements() <= 0 && perCoreElements > 0);
     OP_CHECK_IF(tilingData->get_lastCoreLastLoopElements() <= 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "lastCoreLastLoopElements",
-                                                       std::to_string(tilingData->get_lastCoreLastLoopElements()),
-                                                       "vbs tiling failed"),
+                                                      std::to_string(tilingData->get_lastCoreLastLoopElements()),
+                                                      "vbs tiling failed"),
                 ;);
 }
 
@@ -1161,7 +1368,8 @@ void MoeInitRountingV3TilingBase::Tiling4ExpertTokensCountCompute()
         (static_cast<int64_t>(aicoreParams_.ubSize) -
          Ops::Base::CeilAlign(expertNumElement, ONE_BLOCK_BYTE) *
              (static_cast<int64_t>(sizeof(int32_t)) * NUM_TWO + static_cast<int64_t>(sizeof(int64_t))) -
-         ONE_BLOCK_BYTE) / static_cast<int64_t>(sizeof(int32_t));
+         ONE_BLOCK_BYTE) /
+        static_cast<int64_t>(sizeof(int32_t));
     int64_t perCoreLoops = Ops::Base::CeilDiv(perCoreElements, maxElementsPerLoop);
     int64_t perCorePerLoopElements = Ops::Base::CeilDiv(perCoreElements, perCoreLoops);
     int64_t perCoreLastLoopElements = perCoreElements - (perCoreLoops - 1) * perCorePerLoopElements;
@@ -1210,9 +1418,8 @@ void MoeInitRountingV3TilingBase::Tiling4SrcToDstDropPadCompute()
     tilingData->set_lastCoreRows(lastCoreRows);
     int64_t inuptXDtypeSize = inuptXDtypeSize_ == SIZE_INT8 ? SIZE_INT16 : inuptXDtypeSize_;
 
-    int64_t rowSize =
-        (perCoreRows * sizeof(int32_t) * NUM_TWO + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) /
-        ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+    int64_t rowSize = (perCoreRows * sizeof(int32_t) * NUM_TWO + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE *
+                      ONE_BLOCK_BYTE;
     int64_t colSize = (cols * inuptXDtypeSize + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
 
     if (rowSize + colSize < static_cast<int64_t>(aicoreParams_.ubSize)) { // 一行能够全载
@@ -1221,13 +1428,11 @@ void MoeInitRountingV3TilingBase::Tiling4SrcToDstDropPadCompute()
         int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
         int64_t baseMaxColsSize =
             (baseMaxCols * inuptXDtypeSize + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-        int64_t basePerLoopMaxRows = (static_cast<int64_t>(aicoreParams_.ubSize) - baseMaxColsSize - ONE_BLOCK_BYTE) 
-                                     /static_cast<int64_t>(sizeof(int32_t))
-                                     / NUM_TWO / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        int64_t basePerLoopMaxRows = (static_cast<int64_t>(aicoreParams_.ubSize) - baseMaxColsSize - ONE_BLOCK_BYTE) /
+                                     static_cast<int64_t>(sizeof(int32_t)) / NUM_TWO / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
         if (cols < MAX_COLS_ONE_LOOP) {
-            basePerLoopMaxRows = (static_cast<int64_t>(aicoreParams_.ubSize) - colSize - ONE_BLOCK_BYTE)
-                                 / static_cast<int64_t>(sizeof(int32_t)) 
-                                 / NUM_TWO / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+            basePerLoopMaxRows = (static_cast<int64_t>(aicoreParams_.ubSize) - colSize - ONE_BLOCK_BYTE) /
+                                 static_cast<int64_t>(sizeof(int32_t)) / NUM_TWO / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
         } else if (perCoreRows < basePerLoopMaxRows) {
             baseMaxCols = (static_cast<int64_t>(aicoreParams_.ubSize) - rowSize) / inuptXDtypeSize / ONE_BLOCK_BYTE *
                           ONE_BLOCK_BYTE;
@@ -1246,8 +1451,8 @@ void MoeInitRountingV3TilingBase::Tiling4SrcToDstDropPadCompute()
     }
 }
 
-void MoeInitRountingV3TilingBase::SetGatherTilingData(
-    MoeV3SrcToDstCapacityComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows, int64_t cols)
+void MoeInitRountingV3TilingBase::SetGatherTilingData(MoeV3SrcToDstCapacityComputeTilingData *tilingData,
+                                                      int64_t perCoreRows, int64_t lastCoreRows, int64_t cols)
 {
     tilingData->set_perCorePerLoopRows(perCoreRows);
     tilingData->set_perCoreLastLoopRows(perCoreRows);
@@ -1260,22 +1465,22 @@ void MoeInitRountingV3TilingBase::SetGatherTilingData(
     tilingData->set_colLoops(1);
 }
 
-void MoeInitRountingV3TilingBase::SetGatherTilingDataCols(
-    MoeV3SrcToDstCapacityComputeTilingData* tilingData, int64_t baseMaxCols, int64_t cols)
+void MoeInitRountingV3TilingBase::SetGatherTilingDataCols(MoeV3SrcToDstCapacityComputeTilingData *tilingData,
+                                                          int64_t baseMaxCols, int64_t cols)
 {
     tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
     tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
     tilingData->set_colLoops(baseMaxCols == 0 ? 0 : (cols + baseMaxCols - 1) / baseMaxCols);
 }
 
-void MoeInitRountingV3TilingBase::SetGatherTilingDataRows(
-    MoeV3SrcToDstCapacityComputeTilingData* tilingData, int64_t perCoreRows, int64_t lastCoreRows,
-    int64_t basePerLoopMaxRows)
+void MoeInitRountingV3TilingBase::SetGatherTilingDataRows(MoeV3SrcToDstCapacityComputeTilingData *tilingData,
+                                                          int64_t perCoreRows, int64_t lastCoreRows,
+                                                          int64_t basePerLoopMaxRows)
 {
     tilingData->set_perCorePerLoopRows(std::min(perCoreRows, basePerLoopMaxRows));
     tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, basePerLoopMaxRows));
-    tilingData->set_perCoreLoops(
-        basePerLoopMaxRows == 0 ? 0 : (perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
+    tilingData->set_perCoreLoops(basePerLoopMaxRows == 0 ? 0 :
+                                                           (perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
 
     tilingData->set_lastCorePerLoopRows(std::min(lastCoreRows, basePerLoopMaxRows));
     tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, basePerLoopMaxRows));
@@ -1305,7 +1510,8 @@ void MoeInitRountingV3TilingBase::Tiling4SrcToDstDropPadDynamicCompute()
         SetGatherTilingData(tilingData, perCoreRows, lastCoreRows, cols);
     } else {
         int64_t baseMaxCols = MAX_COLS_DYNAMIC_QUANT;
-        int64_t totalColSize = AlignBytes(baseMaxCols, static_cast<int64_t>(sizeof(int8_t))) * DYNAMIC_QUANT_SRC_TO_DST_BUFFER;
+        int64_t totalColSize =
+            AlignBytes(baseMaxCols, static_cast<int64_t>(sizeof(int8_t))) * DYNAMIC_QUANT_SRC_TO_DST_BUFFER;
         int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize);
         int64_t basePerLoopMaxRows = AlignOneBlockByteCeil((ubSize - totalColSize - scaleSize) / SIZE_INT32) / NUM_FOUR;
         if (cols < MAX_COLS_DYNAMIC_QUANT) {

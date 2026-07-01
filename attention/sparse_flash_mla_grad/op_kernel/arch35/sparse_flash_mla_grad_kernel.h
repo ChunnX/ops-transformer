@@ -40,6 +40,7 @@ public:
 private:
     __aicore__ inline void ProcessPreload(FagRunInfo &runInfo, int64_t taskId, bool &isFirstBlock);
     __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
+    __aicore__ inline void ScatterAddUnDeter(FagRunInfo &runInfo);
     __aicore__ inline void CopyLse(FagRunInfo &runInfo);
 };
 
@@ -179,14 +180,28 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
         }
     }
     runInfo.taskStep = TASK_C3C4C5;
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ScatterAddUnDeter(FagRunInfo &runInfo)
+{
     if constexpr (!IsDETER) {
+        int8_t mode2 = (runInfo.commonRunInfo.taskIdMod2 + 1) % 2;
+        LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[mode2].template Get<CALC_TYPE>();
+        LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[mode2].template Get<CALC_TYPE>();
+        if (runInfo.taskStep != TASK_C3C4C5) {
+            if ASCEND_IS_AIV {
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+            }
+            return;
+        }
         if ASCEND_IS_AIV {
             // wait mm4 mm5 result
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG);
         }
+        
         GlobalTensor<CALC_TYPE> outWorkspace = runInfo.isOriKV ? this->dOriKVWorkSpaceGm : this->dCmpKVWorkSpaceGm;
         bool isSparse = runInfo.isOriKV ? IsOriKVSparse : IsCmpKVSparse;
-
         if (isSparse) {
             this->vecBlock.template ScatterAdd<true>(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, outWorkspace,
                                                      mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
@@ -198,6 +213,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
         if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
+        runInfo.taskStep = TASK_SCATTERADD;
     }
 }
 
@@ -432,7 +448,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     }
     int64_t taskId = 0;
     int64_t sTaskId = 0;
-    FagRunInfo runInfos[2]; // for cv ping pong
+    FagRunInfo runInfos[3]; // for cv ping pong
     for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         bool isFirstBlock = true;
         this->usedT1Index = this->cBlockIdx + this->usedCoreNum * i;
@@ -443,15 +459,19 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
                 for (this->blkCntOffset = 0; this->blkCntOffset < this->actualOriSelectedBlockCount;
                      this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                        this->template SetRunInfo<true>(runInfos[taskId % 3], runInfos[(taskId + 2) % 3], taskId,
                                                         sTaskId, 0, 0);
-                        ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
+                        ProcessPreload(runInfos[taskId % 3], taskId, isFirstBlock);
                     }
-                    int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
-                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
+                    int64_t curTaskS2RealSize = runInfos[taskId % 3].commonRunInfo.s2RealSize;
+                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) % 3].commonRunInfo.s2RealSize;
                     if (taskId > 0) {
-                        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                        ProcessNotFirst(runInfos[(taskId + 2) % 3]);
                     }
+                    if (taskId > 1) {
+                        ScatterAddUnDeter(runInfos[(taskId + 1) % 3]);
+                    }
+                    
                     taskId++;
                     if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
                         break;
@@ -464,14 +484,17 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
                      this->blkCntOffset < this->actualSelectedBlockCount;
                      this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                        this->template SetRunInfo<false>(runInfos[taskId % 3], runInfos[(taskId + 2) % 3], taskId,
                                                          sTaskId, 0, 0);
-                        ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
+                        ProcessPreload(runInfos[taskId % 3], taskId, isFirstBlock);
                     }
-                    int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
-                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
+                    int64_t curTaskS2RealSize = runInfos[taskId % 3].commonRunInfo.s2RealSize;
+                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) % 3].commonRunInfo.s2RealSize;
                     if (taskId > 0) {
-                        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                        ProcessNotFirst(runInfos[(taskId + 2) % 3]);
+                    }
+                    if (taskId > 1) {
+                        ScatterAddUnDeter(runInfos[(taskId + 1) % 3]);
                     }
                     taskId++;
                     if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
@@ -485,8 +508,14 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
         }
     }
 
-    if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
-        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+    if (runInfos[(taskId + 2) % 3].taskStep == TASK_C1C2) {
+        ProcessNotFirst(runInfos[(taskId + 2) % 3]);
+    }
+    if (runInfos[(taskId + 1) % 3].taskStep == TASK_C3C4C5) {
+        ScatterAddUnDeter(runInfos[(taskId + 1) % 3]);
+    }
+    if (runInfos[(taskId + 2) % 3].taskStep == TASK_C3C4C5) {
+        ScatterAddUnDeter(runInfos[(taskId + 2) % 3]);
     }
     this->FreeEventID();
 }

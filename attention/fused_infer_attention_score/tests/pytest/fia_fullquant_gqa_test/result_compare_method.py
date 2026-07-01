@@ -12,7 +12,6 @@
 
 import logging
 import torch
-import datetime
 import os
 import sys
 
@@ -25,6 +24,7 @@ def cal_relative_diff_torch(real_data, expect_data):
 
 
 def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=None):
+    COL_W = 12  # 数据列宽度
     def display_inner(idx):
         j = idx + start
         real_value = float(real_data[j])
@@ -34,29 +34,36 @@ def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=No
         if not torch.isfinite(expect_data[j]).item():
             diff_abs = "inf" if torch.isinf(expect_data[j]).item() else "nan"
             if expect_fp32_data is not None:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, float(expect_fp32_data[j]), expect_value, real_value, diff_abs, diff_rate))
+                print_log('%08d  %*s  %*s  %*s  %*s  %*s' % (
+                    start + idx + 1, COL_W, float(expect_fp32_data[j]), COL_W, expect_value,
+                    COL_W, real_value, COL_W, diff_abs, COL_W, diff_rate))
             else:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, expect_value, real_value, diff_abs, diff_rate))
+                print_log('%08d  %*s  %*s  %*s  %*s' % (
+                    start + idx + 1, COL_W, expect_value, COL_W, real_value,
+                    COL_W, diff_abs, COL_W, diff_rate))
         else:
             diff_abs = abs(expect_value - real_value)
             if expect_fp32_data is not None:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, float(expect_fp32_data[j]), expect_value, real_value, diff_abs, diff_rate))
+                print_log('%08d  %*.7f  %*.7f  %*.7f  %*.7f  %*.7f' % (
+                    start + idx + 1, COL_W, float(expect_fp32_data[j]), COL_W, expect_value,
+                    COL_W, real_value, COL_W, diff_abs, COL_W, diff_rate))
             else:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, expect_value, real_value, diff_abs, diff_rate))
+                print_log('%08d  %*.7f  %*.7f  %*.7f  %*.7f' % (
+                    start + idx + 1, COL_W, expect_value, COL_W, real_value,
+                    COL_W, diff_abs, COL_W, diff_rate))
 
-    print_log(
-        '---------------------------------------------------------------------------------------')
+    SEP = '-' * 90
     if expect_fp32_data is not None:
-        print_log(
-            'Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff')
+        print_log(SEP)
+        print_log('%-8s  %*s  %*s  %*s  %*s  %*s' % (
+            'Loop', COL_W, 'ExpFP32Out', COL_W, 'ExpFP16Out', COL_W, 'NPUOut',
+            COL_W, 'FpDiff(min)', COL_W, 'RateDiff'))
+        print_log(SEP)
     else:
-        print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
-        '---------------------------------------------------------------------------------------')
+        print_log(SEP)
+        print_log('%-8s  %*s  %*s  %*s  %*s' % (
+            'Loop', COL_W, 'ExpectOut', COL_W, 'RealOut', COL_W, 'FpDiff', COL_W, 'RateDiff'))
+        print_log(SEP)
     split_count = int(end - start)
     if split_count <= 20:
         for i in range(split_count + 1):
@@ -64,21 +71,23 @@ def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=No
     else:
         for i in range(10):
             display_inner(i)
-        print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
+        if expect_fp32_data is not None:
+            print_log('%-8s  %*s  %*s  %*s  %*s  %*s' % ('...', COL_W, '...', COL_W, '...', COL_W, '...', COL_W, '...', COL_W, '...'))
+        else:
+            print_log('%-8s  %*s  %*s  %*s  %*s' % ('...', COL_W, '...', COL_W, '...', COL_W, '...', COL_W, '...'))
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
 def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
+    print("[%s]-%s:%s - %s" % (level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
+                               str(sys._getframe().f_back.f_lineno).zfill(4), data))
 
 def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
-    print_log(
-        'Error Line-----------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
-        '---------------------------------------------------------------------------------------')
+    COL_W = 12
+    SEP = '-' * 90
+    print_log('Error Line' + '-' * 90)
+    print_log('%-8s  %*s  %*s  %*s  %*s' % ('Loop', COL_W, 'ExpectOut', COL_W, 'RealOut', COL_W, 'FpDiff', COL_W, 'RateDiff'))
+    print_log(SEP)
     count = 0
     len_err = int(err_idx.numel())
     for i in err_idx.tolist():
@@ -86,18 +95,16 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
         if count < 10 or (90 < count < 100):
             expect_value = float(expect_data[i])
             real_value = float(real_data[i])
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                i, expect_value, real_value, abs(expect_value - real_value),
-                float(relative_diff[count - 1].item())))
+            print_log('%08d  %*.7f  %*.7f  %*.7f  %*.7f' % (
+                i, COL_W, expect_value, COL_W, real_value,
+                COL_W, abs(expect_value - real_value),
+                COL_W, float(relative_diff[count - 1].item())))
         elif count == 10 or (count == 100 and len_err > 100):
-            dot_3 = '...'
-            print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
-                      (dot_3, dot_3, dot_3, dot_3, dot_3))
+            print_log('%-8s  %*s  %*s  %*s  %*s' % ('...', COL_W, '...', COL_W, '...', COL_W, '...', COL_W, '...'))
         elif count > 100:
             break
 
-    print_log(
-        'Max-RE line:---------------------------------------------------------------------------')
+    print_log('Max-RE line:' + '-' * 87)
     max_error = float(torch.max(relative_diff).item()) if relative_diff.numel() > 0 else 0.0
     m_idx_list = err_idx[relative_diff == max_error]
     m_count = 0
@@ -106,14 +113,12 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
         if m_count < 4:
             expect_value = float(expect_data[m_idx])
             real_value = float(real_data[m_idx])
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                m_idx, expect_value, real_value,
-                abs(expect_value - real_value),
-                max_error))
+            print_log('%08d  %*.7f  %*.7f  %*.7f  %*.7f' % (
+                m_idx, COL_W, expect_value, COL_W, real_value,
+                COL_W, abs(expect_value - real_value), COL_W, max_error))
         else:
             break
-    print_log(
-        '---------------------------------------------------------------------------------------')
+    print_log(SEP)
 # fuzz 中 precision_method == 1的精度对比方式
 def check_result(expect, npu_result):
     diff_thd=0.005
@@ -186,13 +191,12 @@ def check_result(expect, npu_result):
         max_error = float(torch.max(err_diff[0:max_error_idx]).item())
         if max_error >= max_diff_hd:
             result = "Failed"
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-                (rtol, atol, pct_thd, fulfill_percent, result))
+    COL_W = 12
+    print_log('-' * 90)
+    print_log('%-8s  %*s  %*s  %*s  %*s' % ('Rtol', COL_W, 'Atol', COL_W, 'PctThd', COL_W, 'PctRlt', COL_W, 'Result'))
+    print_log('-' * 90)
+    print_log('%.4f   %*.6f  %*.2f%%   %*.6f%%   %-s' %
+                (rtol, COL_W - 2, atol, COL_W - 2, pct_thd, COL_W - 2, fulfill_percent, result))
     if err_diff.numel() > 0:
         print_log('Max-RelativeError is: %s. Threshold is: %s.' %
                     (max_error, max_diff_hd))

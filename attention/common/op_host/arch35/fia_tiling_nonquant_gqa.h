@@ -67,6 +67,9 @@ public:
 protected:
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
+    bool IsCapableBasicCheckGqa();
+    bool IsCapableFeatureCheckGqa();
+    bool IsCapableSparseLayoutCheckGqa();
     ge::graphStatus DoOpTiling() override;
 
 private:
@@ -75,6 +78,9 @@ private:
     bool CheckS1OutSplit();
     void SplitOutSeq();
     void ComputeTilingData();
+    void SetAttenMaskTilingData();
+    void SetStartIdxTilingData();
+    void SetPageAttentionLayoutTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
