@@ -86,7 +86,7 @@ struct AiCoreParams {
 };
 
 // DLIKG tiling类定义 继承TilingBaseClass
-struct DenseLightningIndexerGradCompileInfo {
+struct DenseLightningIndexerKLLossGradCompileInfo {
     int64_t core_num;
     uint32_t aivNum;
     uint32_t aicNum;

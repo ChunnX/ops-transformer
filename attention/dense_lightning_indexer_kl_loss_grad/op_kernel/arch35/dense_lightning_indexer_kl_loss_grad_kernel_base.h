@@ -132,35 +132,35 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling, TPipe *tPipe)
 {
     pipe = tPipe;
-    tilingData = tiling;
-    metadataGm = metadata;
-    SetConstInfo();
-    actualSeqQlenAddr = cuSeqlensQ;
-    actualSeqKvlenAddr = cuSeqlensK;
-    usedSeqQlenAddr = sequsedQ;
-    usedSeqKvlenAddr = sequsedK;
-    cmpResidualKAddr = cmpResidualK;
-    softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
-    dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
-    dqGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
+    // tilingData = tiling;
+    // metadataGm = metadata;
+    // SetConstInfo();
+    // actualSeqQlenAddr = cuSeqlensQ;
+    // actualSeqKvlenAddr = cuSeqlensK;
+    // usedSeqQlenAddr = sequsedQ;
+    // usedSeqKvlenAddr = sequsedK;
+    // cmpResidualKAddr = cmpResidualK;
+    // softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
+    // dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
+    // dqGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
 
-    InitMMResBuf();
-    InitWorkspace(workspace);
+    // InitMMResBuf();
+    // InitWorkspace(workspace);
 
-    // init vec block
-    if ASCEND_IS_AIV {
-        // InitVecOP
-        vecBlock.InitParams(constInfo, tilingData);
-        vecBlock.InitGlobalBuffer(key, weight, sparseIndices, attnSoftmaxL1, dKey, dWeight, softmaxOut, gatherSYRes,
-            reluRes, reduceSumRes, scatterAddResGm, scatterAddResPong, bmm3Res, cuSeqlensQ, cuSeqlensK, sequsedQ,
-            sequsedK, cmpResidualK);
-        vecBlock.InitBuffers(pipe);
-    } else if ASCEND_IS_AIC {
-        // initCubeOP
-        cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
-        cubeBlock.InitCubeBuffers();
-        cubeBlock.InitGlobalBuffer(query, dQuery, reluRes, gatherSYRes, bmm3Res);
-    }
+    // // init vec block
+    // if ASCEND_IS_AIV {
+    //     // InitVecOP
+    //     vecBlock.InitParams(constInfo, tilingData);
+    //     vecBlock.InitGlobalBuffer(key, weight, sparseIndices, attnSoftmaxL1, dKey, dWeight, softmaxOut, gatherSYRes,
+    //         reluRes, reduceSumRes, scatterAddResGm, scatterAddResPong, bmm3Res, cuSeqlensQ, cuSeqlensK, sequsedQ,
+    //         sequsedK, cmpResidualK);
+    //     vecBlock.InitBuffers(pipe);
+    // } else if ASCEND_IS_AIC {
+    //     // initCubeOP
+    //     cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
+    //     cubeBlock.InitCubeBuffers();
+    //     cubeBlock.InitGlobalBuffer(query, dQuery, reluRes, gatherSYRes, bmm3Res);
+    // }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -326,11 +326,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
-    if constexpr (Deterministic) {
-        ProcessDeter();
-    } else {
-        ProcessNormal();
-    }
+    printf("process !!! \n");
 }
 
 template <typename CubeBlockType, typename VecBlockType>
