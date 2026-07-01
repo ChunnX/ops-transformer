@@ -55,7 +55,7 @@ struct SameAbFuzzyBaseInfoParams { // 频繁使用的基础参数
     int64_t sfmgNormalAxisSize = 0;
     int64_t t1 = 0;
     int64_t t2 = 0;
-    int64_t sumS1S2Product = 0;
+    int64_t sumS1S2Product = 1;
 
     int64_t pseType = PSE_OUTER_ADD_MUL_TYPE;
     int64_t pseAlibiBaseS1 = 0;
