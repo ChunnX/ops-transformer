@@ -33,7 +33,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
-namespace optiling {
+namespace Mc2Tiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t X_INDEX = 1U;
@@ -172,9 +172,9 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
                                    MoeEpDispatchInfo &info, const bool isXFp8)
 {
     const gert::StorageShape *scalesShape = context->GetOptionalInputShape(SCALES_INDEX);
-    OP_TILING_CHECK((isXFp8) && (scalesShape) == nullptr, OP_LOGE(nodeName,
+    OP_TILING_CHECK(isXFp8 && (scalesShape == nullptr), OP_LOGE(nodeName,
         "scales is required when x is fp8, but not provided."), return false);
-    OP_TILING_CHECK((!isXFp8) && (scalesShape) != nullptr, OP_LOGE(nodeName, "scales is only valid when x is fp8."),
+    OP_TILING_CHECK(!isXFp8 && (scalesShape != nullptr), OP_LOGE(nodeName, "scales is only valid when x is fp8."),
         return false);
 
     if (scalesShape != nullptr) {
@@ -456,7 +456,7 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
         *expertAlignmentPtr), return ge::GRAPH_FAILED);
     
     bool cached = (context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
-    OP_TILING_CHECK((cached) && (*doCpuSyncPtr), OP_LOGE(nodeName,
+    OP_TILING_CHECK(cached && *doCpuSyncPtr, OP_LOGE(nodeName,
         "doCpuSync and cached can't be true at the same time."), return ge::GRAPH_FAILED);
 
     info.cfg.numExperts = static_cast<uint32_t>(*numExpertsPtr);
@@ -464,7 +464,7 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
     info.hostPinnedCounterAddr = static_cast<uint64_t>(*hpCounterAddrPtr);
-    info.doCpuSync = ((*doCpuSyncPtr) && (!cached)) ? 1 : 0;
+    info.doCpuSync = (*doCpuSyncPtr && !cached) ? 1 : 0;
     info.isCached = cached ? 1 : 0;
 
     return ge::GRAPH_SUCCESS;
