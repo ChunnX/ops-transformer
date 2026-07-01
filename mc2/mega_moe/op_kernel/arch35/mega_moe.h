@@ -1216,16 +1216,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpert()
 {
-    if constexpr (g_coreType == AIC) {
-        GlobalTensor<int32_t> quantDoneFlagTensor;
-        quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-            quantDoneFlagTensor[blockIdx_]);
-        while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
-            AscendC::Nop<200>();
-        }
-    }
-
     // GMM1 维度: A(m×k) × B(hiddenDim×k)^T → C(m×hiddenDim) → SwiGLU → (m×hiddenDim/2)
     // GMM2 维度: A(m×hiddenDim/2) × B(k×hiddenDim/2)^T → C(m×k)
     uint64_t bStridePerExpert = static_cast<uint64_t>(hiddenDim_) * k_ / B_ELEMS_PER_BYTE;
@@ -1366,38 +1356,60 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
 
-    // QuantProcessInRank 前移：AIV 量化完成后写 GM 标志，AIC 轮询后启动共享专家计算
-    QuantProcessInRank();
-
-    if constexpr (g_coreType == AIV) {
-        if (sharedExpertNum_ > 0) {
+    if (sharedExpertNum_ > 0) {
+        // 共享专家场景：所有 AIV 先做量化，然后 sub=1 做 mask+reset，sub=0+AIC 做共享专家计算
+        if constexpr (g_coreType == AIV) {
+            QuantProcessInRank();
             PipeBarrier<PIPE_ALL>();
             __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
             AscendC::AtomicAdd(quantDoneFlag + blockIdx_, int32_t(1));
         }
-    }
-
-    // AIC: 共享专家本地计算（与 AIV 的 SendMaskCal 流水并行）
-    if constexpr (g_coreType == AIC) {
-        if (sharedExpertNum_ > 0) {
+        
+        // AIC: 等待量化完成，执行共享专家 GMM1+GMM2
+        if constexpr (g_coreType == AIC) {
+            GlobalTensor<int32_t> quantDoneFlagTensor;
+            quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
+                quantDoneFlagTensor[blockIdx_]);
+            while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
+                AscendC::Nop<200>();
+            }
             ProcessSharedExpert();
         }
+        
+        // sub=0: 等待量化完成，执行共享专家 SwiGLU+Quant，然后 SendMaskCal + ResetFlagList
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 0) {
+                __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
+                while (ReadGmByPassDCache(quantDoneFlag + blockIdx_) != int32_t(2)) {
+                    AscendC::Nop<200>();
+                }
+                ProcessSharedExpert();
+                SendMaskCal();
+                ResetFlagList();
+            }
+        }
+        
+        // sub=1: 执行 SendMaskCal + ResetFlagList（与共享专家计算并行）
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                SendMaskCal();
+                ResetFlagList();
+            }
+        }
+    } else {
+        // 无共享专家：所有 AIV 执行量化+mask+reset
+        if constexpr (g_coreType == AIV) {
+            QuantProcessInRank();
+            SendMaskCal();
+            ResetFlagList();
+        }
     }
-
-    SendMaskCal();               // 源卡按所有全局路由专家算 mask 并推送到目标专家卡
-    ResetFlagList();             // 清理workSpace空间上的flag位
 
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
-    
-    // 共享专家场景：AIC 执行了 ProcessSharedExpert，需要参与 SyncAll
-    if (sharedExpertNum_ > 0) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
-    
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
