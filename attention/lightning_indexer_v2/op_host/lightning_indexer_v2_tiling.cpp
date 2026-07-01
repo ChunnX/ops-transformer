@@ -709,7 +709,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                     opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
-        if (opParamInfo_.outputIdxOffset != nullptr) {
+        if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE(opName_, "TND case input query and output_idx_offset dim 0 are %u, %ld "
                     "respectively, they must be same.",
