@@ -137,7 +137,7 @@ public:
                     AscendC::GlobalTensor<ElementD> const &gmD,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
                     Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f,
-                    uint32_t blockK = 1, Callback &&callback = Callback{})
+                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -168,7 +168,7 @@ public:
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
@@ -269,7 +269,7 @@ public:
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                     AscendC::GlobalTensor<ElementD> const &gmD, Arch::Resource<ArchTag> const &resource,
-                    uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f, uint32_t blockK = 1,
+                    uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f, uint32_t gmmOutPreRowStride = 1,
                     Callback &&callback = Callback{})
     {
         callback();
@@ -298,7 +298,7 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
 
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
