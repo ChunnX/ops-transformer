@@ -482,7 +482,11 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::ProcessPseInfo(const 
         }
     } else if (pseShapeDim == PSE_DIM_NUM_1 && isTnd) {
         auto dim0 = pseShape->GetStorageShape().GetDim(DIM_0);
-        bool isTndPseBN1S = isTnd && (dim0 == fBaseParams.t2 * fBaseParams.n1);
+        int64_t effectiveT2 = 0;
+        for (const auto &kvlen : fBaseParams.actualSeqKvlen) {
+            effectiveT2 += kvlen;
+        }
+        bool isTndPseBN1S = isTnd && (dim0 == effectiveT2 * fBaseParams.n1);
         bool isTndPseBNSS = isTnd && (dim0 == fBaseParams.sumS1S2Product * fBaseParams.n1);
         if (isTndPseBN1S) {
             fBaseParams.pseShapeType = PSE_SHAPE_TYPE_BN1S;
@@ -748,13 +752,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]."), return ge::GRAPH_FAILED);
             for (size_t i = 0; i < seqQShapeSize; i++) {
-                if (i == 0) {
-                    fBaseParams.actualSeqQlen.push_back(qValue[i]);
-                    fBaseParams.actualSeqKvlen.push_back(kvValue[i]);
-                } else {
-                    fBaseParams.actualSeqQlen.push_back(qValue[i] - qValue[i - 1]);
-                    fBaseParams.actualSeqKvlen.push_back(kvValue[i] - kvValue[i - 1]);
-                }
+                int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
+                int64_t kvSeqLen = (i == 0 ? kvValue[i] : std::max(int64_t(0), kvValue[i] - kvValue[i - 1]));
+                fBaseParams.actualSeqQlen.push_back(qSeqLen);
+                fBaseParams.actualSeqKvlen.push_back(kvSeqLen);
                 fBaseParams.sumS1S2Product += fBaseParams.actualSeqQlen[i] * fBaseParams.actualSeqKvlen[i];
             }
 
