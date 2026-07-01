@@ -153,7 +153,7 @@ private:
     uint32_t maskSlotSize_ = 0;    // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
     uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
-    uint64_t dispatchWinOffset_ = 0;  // peermemInfoUrma dispatchRecivePtr 相对 URMA win 基址的偏移
+    uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
     uint32_t copyTmpBaseAddr_ = 0;
     uint32_t relayRecordBytes_ = 0;
     uint32_t sendWorkspaceRecordBytes_ = 0;
@@ -287,7 +287,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
         params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
-    dispatchWinOffset_ = static_cast<uint64_t>(params_.peermemInfoUrma.dispatchRecivePtr -
+    dispatchWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr -
         urmaRankAddr_[rankId_]);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
@@ -666,7 +666,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchSta
     for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
         uint64_t recordOffset = static_cast<uint64_t>(idx) * static_cast<uint64_t>(relayRecordBytes_);
         __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
-            params_.peermemInfoUrma.dispatchRecivePtr + recordOffset + mxQuantTokenScaleAlignBytes_);
+            params_.peermemInfo.dispatchRecivePtr + recordOffset + mxQuantTokenScaleAlignBytes_);
         WriteGmByPassDCache(metaPtr, int32_t(0));
         WriteGmByPassDCache(metaPtr + 1, int32_t(0));
     }
@@ -1067,7 +1067,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfoUrma.maskRecvPtr +
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 
@@ -1661,7 +1661,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<bfloat16_t> expandedX;
-    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfoUrma.combineSendPtr);
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.combineSendPtr);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -1727,8 +1727,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     if constexpr(g_coreType == AIC) {
         return;
     }
-    __gm__ int32_t* syncRank = (__gm__ int32_t*)params_.peermemInfoUrma.rankSyncInWorldPtr;
-    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfoUrma.rankSyncInWorldPtr +
+    __gm__ int32_t* syncRank = (__gm__ int32_t*)params_.peermemInfo.rankSyncInWorldPtr;
+    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
     PipeBarrier<PIPE_ALL>();

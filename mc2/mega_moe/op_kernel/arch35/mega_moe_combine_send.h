@@ -85,7 +85,7 @@ __aicore__ inline void CombineTokensLayered(
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
         if (toRankId == params.combineCommParams.rankId) {
             uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-            GM_ADDR localAddr = (GM_ADDR)(params.peermemInfoUrma.combineSendPtr + gmDstOffset * sizeof(ElementMMadOut2));
+            GM_ADDR localAddr = (GM_ADDR)(params.peermemInfo.combineSendPtr + gmDstOffset * sizeof(ElementMMadOut2));
             gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(localAddr));
             AscendC::DataCopyPad(gmLocalD,
                 l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
@@ -140,7 +140,7 @@ __aicore__ inline uint32_t ComputeRecvTokenCounts(
         }
         uint32_t cnt = 0;
         for (uint32_t expertIdx = 0; expertIdx < expertPerRank; expertIdx++) {
-            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params.peermemInfoUrma.maskRecvPtr +
+            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params.peermemInfo.maskRecvPtr +
                 static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
                 static_cast<uint64_t>(index) * maskSlotSize));
             AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
