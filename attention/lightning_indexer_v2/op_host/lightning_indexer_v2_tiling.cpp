@@ -476,8 +476,9 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
     if (npuArch_ == NpuArch::DAV_3510) {
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             uint32_t outputIdxOffsetShapeDim = opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDimNum();
-            OP_CHECK_IF( && (outputIdxOffsetShapeDim != qExpectShapeDim - 1),
-                OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u", qExpectShapeDim - 1,
+            OP_CHECK_IF((outputIdxOffsetShapeDim != qExpectShapeDim - 1),
+                OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u",
+                qExpectShapeDim - 1,
                 outputIdxOffsetShapeDim),
                 return ge::GRAPH_FAILED);
         }
@@ -707,7 +708,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0),
-                    opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDim(0))
+                    opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
