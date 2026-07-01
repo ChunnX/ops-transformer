@@ -88,15 +88,23 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsMxfp4() const
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleCandidate() const
 {
+    auto weightFormat = GetInputTensor(gmmParams_.weight)->GetStorageFormat();
+    auto primaryWeightFormat = static_cast<op::Format>(ge::GetPrimaryFormat(weightFormat));
+    const bool isWeightNzFormat = weightFormat == op::Format::FORMAT_FRACTAL_NZ ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_16 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_32 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_4 ||
+        primaryWeightFormat == op::Format::FORMAT_FRACTAL_NZ;
     return gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 &&
            GetInputTensorSize(gmmParams_.y) == 1 && GetInputTensorSize(gmmParams_.weight) > 1 &&
-           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+           isWeightNzFormat;
 }
 
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && gmmParams_.biasOptional != nullptr);
+    return IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional == nullptr;
 }
 
 template <typename T>
@@ -251,9 +259,15 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
 {
     auto weightStorage = weightTensor->GetStorageShape();
     auto weightStorageShapeDim = weightStorage.GetDimNum();
-    GMM_CHECK_REPORT(weightStorageShapeDim == QUANT_WEIGHTNZ_STORAGE_DIM,
+    constexpr size_t WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM = 4;
+    const bool isWeightNzMultiTensor =
+        gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && GetInputTensorSize(gmmParams_.weight) > 1;
+    const bool validWeightNzStorageDim = weightStorageShapeDim == QUANT_WEIGHTNZ_STORAGE_DIM ||
+        (isWeightNzMultiTensor && weightStorageShapeDim == WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM);
+    GMM_CHECK_REPORT(validWeightNzStorageDim,
         OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
-            std::to_string(weightStorageShapeDim), std::to_string(QUANT_WEIGHTNZ_STORAGE_DIM)));
+            std::to_string(weightStorageShapeDim),
+            isWeightNzMultiTensor ? "4 or 5" : std::to_string(QUANT_WEIGHTNZ_STORAGE_DIM)));
 
     auto weightStorageLastFourthDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FOURTH_DIM_INDEX);
     auto weightStorageLastThirdDim = weightStorage.GetDim(weightStorageShapeDim - LAST_THIRD_DIM_INDEX);
@@ -343,9 +357,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
             "FLOAT16, BFLOAT16, FLOAT32, INT32"));
 
     auto weightTensorNum = GetInputTensorSize(gmmParams_.weight);
-    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && isInputFp4 && gmmParams_.biasOptional != nullptr),
+    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "biasOptional", "not nullptr",
-            "in weightNz single-multi-single MXFP4 case, biasOptional must be nullptr"));
+            "in weightNz single-multi-single case, biasOptional must be nullptr"));
     if (IsWeightNzSingleMultiSingleScenario()) {
         GMM_CHECK_REPORT(weightTensorNum ==
                 static_cast<size_t>(gmmParams_.groupTensorOptional->GetViewShape().GetDim(0)),
@@ -417,9 +431,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
             OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), xName_.c_str(),
                 std::to_string(xDimNumber), std::to_string(MIN_FM_DIM)));
         if (gmmParams_.groupType == SPLIT_M) {
-            GMM_CHECK_REPORT(weightDimNumber == SPLIT_M_SINGLE_WEIGHT_DIM,
+            const size_t expectedWeightDim =
+                IsWeightNzSingleMultiSingleCandidate() ? MIN_FM_DIM : SPLIT_M_SINGLE_WEIGHT_DIM;
+            GMM_CHECK_REPORT(weightDimNumber == expectedWeightDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
-                    std::to_string(weightDimNumber), std::to_string(SPLIT_M_SINGLE_WEIGHT_DIM)));
+                    std::to_string(weightDimNumber), std::to_string(expectedWeightDim)));
         } else if (gmmParams_.groupType == SPLIT_K) {
             GMM_CHECK_REPORT(weightDimNumber == SPLIT_K_SINGLE_WEIGHT_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
@@ -428,9 +444,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
         if (gmmParams_.groupType == SPLIT_M) {
             DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetDataType();
             if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
-                GMM_CHECK_REPORT(scaleDimNumber == MX_SPLIT_M_SCALE_DIM,
+                const size_t expectedScaleDim =
+                    IsWeightNzSingleMultiSingleCandidate() ? MX_SPLIT_K_SCALE_DIM : MX_SPLIT_M_SCALE_DIM;
+                GMM_CHECK_REPORT(scaleDimNumber == expectedScaleDim,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), scaleName_.c_str(),
-                        std::to_string(scaleDimNumber), std::to_string(MX_SPLIT_M_SCALE_DIM)));
+                        std::to_string(scaleDimNumber), std::to_string(expectedScaleDim)));
                 GMM_CHECK_REPORT(perTokenDimNumber == MX_SPLIT_M_PER_TOKEN_SCALE_DIM,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), perTokenScaleName_.c_str(),
                         std::to_string(perTokenDimNumber), std::to_string(MX_SPLIT_M_PER_TOKEN_SCALE_DIM)));
@@ -499,9 +517,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
                                          ->GetViewShape()
                                          .GetDim(pertokenScaleDimNum - 1);
     auto weightNDimValue = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(weightNIndex);
-    auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(weightNIndex);
-    auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
-    auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(1);
+    size_t scaleNIndex = IsWeightNzSingleMultiSingleCandidate() ? (gmmParams_.transposeWeight ? 1UL : 0UL) :
+                                                                  weightNIndex;
+    auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleNIndex);
+    auto scaleKIndex = IsWeightNzSingleMultiSingleCandidate() ? (gmmParams_.transposeWeight ? 0UL : 1UL) : 1UL;
+    auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleKIndex);
     auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleDimNum - 1);
     CHECK_RET(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     GMM_CHECK_REPORT(xMDimValue == pertokenMDimValue,
@@ -512,10 +532,13 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
             ViewShapeToString(GetInputTensor(gmmParams_.weight, tensorIndex.weight)),
             "axis N of weight must be equal to axis N of scale [" + std::to_string(scaleNDimValue) + "]"));
-    GMM_CHECK_REPORT(scaleGDimValue == groupNum,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
-            ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
-            "axis group of scale must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
+    if (!IsWeightNzSingleMultiSingleCandidate()) {
+        auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
+        GMM_CHECK_REPORT(scaleGDimValue == groupNum,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
+                ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
+                "axis group of scale must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
+    }
     auto inferedScaleKDimValue = (xKDimValue + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE;
     GMM_CHECK_REPORT(scaleKDimValue == inferedScaleKDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),

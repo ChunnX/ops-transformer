@@ -1894,6 +1894,10 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
         return ACLNN_SUCCESS;
     }
     if (xSize == 1UL && weightSize > 1UL && ySize == 1UL) {
+        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, [%s] is "
+                   "not supported.",
+                   opName, "bias");
         CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
                    "check failed.",
@@ -2548,6 +2552,21 @@ static bool IsPerTileQuantMode(gmm::GroupedMatmulParams &params)
     return false;
 }
 
+static bool IsWeightNzSingleMultiSingle(const gmm::GroupedMatmulParams &params)
+{
+    return params.groupType == gmm::SPLIT_M && params.x->Size() == 1 && params.weight->Size() > 1 &&
+           params.y->Size() == 1 && params.apiVersion == gmm::GMMApiVersion::WeightNz;
+}
+
+static bool IsWeightNzSingleMultiSingleMxScaleNoE(const gmm::GroupedMatmulParams &params)
+{
+    if (!IsWeightNzSingleMultiSingle(params) || params.scaleOptional == nullptr || (*params.scaleOptional)[0] == nullptr) {
+        return false;
+    }
+    return (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+           (*params.scaleOptional)[0]->GetViewShape().GetDimNum() == gmm::MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM;
+}
+
 static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr,
                                                    const bool &isPerTileQuantMode)
 {
@@ -2555,11 +2574,17 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!IsWeightNzSingleMultiSingleMxScaleNoE(params)) {
+                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+                if (!scaleTensorList.empty()) {
+                    params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+                }
+            }
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!scaleTensorList.empty()) {
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         }
     }
     // 伪量化场景antiquantscale为3维或4维时，需要手动转置为正确shape
@@ -2574,7 +2599,9 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         } else {
             gmm::CreateContiguousTensorList(params.antiquantScaleOptional, antiSTensorList, executorPtr);
         }
-        params.antiquantScaleOptional = executorPtr->AllocTensorList(antiSTensorList.data(), antiSTensorList.size());
+        if (!antiSTensorList.empty()) {
+            params.antiquantScaleOptional = executorPtr->AllocTensorList(antiSTensorList.data(), antiSTensorList.size());
+        }
     }
 }
 
@@ -2598,9 +2625,10 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
   }
   if (params.transposeWeight) {
     std::vector<aclTensor *> weightTensorList;
-    std::vector<op::Shape> nZShapes;
-    for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
-        nZShapes.push_back((*params.weight)[idx]->GetStorageShape());
+    std::vector<op::Shape> nzShapes;
+    nzShapes.reserve(params.weight->Size());
+    for (size_t i = 0; i < params.weight->Size(); ++i) {
+      nzShapes.emplace_back((*params.weight)[i]->GetStorageShape());
     }
     gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr);
     params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
@@ -2608,8 +2636,8 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
         ((IsQuant(params.xDtype, weightDtype) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
-        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
-            (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
+        for (size_t i = 0; i < params.weight->Size() && i < nzShapes.size(); ++i) {
+          (*params.weight)[i]->SetStorageShape(nzShapes[i]);
         }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
@@ -2775,8 +2803,8 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::
                    "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),
                    (*params.weight).Size());
 
-        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
-            (*params.weight)[idx]->SetStorageShape(wqbmmNzShapes[idx]);
+        for (size_t i = 0; i < params.weight->Size() && i < wqbmmNzShapes.size(); ++i) {
+            (*params.weight)[i]->SetStorageShape(wqbmmNzShapes[i]);
         }
     }
     return ACLNN_SUCCESS;
@@ -2818,8 +2846,11 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
         CHECK_COND(ParamsWeightNzDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when weight format is FRACTAL_NZ, data type check failed.", opName);
         std::vector<const aclTensor *> tensorsVec;
+        std::vector<op::Shape> nzShapes;
+        nzShapes.reserve(params.weight->Size());
         for (size_t i = 0; i < params.weight->Size(); ++i) {
             const aclTensor *tensor = (*params.weight)[i];
+            nzShapes.emplace_back(tensor->GetStorageShape());
             op::Shape weightNzShape = tensor->GetViewShape();
             tensor = SetTensorToNZFormat(tensor, weightNzShape, executorPtr);
             tensorsVec.push_back(tensor);
