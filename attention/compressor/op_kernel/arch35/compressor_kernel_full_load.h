@@ -64,7 +64,6 @@ private:
     __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline void CalcCubeParams(RunInfo &info);
     __aicore__ inline void CalcV1Params(Vec1RunInfo &vec1Info);
-
     using X_T = typename AscendC::Conditional<COMP::xDtype == X_DTYPE::BF16, bfloat16_t, half>::type;
     using T = float;
     using MM1_OUT_T = T;
@@ -149,7 +148,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
     // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     CalcSplitCoreInfo();
     // 2. 计算循环次数
-    loopTimes = 1;
+    loopTimes = constInfo.mLoopNum;
     // 3. 初始化workspace
     InitWorkspace(workspace);
     // 4. 初始化block层
@@ -290,7 +289,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
-    blockVec_.ComputeVec1();
+    blockVec_.ComputeVec1(info.c1v1DbIdx);
     CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
@@ -343,7 +342,11 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcV1Params(Vec1RunInfo &vec1Info)
 {
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
+    vec1Info.dealScSize = 0;
+    uint32_t mStartBatch = constInfo.mStart / constInfo.sSize;
+    uint32_t mEndBatch = (constInfo.mEnd + constInfo.sSize - 1) / constInfo.sSize;
+    for (uint32_t bIdx = min(mStartBatch, constInfo.batchSize);
+         bIdx < min(mEndBatch, constInfo.batchSize); ++bIdx) {
         uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
         if (bSeqCnt == 0) {
             continue;
@@ -364,7 +367,16 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
 
     RunInfo extraInfo[1];
     Vec1RunInfo vec1Info{};
+    uint32_t mStartBase = constInfo.mStart;
+    uint32_t mEndBase = constInfo.mEnd;
     for (uint32_t i = 0; i < loopTimes; ++i) {
+        constInfo.mStart = mStartBase + i * constInfo.mBaseSize;
+        constInfo.mEnd = min(constInfo.mStart + constInfo.mBaseSize, mEndBase);
+        if ASCEND_IS_AIC {
+            blockCube_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
+        } else {
+            blockVec_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
+        }
         RunInfo &extraInfo0 = extraInfo[0];
         if ASCEND_IS_AIV {
             CalcV1Params(vec1Info);
