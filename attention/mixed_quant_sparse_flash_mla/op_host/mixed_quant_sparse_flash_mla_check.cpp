@@ -141,7 +141,8 @@ void QSMLATilingCheck::Init()
 
     oriMaskMode_ = qsmlaInfo_.oriMaskMode;
     cmpMaskMode_ = qsmlaInfo_.cmpMaskMode;
-
+    topkValueMode_ = qsmlaInfo_.topkValueMode;
+    quant_mode_ = qsmlaInfo_.quantMode;
     qType_ = qsmlaInfo_.qType;
     oriKvType_ = qsmlaInfo_.oriKvType;
     cmpKvType_ = qsmlaInfo_.cmpKvType;
@@ -210,6 +211,7 @@ ge::graphStatus QSMLATilingCheck::Process()
 {
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
+        CheckConsistency() != ge::GRAPH_SUCCESS ||
         CheckParaExistence() != ge::GRAPH_SUCCESS ||
         CheckKvContiguous() != ge::GRAPH_SUCCESS ||
         CheckFeature() != ge::GRAPH_SUCCESS) {
