@@ -4,8 +4,8 @@
 
 | 产品                                        | 是否支持 |
 | :------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    ×     |
+| <term>Ascend 950DT</term>                |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                   |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
@@ -38,7 +38,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  - <term>Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 
 ## 函数原型
 
@@ -288,7 +288,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(
         <td>epWorldSize</td>
         <td>输入</td>
         <td>ep通信域大小。</td>
-        <td><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
+        <td><term>Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -488,7 +488,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(
 
 ## 约束说明
 
-- 通信引擎约束：仅支持CCU通信。
+- 通信引擎约束：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 确定性计算：
   - `aclnnAlltoAllvQuantGroupedMatMulV2`默认确定性实现。
@@ -538,7 +538,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-注意：由于量化接口仅支持<term>Ascend 950PR/Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
+注意：由于量化接口仅支持<term>Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
 
 ```cpp
 #include <thread>
@@ -796,7 +796,7 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
 
 int main(int argc, char *argv[])
 {
-    // 本样例基于Ascend 950PR/Ascend 950DT实现
+    // 本样例基于Ascend 950DT实现
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     

@@ -233,19 +233,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckAxisSize()
     return CheckWeightQuantEmptyTensor();
 }
 
-ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
+ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInputDtype() const
 {
-    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
-    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
-                                     ge::Format::FORMAT_FRACTAL_NZ ?
-                                 4 :
-                                 2);
-    const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(x2DimNum != actualX2DimNum,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
-                        (std::to_string(actualX2DimNum) + "D").c_str(),
-                        (std::to_string(x2DimNum) + "D").c_str()),
-                    return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x1",
@@ -261,7 +250,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     if (mmrCtxInfo_.bias_shape != nullptr) {
         OP_TILING_CHECK(x1Type != mmrCtxInfo_.bias->GetDataType(),
                         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x1 and bias",
-                            (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
+                            (Ops::Base::ToString(x1Type) + " and " +
+                             Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
                             "The dtypes of x1 and bias must be the same"),
                         return ge::GRAPH_FAILED);
     }
@@ -276,11 +266,30 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
         auto antiquantOffsetType = mmrCtxInfo_.antiquant_offset->GetDataType();
         OP_TILING_CHECK(antiquantOffsetType != antiquantScaleType,
-                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "antiquantScale and antiquantOffset",
-                            (Ops::Base::ToString(antiquantOffsetType) + " and " + Ops::Base::ToString(antiquantScaleType)).c_str(),
+                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(),
+                            "antiquantScale and antiquantOffset",
+                            (Ops::Base::ToString(antiquantOffsetType) + " and " +
+                             Ops::Base::ToString(antiquantScaleType)).c_str(),
                             "The dtypes of antiquantScale and antiquantOffset must be the same"),
                         return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
+{
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
+    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
+                                     ge::Format::FORMAT_FRACTAL_NZ ?
+                                 4 :
+                                 2);
+    const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(x2DimNum != actualX2DimNum,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
+                        (std::to_string(actualX2DimNum) + "D").c_str(),
+                        (std::to_string(x2DimNum) + "D").c_str()),
+                    return ge::GRAPH_FAILED);
+    MC2_CHECK_LOG_RET(opName_, CheckInputDtype());
     // antiquantgroupsize 校验
     uint64_t kValue = GetKValue();
     if (kValue != 0 && mmrCtxInfo_.antiquantGroupSizePtr != nullptr) {

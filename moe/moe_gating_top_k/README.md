@@ -13,19 +13,19 @@
 
 ## 功能说明
 
-- 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者Softplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+- 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 - 计算公式：
 
-  对输入做Sigmoid、SoftMax或者Softplus：
+对输入做Sigmoid、SoftMax或者SqrtSoftplus：
 
-  $$
-  normOut = 
-  \begin{cases}
-      \text{SoftMax}(x),      & normType = 0 \\
-      \text{Sigmoid}(x),      & normType = 1 \\
-      \text{Softplus}(x),     & normType = 2\（仅<term>Ascend 950PR/Ascend 950DT</term> 支持）
-  \end{cases}
-  $$
+$$
+normOut = 
+\begin{cases}
+    \text{SoftMax}(x),      & normType = 0 \\
+    \text{Sigmoid}(x),      & normType = 1 \\
+    \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
+\end{cases}
+$$
 
   如果bias不为空：
 
@@ -178,10 +178,10 @@
       * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-      * renorm支持0和1。normType=1或者normType=2时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：。
+      * renorm支持0和1。normType=1或者normType=2时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm。
   * 其他限制：
       * groupSelectMode取值0和1，0表示使用最大值对group进行排序， 1表示使用topk2的sum值对group进行排序。
-      * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用Softplus函数。
+      * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
       * outFlag取值true和false，true表示输出，false表示不输出。
 
 ## 调用说明

@@ -64,8 +64,8 @@ TEST_F(MoeDistributeDispatchInfershape, InferShape0)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -78,7 +78,7 @@ TEST_F(MoeDistributeDispatchInfershape, InferShape0)
         {"rankNum", 8}
     };
 
-    std::vector<std::vector<int64_t>> expandXOutputShape = {{576, 7168}};
+    std::vector<std::vector<int64_t>> expandXOutputShape = {{288, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expandXOutputShape);
 }
 
@@ -112,8 +112,8 @@ TEST_F(MoeDistributeDispatchInfershape, InferShape1)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -126,7 +126,7 @@ TEST_F(MoeDistributeDispatchInfershape, InferShape1)
         {"rankNum", 8}
     };
 
-    std::vector<std::vector<int64_t>> expandXOutputShape = {{576, 7168}};
+    std::vector<std::vector<int64_t>> expandXOutputShape = {{288, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expandXOutputShape);
 }
 
@@ -141,8 +141,8 @@ TEST_F(MoeDistributeDispatchInfershape, InferDtype0)
                     {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
                     {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-                    {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-                    {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                    {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                    {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                     {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},

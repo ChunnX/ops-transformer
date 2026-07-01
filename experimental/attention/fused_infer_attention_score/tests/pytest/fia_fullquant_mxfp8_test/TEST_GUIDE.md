@@ -10,14 +10,16 @@
 bash install_cann_950.sh    # 安装CANN 9.1.0 + 950 ops
 bash install_torch_npu.sh   # 安装PyTorch + torch-npu
 ```
+参考docs/zh/install/compile.md，编译experimental并安装自定义算子包。
 
 ### 1.2 每次执行前加载环境
 
 ```bash
 source /home/user/Ascend/cann/set_env.sh
+source /home/user/Ascend/vendors/custom_transformer/bin/set_env.sh
 conda activate your-env-name
 pip install pytest
-cd /home/user/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+cd /home/user/code/ops-transformer/experimental/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
 ```
 
 ---

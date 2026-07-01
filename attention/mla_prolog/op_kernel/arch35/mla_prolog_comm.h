@@ -41,59 +41,59 @@ __aicore__ inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-enum class CACHE_MODE : std::uint8_t {
-    ND = static_cast<std::uint8_t>(0), // BSND or TND
-    PA_BSND = static_cast<std::uint8_t>(1),
-    PA_NZ = static_cast<std::uint8_t>(2),
-    PA_BLK_BSND = static_cast<std::uint8_t>(3),
-    PA_BLK_NZ = static_cast<std::uint8_t>(4),
-    PA_BS = static_cast<std::uint8_t>(5)
+enum class CACHE_MODE : uint8_t {
+    ND = static_cast<uint8_t>(0), // BSND or TND
+    PA_BSND = static_cast<uint8_t>(1),
+    PA_NZ = static_cast<uint8_t>(2),
+    PA_BLK_BSND = static_cast<uint8_t>(3),
+    PA_BLK_NZ = static_cast<uint8_t>(4),
+    PA_BS = static_cast<uint8_t>(5)
 };
 
-enum class SCENARIO : std::uint8_t {
-    RESERVED = static_cast<std::uint8_t>(0),
-    NO_QUANT = static_cast<std::uint8_t>(1),
-    QUANT = static_cast<std::uint8_t>(2)
+enum class SCENARIO : uint8_t {
+    RESERVED = static_cast<uint8_t>(0),
+    NO_QUANT = static_cast<uint8_t>(1),
+    QUANT = static_cast<uint8_t>(2)
 };
 
-enum class QUANT_MODE : std::uint8_t {
-    NO_QUANT = static_cast<std::uint8_t>(0),
-    PARTIAL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(1),
-    PARTIAL_QUANT_KV_QUANT_PER_CHANNEL = static_cast<std::uint8_t>(2),
-    FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(3),
-    FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(4),
-    PARTIAL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(5),
-    FULL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(6),
-    MXFP8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(7),
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(8),
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(9),
-    FP8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(10),
-    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(11),
-    HIF8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(12),
-    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(13),
-    FP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(14),
-    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(15)
+enum class QUANT_MODE : uint8_t {
+    NO_QUANT = static_cast<uint8_t>(0),
+    PARTIAL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(1),
+    PARTIAL_QUANT_KV_QUANT_PER_CHANNEL = static_cast<uint8_t>(2),
+    FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(3),
+    FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(4),
+    PARTIAL_QUANT_KV_QUANT_PERTILE = static_cast<uint8_t>(5),
+    FULL_QUANT_KV_QUANT_PERTILE = static_cast<uint8_t>(6),
+    MXFP8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(7),
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(8),
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(9),
+    FP8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(10),
+    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(11),
+    HIF8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(12),
+    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(13),
+    FP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(14),
+    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(15)
 };
 
-enum class EMPTY_TENSOR_MODE : std::uint8_t {
-    NON_EMPTY = static_cast<std::uint8_t>(0),
-    EMPTY_CACHE = static_cast<std::uint8_t>(1),
-    EMPTY_QUERY = static_cast<std::uint8_t>(2),
+enum class EMPTY_TENSOR_MODE : uint8_t {
+    NON_EMPTY = static_cast<uint8_t>(0),
+    EMPTY_CACHE = static_cast<uint8_t>(1),
+    EMPTY_QUERY = static_cast<uint8_t>(2),
 };
 
-enum class ACTUAL_SEQ_MODE : std::uint8_t {
-    DISABLED = static_cast<std::uint8_t>(0),
-    EN_Q_LEN = static_cast<std::uint8_t>(1),
+enum class ACTUAL_SEQ_MODE : uint8_t {
+    DISABLED = static_cast<uint8_t>(0),
+    EN_Q_LEN = static_cast<uint8_t>(1),
 };
 
-enum class SPLIT_M_MODE : std::uint8_t {
-    DISABLED = static_cast<std::uint8_t>(0),
-    ENABLED = static_cast<std::uint8_t>(1),
+enum class SPLIT_M_MODE : uint8_t {
+    DISABLED = static_cast<uint8_t>(0),
+    ENABLED = static_cast<uint8_t>(1),
 };
 
-enum class ROPE_MODE : std::uint8_t {
-    INTERLEAVE_HALF = static_cast<std::uint8_t>(0),
-    HALF = static_cast<std::uint8_t>(1),
+enum class ROPE_MODE : uint8_t {
+    INTERLEAVE_HALF = static_cast<uint8_t>(0),
+    HALF = static_cast<uint8_t>(1),
 };
 
 constexpr uint64_t BYTE_BLOCK = 32UL;
@@ -142,7 +142,7 @@ constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP = 0X1;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 #ifdef ENABLE_DUMP_DATA
-#define DO_DUMP_DATA(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)
+#define DO_DUMP_DATA(srcTensor, id, len) DumpTensor(srcTensor, id, len)
 #else
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
@@ -365,22 +365,22 @@ struct MMBufParams {
 
 struct AicOffset {
     int64_t weightDqOffset = 0;
-    int64_t dequantScaleWDqOffset = 0;
-    int64_t cqResOffset = 0;
-    int64_t rmsNormCqResOffset = 0;
-    int64_t dequantScaleWDkvKrOffset = 0;
-    int64_t weightDkvKrOffset = 0;
-    int64_t ckvKrResOffset = 0;
     int64_t weightUqQrOffset = 0;
     int64_t weightUqOffset = 0;
     int64_t weightQrOffset = 0;
-    int64_t qcQrResOffset = 0;
+    int64_t weightUkOffset = 0;
+    int64_t weightDkvKrOffset = 0;
+    int64_t dequantScaleWDqOffset = 0;
+    int64_t dequantScaleWDkvKrOffset = 0;
     int64_t dequantScaleCqOffset = 0;
+    int64_t dequantScaleWuqqrOffset = 0;
+    int64_t cqResOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t ckvKrResOffset = 0;
+    int64_t qcQrResOffset = 0;
     int64_t qCResOffset = 0;
     int64_t qRResOffset = 0;
     int64_t qcOffset = 0;
-    int64_t weightUkOffset = 0;
-    int64_t dequantScaleWuqqrOffset = 0;
     int64_t qnResOffset = 0;
 };
 
@@ -390,9 +390,9 @@ struct AivOffset {
     int64_t rmsNormCqOffset = 0;
     int64_t rmsNormCqResOffset = 0;
     int64_t rmsNormCkvOffset = 0;
-    int64_t ropeKrOffset = 0;
     int64_t mmQnPreDequantOffset = 0;
     int64_t mmQnPreDequantResOffset = 0;
+    int64_t ropeKrOffset = 0;
     int64_t ropeQrOffset = 0;
     int64_t ropeQrResOffset = 0;
     int64_t ropeQrSplitNOffset = 0;
@@ -446,44 +446,27 @@ struct CastQcQrSplitNParams {
     uint32_t dstStride;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
-                                           .doBasicBlock = false,
-                                           .doMultiDataLoad = true,
-                                           .basicM = 0,
-                                           .basicN = 0,
-                                           .basicK = 0,
-                                           .intrinsicsCheck = true,
-                                           .isNBatch = false,
-                                           .enVecND2NZ = false,
-                                           .doSpecialBasicBlock = false,
-                                           .doMTE2Preload = false,
-                                           .singleCoreM = 0,
-                                           .singleCoreN = 0,
-                                           .singleCoreK = 0,
-                                           .stepM = 0,
-                                           .stepN = 0,
-                                           .baseMN = 0,
-                                           .singleCoreMN = 0,
-                                           .enUnitFlag = false,
-                                           .isPerTensor = false,
-                                           .hasAntiQuantOffset = false,
-                                           .doIBShareNorm = false,
-                                           .doSpecialMDL = false,
-                                           .enableInit = false,
-                                           .batchMode = BatchMode::NONE,
-                                           .enableEnd = false,
-                                           .enableGetTensorC = false,
-                                           .enableSetOrgShape = true,
-                                           .enableSetBias = false,
-                                           .enableSetTail = true,
-                                           .enableQuantVector = false,
-                                           .enableSetDefineData = true,
-                                           .iterateMode = IterateMode::ITERATE_MODE_ALL};
 template <uint8_t modeId, pipe_t pipe>
 __aicore__ inline void WaitAllCore(uint16_t flagId)
 {
     CrossCoreSetFlag<modeId, pipe>(flagId);
     CrossCoreWaitFlag(flagId);
 }
+
+template <typename INPUT_T, typename SCALE_T, bool EXCLUDE_MXFP8>
+__aicore__ constexpr bool IsFullQuantMode()
+{
+    constexpr bool IS_FP8_E8M0 = std::is_same<SCALE_T, FP8E8M0>::value;
+    if constexpr (EXCLUDE_MXFP8) {
+        // Pattern A: INT8 ‖ HIF8 ‖ (FP8E4M3 && !IS_FP8_E8M0)
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, HIF8>::value ||
+               (std::is_same<INPUT_T, FP8E4M3>::value && !IS_FP8_E8M0);
+    } else {
+        // Pattern B: INT8 ‖ FP8E4M3 ‖ HIF8
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, FP8E4M3>::value ||
+               std::is_same<INPUT_T, HIF8>::value;
+    }
+}
+
 }
 #endif

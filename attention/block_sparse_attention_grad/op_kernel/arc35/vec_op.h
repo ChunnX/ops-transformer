@@ -623,8 +623,13 @@ private:
 
         uint32_t tail = info.len % max_process_size;
         // 由于DataCopyPad最多处理65535，因此tail部分分成align_tail和pad_tail计算
-        info.align_tail = tail / 16 * 16;
-        info.pad_tail = tail - info.align_tail;
+        if (tail == 0) {
+            info.align_tail = max_process_size;
+            info.pad_tail = 0;
+        } else {
+            info.align_tail = tail / 16 * 16;
+            info.pad_tail = tail - info.align_tail;
+        }
     }
 
     __aicore__ inline void CopyInLSE(const LocalTensor<float> &dstTensor, const GlobalTensor<float> &srcTensor,

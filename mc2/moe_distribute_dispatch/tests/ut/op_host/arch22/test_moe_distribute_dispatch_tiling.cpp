@@ -49,8 +49,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test0)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -62,7 +62,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test0)
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    uint64_t expectTilingKey = 512UL;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 // normal: share rank
@@ -90,8 +91,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test1)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -130,8 +131,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test2)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -170,8 +171,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test3)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -211,8 +212,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test4)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(257)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -251,8 +252,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test5)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -304,7 +305,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test6)
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 1024UL;
+    uint64_t expectTilingKey = 512UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -332,8 +333,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test7)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -373,7 +374,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test8)
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -413,7 +414,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test9)
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -425,7 +426,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test9)
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    uint64_t expectTilingKey = 514UL;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeDispatchArch22TilingTest, Test10)
@@ -452,8 +454,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, Test10)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -700,8 +702,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, EpWorldSize384)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(384)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -741,8 +743,8 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, EpWorldSize72)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(72)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(216)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},

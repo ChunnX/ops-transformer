@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 接口功能：对token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 
     相较于`aclnnMoeDistributeDispatch`接口，该接口变更如下：
     1. 输出了更详细的token信息辅助CombineV2系列算子高效地进行全卡同步，因此原接口中shape为`(BS * K,)`的`expandIdx`出参替换为shape为`(A * 128,)`的`assistInfoForCombineOut`参数；
@@ -28,11 +28,7 @@
 
     $$
     allToAllXOut = AllToAllV(X)\\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(X)
     $$
 
     - 情形2：如果quantMode=1（静态量化场景）：
@@ -41,11 +37,7 @@
     xFp32 = CastToFp32(X) \times scales \\
     quantOut = Cast(xFp32，dstType) \\
     allToAllXOut = AllToAllV(quantOut)\\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(quantOut), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut)
     $$
 
     - 情形3：如果quantMode=2（pertoken动态量化场景）：
@@ -56,16 +48,8 @@
     quantOut = CastToInt8(xFp32 \times dynamicScales) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(quantOut), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    allToAllDynamicScalesOut, & 无TP通信域 \\
-    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
     - 情形4：如果quantMode=3（pertile动态量化场景）：
@@ -76,16 +60,8 @@
     quantOut = CastToInt8(xFp32 \times dynamicScales) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(quantOut), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    allToAllDynamicScalesOut, & 无TP通信域 \\
-    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
     - 情形5：如果quantMode=4（mx量化场景）：
@@ -96,16 +72,8 @@
     quantOut = CastToFp8(X / dynamicScales) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0 / dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(quantOut), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    allToAllDynamicScalesOut, & 无TP通信域 \\
-    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
     其中，$emax$表示该类型最大正规数对应的指数部分的值。
@@ -241,7 +209,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>groupEp</td>
     <td>输入</td>
     <td>EP通信域名称（专家并行通信域）。</td>
-    <td>字符串长度范围为<code>[1, 128)</code>，不能和<code>groupTp</code>相同。</td>
+    <td>字符串长度范围为<code>[1, 128)</code>。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -280,8 +248,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>groupTp</td>
     <td>输入</td>
-    <td>TP通信域名称（数据并行通信域）。</td>
-    <td>要求和<code>groupEp</code>互不相同。</td>
+    <td>TP通信域名称（预留参数，当前版本不支持）。</td>
+    <td>默认值为""。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -290,8 +258,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>tpWorldSize</td>
     <td>输入</td>
-    <td>TP通信域大小。</td>
-    <td>-</td>
+    <td>TP通信域大小（预留参数，当前版本不支持，仅支持传0或1）。</td>
+    <td>默认值为0。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -300,8 +268,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>tpRankId</td>
     <td>输入</td>
-    <td>TP域本卡ID。</td>
-    <td>同一个EP通信域中各卡的<code>tpRankId</code>不重复。</td>
+    <td>TP域本卡ID（预留参数，当前版本不支持，仅支持传0）。</td>
+    <td>默认值为0。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -384,7 +352,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>要求为2D Tensor。</td>
     <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
-    <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
+    <td><code>(A, H)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -430,8 +398,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>tpRecvCountsOut</td>
     <td>输出</td>
-    <td>从TP通信域各卡接收的token数（对应<code>aclnnMoeDistributeCombineV2</code>中的t<code>pSendCounts</code>）。</td>
-    <td>有TP域通信时有输出，无TP域通信时无输出。</td>
+    <td>从TP通信域各卡接收的token数（预留输出，当前版本不支持，传空指针即可）。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -492,14 +459,14 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `expertScalesOptional`当前版本不支持，传空指针即可。
         - `epWorldSize`取值范围[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
-        - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-        - `tpWorldSize`取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+        - `groupTp`（预留参数，当前版本不支持）。
+        - `tpWorldSize`（预留参数，当前版本不支持，仅支持传0或1）。
+        - `tpRankId`（预留参数，当前版本不支持，仅支持传0）。
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
-        - 有TP域通信时`tpRecvCountsOut`为1D shape Tensor，shape为(tpWorldSize,)。
+        - `epRecvCountsOut`的shape为(epWorldSize * localExpertNum,)。
+        - `tpRecvCountsOut`（预留输出，当前版本不支持，传空指针即可）。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、2（动态量化）。
 
@@ -516,7 +483,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
+        - `epRecvCountsOut`的shape为(epWorldSize * localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
@@ -631,7 +598,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
   | BS           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"取值范围为(0 < BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为(0 < BS ≤ 512)；</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：0 < BS ≤ 512。 </li> </ul> |
   | K    | 表示选取topK个专家，取值范围为(0 < K ≤ 16)且满足(0 < K ≤ moeExpertNum)。|
   | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2训练系列产品/Atlas A2推理系列产品：仅该场景的shape使用了该变量。                                                  |
-  | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum / (epWorldSize - sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：应满足0 < localExpertNum * epWorldSize ≤ 2048。</li></ul>|
+  | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum / (epWorldSize - sharedExpertRankNum)</code>，当前版本不支持TP域通信。 </li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：应满足0 < localExpertNum * epWorldSize ≤ 2048。</li></ul>|
 
 - **quantMode相关约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -681,8 +648,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
               - commAlg为"fullmesh"：设置大小要求(≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
               - commAlg为"hierarchy"：设置大小要求(≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8  (`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
           - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-              - ep通信域内：设置大小要求(≥ 2)且满足(≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K +   sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) /   512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
-              - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
+              - ep通信域内：设置大小要求(≥ 2)且满足(≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K +   sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) /   512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。当前不支持TP通信域。
           - <term>Ascend 950DT</term>：ep通信域内设置大小要求(≥ 2)且满足(≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。不支持TP通信域。
 
   - **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
@@ -691,8 +657,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - **通信域使用约束**：
    - 一个模型中的CombineV2系列算子和`aclnnMoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-   - 一个模型中的CombineV2系列算子和`aclnnMoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：一个通信域内的节点需在一个超节点内，不支持跨超节点。
+   - 当前不支持TP域通信。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 - **通信方式约束**：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。

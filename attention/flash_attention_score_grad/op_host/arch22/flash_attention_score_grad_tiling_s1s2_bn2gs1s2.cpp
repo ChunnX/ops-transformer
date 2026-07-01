@@ -482,7 +482,11 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::ProcessPseInfo(const 
         }
     } else if (pseShapeDim == PSE_DIM_NUM_1 && isTnd) {
         auto dim0 = pseShape->GetStorageShape().GetDim(DIM_0);
-        bool isTndPseBN1S = isTnd && (dim0 == fBaseParams.t2 * fBaseParams.n1);
+        int64_t effectiveT2 = 0;
+        for (const auto &kvlen : fBaseParams.actualSeqKvlen) {
+            effectiveT2 += kvlen;
+        }
+        bool isTndPseBN1S = isTnd && (dim0 == effectiveT2 * fBaseParams.n1);
         bool isTndPseBNSS = isTnd && (dim0 == fBaseParams.sumS1S2Product * fBaseParams.n1);
         if (isTndPseBN1S) {
             fBaseParams.pseShapeType = PSE_SHAPE_TYPE_BN1S;

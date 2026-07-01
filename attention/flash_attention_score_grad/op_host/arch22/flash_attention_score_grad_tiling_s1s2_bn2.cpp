@@ -567,7 +567,11 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetPseInfo()
         } else if (pseShapeDims == PSE_DIM_NUM_1 && isUnpad) {
             auto dim0 = storageShape.GetDim(DIM_0);
             int64_t shapeN1 = td_->opInfo.get_N2() * td_->opInfo.get_G();
-            bool isUnpadBN1S = isUnpad && (dim0 == tmpData_.t2 * shapeN1);
+            int64_t effectiveT2 = 0;
+            for (const auto &kvlen : tmpData_.actualSeqKvlen) {
+                effectiveT2 += kvlen;
+            }
+            bool isUnpadBN1S = isUnpad && (dim0 == effectiveT2 * shapeN1);
             bool isUnpadBNSS = isUnpad && (dim0 == tmpData_.sumS1S2Product * shapeN1);
             if (isUnpadBN1S) {
                 td_->opInfo.set_pseShapeType(PSE_SHAPE_TYPE_BN1S);

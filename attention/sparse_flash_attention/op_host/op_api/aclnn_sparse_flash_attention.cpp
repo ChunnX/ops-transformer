@@ -106,6 +106,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
+    const aclTensor *valueTensor = (value == nullptr) ? key : value;
     if (returnSoftmaxLse) {
         if (softmaxMax == nullptr || softmaxSum == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "when returnSoftmaxLse is true, softmaxMax and softmaxSum cannot be nullptr.");
@@ -126,7 +127,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
         }
     }
     return aclnnInnerSparseFlashAttentionGetWorkspaceSize(
-        query, key, value, sparseIndices, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
+        query, key, valueTensor, sparseIndices, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
         scaleValue, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, sparseMode, preTokens,
         nextTokens, attentionMode, returnSoftmaxLse, attentionOut,
         softmaxMax, softmaxSum, workspaceSize, executor);

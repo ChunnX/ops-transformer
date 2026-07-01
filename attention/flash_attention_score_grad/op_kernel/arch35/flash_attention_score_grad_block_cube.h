@@ -799,7 +799,11 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE
                 SetAtomicAdd<CALC_TYPE>();
             }
             if constexpr (IS_ROPE) {
-                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[runInfo.queryOffsetWithRope],
+                int64_t offset = runInfo.queryOffsetWithRope;
+                if constexpr (SPLIT_AXIS == BN2) {
+                    offset = GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN;
+                }
+                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[offset],
                                                         mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
             } else {
                 int64_t offset = SPLIT_AXIS == BN2 ? GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN : runInfo.commonRunInfo.queryOffset;
@@ -1129,7 +1133,11 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
                     SetAtomicAdd<CALC_TYPE>();
                 }
                 if constexpr (IS_ROPE) {
-                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.keyOffsetWithRope],
+                    int64_t offset = runInfo.keyOffsetWithRope;
+                    if constexpr (SPLIT_AXIS == BN2) {
+                        offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
+                    }
+                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[offset],
                                                             dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
                 } else {
                     int64_t offset = 0;
