@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：QuantSparseFlashMla 算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention：
+- API功能：QuantSparseFlashMla算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention：
 
 - 计算公式：
 
