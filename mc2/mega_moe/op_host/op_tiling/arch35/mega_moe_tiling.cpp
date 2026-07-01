@@ -1019,7 +1019,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
-    tilingData->topoType = static_cast<uint8_t>(topoType);
+    auto attrs = context->GetAttrs();
+    tilingData->topoType = static_cast<uint8_t>(attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex)));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
