@@ -790,8 +790,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
                   queryShape->GetStorageShape().GetDim(DIM_2), queryShape->GetStorageShape().GetDim(DIM_3));
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout is TND");
+        fBaseParams.layoutType = INPUT_FORMAT_TND;
         if (!isMaxWorkspace_) {
-            fBaseParams.layoutType = INPUT_FORMAT_TND;
             auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
             auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
             if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
