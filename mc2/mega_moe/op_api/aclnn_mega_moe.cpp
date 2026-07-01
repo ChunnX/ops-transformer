@@ -84,8 +84,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, aclTensor *yOut,
-    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
+    aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -134,8 +134,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
-        workspaceSize, executor);
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, yOut,
+        expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
