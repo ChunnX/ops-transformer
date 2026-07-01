@@ -67,16 +67,18 @@ public:
         HcclShmem<true> shmem;
         int64_t offsetD;
         int32_t serverId;
+        Layout3D tokenPerExpertLayout;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_,
         LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<true>& shmem_, int64_t offsetD_,
-        int32_t serverId_ = 0) :
+        int32_t serverId_, Layout3D tokenPerExpertLayout_) :
         ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_),
         expertPerRank(expertPerRank_),rank(rank_), layoutC(layoutC_), n2(n2_), n0(n0_),
-        shmem(shmem_), offsetD(offsetD_), serverId(serverId_)
+        shmem(shmem_), offsetD(offsetD_), serverId(serverId_),
+        tokenPerExpertLayout(tokenPerExpertLayout_)
         {}
     };
 
@@ -97,7 +99,7 @@ public:
             source_scale_offset[i] = -1;
         }
         tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrTokenPerExpert));
-        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        tokenPerExpertLayout = params.tokenPerExpertLayout;
         is_ping = true;
     }
 
