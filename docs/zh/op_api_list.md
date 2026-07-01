@@ -48,7 +48,6 @@
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
-|[aclnnBSASelectBlockMask](../../attention/bsa_select_block_mask/docs/aclnnBSASelectBlockMask.md)|BSASelectBlockMask是BSA（BlockSparseAttention）的前置算子，根据Query和Key的内容动态生成blockSparseMask，使BSA的调用链从"手动提供掩码"变为"根据Q/K内容自适应选择稀疏模式"。|默认确定性实现| - |
 |[aclnnCausalConv1dFn](../../mamba/causal_conv1d/docs/aclnnCausalConv1dFn.md)|完成因果一维卷积（Causal Conv1d）的前向计算（prefill / chunk-prefill）。算子内部支持SiLU激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）等特性。| - | 默认确定性实现 |
 |[aclnnCausalConv1dUpdate](../../mamba/causal_conv1d/docs/aclnnCausalConv1dUpdate.md)|完成因果一维卷积（Causal Conv1d）的状态更新（decode / update）计算。算子内部支持SiLU激活、缓存索引（cacheIndices）、投机解码（numAcceptedTokens）等特性。| - | 默认确定性实现 |
 |[aclnnFusedCausalConv1d](../../attention/fused_causal_conv1d/docs/aclnnFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。| - | 默认确定性实现 |
