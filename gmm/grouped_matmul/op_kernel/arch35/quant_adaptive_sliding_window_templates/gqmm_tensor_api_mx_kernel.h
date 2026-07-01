@@ -49,7 +49,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using QgmmBlockMmad =
         Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
                                       LayoutC>;
-    using BlockEpilogue = void;
+    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
     using QgmmKernel = Blaze::Gemm::Kernel::KernelGroupedMatmulMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
     using Params = typename QgmmKernel::Params;
     using GMMTiling = typename QgmmKernel::GMMTiling;
@@ -87,6 +87,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
         {static_cast<int64_t>(gmmParams.m), static_cast<int64_t>(gmmParams.n), static_cast<int64_t>(gmmParams.k),
          static_cast<int64_t>(1)},
         {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
+        {},
         groupListDataAddr,
         gmmParams};
 
