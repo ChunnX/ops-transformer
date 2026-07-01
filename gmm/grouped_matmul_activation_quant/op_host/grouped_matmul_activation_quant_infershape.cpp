@@ -11,6 +11,7 @@
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
 #include "register/op_impl_registry.h"
+#include <string>
 
 using namespace ge;
 namespace ops {
@@ -66,7 +67,8 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
         outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, DYNAMIC_DIM);
     } else {
         OP_CHECK_IF(n % MX_GROUP_SIZE != 0,
-                    OP_LOGE(context->GetNodeName(), "N must be a multiple of %ld, actual is %ld.", MX_GROUP_SIZE, n),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "N", std::to_string(n),
+                                                          "N must be a multiple of 64"),
                     return GRAPH_FAILED);
         outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, (n + MX_GROUP_SIZE - 1) / MX_GROUP_SIZE);
     }

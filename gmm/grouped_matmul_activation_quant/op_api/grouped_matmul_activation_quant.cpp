@@ -11,6 +11,7 @@
 #include "grouped_matmul_activation_quant.h"
 
 #include <cstdio>
+#include <string>
 
 #include "opdev/make_op_executor.h"
 #include "opdev/data_type_utils.h"
@@ -103,7 +104,10 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
                roundMode == nullptr ? "nullptr" : roundMode, static_cast<int>(transposeWeight), groupListType,
                yDtype, scaleAlg, dstTypeMax);
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0 || (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x and weightScale must not be nullptr.");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("GroupedMatmulActivationQuant", "x and weightScale",
+            std::string("x=" + std::string(x == nullptr ? "nullptr" : "not nullptr") +
+                        ", weightScale=" + (weightScale == nullptr ? "nullptr" : "invalid tensorList")),
+            "x and weightScale can not be nullptr, and weightScale can not be empty");
         return std::tuple(nullptr, nullptr);
     }
 
