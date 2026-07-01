@@ -20,10 +20,10 @@ namespace KvRmsNormRopeCache {
 using namespace AscendC;
 
 template <bool isPagedAttention, typename KV_DTYPE>
-class KernelKvRmsNormRopeCacheB16MTP : public KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE> 
+class KvRmsNormRopeCacheB16MTP : public KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE>
 {
 public:
-    __aicore__ inline KernelKvRmsNormRopeCacheB16MTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
+    __aicore__ inline KvRmsNormRopeCacheB16MTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE> (pipe, tiling)
     {}
 
@@ -606,11 +606,7 @@ public:
     }
 
 private:
-    #if _KV_RNRC_UNLEASH_D_SIZE
-        int64_t ROPE_LENGTH_HALF{32};
-    #else
-        constexpr static int64_t ROPE_LENGTH_HALF = 32;
-    #endif
+    int64_t ROPE_LENGTH_HALF{32};
     int64_t methodMode = 0;
     constexpr static int64_t NUM_SIX = 6;
     constexpr static int64_t NUM_TWELVE = 12;

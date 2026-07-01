@@ -20,15 +20,15 @@ namespace KvRmsNormRopeCache {
 using namespace AscendC;
 
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
-class KernelKvRmsNormRopeCacheB16MTPQUANT : public KernelKvRmsNormRopeCacheMTPQuant<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE> 
+class KvRmsNormRopeCacheB16MTPQUANT : public KernelKvRmsNormRopeCacheMTPQuant<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>
 {
 public:
-    __aicore__ inline KernelKvRmsNormRopeCacheB16MTPQUANT(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
+    __aicore__ inline KvRmsNormRopeCacheB16MTPQUANT(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheMTPQuant<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE> (pipe, tiling)
     {}
 
     __aicore__ inline void Init(
-        GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR optional_k_rope, 
+        GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR optional_k_rope,
         GM_ADDR optional_c_kv, GM_ADDR k_rope_scale, GM_ADDR c_kv_scale, GM_ADDR k_rope_offset, GM_ADDR c_kv_offset, GM_ADDR v)
     {
         methodMode = v == nullptr ? 0 : 1;
@@ -454,11 +454,7 @@ public:
     }
 
 private:
-    #if _KV_RNRC_UNLEASH_D_SIZE
-        int64_t ROPE_LENGTH_HALF{32};
-    #else
-        constexpr static int64_t ROPE_LENGTH_HALF = 32;
-    #endif
+    int64_t ROPE_LENGTH_HALF{32};
     int64_t methodMode = 0;
     int64_t isKOffset = 0;
     int64_t isVOffset = 0;
