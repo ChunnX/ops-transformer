@@ -251,11 +251,12 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape4D(const FiaTilingInfo &
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                        ("When page attention is enabled, blockSize of " + inputName +
-                         " must be " + std::to_string(fiaInfo.blockSize)).c_str()),
-                    return ge::GRAPH_FAILED);
+    if (tempBlockSize != fiaInfo.blockSize) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+                ("When page attention is enabled, blockSize of kvCache must be " +
+                    std::to_string(fiaInfo.blockSize)).c_str());
+            return ge::GRAPH_FAILED;
+        }
 
     if (tempD != compareD) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
