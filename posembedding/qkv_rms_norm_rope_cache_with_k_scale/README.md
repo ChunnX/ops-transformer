@@ -87,17 +87,18 @@
 | actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
 | rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。当前不支持不传或空Tensor。 | BFLOAT16 | ND |
 | v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。当前不支持不传或空Tensor。 | FLOAT | ND |
-| q_out | 输出 | Q分支FP8 E4M3FN量化输出。`qkv_layout="TND"`时shape为`[T, Nq, D]`，`qkv_layout="NTD"`时shape为`[Nq, T, D]`。 | FLOAT8_E4M3FN | ND |
-| q_scale | 输出 | Q分支动态量化scale。`qkv_layout="TND"`时shape为`[T, Nq]`，`qkv_layout="NTD"`时shape为`[Nq, T]`。 | FLOAT | ND |
+| q_out | 输出 | Q分支FP8 E4M3FN量化输出。`q_out_layout="TND"`时shape为`[T, Nq, D]`，`q_out_layout="NTD"`时shape为`[Nq, T, D]`。 | FLOAT8_E4M3FN | ND |
+| q_scale | 输出 | Q分支动态量化scale。`q_out_layout="TND"`时shape为`[T, Nq]`，`q_out_layout="NTD"`时shape为`[Nq, T]`。 | FLOAT | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
-| qkv_layout | 属性 | `qkv`、`q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
+| qkv_layout | 属性 | `qkv`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
+| q_out_layout | 属性 | `q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`；当前实现要求与`qkv_layout`一致。 | STRING | - |
 | epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
 
 ## 约束说明
 
 - 输入shape限制：
   - 当前实现仅支持`D=128`，且`Nv=Nk`。
-  - `qkv`、`q_out`、`q_scale`必须保持相同N/T布局：
+  - `qkv_layout`和`q_out_layout`必须相同；`qkv`、`q_out`、`q_scale`必须保持相同N/T布局：
     - `qkv_layout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
     - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
   - `cos_sin`第二维必须为`D`，第一维必须覆盖本次调用会访问的RoPE位置。
@@ -111,7 +112,7 @@
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 - 输入属性限制：
   - `head_nums`必须包含3个正整数，顺序为`[Nq, Nk, Nv]`。
-  - `qkv_layout`大小写敏感，仅支持`"TND"`和`"NTD"`。
+  - `qkv_layout`和`q_out_layout`大小写敏感，仅支持`"TND"`和`"NTD"`，且当前实现要求二者相同。
 - 输入数据类型限制：
   - 各输入的数据类型和数据格式需符合参数说明，不支持隐式类型转换。
   - 输入均为ND格式，不支持私有格式。
