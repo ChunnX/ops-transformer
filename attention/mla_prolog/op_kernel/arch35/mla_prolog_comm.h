@@ -229,6 +229,13 @@ template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
           bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
+private:
+    // 如果是 FP8 或 HIF8，输出 float；如果是 int8，输出 int32_t；否则输出 bfloat16_t
+    template <typename T>
+    using GetMatmulOutType_t = typename std::conditional<
+        std::is_same<T, FP8E4M3>::value || std::is_same<T, HIF8>::value, float,
+        typename std::conditional<std::is_same<T, int8_t>::value, int32_t, bfloat16_t>::type>::type;
+
 public:
     using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
@@ -245,12 +252,13 @@ public:
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
     using kvCacheType = C_T; // kvcache的类型
-    // 如果是 X_T 为 bfloat16_t && C_T 为 int8_t 且不是 pertile (半量化kv perchannel量化), 则为 int8_t；否则为 bfloat16_t
+    // 如果是 X_T 为 bfloat16_t && C_T 为 int8_t 且不是 pertile (半量化kv perchannel量化), 则为 int8_t；否则为
+    // bfloat16_t
     using krCacheType = typename std::conditional<std::is_same<X_T, bfloat16_t>::value &&
                                                       std::is_same<C_T, int8_t>::value && !IS_PERTILE,
                                                   int8_t, bfloat16_t>::type;
-    using dequantScaleQNopeType = float;                  // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;                  // dequantScaleQNorm的类型
+    using dequantScaleQNopeType = float; // dequantScaleQNope的类型
+    using dequantScaleQNormType = float; // dequantScaleQNorm的类型
     using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
@@ -260,13 +268,6 @@ public:
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
-
-private:
-    // 如果是 FP8 或 HIF8，输出 float；如果是 int8，输出 int32_t；否则输出 bfloat16_t
-    template <typename T>
-    using GetMatmulOutType_t = typename std::conditional<
-        std::is_same<T, FP8E4M3>::value || std::is_same<T, HIF8>::value, float,
-        typename std::conditional<std::is_same<T, int8_t>::value, int32_t, bfloat16_t>::type>::type;
 };
 
 struct MMParams {
