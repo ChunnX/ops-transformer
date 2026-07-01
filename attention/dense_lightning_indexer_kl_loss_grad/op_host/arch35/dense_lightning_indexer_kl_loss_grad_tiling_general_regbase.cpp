@@ -345,7 +345,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
             OP_CHECK_IF(dSizeQueryIndex != 128,
                 OP_LOGE(opName, "Inputshape D Size should be 128, but got %ld.", dSizeQueryIndex), return false);
             maxSeqlenK = attnSoftmaxL1Shape.GetDim(3);
-            tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK))
+            tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK));
             topKRange = TopKRangeRegbase::RANGE_0_2K;
             tilingData->baseParams.set_layoutType(static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_BSND));
             tilingKeyLayout = LayoutTypeRegbase::LAYOUT_BSND;
