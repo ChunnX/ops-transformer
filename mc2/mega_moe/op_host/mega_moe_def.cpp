@@ -41,11 +41,11 @@ public:
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_FLOAT8_E4M3FN,ge::DT_FLOAT8_E5M2FN})
+        .DataType({ge::DT_FLOAT8_E4M3FN,ge::DT_FLOAT8_E5M2})
         .Format({ge::FORMAT_ND});
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_FLOAT8_E4M3FN,ge::DT_FLOAT8_E5M2FN})
+        .DataType({ge::DT_FLOAT8_E4M3FN,ge::DT_FLOAT8_E5M2})
         .Format({ge::FORMAT_ND});
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
