@@ -439,6 +439,7 @@ private:
             if (numQTokens == 0) {
                 continue;
             }
+            AscendC::printf("88888888888888888888888: taskIdx:%d, numQTokens: %d\n", taskIdx, numQTokens);
 
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t sColsAligned = sColMax;
@@ -524,13 +525,16 @@ private:
                             smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
+AscendC::printf("00000000000000000000000\n");
                         if (vecRows > 0U) {
+                            AscendC::printf("11111111111111111111111111\n");
                             Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
                             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-                            AscendC::DumpTensor(
+                            AscendC::printf("2222222222222222222222: ubOTmpBufId: %d, vecRowOffset * oColAligned:%d\n", ubOTmpBufId, vecRowOffset * oColAligned);
+                            /*AscendC::DumpTensor(
                                 ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
-                                789 + qiDe, 16);
-
+                                789 + qiDe, 16);*/
+                            AscendC::printf("3333333333333333333333:%f\n", ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned].GetValue(0));
                             int32_t dLen = static_cast<int32_t>(embed_);
                             for (uint32_t gh = 0; gh < vecRows; gh++) {
                                 float rowSum = ubRowSumStage[l1PBufIdDe].GetValue(gh);
@@ -542,23 +546,26 @@ private:
                                         invSum, dLen);
                                 }
                             }
-                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
-                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-
+                            AscendC::printf("444444444444444444444\n");
+                            AscendC::printf("55555555555555555\n");
                             AscendC::PipeBarrier<PIPE_V>();
-                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                             AscendC::DataCopy(
                                 gWorkspaceF[wsFOff + vecRowOffset], ubLseStage[l1PBufIdDe], vecRows);
                             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+                            AscendC::printf("66666666666666666666666\n");
 
-                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
-                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
                             AscendC::DataCopy(
                                 gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
                                 ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
                                 vecRows * embed_);
+                                AscendC::printf("77777777777777777777777\n");
                             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
+                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
                         } else {
                             Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
                             Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
@@ -567,6 +574,10 @@ private:
                     }
                 }
             }
+#ifdef __DAV_CUBE__
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
+#endif
         }
     }
 

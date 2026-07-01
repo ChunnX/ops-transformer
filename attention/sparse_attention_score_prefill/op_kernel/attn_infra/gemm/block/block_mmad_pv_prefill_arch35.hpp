@@ -245,7 +245,6 @@ struct BlockMmadPVPrefillArch35 {
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         SetCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
     }
 };
 
