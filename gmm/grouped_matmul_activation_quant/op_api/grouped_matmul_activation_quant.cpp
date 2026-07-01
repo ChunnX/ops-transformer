@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "util/math_util.h"
+#include "log/log.h"
 
 using namespace op;
 using Ops::Transformer::Gmm::FormatString;
