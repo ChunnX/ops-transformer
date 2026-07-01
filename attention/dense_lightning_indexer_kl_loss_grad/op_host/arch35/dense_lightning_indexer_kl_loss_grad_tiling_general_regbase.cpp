@@ -160,7 +160,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
 
     size_t layoutLen = strlen(layoutQuery);
     OP_CHECK_IF(queryIndexShape.GetDimNum() != layoutLen || keyIndexShape.GetDimNum() != layoutLen ||
-        attnSoftmaxL1Shape.GetDimNum() != layoutLen || softmaxLseShape.GetDimNum() != layoutLen,
+        attnSoftmaxL1Shape.GetDimNum() != layoutLen,
         OP_LOGE(opName, "Invalid data, inputdata shapelen [%ld] is not equal to layoutQuery [%s] len[%ld].",
         queryIndexShape.GetDimNum(), layoutQuery, layoutLen),
         return false);
@@ -456,12 +456,6 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
             "(%ld). Their values should be equal.",
             queryIndexShape[1], weightsShape[1]),
             return false);
-        OP_CHECK_IF(queryIndexShape[1] != softmaxLseShape[2],
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N index is failed, the value of query_index[1] and softmaxLseShape[2] are respectively (%ld), "
-            "(%ld). Their values should be equal.",
-            queryIndexShape[1], softmaxLseShape[2]),
-            return false);
         // 验证N2 数字是否正确
         OP_CHECK_IF(keyIndexShape[1] != NKEYINDEX_SIZE_1,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
@@ -541,13 +535,6 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
             "CrossShapeVerify N index is failed, the value of query_index[2] and weights[2] are respectively (%ld), "
             "(%ld). Their values should be equal.",
             n1Len, weightsShape[2]),
-            return false);
-
-        OP_CHECK_IF(softmaxLseShape[3] != n1Len,
-            OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify N index is failed, the value of query_index[2] and softmaxLseShape[3] are respectively (%ld), "
-            "(%ld). Their values should be equal.",
-            n1Len, softmaxLseShape[3]),
             return false);
         // 验证N2 数字是否正确
         OP_CHECK_IF(keyIndexShape[2] != NKEYINDEX_SIZE_1,
