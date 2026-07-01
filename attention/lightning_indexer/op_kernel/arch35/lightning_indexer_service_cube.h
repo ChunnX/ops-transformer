@@ -29,6 +29,7 @@ class LightningIndexerServiceCube {
 public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
+    using SCORE_T = uint32_t;
 
     __aicore__ inline LightningIndexerServiceCube(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -61,7 +62,7 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
-    static constexpr FixpipeConfig QLI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+    static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
     
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
@@ -151,9 +152,9 @@ LightningIndexerServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t
 template <typename LIT>
 __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LICommon::RunInfo &runInfo)
 {
-    CrossCoreWaitFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreWaitFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
                                                     LICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreWaitFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
                                                     LICommon::ConstInfo::CROSS_VC_EVENT +
                                                     runInfo.loop % 2 +
                                                     LICommon::ConstInfo::AIV0_AIV1_OFFSET);
@@ -238,10 +239,10 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
         SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
         keyL1BufIdx_++;
     }
-    CrossCoreSetFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreSetFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
                                                 LICommon::ConstInfo::CROSS_CV_EVENT +
                                                 runInfo.loop % 2);
-    CrossCoreSetFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreSetFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
                                                 LICommon::ConstInfo::CROSS_CV_EVENT +
                                                 runInfo.loop % 2 +
                                                 LICommon::ConstInfo::AIV0_AIV1_OFFSET);
@@ -396,39 +397,27 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-    static_assert(S2_BASIC_BLOCK == S2_BASIC_BLOCK_L0 && S2_BASIC_BLOCK_L0 == 128);
-    // s1gL0RealSize：2*gSize(128)对齐, 最大256
-    // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
-    uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
-    uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-    // 固定参数
-    fixpipeParams.mSize = mSize;
-    fixpipeParams.srcStride = mSize; // 已16对齐
-    fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(float); // 落到同一个bank
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-
-    uint64_t dstOffset = 0;
-    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
-        dstOffset = s1gGmOffset * 64;
-    }
-
-    // nSize已保证N方向32B对齐
-    if (nSize <= (256 / sizeof(float))) {
-        // N方向小于一个bank(256B), 只需搬一个ND块, 且不用补齐
-        fixpipeParams.nSize = nSize;
+    if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
+        fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
+        // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+        fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1;
+        // 源NZ矩阵中相邻Z排布的起始地址偏移
+        // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        // mmResUb上两行之间的间隔，单位：element
+        fixpipeParams.dstStride = constInfo_.s2BaseSize;
+        // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-    } else {
-        // N方向在(256B, 512B]范围， 直接按512B搬, 注意此时不能开unitflag
-        fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬, S2_BASIC_BLOCK_L0不为128会有问题
-        fixpipeParams.params.ndNum = 2;
-        fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2;
+        Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) *
+                                                    CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
+                                                    CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
+                                            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
     }
-    Fixpipe<float, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2 + dstOffset],
-                                                cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 }
 
 template <typename LIT>

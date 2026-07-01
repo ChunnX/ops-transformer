@@ -341,8 +341,8 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     // blockdim
     uint32_t blockDim = tilingData.increFlashAttentionSingleCoreParams.get_usedCoreNum();
 
-    aclProfTensorInfo tensorInfo;
-    aclProfTensor emptyTensor = {0, 0, 0, 0, {0}};
+    aclprofTensorInfo tensorInfo;
+    aclprofTensor emptyTensor = {0, 0, 0, 0, {0}};
     // 本FA demo只支持伪量化场景，非支持场景会被tiling拦截，此处只上报支持范围内的所有参数shape
     INIT_ACL_PROF_TENSOR_INFO("fused_infer_attention_score", "FusedInferAttentionScore", blockDim, MIX_AIC,
                             tensorInfo, aclstream,

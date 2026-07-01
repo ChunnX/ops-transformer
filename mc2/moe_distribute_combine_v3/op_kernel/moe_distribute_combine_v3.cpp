@@ -41,7 +41,7 @@ namespace {
 template <CombineMC2TypeClass>
 __aicore__ inline void
 ExecMoeDistributeCombineV3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
-                           GM_ADDR epSendCount, GM_ADDR tpSendCount, GM_ADDR scales, GM_ADDR xActiveMask,
+                           GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR xActiveMask,
                            GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
                            GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
                            GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipePtr)
@@ -52,7 +52,7 @@ ExecMoeDistributeCombineV3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertId
 #else
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
 #endif
-    op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, nullptr, nullptr, scales,
+    op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
             xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
             performanceInfo, nullptr, nullptr, XOut, workspaceGM, pipePtr, &tilingData);
     op.Process();
@@ -69,7 +69,7 @@ ExecMoeDistributeCombineV3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertId
  * 第5位（万位）：无实际意义
  */
 
-template <bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
+template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
 __global__ __aicore__ void
 moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
                           GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask,
@@ -83,9 +83,8 @@ moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) || (ArchTag == TILINGKEY_TPL_A5)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-        ExecMoeDistributeCombineV3<Mc2Kernel::Mc2MoeContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t,
-                                   HasTp, QuantMode, false>(
-            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, xActiveMask,
+        ExecMoeDistributeCombineV3<Mc2Kernel::Mc2MoeContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false>(
+            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, scales, xActiveMask,
             sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut,
             workspaceGM, tilingGM, &pipe);
     }

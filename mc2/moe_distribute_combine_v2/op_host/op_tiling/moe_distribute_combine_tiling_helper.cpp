@@ -76,13 +76,6 @@ inline bool MoeDistributeCombineTilingHelper::CheckInputSendCountsTensorDim(cons
     return false);
     OP_LOGD(nodeName, "epSendCounts dim0 = %ld", epSendCountsStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tpSendCounts"), return false);
-    OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "tpSendCounts",
-        std::to_string(tpSendCountsStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of tpSendCounts must be 1D."),
-    return false);
-    OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
     return true;
 }
 
@@ -188,12 +181,6 @@ bool MoeDistributeCombineTilingHelper::CheckTensorDataType(const gert::TilingCon
     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "epSendCounts",
         Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str(), "The dtype of epSendCounts must be int32."),
     return false);
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tpSendCountsDesc"), return false);
-    OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
-    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "tpSendCounts",
-        Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str(), "The dtype of tpSendCounts must be int32."),
-    return false);
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScalesDesc"), return false);
     OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
@@ -247,13 +234,6 @@ bool MoeDistributeCombineTilingHelper::CheckTensorFormat(const gert::TilingConte
     OP_TILING_CHECK(epSendCountsFormat == ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epSendCounts",
                         Ops::Base::ToString(epSendCountsFormat).c_str(), "FRACTAL_NZ"), return false);
-
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tpSendCountsDesc"), return false);
-    auto tpSendCountsFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat()));
-    OP_TILING_CHECK(tpSendCountsFmt == ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpSendCounts",
-                        Ops::Base::ToString(tpSendCountsFmt).c_str(), "FRACTAL_NZ"), return false);
 
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScalesDesc"), return false);

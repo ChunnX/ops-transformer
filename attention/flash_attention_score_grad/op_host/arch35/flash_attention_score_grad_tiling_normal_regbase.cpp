@@ -23,6 +23,27 @@ using namespace optiling::fag;
 namespace optiling {
 namespace fag {
 
+bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
+{
+    OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
+                OP_LOGW("flash_attention_score_grad_tiling_normal_regbase", "aShape or bShape is nullptr."),
+                return false);
+    uint32_t dimSizeA = aShape->GetStorageShape().GetDimNum();
+    uint32_t dimSizeB = bShape->GetStorageShape().GetDimNum();
+    if (dimSizeA != dimSizeB) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < dimSizeA; i++) {
+        auto dimA = aShape->GetStorageShape().GetDim(i);
+        auto dimB = bShape->GetStorageShape().GetDim(i);
+        if (dimA != dimB) {
+            return false;
+        }
+    }
+    return true;
+}
+
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
     fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
@@ -39,6 +60,28 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     bool hasQueryRope = queryRope != nullptr && queryRopeShape->GetDimNum() != 0;
     auto keyRope = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::KEY_ROPE_IDX));
     const gert::Shape *keyRopeShape = &keyRope->GetStorageShape();
+
+    // get dy/attentionIn
+    auto dy = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::DY));
+    const gert::Shape *dyShape = &dy->GetStorageShape();
+    auto attentionIn = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
+    const gert::Shape *attentionInShape = &attentionIn->GetStorageShape();
+    const gert::Shape &qShape = queryShape->GetStorageShape();
+    const gert::Shape &kShape = keyShape->GetStorageShape();
+    const gert::Shape &vShape = valueShape->GetStorageShape();
+
+    std::string qdyShapesMsg = "{" + Ops::Base::ToString(qShape) + ", " + Ops::Base::ToString(*dyShape) + "}";
+    std::string kvShapesMsg = "{" + Ops::Base::ToString(kShape) + ", " + Ops::Base::ToString(vShape) + "}";
+    std::string vdyShapesMsg = "{" + Ops::Base::ToString(vShape) + ", " + Ops::Base::ToString(*dyShape) + "}";
+
+    if (!IsSameShape(dy, attentionIn)) {
+        std::string shapesMsg = "{" + Ops::Base::ToString(*dyShape) + ", " + Ops::Base::ToString(*attentionInShape) +
+                                "}";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy, attentionInOptional", shapesMsg.c_str(),
+            "The shapes of dy and attentionInOptional must be the same");
+        return ge::GRAPH_PARAM_INVALID;
+    }
+
     bool hasKeyRope = keyRope != nullptr && keyRopeShape->GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
         std::string qrShape = hasQueryRope ? Ops::Base::ToString(*queryRopeShape) : "null";
@@ -67,6 +110,31 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_0);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
+
+        std::string hAxisMsg = "When inputLayout is SBH, h axis of dy must be exactly divisible " +
+                               std::to_string(headNum);
+        OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) % headNum != 0,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
+                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        "B axis and s axis of dy must be equal to b axis and s axis of query"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
+                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
+                        kvShapesMsg.c_str(), "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
+                    return ge::GRAPH_PARAM_INVALID);
+        auto dyDDim = dyShape->GetDim(INPUT_DIM_2) / headNum;
+        auto qkDDim = qShape.GetDim(INPUT_DIM_2) / headNum;
+        auto vNdim = kShape.GetDim(INPUT_DIM_2) / qkDDim;
+        auto vDDim = vShape.GetDim(INPUT_DIM_2) / vNdim;
+        OP_CHECK_IF(vDDim != dyDDim,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
+                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BSH") == 0) {
         OP_LOGD(context_, "inputLayout == BSH queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
@@ -81,6 +149,31 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
+        
+        std::string hAxisMsg = "When inputLayout is BSH, h axis of dy must be exactly divisible " +
+                               std::to_string(headNum);
+        OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
+                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        "B axis and s axis of dy must be equal to b axis and s axis of query"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) % headNum != 0,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
+                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
+                        kvShapesMsg.c_str(), "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
+                    return ge::GRAPH_PARAM_INVALID);
+        auto qkDDim = qShape.GetDim(INPUT_DIM_2) / headNum;
+        auto vNdim = kShape.GetDim(INPUT_DIM_2) / qkDDim;
+        auto vDDim = vShape.GetDim(INPUT_DIM_2) / vNdim;
+        auto dyDDim = dyShape->GetDim(INPUT_DIM_2) / headNum;
+        OP_CHECK_IF(vDDim != dyDDim,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
+                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BNSD") == 0) {
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BN2GS2D;
@@ -97,6 +190,29 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_0), queryShape->GetStorageShape().GetDim(INPUT_DIM_1),
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_2), queryShape->GetStorageShape().GetDim(INPUT_DIM_3));
+        
+        std::string hAxisMsg = "When inputLayout is BNSD, N axis of dy must be equal to " + std::to_string(headNum);
+        OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_1) != headNum,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
+                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
+                    (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        "B axis, s axis and n axis of dy must be equal to b axis, s axis and n axis of query"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
+                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
+                    (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
+                        kvShapesMsg.c_str(),
+                        "B axis, s axis and n axis of value must be equal to b axis, s axis and n axis of keyIn"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(vShape.GetDim(INPUT_DIM_3) != dyShape->GetDim(INPUT_DIM_3),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
+                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout == TND");
         fBaseParams.layoutType = INPUT_FORMAT_TND;
@@ -181,6 +297,26 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
+
+        std::string hAxisMsg = "When inputLayout is TND, N axis of dy must be equal to " + std::to_string(headNum);
+        OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_1) != headNum,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
+                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        "T axis and n axis of dy must be equal to t axis and n axis of query"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
+                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
+                        kvShapesMsg.c_str(), "T axis and n axis of value must be equal to t axis and n axis of keyIn"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(vShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
+                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    return ge::GRAPH_PARAM_INVALID);
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
@@ -195,6 +331,29 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_3) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_3) : 0;
+
+        std::string hAxisMsg = "When inputLayout is BSND, N axis of dy must be equal to " + std::to_string(headNum);
+        OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) != headNum,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
+                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
+                    (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        "B axis, s axis and n axis of dy must be equal to b axis, s axis and n axis of query"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
+                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
+                    (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
+                        kvShapesMsg.c_str(),
+                        "B axis, s axis and n axis of value must be equal to b axis, s axis and n axis of keyIn"),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(vShape.GetDim(INPUT_DIM_3) != dyShape->GetDim(INPUT_DIM_3),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
+                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    return ge::GRAPH_PARAM_INVALID);
     }
 
     // check rope
@@ -295,6 +454,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
         (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+         (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
+          (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
+           fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE_1)) &&
          (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
@@ -600,7 +762,7 @@ bool FlashAttentionScoreGradTilingNormalRegbase::CheckSparseLeftAndRight(int64_t
             int64_t s2SparseRight =
                 AlignTo(std::min(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), fBaseParams.s1) +
                             fBaseParams.s2Token,
-                        static_cast<int64_t>(64));
+                        ALIGN64);
             s2SparseRight = std::min(s2SparseRight, fBaseParams.s2);
             bool isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
             return isValid;
@@ -897,7 +1059,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
     // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
-    int64_t singleLoopNBurstNum = 128;
+    int64_t singleLoopNBurstNum = SFMG_DEFAULT_BURST_NUM;
     if (fBaseParams.queryType == ge::DT_FLOAT) {
         inputSize = FP32_BYTES;
         outDtypeSize = FP32_BYTES;
@@ -913,14 +1075,20 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     // valueDAlign * inputSize * sizeof(dtype) * 2 * 2 --  dy, y size is valueDAlign * inputSize
     // first 2 is dy + y total size, second 2 is double buffer, then get max split s1
     uint32_t sfmgDyBufferLen =
-        availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * valueDAlign * inputSize;
-    uint32_t sfmgYBufferLen = availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) *
-                              valueDAlign * outDtypeSize;
+        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+        valueDAlign * inputSize;
+    uint32_t sfmgYBufferLen =
+        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+        valueDAlign * outDtypeSize;
     uint32_t sfmgOutputBufferLen =
-        availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * 8 * FP32_BYTES;
+        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+        SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES;
 
     // 计算单核的计算量
-    uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * 2; // blockOuter is used cube core num, 2 is cv ratio
+    uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * AICV_RATIO_DEFAULT;
     int64_t normalCoreSize = CeilCommon(normalAxisSize, sfmgUsedCoreNum);
     sfmgUsedCoreNum = CeilCommon(normalAxisSize, normalCoreSize);
     int64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
@@ -968,9 +1136,12 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<uint64_t>(fBaseParams.blockOuter)),
                                      static_cast<uint64_t>(BOOL_BLOCK_NUMS));
     uint64_t maskUsedCoreNum = 0;
+    bool presfmgLimit = !(fBaseParams.s2 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM256) &&
+        fBaseParams.b * fBaseParams.n1 * fBaseParams.s1Outer >= MAX_BASIC_BLOCK_SIZE);
     fBaseParams.enablePreSfmg =
         (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
+         presfmgLimit &&
          fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
          fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
          (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&

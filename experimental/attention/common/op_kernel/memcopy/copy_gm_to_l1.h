@@ -670,7 +670,7 @@ private:
                     copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
                 }
                 uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-                uint64_t l1Offset = copyFinishRowCnt * blockElementCnt;
+                uint64_t l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
 
                 // 拷贝数据
                 CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,

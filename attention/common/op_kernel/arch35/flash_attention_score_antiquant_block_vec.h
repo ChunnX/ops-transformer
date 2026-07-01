@@ -115,6 +115,8 @@ public:
     __aicore__ inline void AntiquantKey(const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first,
         RunParamStr<isInfer> &runParam, Buffer<BufferType::L1> &outBufAntiKey,
         GlobalTensor<KV_T> &tempKeyGm, ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void SetAntiqParamCommon(const RunInfo<isInfer> &runInfo, int64_t kvOffset,
+        ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void AntiquantValue(const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first,
         RunParamStr<isInfer> &runParam, Buffer<BufferType::L1> &outBufAntiValue, ConstInfo<isInfer, hasRope> &constInfo);
     /*FD相关*/
@@ -122,6 +124,8 @@ public:
         __gm__ int64_t *seqKVlenAddr, int64_t s2InCurrentBatch);
     __aicore__ inline void ProcessVec1(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
         LocalTensor<T> &inputTensorVec, Buffer<BufferType::L1> &outBufVec1);
+    __aicore__ inline void UpdateVec2Result(RunInfo<isInfer> &runInfo, LocalTensor<T> &vec2ResUb,
+        LocalTensor<T> &inputTensorVec, LocalTensor<T> &expUb);
     __aicore__ inline void ProcessVec2(RunInfo<isInfer> &runInfo, LocalTensor<T> &inputTensorVec,
         ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
@@ -554,27 +558,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first, RunParamStr<isInfer> &runParam,
     Buffer<BufferType::L1> &outBufAntiKey, GlobalTensor<KV_T> &tempKeyGm, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    if(isBeforeHalf) {
-        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vecnum
-    } else {
-        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize));  // 2 is Vecnum
-    }
-    uint32_t curSequence = constInfo.s2BaseSize * runInfo.s2LoopCount + runInfo.kvLeftPaddingSize +
-        constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
-    if constexpr (isInfer) {
-        curSequence += runInfo.s2StartIdx;
-    }
-    taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
-    if constexpr(isFd) {
-        curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
-    }
-
-    taskParam.kvGmOffset = runInfo.keyOffset + constInfo.subBlockIdx *
-        GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;  // 2 is Vec num
-
-    taskParam.s2BatchOffset = curSequence;
-    taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
-
+    SetAntiqParamCommon(runInfo, runInfo.keyOffset, constInfo);
     if constexpr (KVFP4) {
         taskParam.isLoadAntiqParam = true;
         taskParam.isFreeAntiqParam = false;
@@ -590,29 +574,54 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
             taskParam.isFreeAntiqParam = unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit);
         }
     }
+    keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm,
+                              keyAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, keyAntiqScaleInputQue,
+                              keyAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
+}
 
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(
+    const RunInfo<isInfer> &runInfo, int64_t kvOffset, ConstInfo<isInfer, hasRope> &constInfo)
+{
+    if (isBeforeHalf) {
+        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vec num
+    } else {
+        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize));  // 2 is Vec num
+    }
+    uint32_t curSequence = constInfo.s2BaseSize * runInfo.s2LoopCount + runInfo.kvLeftPaddingSize +
+        constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
+    if constexpr (isInfer) {
+        curSequence += runInfo.s2StartIdx;
+    }
+    taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
+    if constexpr(isFd) {
+        curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
+    }
+    taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx *
+        GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+    taskParam.s2BatchOffset = curSequence;
+    taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
     taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
-
     taskParam.bIdx = runInfo.boIdx;
     taskParam.n2Idx = runInfo.n2oIdx;
     taskParam.s2Idx = runInfo.s2LoopCount;
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
         if constexpr (enableKVPrefix) {
-            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
+            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) <
+                constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
             if (taskParam.isPrefixLoop) {
-                taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx *
+                    GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
             } else {
-                taskParam.kvGmOffset = runInfo.keyOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx *
+                    GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
                 taskParam.s2Idx -= constInfo.prefixLoopCount;
             }
         }
     }
-    keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm,
-                              keyAntiquantOffsetGm, blockTableGm, kvInputQue, kvOutputQue, keyAntiqScaleInputQue,
-                              keyAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
 }
-
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1(
@@ -895,26 +904,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
         tempValueGm = this->valueGm;
         GetKvByTensorList(runInfo, this->valueGm, tempValueGm, constInfo);
     }
-    if(isBeforeHalf) {
-        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vec num
-    } else {
-        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize));  // 2 is Vec num
-    }
-    uint32_t curSequence = constInfo.s2BaseSize * runInfo.s2LoopCount + runInfo.kvLeftPaddingSize +
-        constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
-    if constexpr (isInfer) {
-        curSequence += runInfo.s2StartIdx;
-    }
-    taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
-    if constexpr(isFd) {
-        curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
-    }
-    taskParam.kvGmOffset = runInfo.valueOffset + constInfo.subBlockIdx *
-        GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;  // 2 is Vec num
-
-    taskParam.s2BatchOffset = curSequence;
-    taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
-
+    SetAntiqParamCommon(runInfo, runInfo.valueOffset, constInfo);
     if constexpr (VALUE_ANTIQUANT_PER_TOKEN || ANTIQUANT_PER_GROUP) {
         taskParam.isLoadAntiqParam = true;
         taskParam.isFreeAntiqParam = true;
@@ -925,24 +915,6 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
         } else {
             taskParam.isLoadAntiqParam = unlikely(runInfo.s2LoopCount == 0);
             taskParam.isFreeAntiqParam = unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit);
-        }
-    }
-
-    taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
-
-    taskParam.bIdx = runInfo.boIdx;
-    taskParam.n2Idx = runInfo.n2oIdx;
-    taskParam.s2Idx = runInfo.s2LoopCount;
-    if constexpr (isInfer) {
-        taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
-        if constexpr (enableKVPrefix) {
-            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
-            if (taskParam.isPrefixLoop) {
-                taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
-            } else {
-                taskParam.kvGmOffset = runInfo.valueOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
-                taskParam.s2Idx -= constInfo.prefixLoopCount;
-            }
         }
     }
     valueAntiquantProcessor.ProcessBaseAPI(outBufAntiValue, tempValueGm,
@@ -965,6 +937,35 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetKvByTens
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::UpdateVec2Result(
+    RunInfo<isInfer> &runInfo, LocalTensor<T> &vec2ResUb, LocalTensor<T> &inputTensorVec, LocalTensor<T> &expUb)
+{
+    float deSCalePreVValue = 1.0f;
+    if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+        if (runInfo.s2LoopCount == 1) {
+            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
+                1.0, deSCalePreVValue);
+        } else {
+            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
+                1.0, deSCalePreVValue);
+        }
+    } else {
+        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+        if (runInfo.s2LoopCount == 1) {
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
+                1.0, deSCalePreVValue);
+        } else {
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
+                1.0, deSCalePreVValue);
+        }
+    }
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec2(
     RunInfo<isInfer> &runInfo, LocalTensor<T> &inputTensorVec, ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -983,30 +984,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec2
         DataCopy(vec2ResUb, inputTensorVec, vec2CalcSize);
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
-        float deSCalePreVValue = 1.0f;
-        if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            if (runInfo.s2LoopCount == 1) {
-                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
-                    vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    1.0, deSCalePreVValue);
-            } else {
-                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    1.0, deSCalePreVValue);
-            }
-        } else {
-            if (runInfo.s2LoopCount == 1) {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
-                    vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    1.0, deSCalePreVValue);
-            } else {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, inputTensorVec, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    1.0, deSCalePreVValue);
-            }
-        }
+        UpdateVec2Result(runInfo, vec2ResUb, inputTensorVec, expUb);
     }
     CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[runInfo.taskIdMod2]);
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {

@@ -725,7 +725,8 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_2201) &&
+        ((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) &
          static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
@@ -830,7 +831,7 @@ ge::graphStatus QSFATilingCheck::CheckParaExistence()
 }
 
 static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const QSFALayout &layout, const std::string &name, const char *opName)
+    const std::string &name, const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName, name.c_str());
@@ -1021,7 +1022,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQShape()
 {
     uint32_t qsfaShapeSize = 0;
     if (GetActualSeqLenSize(qsfaShapeSize, opParamInfo_.actualSeqLengthsQ.tensor,
-        qLayout_, "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSize != bSize_) {
@@ -1066,7 +1067,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
     }
     uint32_t qsfaShapeSizeKv = 0;
     if (GetActualSeqLenSize(qsfaShapeSizeKv, opParamInfo_.actualSeqLengths.tensor,
-        kvLayout_, "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSizeKv != bSize_) {
@@ -1474,7 +1475,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredParaExistence() const
 
 ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, qLayout_, "actualSeqLengthsQ", opName_);
+    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actualSeqLengthsQ", opName_);
 }
 
 ge::graphStatus QSFAInfoParser::GetOpName()
@@ -1668,7 +1669,7 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
         kvLayout_ = it->second;
     } else {
         OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV",
-            QSFALayoutToSerialString(kvLayout_).c_str(), "BSND or PA_BSND or TND");
+            layout.c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {

@@ -19,7 +19,7 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 
-at::Tensor npu_mixed_quant_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q,
+at::Tensor mixed_quant_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q,
                                    const c10::optional<at::Tensor> &cu_seqlens_kv,
                                    const c10::optional<at::Tensor> &seqused_q,
                                    const c10::optional<at::Tensor> &seqused_kv, int64_t num_heads_q,
@@ -35,6 +35,6 @@ at::Tensor npu_mixed_quant_flash_attn_metadata(const c10::optional<at::Tensor> &
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_mixed_quant_flash_attn_metadata", &npu_mixed_quant_flash_attn_metadata, "npu_mixed_quant_flash_attn_metadata");
+    m.def("mixed_quant_flash_attn_metadata", &mixed_quant_flash_attn_metadata, "mixed_quant_flash_attn_metadata");
 }
 } // namespace op_api

@@ -215,32 +215,32 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>dScaleQOptional</td>
         <td>输入</td>
-        <td>query的量化参数。</td>
-        <td>输入shape为[B,N1,Ceil(Sq/128),1]。</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>0、3、4</td>
-        <td>√</td>
+        <td>暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>dScaleKOptional</td>
         <td>输入</td>
-        <td>key的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>0、3、4</td>
-        <td>√</td>
+        <td>暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>dScaleVOptional</td>
         <td>输入</td>
-        <td>value的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>0、3、4</td>
-        <td>√</td>
+        <td>暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>sinkOptional</td>

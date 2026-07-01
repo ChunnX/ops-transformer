@@ -68,9 +68,6 @@ constexpr uint32_t INPUT_DIM_0 = 0;          // BSH  BSND
 constexpr uint32_t INPUT_DIM_1 = 1;
 constexpr uint32_t INPUT_DIM_2 = 2;
 constexpr uint32_t INPUT_DIM_3 = 3;
-constexpr uint32_t QUANT_BLOCK_S1_SIZE = 512;
-constexpr uint32_t QUANT_BLOCK_S2_SIZE = 512;
-constexpr uint32_t DEQUANT_SCALE_SHAPE_DIM = 4;
 
 constexpr uint32_t CORE_INIT_NUM = 40;
 
@@ -87,6 +84,7 @@ constexpr uint32_t SEED_ATTR_IDX = 9;
 constexpr uint32_t OFFSET_ATTR_IDX = 10;
 constexpr uint32_t OUTDTYPE_ATTR_IDX = 11;
 constexpr uint32_t TND_SOFTMAX_IN_ATTR_IDX = 12;
+constexpr uint32_t DSINKOUT_IDX = 6;
 
 constexpr uint32_t GM_ALIGN = 512;
 
@@ -131,23 +129,21 @@ constexpr int64_t INT64_NUM = 32;
 constexpr uint32_t DKDV_OUT = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
+constexpr uint32_t UB_RESERVE_SPACE = 26 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
-constexpr int64_t HIFP8_ADMIT_SEQ1 = 54000;
-constexpr int64_t HIFP8_ADMIT_SEQ2 = 57600;
-constexpr int64_t HIFP8_ADMIT_SEQ3 = 9360;
-constexpr int64_t HIFP8_ADMIT_SEQ4 = 7200;
-constexpr int64_t HIFP8_ADMIT_N1 = 5;
-constexpr int64_t HIFP8_ADMIT_N2 = 10;
-constexpr int64_t HIFP8_ADMIT_N3 = 40;
-constexpr int64_t HIFP8_ADMIT_N4 = 80;
 
 constexpr uint32_t CORE_LIST_NUM = 36;
 constexpr uint32_t ARRAY_LENGTH = 3;
 constexpr uint32_t DETER_LENGTH = 4;
 constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
 constexpr uint32_t FP16_C0_SIZE = 16;
+constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE = 2048;
+constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE_1 = 1024;
+
+constexpr uint32_t SFMG_DEFAULT_BURST_NUM = 128;
+constexpr uint32_t SFMG_DOUBLE_BUFFER_NUM = 2;
+constexpr uint32_t SFMG_FP32_ACCUMULATOR_SIZE = 8;
 
 enum class InputIndex : uint32_t {
     QUERY = 0,
@@ -563,13 +559,13 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
 ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
+ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams);
 void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase& fBaseParams, std::array<int64_t, CORE_LIST_NUM>& dqOffset, std::array<int64_t, CORE_LIST_NUM>& dkDvOffset, std::array<int64_t, CORE_LIST_NUM>& dqOffsetpre,
     std::array<int64_t, CORE_LIST_NUM>& dkDvOffsetpre, int64_t calcNum, bool &noNeedDeter, bool &dqNeedDeterpre, bool &dkDvNeedDeterpre);
