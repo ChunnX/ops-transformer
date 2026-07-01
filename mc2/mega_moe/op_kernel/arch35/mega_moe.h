@@ -1378,6 +1378,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         
         // sub=0: 等待量化完成，执行共享专家 SwiGLU+Quant，然后 SendMaskCal + ResetFlagList
+        // sub=1: 直接执行 SendMaskCal + ResetFlagList（与共享专家计算并行）
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 0) {
                 __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
@@ -1385,17 +1386,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     AscendC::Nop<200>();
                 }
                 ProcessSharedExpert();
-                SendMaskCal();
-                ResetFlagList();
             }
-        }
-        
-        // sub=1: 执行 SendMaskCal + ResetFlagList（与共享专家计算并行）
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                SendMaskCal();
-                ResetFlagList();
-            }
+            SendMaskCal();
+            ResetFlagList();
         }
     } else {
         // 无共享专家：所有 AIV 执行量化+mask+reset
