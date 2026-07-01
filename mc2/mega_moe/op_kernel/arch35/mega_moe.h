@@ -1190,20 +1190,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSize()
 {
-    // 所有核都需要参与 SyncAll，不能跳过
-    if constexpr(g_coreType == AIV) {
-        __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
-        __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
-            48 * 1024 + aivCoreIdx_ * 64);
-        int count = ReadGmByPassDCache(syncCount) + 1;
-        for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
-            __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
-            WriteGmByPassDCache(syncRemoteAddr, count);
-            auto syncCheck = syncRank + i * 16;
-            GmSignalWaitBarrier(syncCheck, count);
-        }
-        WriteGmByPassDCache(syncCount, count);
+    if constexpr(g_coreType == AIC) {
+        return;
     }
+    __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
+    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
+        48 * 1024 + aivCoreIdx_ * 64);
+    int count = ReadGmByPassDCache(syncCount) + 1;
+    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
+        WriteGmByPassDCache(syncRemoteAddr, count);
+        auto syncCheck = syncRank + i * 16;
+        GmSignalWaitBarrier(syncCheck, count);
+    }
+    WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
@@ -1391,6 +1391,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
+    
+    // 共享专家场景：AIC 执行了 ProcessSharedExpert，需要参与 SyncAll
+    if (sharedExpertNum_ > 0) {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    }
+    
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
