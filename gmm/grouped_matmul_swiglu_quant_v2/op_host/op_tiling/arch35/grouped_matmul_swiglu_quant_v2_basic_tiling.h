@@ -91,6 +91,11 @@ private:
     bool CheckCoreNum() const override;
     bool CheckWeightNdDtype();
     bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);
+    bool ValidateAttrsCommon();
+    bool LoadDescsAndDtypes();
+    bool CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat);
+    bool ValidateDtypeAndQuantParams(const gert::Shape &xShape, const gert::Shape &wShape,
+                              const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
