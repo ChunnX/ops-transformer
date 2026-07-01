@@ -46,16 +46,20 @@ namespace {
     const static int64_t THREE_DIMS = 3LL;
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
+    const static int64_t MIN_TOPK = 1LL;
+    const static int64_t MAX_TOPK = 16LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t MAX_BS = 512LL;
+    const static int64_t NUM_8 = 8LL;
+    const static int64_t NUM_64 = 64LL;
+    const static int64_t USED_BUUFER_SIZE = 48 * 1024LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t MAX_H = 8LL * 1024LL;  // 8K
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
-    const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -90,6 +94,7 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -390,13 +395,21 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
-    } else if ((opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E5M2 ||
-                opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) &&
+    } else if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
                weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
                static_cast<ge::Format>(ge::GetPrimaryFormat(
                    weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        // A8W8_NZ: fp8 activation × fp8 weight in NZ format, LayoutB = ZNLayoutPtn
+        // A8W8_NZ: fp8_e4m3fn activation × fp8_e4m3fn weight in NZ format (E5M2 not supported)
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
+    } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+               opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
+        // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
+        if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
+        } else {
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
+        }
     } else {
         // Generic: fp8 activation × fp8 weight in ND format
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
@@ -902,10 +915,23 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
 
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
+    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
+    int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
+
+    // 检查MAX_BS范围
+    uint64_t ubSize = 0UL;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    auto attrs = context->GetAttrs();
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+    int64_t worldSize = static_cast<int64_t>(*epWorldSizePtr);
+    // 当前最大bs根据ub剩余空间反算得来，bsMax = (8*(UB_SIZE-48K))/(topK*(64+worldSize))
+    int64_t maxBs = NUM_8 * (ubSize - USED_BUUFER_SIZE) / (topkIdsDim1 * (NUM_64 + worldSize));
+    OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > maxBs,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
             (std::string("should in [") + std::to_string(MIN_BS) + ", " +
-             std::to_string(MAX_BS) + "]").c_str()),
+             std::to_string(maxBs) + "]" + ", "
+             + "maxBs = (8 * (TOTAL_UB_SIZE - 48K)) / (topK * (64 + worldSize))").c_str()),
         return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
@@ -915,18 +941,16 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
             (std::string("should in [") + std::to_string(H_BASE) + ", " +
              std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-
     // 检查 H 是否 1024 的倍数
     OP_TILING_CHECK(xDim1 % H_BASE != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("multiple of ") + std::to_string(H_BASE)).c_str()),
         return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(topkIdsDim1 != 6LL && topkIdsDim1 != 8LL,
+    // topk范围
+    OP_TILING_CHECK(topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(),
-            "only support 6/8"),
+            "only support [1, 16]"),
         return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);

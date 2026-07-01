@@ -196,6 +196,9 @@ public:
     // 对应6-9位 模板自定义组合
     uint16_t templateCustom = 0;
 
+    // 模板参数，表示MxA8W4单多单场景
+    bool isSingleMultiSingle = false;
+
     // 对应10-13位 api常量化保留位
     uint16_t apiConstexpr = 0;
 
@@ -212,6 +215,7 @@ public:
            << " optionInputSituation: " << static_cast<uint32_t>(this->optionInputSituation)
            << " weightFormat: " << static_cast<uint32_t>(this->weightFormat)
            << " templateCustom: " << static_cast<uint32_t>(this->templateCustom)
+           << " isSingleMultiSingle: " << static_cast<uint32_t>(this->isSingleMultiSingle)
            << " apiConstexpr: " << static_cast<uint32_t>(this->apiConstexpr);
         OP_LOGI("GMMWeightQuantBatchMatmul", "tilingKeyConfigure: %s", ss.str().c_str());
         return;
@@ -228,9 +232,14 @@ protected:
     bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
     bool CheckEmptyTensor(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorDefault(const gert::TilingContext *context) const;
     bool CheckTensorListSize() const;
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
+    bool CheckTensorDtypeSingleXMultiWeightSingleY(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
+                                                   const ge::DataType &tensorDtype,
+                                                   const std::string &tensorType) const;
     bool IsNzFormat(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
     bool CheckXAndWeightFormat(const gert::TilingContext *context, size_t idx) const;
     bool CheckNotNullPtr(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
@@ -242,9 +251,16 @@ protected:
     bool CheckTensorDim(const gert::TilingContext *context, size_t idx) const;
     bool CheckTensorShape(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const std::string &tensorType) const;
+    bool CheckTensorShapeSingleXMultiWeightSingleY(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
+                                                   const std::string &tensorType) const;
     bool CheckDimValue(const gert::TilingContext *context, size_t idx) const;
     bool CheckWeightInnerAxisEven(const gert::TilingContext *context, size_t idx) const;
+    bool CheckWeightSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckAntiquantScaleSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckAntiquantOffsetSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckBiasSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
     bool CheckEveryTensor(const gert::TilingContext *context) const;
+    bool CheckEveryTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
@@ -262,6 +278,7 @@ protected:
     bool CheckGroupTypeAndSplitItem() const;
     bool CheckTransposeStatus() const;
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
+    bool SetShapeListSplitMSingleXMultiWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
@@ -285,6 +302,7 @@ private:
     bool isSingleX_ = true;
     bool isSingleWeight_ = true;
     bool isSingleY_ = true;
+    bool isSingleMultiSingle_ = false;
     bool hasBias_ = false;
     bool weightNzFlag_ = false;
     bool hasAntiquantOffset_ = false;

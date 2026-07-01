@@ -94,7 +94,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
             return QUANT_MODE::NO_QUANT;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.",
+            OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %ld.",
                     *(context_->kvQuantMode));
         }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
@@ -106,7 +106,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
             return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE;
         } else {
             OP_LOGE(context_->opName,
-                    "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.",
+                    "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %ld.",
                     *(context_->kvQuantMode));
         }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
@@ -118,11 +118,11 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
             return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
             OP_LOGE(context_->opName,
-                    "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.",
+                    "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %ld.",
                     *(context_->kvQuantMode));
         }
     } else {
-        OP_LOGE(context_->opName, "WeightQuantMode must be within {0, 1, 2}, actually is %d.",
+        OP_LOGE(context_->opName, "WeightQuantMode must be within {0, 1, 2}, actually is %ld.",
                 *(context_->weightQuantMode));
     }
     return QUANT_MODE::ERROR_MODE;

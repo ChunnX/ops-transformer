@@ -19,7 +19,7 @@
 namespace op_api {
 
 at::Tensor causal_conv1d_fn(const at::Tensor &x, const at::Tensor &weight,
-                            const at::Tensor &bias,
+                            const c10::optional<at::Tensor> &bias,
                             at::Tensor &conv_states,
                             const c10::optional<at::Tensor> &query_start_loc,
                             const c10::optional<at::Tensor> &cache_indices,
