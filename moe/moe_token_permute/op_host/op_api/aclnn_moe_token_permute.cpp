@@ -92,6 +92,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
 
     aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsRegbase(tokens, indices, permuteTokensOut, sortedIndicesOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
