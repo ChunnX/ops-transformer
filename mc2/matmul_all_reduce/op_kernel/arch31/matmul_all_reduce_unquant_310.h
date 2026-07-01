@@ -26,7 +26,6 @@
 #else
 #include "rac_server.h"
 #endif
-#include "../common.h"
 #include "mm_allreduce.h"
 #include "../matmul_all_reduce_tiling_key.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
