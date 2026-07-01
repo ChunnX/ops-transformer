@@ -810,11 +810,9 @@ __aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateDispatc
         GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
         __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
             recordAddr + mxQuantTokenScaleAlignBytes_);
-        PipeBarrier<PIPE_ALL>();
         if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(2)) {
             break;
         }
-        PipeBarrier<PIPE_ALL>();
         ++cursor;
     }
     return cursor;
@@ -826,11 +824,9 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSyncWith
 {
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
     for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
-        PipeBarrier<PIPE_ALL>();
         if (ReadGmByPassDCache(donePtr + idx) < roundTag) {
             return false;
         }
-        PipeBarrier<PIPE_ALL>();
     }
     return true;
 }
@@ -851,9 +847,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
         int32_t scanCursor = cursor;
         while (true) {
-            PipeBarrier<PIPE_ALL>();
             int32_t endCount = ReadGmByPassDCache(countPtr);
-            PipeBarrier<PIPE_ALL>();
             if (scanCursor < cursor || scanCursor >= endCount) {
                 scanCursor = cursor;
             }
@@ -871,16 +865,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
             int32_t oldCursor = cursor;
             cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
-                PipeBarrier<PIPE_ALL>();
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                PipeBarrier<PIPE_ALL>();
             }
-            PipeBarrier<PIPE_ALL>();
             if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) &&
                 cursor == ReadGmByPassDCache(countPtr)) {
                 break;
             }
-            PipeBarrier<PIPE_ALL>();
         }
     }
 }
