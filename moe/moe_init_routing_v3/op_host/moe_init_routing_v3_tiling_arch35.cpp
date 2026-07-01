@@ -106,6 +106,8 @@ const static int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
 const static int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
 const static int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
 const static int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
+const static int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16LL;
+const static int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17LL;
 const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
@@ -521,6 +523,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
 
     isFullload_ = IsFullLoad();
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         Tiling4GatherOutMxQuant();
     } else if (quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN ||
@@ -557,6 +561,9 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
         // 可以用与最低的UNQUANT的数值的差值来作为quantModeFactor，这里值就为3
         quantModeFactor = QUANT_MODE_MXFP8_E5M2 - QUANT_MODE_UNQUANT;
+    } else if (quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+               quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN) {
+        quantModeFactor = QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 - QUANT_MODE_UNQUANT;
     } else if (quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
         quantModeFactor = QUANT_MODE_FP8_PERBLOCK_E5M2 - QUANT_MODE_UNQUANT;
     } else if (quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN) {
@@ -806,9 +813,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateQuantMode()
                 quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
                 quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_FP8_PERBLOCK_E5M2 &&
                 quantMode_ != QUANT_MODE_FP8_PERBLOCK_E4M3FN && quantMode_ != QUANT_MODE_INT4_DYNAMIC &&
-                quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E5M2 && quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E4M3FN,
+                quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E5M2 && quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E4M3FN &&
+                quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 &&
+                quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quant_mode", std::to_string(quantMode_),
-                                          "-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14 or 15"),
+                                          "-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16 or 17"),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
     return ge::GRAPH_SUCCESS;
@@ -916,6 +925,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
                                                                                   ge::DataType::DT_BF16};
     unordered_set<DataType> supportedDtypes;
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_HIF8_CAST || quantMode_ == QUANT_MODE_HIF8_PERTENSOR ||
         quantMode_ == QUANT_MODE_HIF8_PERTOKEN || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 ||
         quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN ||
@@ -1353,7 +1364,9 @@ void MoeInitRoutingV3Arch35TilingClass::CalculateExpectedScaleShape(int64_t &exp
             expectedRank = RANK_ONE;
             expectedDim0 = (dropPadMode_ == DROP_PAD_MODE_DROPPAD) ? expertNum_ * expertCapacity_ : totalLength_;
         }
-    } else if ((quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN)) {
+    } else if ((quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN) ||
+               (quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2) ||
+               (quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN)) {
         expectedRank = RANK_TWO;
         expectedDim0 = totalLength_;
         expectedDim1 = Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols_, MX_QUANT_BLOCK_SIZE), 2LL);
