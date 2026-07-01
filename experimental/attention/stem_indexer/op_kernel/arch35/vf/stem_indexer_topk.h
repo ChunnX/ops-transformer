@@ -175,8 +175,9 @@ public:
         const LocalTensor<uint32_t>& reuseMm1ResLocal,
         const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
         LocalTensor<uint32_t>& topkNumLocal,
+        const LocalTensor<uint32_t>& s2BlockValidLenLocal,
         uint32_t batchRowNum, uint32_t mBaseIdx, uint32_t mrgRowStride,
-        uint32_t inputOffset, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+        uint32_t inputOffset, uint32_t loopIdx, uint32_t s2LoopNum)
     {
         const uint32_t topKAlign = SICommon::Align(topK, (uint32_t)256);
         for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
@@ -188,6 +189,14 @@ public:
             uint32_t rowTopK = topkNumLocal.GetValue(mInnerIdx);
             rowTopK = (rowTopK > 256U) ? 256U : rowTopK;
             if (rowTopK == 0U) {
+                continue;
+            }
+            uint32_t rowTopKAlign = SICommon::Align(rowTopK, (uint32_t)256);
+            uint32_t rowS2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+            uint32_t rowS2BlockValidLenAlign = SICommon::Align(rowS2BlockValidLen, trunkLen);
+            uint32_t rowValidLen = (inputOffset == 0U) ? (rowTopKAlign + rowS2BlockValidLenAlign) :
+                                   rowS2BlockValidLenAlign;
+            if (rowValidLen == 0U) {
                 continue;
             }
 
@@ -202,34 +211,34 @@ public:
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal,
                     mrgValueLocal[rowInputOffset], histogramsLocal,
                     idx0Local, idx1Local, idx2Local, idx3Local,
-                    nkValueLocal, rowTopK, s2SeqLen);
+                    nkValueLocal, rowTopK, rowValidLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(rowTopK, (uint32_t)256));
+                AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, rowTopKAlign);
             } else {
                 if (loopIdx == 0) {
                     SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
                         mrgValueLocal[rowInputOffset], histogramsLocal,
                         idx0Local, idx1Local, idx2Local, idx3Local,
-                        nkValueLocal, rowTopK, s2SeqLen);
+                        nkValueLocal, rowTopK, rowValidLen);
                     PipeBarrier<PIPE_V>();
                     AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal,
-                        SICommon::Align(rowTopK, (uint32_t)256));
+                        rowTopKAlign);
                 } else {
                     SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
                         mrgValueLocal[rowInputOffset], histogramsLocal,
                         idx0Local, idx1Local, idx2Local, idx3Local,
-                        nkValueLocal, rowTopK, s2SeqLen);
+                        nkValueLocal, rowTopK, rowValidLen);
                     PipeBarrier<PIPE_V>();
                     SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
                         mrgValueLocal[rowInputOffset], tmpIndexLocal, hisIndexLocal[0],
-                        rowTopK, loopIdx * trunkLen - SICommon::Align(rowTopK, (uint32_t)256),
-                        s2SeqLen);
+                        rowTopK, loopIdx * trunkLen - rowTopKAlign,
+                        rowValidLen);
                 }
             }
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(mrgValueLocal[rowMrgOffset], hisValueLocal, SICommon::Align(rowTopK, (uint32_t)256));
+            AscendC::DataCopy(mrgValueLocal[rowMrgOffset], hisValueLocal, rowTopKAlign);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(hisIndexLocal[0], indicesOutLocal, SICommon::Align(rowTopK, (uint32_t)256));
+            AscendC::DataCopy(hisIndexLocal[0], indicesOutLocal, rowTopKAlign);
         }
     }
 

@@ -540,14 +540,16 @@ __aicore__ inline void SIVector<SIT>::RunTopKFourRows(
     if (isFirstS2InnerLoop) {
         topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
                            reuseMm1ResLocal, globalIndexLocal_,
-                           topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                           TOPK_ALIGN_SIZE, TRUNK_LEN_256,
+                           topkNumLocal_, s2BlockValidLenLocal_,
+                           batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                           TOPK_ALIGN_SIZE,
                            info.s2Idx, info.s2LoopEnd + 1);
     } else {
         topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
                            reuseMm1ResLocal, globalIndexLocal_,
-                           topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                           0U, TOPK_ALIGN_SIZE + TRUNK_LEN_256,
+                           topkNumLocal_, s2BlockValidLenLocal_,
+                           batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                           0U,
                            info.s2Idx, info.s2LoopEnd + 1);
     }
     CopyOutFourRows(info, mBaseIdx, batchRowNum, curAivGS1Idx, shortCircuitMask,
