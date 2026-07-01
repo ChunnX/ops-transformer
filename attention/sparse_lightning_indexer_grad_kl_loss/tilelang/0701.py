@@ -244,8 +244,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 # T.Pipelined: inter-core CV pipeline over K blocks
                 # k_block_1's Gather (V) overlaps k_block_0's Matmul (C)
                 # ============================================================
-                for k_block in T.Pipelined(n_num, num_stages=2):
-                    k_start = k_block * n_block
+                for kb in T.Pipelined(n_num, num_stages=2):
+                    k_start = kb * n_block
                     k_end = T.min(k_start + n_block, K)
 
                     # --- Gather Key/KeyIndex/KeyRope for this K-block (V) ---
@@ -395,8 +395,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 # ============================================================
                 # Post-pipeline: per-K-block (V:dw+relu+loss → C:matmul4 → V:cast)
                 # ============================================================
-                for k_block in T.serial(n_num):
-                    k_start = k_block * n_block
+                for kbi in T.serial(n_num):
+                    k_start = kbi * n_block
                     k_end = T.min(k_start + n_block, K)
 
                     with T.Scope("V"):
@@ -437,7 +437,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                             T.tile.cast(dw_half_pp_ub, weight_pp_ub, "CAST_ROUND", vector_baseg)
                             T.barrier_all()
-                            T.copy(dw_half_pp_ub, dWeight_partial[bz, s1_id, k_block, g_id * vector_baseg:(g_id + 1) * vector_baseg])
+                            T.copy(dw_half_pp_ub, dWeight_partial[bz, s1_id, kbi, g_id * vector_baseg:(g_id + 1) * vector_baseg])
 
                         # Loss for this K-block
                         T.copy(PReduced[bz, s1_id, k_start:k_end], loss_chunk_pp_ub)
@@ -458,7 +458,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         T.reduce_sum(loss_2d_pp_ub, loss_sum_pp_ub, 1)
                         T.barrier_all()
-                        T.copy(loss_sum_pp_ub, LossOut[bz, s1_id, k_block * 16:(k_block + 1) * 16])
+                        T.copy(loss_sum_pp_ub, LossOut[bz, s1_id, kbi * 16:(kbi + 1) * 16])
 
                     with T.Scope("C"):
                         for d_idx in T.serial(d_num_query_index):
