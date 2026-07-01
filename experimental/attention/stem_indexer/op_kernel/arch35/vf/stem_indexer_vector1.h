@@ -181,52 +181,29 @@ __simd_vf__ inline void PadMrgSingleRowRangeVFImpl(__ubuf__ uint32_t* rowBuf,
     PadMrgRowRangeVFCore(rowBuf, padStart, padEnd);
 }
 
-__simd_vf__ inline void PadMrgFourRowsFirstS2RangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
-                                                        __ubuf__ uint32_t* topkNumBuf,
-                                                        __ubuf__ uint32_t* s2BlockValidLenBuf,
-                                                        __ubuf__ uint32_t* initBlockLenBuf,
-                                                        const uint32_t mBaseIdx,
-                                                        const uint32_t batchRowNum,
-                                                        const uint32_t rowStride,
-                                                        const uint32_t trunkLen)
+__simd_vf__ inline void PadMrgOneRowFirstS2RangeVFImpl(__ubuf__ uint32_t* rowBuf,
+                                                      const uint32_t topkSelectNum,
+                                                      const uint32_t s2BlockValidLen,
+                                                      const uint32_t s2BlockValidLenAlign,
+                                                      const uint32_t initialBlocks)
 {
-    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
-        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
-        const uint32_t topkSelectNum = topkNumBuf[mInnerIdx];
-        const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
-        const uint32_t s2BlockValidLen = s2BlockValidLenBuf[mInnerIdx];
-        const uint32_t s2BlockValidLenAlign = PadMrgAlignUp(s2BlockValidLen, trunkLen);
-        const uint32_t initBlockLen = initBlockLenBuf[mInnerIdx];
-        __ubuf__ uint32_t* rowBuf = mrgValueBuf + mInnerIdx * rowStride;
-
-        PadMrgRowRangeVFCore(rowBuf,
-                             topkSelectNumAlign + s2BlockValidLen,
-                             topkSelectNumAlign + s2BlockValidLenAlign);
-        PadMrgRowRangeVFCore(rowBuf, topkSelectNumAlign, topkSelectNumAlign + initBlockLen);
-    }
+    const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+    PadMrgRowRangeVFCore(rowBuf,
+                         topkSelectNumAlign + s2BlockValidLen,
+                         topkSelectNumAlign + s2BlockValidLenAlign);
+    PadMrgRowRangeVFCore(rowBuf, topkSelectNumAlign, topkSelectNumAlign + initialBlocks);
 }
 
-__simd_vf__ inline void PadMrgFourRowsNotFirstS2RangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
-                                                           __ubuf__ uint32_t* topkNumBuf,
-                                                           __ubuf__ uint32_t* s2BlockValidLenBuf,
-                                                           const uint32_t mBaseIdx,
-                                                           const uint32_t batchRowNum,
-                                                           const uint32_t rowStride,
-                                                           const uint32_t trunkLen)
+__simd_vf__ inline void PadMrgOneRowNotFirstS2RangeVFImpl(__ubuf__ uint32_t* rowBuf,
+                                                         const uint32_t topkSelectNum,
+                                                         const uint32_t s2BlockValidLen,
+                                                         const uint32_t s2BlockValidLenAlign)
 {
-    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
-        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
-        const uint32_t topkSelectNum = topkNumBuf[mInnerIdx];
-        const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
-        const uint32_t s2BlockValidLen = s2BlockValidLenBuf[mInnerIdx];
-        const uint32_t s2BlockValidLenAlign = PadMrgAlignUp(s2BlockValidLen, trunkLen);
-        __ubuf__ uint32_t* rowBuf = mrgValueBuf + mInnerIdx * rowStride;
-
-        PadMrgRowRangeVFCore(rowBuf, topkSelectNum, topkSelectNumAlign);
-        PadMrgRowRangeVFCore(rowBuf,
-                             topkSelectNumAlign + s2BlockValidLen,
-                             topkSelectNumAlign + s2BlockValidLenAlign);
-    }
+    const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+    PadMrgRowRangeVFCore(rowBuf, topkSelectNum, topkSelectNumAlign);
+    PadMrgRowRangeVFCore(rowBuf,
+                         topkSelectNumAlign + s2BlockValidLen,
+                         topkSelectNumAlign + s2BlockValidLenAlign);
 }
 
 __simd_vf__ inline void PadMrgRowsRangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
@@ -259,22 +236,26 @@ __aicore__ inline void PadMrgSingleRowRangeVF(const LocalTensor<uint32_t> &mrgVa
 __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
                                                    const LocalTensor<uint32_t> &topkNumLocal,
                                                    const LocalTensor<uint32_t> &s2BlockValidLenLocal,
-                                                   const LocalTensor<uint32_t> &initBlockLenLocal,
                                                    const uint32_t mBaseIdx,
                                                    const uint32_t batchRowNum,
                                                    const uint32_t rowStride,
-                                                   const uint32_t trunkLen)
+                                                   const uint32_t trunkLen,
+                                                   const uint32_t initialBlocks)
 {
     if (batchRowNum == 0U) {
         return;
     }
 
     __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t *topkNumBuf = (__ubuf__ uint32_t *)topkNumLocal.GetPhyAddr();
-    __ubuf__ uint32_t *s2BlockValidLenBuf = (__ubuf__ uint32_t *)s2BlockValidLenLocal.GetPhyAddr();
-    __ubuf__ uint32_t *initBlockLenBuf = (__ubuf__ uint32_t *)initBlockLenLocal.GetPhyAddr();
-    PadMrgFourRowsFirstS2RangeVFImpl(mrgValueBuf, topkNumBuf, s2BlockValidLenBuf, initBlockLenBuf,
-                                     mBaseIdx, batchRowNum, rowStride, trunkLen);
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+        const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+        const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+        const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+        PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + mInnerIdx * rowStride,
+                                       topkSelectNum, s2BlockValidLen,
+                                       s2BlockValidLenAlign, initialBlocks);
+    }
 }
 
 __aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
@@ -290,10 +271,15 @@ __aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<uint32_
     }
 
     __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t *topkNumBuf = (__ubuf__ uint32_t *)topkNumLocal.GetPhyAddr();
-    __ubuf__ uint32_t *s2BlockValidLenBuf = (__ubuf__ uint32_t *)s2BlockValidLenLocal.GetPhyAddr();
-    PadMrgFourRowsNotFirstS2RangeVFImpl(mrgValueBuf, topkNumBuf, s2BlockValidLenBuf,
-                                        mBaseIdx, batchRowNum, rowStride, trunkLen);
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+        const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+        const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+        const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+        PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + mInnerIdx * rowStride,
+                                          topkSelectNum, s2BlockValidLen,
+                                          s2BlockValidLenAlign);
+    }
 }
 
 __aicore__ inline void PadMrgRowsRangeVF(const LocalTensor<uint32_t> &mrgValueLocal,

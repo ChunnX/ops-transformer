@@ -186,6 +186,9 @@ public:
 
             uint32_t rowTopK = topkNumLocal.GetValue(mInnerIdx);
             rowTopK = (rowTopK > 256U) ? 256U : rowTopK;
+            if (rowTopK == 0U) {
+                continue;
+            }
 
             idx0Local = reuseMm1ResLocal;
             idx1Local = idx0Local[256];

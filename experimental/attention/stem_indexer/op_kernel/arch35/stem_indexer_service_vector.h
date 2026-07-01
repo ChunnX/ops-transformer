@@ -88,8 +88,13 @@ private:
                                               int64_t curAivGS1ProcNum,
                                               uint32_t actS1Size, uint32_t s1Idx);
     __aicore__ inline void CopyOutFourRows(const SICommon::RunInfo &info, uint32_t mBaseIdx,
-                                           uint32_t batchRowNum, int64_t curAivGS1Idx,
+                                           uint32_t batchRowNum, int64_t curAivGS1Idx, uint64_t shortCircuitMask,
                                            bool isLastS2InnerLoop, AscendC::DataCopyParams &copyOutParams,
+                                           AscendC::DataCopyParams &indiceLenCopyParams);
+    __aicore__ inline void RunTopKFourRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
+                                           bool isLastS2InnerLoop, uint32_t mBaseIdx, uint32_t batchRowNum,
+                                           int64_t curAivGS1Idx, uint64_t shortCircuitMask,
+                                           AscendC::DataCopyParams &copyOutParams,
                                            AscendC::DataCopyParams &indiceLenCopyParams);
     // ================================Local Buffer区====================================
     // tmp buff for vector
@@ -117,9 +122,6 @@ private:
 
     TBuf<TPosition::VECCALC> s2BlockValidLenBuf_;
     LocalTensor<uint32_t> s2BlockValidLenLocal_;
-
-    TBuf<TPosition::VECCALC> initBlockLenBuf_;
-    LocalTensor<uint32_t> initBlockLenLocal_;
 
     TBuf<TPosition::VECCALC> indicesOutBuf_;
     LocalTensor<uint32_t> indicesOutLocal_;
@@ -179,9 +181,6 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 
     pipe->InitBuffer(s2BlockValidLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
     s2BlockValidLenLocal_ = s2BlockValidLenBuf_.Get<uint32_t>();
-
-    pipe->InitBuffer(initBlockLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
-    initBlockLenLocal_ = initBlockLenBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
@@ -431,6 +430,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &info, uint32_t mBaseIdx,
                                                       uint32_t batchRowNum, int64_t curAivGS1Idx,
+                                                      uint64_t shortCircuitMask,
                                                       bool isLastS2InnerLoop, AscendC::DataCopyParams &copyOutParams,
                                                       AscendC::DataCopyParams &indiceLenCopyParams)
 {
@@ -452,7 +452,6 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
 
         uint32_t rawTopkSelectNum = topkNumLocal_.GetValue(mInnerIdx);
         uint32_t topkSelectNum = (rawTopkSelectNum > MAX_TOPK_COUNT) ? MAX_TOPK_COUNT : rawTopkSelectNum;
-        bool isShortCircuit = (rawTopkSelectNum == curS1RealS2Len);
         uint32_t mrgValueOffset = mInnerIdx * (MAX_TOPK_COUNT + trunkLen_);
         uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
         int64_t baseLenOffset = info.indiceLenOffset + (int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx;
@@ -461,8 +460,24 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
 
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         PipeBarrier<PIPE_V>();
-        uint32_t totalOutput = topkSelectNum;
-        if (!isShortCircuit && initialBlocks_ > 0) {
+        if (((shortCircuitMask >> mInnerIdx) & 1ULL) != 0ULL) {
+            uint32_t directOutputLen = Min(curS1RealS2Len, MAX_TOPK_COUNT);
+            CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)0, directOutputLen);
+            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            copyOutParams.blockLen = (uint16_t)(directOutputLen * sizeof(int32_t));
+            DataCopyPad(sparseIndicesGm[baseOutOffset],
+                        indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+            Duplicate(indiceLenLocal_, directOutputLen, 1);
+            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            DataCopyPad(sparseSeqLenGm[baseLenOffset],
+                        indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+            continue;
+        }
+
+        if (initialBlocks_ > 0) {
             CreateVecIndex(mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(),
                            (int32_t)0, initialBlocks_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -473,11 +488,10 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
         }
 
         copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
-        uint32_t topkOutOffset = isShortCircuit ? 0 : initialBlocks_;
-        DataCopyPad(sparseIndicesGm[baseOutOffset + topkOutOffset],
+        DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_],
                     globalIndexLocal_[globalIndexOffset].ReinterpretCast<int32_t>(), copyOutParams);
 
-        if (!isShortCircuit && windowSize_ > 0) {
+        if (windowSize_ > 0) {
             int32_t windowBase = curS1RealS2Len - windowSize_;
             CreateVecIndex(mrgValueLocal_[mrgValueOffset + TOPK_ALIGN_SIZE].ReinterpretCast<int32_t>(),
                            (int32_t)windowBase, windowSize_);
@@ -489,9 +503,7 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
                         copyOutParams);
         }
 
-        if (!isShortCircuit) {
-            totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
-        }
+        uint32_t totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
         Duplicate(indiceLenLocal_, totalOutput, 1);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -499,6 +511,47 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
                     indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::RunTopKFourRows(
+    const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop,
+    uint32_t mBaseIdx, uint32_t batchRowNum, int64_t curAivGS1Idx, uint64_t shortCircuitMask,
+    AscendC::DataCopyParams &copyOutParams,
+    AscendC::DataCopyParams &indiceLenCopyParams)
+{
+    if (batchRowNum == 0U) {
+        return;
+    }
+
+    if (isFirstS2InnerLoop) {
+        vector1::PadMrgFourRowsFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
+                                              mBaseIdx, batchRowNum, MAX_TOPK_COUNT + trunkLen_,
+                                              trunkLen_, initialBlocks_);
+    } else {
+        vector1::PadMrgFourRowsNotFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
+                                                 mBaseIdx, batchRowNum,
+                                                 MAX_TOPK_COUNT + trunkLen_, trunkLen_);
+    }
+
+    LocalTensor<uint32_t> reuseMm1ResLocal =
+        resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
+    PipeBarrier<PIPE_V>();
+    if (isFirstS2InnerLoop) {
+        topkOp_.Batch4Rows(mrgValueLocal_[TOPK_ALIGN_SIZE], indicesOutLocal_, scoreOutLocal_,
+                           reuseMm1ResLocal, globalIndexLocal_,
+                           topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                           TRUNK_LEN_256,
+                           info.s2Idx, info.s2LoopEnd + 1);
+    } else {
+        topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
+                           reuseMm1ResLocal, globalIndexLocal_,
+                           topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                           TOPK_ALIGN_SIZE + TRUNK_LEN_256,
+                           info.s2Idx, info.s2LoopEnd + 1);
+    }
+    CopyOutFourRows(info, mBaseIdx, batchRowNum, curAivGS1Idx, shortCircuitMask,
+                    isLastS2InnerLoop, copyOutParams, indiceLenCopyParams);
 }
 
 template <typename SIT>
@@ -534,6 +587,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // 当mBaseSize小于actS1Size时，curAivS1Size为curAivGS1ProcNum
     // 当mBaseSize大于等于actS1Size时， curAivS1Size为info.actS1Size
     uint32_t curAivS1Size = Min(info.actS1Size, (uint32_t)curAivGS1ProcNum);
+    uint64_t shortCircuitMask = 0ULL;
     
     for (uint32_t s1Idx = 0; s1Idx < curAivS1Size; s1Idx++) {
         uint32_t nowCurAivGS1Idx = curAivGS1Idx + s1Idx;
@@ -551,23 +605,24 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         bool isShortCircuit = false;
         if ((constInfo_.attenMaskFlag && (curS1RealS2Len <= initialBlocks_ + windowSize_)) ||
             (curS1RealS2Len <= totalOutput)) {
-            topkSelectNum = curS1RealS2Len;
             isShortCircuit = true;
+            topkSelectNum = Min(curS1RealS2Len, MAX_TOPK_COUNT);
         }
 
         uint32_t s2ValidEnd = isShortCircuit ? curS1RealS2Len : Max(curS1RealS2Len - windowSize_, 0);
         uint32_t s2BlockEnd = Min(s2BlockStart + s2BaseSize_, s2ValidEnd);
         uint32_t s2BlockValidLen = (s2BlockEnd > s2BlockStart) ? (s2BlockEnd - s2BlockStart) : 0;
-        uint32_t initBlockLen = isShortCircuit ? 0U : initialBlocks_;
 
         for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
             uint32_t mInnerIdx = gIdx * info.actS1Size + s1Idx;
             if (mInnerIdx >= curAivGS1ProcNum) {
                 break;
             }
+            if (isShortCircuit) {
+                shortCircuitMask |= (static_cast<uint64_t>(1) << mInnerIdx);
+            }
             topkNumLocal_.SetValue(mInnerIdx, topkSelectNum);
             s2BlockValidLenLocal_.SetValue(mInnerIdx, s2BlockValidLen);
-            initBlockLenLocal_.SetValue(mInnerIdx, initBlockLen);
         }
     }
 
@@ -579,31 +634,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     for (uint32_t mBaseIdx = 0; mBaseIdx < (uint32_t)curAivGS1ProcNum; mBaseIdx += TOPK_ROW_BATCH) {
         uint32_t batchRowNum = ((uint32_t)curAivGS1ProcNum - mBaseIdx > TOPK_ROW_BATCH) ?
                                TOPK_ROW_BATCH : ((uint32_t)curAivGS1ProcNum - mBaseIdx);
-        if (isFirstS2InnerLoop) {
-            vector1::PadMrgFourRowsFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
-                                                  initBlockLenLocal_, mBaseIdx, batchRowNum,
-                                                  MAX_TOPK_COUNT + trunkLen_, trunkLen_);
-        } else {
-            vector1::PadMrgFourRowsNotFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
-                                                     mBaseIdx, batchRowNum, MAX_TOPK_COUNT + trunkLen_, trunkLen_);
-        }
-        LocalTensor<uint32_t> reuseMm1ResLocal =
-            resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
-        PipeBarrier<PIPE_V>();
-        if (isFirstS2InnerLoop) {
-            topkOp_.Batch4Rows(mrgValueLocal_[TOPK_ALIGN_SIZE], indicesOutLocal_, scoreOutLocal_,
-                               reuseMm1ResLocal, globalIndexLocal_,
-                               topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                               TRUNK_LEN_256, info.s2Idx, info.s2LoopEnd + 1);
-        } else {
-            topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
-                               reuseMm1ResLocal, globalIndexLocal_,
-                               topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                               TOPK_ALIGN_SIZE + TRUNK_LEN_256,
-                               info.s2Idx, info.s2LoopEnd + 1);
-        }
-        CopyOutFourRows(info, mBaseIdx, batchRowNum, curAivGS1Idx,
-                        isLastS2InnerLoop, copyOutParams, indiceLenCopyParams);
+        RunTopKFourRows(info, isFirstS2InnerLoop, isLastS2InnerLoop, mBaseIdx, batchRowNum,
+                        curAivGS1Idx, shortCircuitMask, copyOutParams, indiceLenCopyParams);
     }
     CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
