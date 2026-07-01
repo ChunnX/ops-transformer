@@ -277,7 +277,16 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
                     return ge::GRAPH_FAILED);
+    } else if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
+                OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
+                        "but now return_value is %ld.",
+                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
+                OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
+                        "but now max_seqlen_q is %ld.",
+                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -519,6 +528,14 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u", expectShapeDim,
                          outShapeDim),
                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor != nullptr) && (outputIdxOffsetShapeDim != qExpectShapeDim - 1),
+            OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u", qExpectShapeDim - 1,
+            outputIdxOffsetShapeDim),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
+            OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+            qExpectShapeDim, sparseValuesShapeDim),
+            return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(weightsShapeDim == expectShapeDim - 1),
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", expectShapeDim - 1,
                          weightsShapeDim),
