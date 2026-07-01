@@ -382,37 +382,37 @@ public:
         ASCEND_LOGI("Get HCCL CommResource success");
     }
 
-    void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                              CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
-    {
-        ASCEND_LOGI("Start to get URMA communication resource");
-        uint32_t rankId = commContextStruct->epRankId;
-        std::vector<ChannelHandle> channels;
+    // void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
+    //                           CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
+    // {
+    //     ASCEND_LOGI("Start to get URMA communication resource");
+    //     uint32_t rankId = commContextStruct->epRankId;
+    //     std::vector<ChannelHandle> channels;
 
-        uint32_t rankSizePerServer = 0;
-        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
-        commContextStruct->rankSizePerServer = rankSizePerServer;
-        ASCEND_LOGI("Get URMA communication channel success, channel num is: %zu", channels.size());
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            void *tempBuffer = nullptr;
-            uint64_t bufSize = 0;
-            HcclResult hcclRet;
+    //     uint32_t rankSizePerServer = 0;
+    //     GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
+    //     commContextStruct->rankSizePerServer = rankSizePerServer;
+    //     ASCEND_LOGI("Get URMA communication channel success, channel num is: %zu", channels.size());
+    //     for (uint32_t i = 0; i < rankSize; ++i) {
+    //         void *tempBuffer = nullptr;
+    //         uint64_t bufSize = 0;
+    //         HcclResult hcclRet;
 
-            if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
-            } else {
-                uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
-            }
+    //         if (i == rankId) {
+    //             hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
+    //         } else {
+    //             uint32_t idx = (i < rankId) ? i : (i - 1);
+    //             hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+    //         }
 
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
-                        ", ret: ", hcclRet);
+    //         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
+    //                     ", ret: ", hcclRet);
 
-            commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer + bufSize / 2);
-            hcclBuffSize = bufSize;
-        }
-        ASCEND_LOGI("Get URMA CommResource success");
-    }
+    //         commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer + bufSize / 2);
+    //         hcclBuffSize = bufSize;
+    //     }
+    //     ASCEND_LOGI("Get URMA CommResource success");
+    // }
 
     // ---- Context lifecycle helpers ----
 
