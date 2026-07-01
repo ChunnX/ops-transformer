@@ -223,10 +223,9 @@ private:
     TQue<QuePosition::VECOUT, 1> stage0OutQue; // for v0 output, 2份表示可能存在pingpong
     TBuf<> stage0OutBuf[2];
     TBuf<> stage2OutBuf;
-    TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
-    TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
-    TEventID mte3ToVAttnOutId; // 存放MTE3_V的eventId, 用于V2 attentionOut拷出阶段的同步
-    TEventID vToMte3AttnOutId; // 存放V_MTE3的eventId, 用于V2 attentionOut拷出阶段的同步
+    TBuf<> lseStagingTmpBuf;
+    TEventID mte3ToVId;
+    TEventID vToMte3Id;
     TEventID mte3ToVLseOutId; // 存放MTE3_V的eventId, 用于V1 LSE拷出阶段的同步
     TEventID vToMte3LseOutId; // 存放V_MTE3的eventId, 用于V1 LSE拷出阶段的同步
     TEventID mte2ToMte3[2];
@@ -237,7 +236,7 @@ private:
     TBuf<> outLseBuf[2];
     AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
     __gm__ uint8_t *s2SplitStagingBase = nullptr;
-    TEventID mte2ToVV0Id[2];
+    TEventID mte2ToVV0Id;
     TEventID vToMte2V0Id[2];
 
     T negativeFloatScalar;
@@ -629,10 +628,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
         uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-        LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
+        printf("[VEC1_CTX] blk=%d isS2Split=%d s2SplitIdx=%ld firstFdWsIdx=%ld halfM=%d s2LCnt=%ld s2LLmt=%ld wsIdx=%u mOff=%u subBlock=%d\n",
+               GetBlockIdx(), runInfo.isS2Split, runInfo.s2SplitIdx, runInfo.firstFdDataWorkspaceIdx,
+               runInfo.halfMRealSize, runInfo.s2LoopCount, runInfo.s2LoopLimit,
+               workspaceIdx, stagingMOffset, constInfo.subBlockIdx);
+        LocalTensor<float> tmpUb = this->lseStagingTmpBuf.template Get<float>();
         AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
             workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.halfMRealSize),
-            maxUb, sumUb, tmpUb, vToMte3Id[1], mte3ToVId[1]);
+            maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
     }
     if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -665,7 +668,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
@@ -701,25 +704,27 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
             uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+            printf("[VEC2_CTX] blk=%d wsIdx=%u mOff=%u vec2M=%d dSizeV=%ld\n",
+                   GetBlockIdx(), workspaceIdx, stagingMOffset, runInfo.vec2MRealSize, constInfo.dSizeV);
             AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,
                 workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
                 static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
-                vToMte3AttnOutId, mte3ToVAttnOutId);
+                vToMte3Id, mte3ToVId);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
         }
     }
-    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
     AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdRunInfo, this->tPipe, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     InitFDBuffers(fdRunInfo);
@@ -740,12 +745,16 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     LocalTensor<T> partialOFp32 = this->fdBuffers.partialO.template Get<T>();
 
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
+    printf("[FD_CTX] blk=%d coreEn=%d bn2=%ld mIdx=%ld wsIdx=%ld wsNum=%ld mStart=%ld mNum=%ld attnOutOff=%ld\n",
+           GetBlockIdx(), fdRunInfo.coreEnable, fdRunInfo.bn2Idx, fdRunInfo.mIdx,
+           fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum, fdRunInfo.mStartIdx, fdRunInfo.mNum,
+           attentionOutOffset);
     AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
         static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
         static_cast<uint32_t>(constInfo.dSizeV),
         accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
-        vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
+        vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id);
 
     RunInfo runInfo;
     runInfo.vec2MRealSize = fdRunInfo.mNum;
@@ -763,8 +772,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &run
 
     attenOut.SetAddr(vec2ResUb.address_);
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
-    SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+    SetFlag<HardEvent::V_MTE3>(vToMte3Id);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -917,27 +926,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(lseStagingTmpBuf, 64 * 16 * 2 * sizeof(float));
 
-    mte3ToVAttnOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-    vToMte3AttnOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     vToMte3LseOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-    vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+    vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     mte3ToMte2[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     mte3ToMte2[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
     mte2ToMte3[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
     mte2ToMte3[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
-    mte2ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    mte2ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    mte2ToVV0Id = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
     vToMte2V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     vToMte2V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
