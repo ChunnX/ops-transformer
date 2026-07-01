@@ -11,7 +11,6 @@
 #include "grouped_matmul_activation_quant_tiling.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <string>
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -65,7 +64,6 @@ constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
-constexpr uint32_t FP8_E5M2_PROTO_VALUE = 34;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
@@ -108,16 +106,6 @@ bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
 {
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
-
-namespace {
-bool IsFp8OutputDtype(ge::DataType dtype)
-{
-    auto dtypeValue = static_cast<uint32_t>(dtype);
-    return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2 ||
-           dtypeValue == FP8_E5M2_PROTO_VALUE;
-}
-
-} // namespace
 
 bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
@@ -194,11 +182,6 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
                     "when the quantization mode is MX, the dtype of x_scale and weight_scale must be FLOAT8_E8M0"),
-                return false);
-    OP_CHECK_IF(!IsFp8OutputDtype(inputParams_.outDataDtype),
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y",
-                    ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
-                    "when the quantization mode is MX, the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
                 return false);
     OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y_scale",
