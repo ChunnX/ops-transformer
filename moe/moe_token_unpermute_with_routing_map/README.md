@@ -36,7 +36,7 @@
   capacity = sortedIndices.size(0) // numExperts
   $$
 
-  (1)probs不为None，padMode为true时：
+  (1)probs不为None，paddedMode为true时：
 
   $$
   permutedProbs  [i//capacity,sortedIndices[i]]=probs[i]
@@ -58,7 +58,7 @@
   unpermutedTokens[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$
 
-  (2)probs不为None，padMode为false时:
+  (2)probs不为None，paddedMode为false时:
 
   $$
   permutedProbs = probs.T.maskedSelect(routingMap.T)
@@ -77,7 +77,7 @@
       unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]] * permutedProbs[i]
   $$
 
-  (3)probs为None,padMode为true时:
+  (3)probs为None,paddedMode为true时:
 
   $$
   permuteTokenId, outIndex= sortedIndices.sort(dim=-1)
@@ -87,7 +87,7 @@
   unpermutedTokens[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$
 
-  (4)probs为None,padMode为false时:
+  (4)probs为None,paddedMode为false时:
 
   $$
   if sortedIndices[i] >= 0:

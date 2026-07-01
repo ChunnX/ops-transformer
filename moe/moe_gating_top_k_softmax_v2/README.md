@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topk操作；如果renorm=1，先对x的输出做topk操作，再进行Softmax操作。其中yOut为softmax的topk结果；expertIdxOut为topk的indices结果即对应的专家序号；如果对应的行finished为True，则expert序号直接填num\_expert值（即x的最后一个轴大小）。
+- 算子功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取TopK操作；如果renorm=1，先对x的输出做topk操作，再进行Softmax操作。其中yOut为softmax的topk结果；expertIdxOut为topk的indices结果即对应的专家序号；如果对应的行finished为True，则expert序号直接填num\_expert值（即x的最后一个轴大小）。
 
 - 计算公式：
 
@@ -95,7 +95,7 @@
       <tr>
         <td>expertIdxOut</td>
         <td>输出</td>
-        <td>公式中的`expertIdxOut`，表示对x做softmax后取topk值的索引，即专家的序号。</td>
+        <td>公式中的`expertIdxOut`，在renorm=0时表示对x做softmax后取topk值的索引；在renorm=1时表示对x直接进行topk操作得到的索引，即专家的序号。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>

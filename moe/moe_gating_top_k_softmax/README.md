@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：MoE计算中，对x的输出做Softmax计算，取topk操作。其中yOut为softmax的topk结果；expertIdxOut为topk的indices结果即对应的专家序号；rowIdxOut为与expertIdxOut相同shape的列取值结果。如果对应的行finished为True，则expert序号直接填num\_expert值（即x的最后一个轴大小）。
+- 算子功能：MoE计算中，对x的输出做Softmax计算，取topk操作。其中yOut为softmax的topk结果；expertIdxOut为topk的indices结果即对应的专家序号；rowIdxOut为与expertIdxOut相同shape的列取值结果。如果对应的行finishedOptional为True，则expert序号直接填num\_expert值（即x的最后一个轴大小）。
 - 计算公式：
 
   $$

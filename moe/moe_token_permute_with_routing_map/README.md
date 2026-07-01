@@ -66,7 +66,7 @@
   permutedTokensOut = tokens.index_select(0, sortedIndicesOut)
   $$
   
-- 如果probsOptional不是`none`时：
+- 如果probsOptional不是`None`时：
   
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
@@ -146,7 +146,7 @@
   <tr>
    <td>sortedIndicesOut</td>
    <td>输出</td>
-   <td>公式中的sortedIndicesOut，permute_tokens和tokens的映射关系。</td>
+   <td>公式中的sortedIndicesOut，permutedTokensOut和tokens的映射关系。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>

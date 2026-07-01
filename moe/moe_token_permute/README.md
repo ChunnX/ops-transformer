@@ -18,7 +18,7 @@
   - paddedMode为`false`时
   
     $$
-    sortedIndicesFirst=argSort(Indices)
+    sortedIndicesFirst=argSort(indices)
     $$
   
     $$
@@ -36,7 +36,7 @@
     $$
   
     $$
-    sortedIndicesOut=Indices
+    sortedIndicesOut=indices
     $$
 
 ## 参数说明
@@ -62,7 +62,7 @@
     <tr>
       <td>indices</td>
       <td>输入</td>
-      <td>输入indices，对应公式中的`Indices`。</td>
+      <td>输入indices，对应公式中的`indices`。</td>
       <td>INT32、INT64</td>
       <td>ND</td>
     </tr>

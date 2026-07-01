@@ -119,10 +119,10 @@ aclnnStatus aclnnMoeInitRoutingQuant(
       <td>输入</td>
       <td>表示总的最大处理row数。</td>
       <td>值范围大于等于0，expandedXOut只有这么多行是有效的。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>0</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>scale</td>
