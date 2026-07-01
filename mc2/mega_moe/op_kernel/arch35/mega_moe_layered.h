@@ -784,11 +784,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     AscendC::PRINTF("[MegaMoe][L1Send] rank=%u peer=%u block=%u targetServer=%u slot=%d token=%d relayOff=%llu\n",
         rankId_, peerRank, blockIdx_, targetServerForSender, slot, tokenIdx,
         static_cast<unsigned long long>(relayOffset));
-    PipeBarrier<PIPE_ALL>();
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
-    PipeBarrier<PIPE_ALL>();
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + mxQuantTokenScaleAlignBytes_,
         recordAddr + mxQuantTokenScaleAlignBytes_, ALIGN_32);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
