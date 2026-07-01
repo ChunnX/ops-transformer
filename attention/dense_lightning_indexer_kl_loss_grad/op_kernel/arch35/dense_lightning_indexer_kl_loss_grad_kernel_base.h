@@ -26,8 +26,8 @@ template <typename CubeBlockType, typename VecBlockType> class DenseLightningInd
 public:
     ARGS_TRAITS;
     __aicore__ inline DenseLightningIndexerKLLossGradKernelBase(){};
-    __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
-        GM_ADDR attnSoftmaxL1, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
+    __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR weight, GM_ADDR attnSoftmaxL1,
+        GM_ADDR softmaxLse, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
         GM_ADDR cmpResidualK, GM_ADDR metadata, GM_ADDR dQuery, GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut,
         GM_ADDR workspace, const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling,
         TPipe *tPipe);
@@ -126,7 +126,7 @@ public:
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Init(GM_ADDR query,
-    GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
+    GM_ADDR key, GM_ADDR weight, GM_ADDR attnSoftmaxL1, GM_ADDR softmaxLse, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
     GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK, GM_ADDR metadata, GM_ADDR dQuery, GM_ADDR dKey,
     GM_ADDR dWeight, GM_ADDR softmaxOut, GM_ADDR workspace,
     const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling, TPipe *tPipe)

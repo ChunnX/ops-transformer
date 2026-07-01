@@ -39,13 +39,13 @@ using namespace Dlikg;
         op.Process();                                                                                                  \
     } while (0)
 
-#else
 template<int TopKRange, int LayoutT_Q, int LayoutT_KT, int SparseMode,
         bool HasCuSeqlensQ, bool HasCuSeqlensK, bool HasSequsedQ,
         bool HasSequsedK, bool HasCmpResidualK, bool Deterministic>
  __global__ __aicore__ void
-dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__,
-                              __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
+                              __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *softmaxLse,
+                              __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
                               __gm__ uint8_t *metadata, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dw,
                               __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
@@ -70,4 +70,3 @@ dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm_
                     HasCuSeqlensK, HasSequsedQ, HasSequsedK, HasCmpResidualK, Deterministic);
     }
 }
-#endif
