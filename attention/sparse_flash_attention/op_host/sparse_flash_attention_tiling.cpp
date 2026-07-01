@@ -762,7 +762,7 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
             std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
-            "sparseBlockSize must be in range [1, 16] and be a power of 2"),
+            "sparseBlockSize must be in range [1, 128] and be a power of 2"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
