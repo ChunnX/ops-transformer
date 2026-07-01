@@ -67,6 +67,7 @@ private:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void UnpermuteBuffInit();
     __aicore__ inline void ResetFlagList();
+    __aicore__ inline void ResetReadyRowTable();
     __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t& sendCnt);
@@ -356,6 +357,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
                          ? static_cast<int64_t>(totalFlagInt32) : tokenGroupResetSize;
     }
+    // readyRow 表清零也复用 resetTensor_, 取 max 确保每核分片容量覆盖
+    uint64_t readyRowInt32 = static_cast<uint64_t>(worldSize_) * static_cast<uint64_t>(m_);
+    totalFlagInt32 = (totalFlagInt32 > readyRowInt32) ? totalFlagInt32 : readyRowInt32;
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
@@ -363,7 +367,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
     // Tensor用处：QuantProcessInRank函数中用于量化计算中间区域；
     // Tensor大小：当前申请2K；
-    uint32_t mxTempTensorAddr = resetTensorAddr + resetTensorSize;
+    uint32_t mxTempTensorAddr = resetTensorAddr + resetTensorSize;    
     uint32_t mxTempTensorSize = 2 * 1024;
     mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
     // Tensor用处：QuantProcessInRank函数中用于存储量化输出结果；
@@ -430,6 +434,33 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     // combine量化模式下TokenGroupCompleteFlag清零
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
+    }
+}
+
+// ======================================================
+// ResetReadyRowTable：清理 dispatch 去重 ready-row 表
+//
+// 每轮 dispatch 前必须清零, 避免上轮残留的 ready 行号被误用。
+// 使用 MTE3 DataCopyPad 批量清零, 比逐元素 WriteGmByPassDCache 更高效。
+// resetTensor_ 已在 SendAndQuantBuffInit 中被 Duplicate 预置为全零。
+// ======================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetReadyRowTable()
+{
+    if constexpr(g_coreType == AIC) {
+        return;
+    }
+    // readyRow[sourceRank][sourceTokenIndex] 按一维排列, 每个 AIV 核清零自己负责的片段
+    int32_t total = static_cast<int32_t>(worldSize_ * m_);
+    int32_t coreLen = 0;
+    int32_t coreOffset = 0;
+    TilingByCore(total, coreLen, coreOffset, 1);
+    DataCopyExtParams copyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
+    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+    if (coreLen != 0) {
+        GlobalTensor<int32_t> readyRowGm;
+        readyRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.readyRowPtr));
+        DataCopyPad(readyRowGm[coreOffset], resetTensor_, copyParams);
     }
 }
 
@@ -650,10 +681,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 // ============================================================================
 // CopyGMToGMPerToken：6-buffer 软流水，搬运对端rank数据至本专家卡
 // ----------------------------------------------------------------------------
-//   Phase 1: 所有 token 的三元组 (rank, tokenIndex, topkIndex) 组装写入tripleTensor_
-//   Phase 2 prime: 连发 6 个 MTE2,中间不插 WaitFlag<MTE2_MTE3>, 让 MTE2 引擎同时持有 6 个跨卡读请求。
-//   Phase 2 steady: 每轮做 (MTE3_out[i] + MTE2_in[i+6]), 槽位循环复用。
-//   Phase 2 drain: 收尾不再发新 MTE2,只等 MTE3。
+//   Phase 1: 逐 token 读 readyRow 表决定数据来源, 组装三元组写入 tripleTensor_
+//            - readyRow < 0: 已有本地可复用行 -> SRC_KIND=SRC_LOCAL, 记录源行号
+//            - readyRow >= 0: 需远端拉 -> SRC_KIND=SRC_REMOTE_AND_PUBLISH
+//   Phase 2 prime: 连发 6 个 MTE2, 根据 SRC_KIND 选择本地拷或远端拉。
+//   Phase 2 steady: MTE3_out[i] + MTE2_in[i+6], 槽位循环复用。
+//   Phase 2 drain: 等齐所有 MTE3, 对远端拉的 token 发布 readyRow。
 //   Phase 3: triple 三元组搬出。
 // ============================================================================
 template <TemplateMegaMoeTypeClass>
@@ -673,39 +706,84 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
+    // 去重: 本地拷贝时从 dispatchRevData/dispatchRevScale 任意行读, 不是当前 expert 专属偏移
+    GlobalTensor<ActivationType> localTokenGlobalTensor;
+    GlobalTensor<QuantScaleOutType> localScaleGlobalTensor;
     tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
         params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
         params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
     remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
         GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_)));
+    // 本地拷贝视角: 基址不偏移, 通过 srcRow 索引任意已就绪行
+    localTokenGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
+        params_.workspaceInfo.dispatchRevDataPtr));
+    localScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
+        params_.workspaceInfo.dispatchRevScalePtr));
+    // 去重表: readyRow[sourceRank][sourceTokenIndex], 定位到当前源卡的 token 行
+    __gm__ int32_t* readyRow = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.readyRowPtr) +
+        static_cast<uint64_t>(remoteRankIdx) * static_cast<uint64_t>(m_);
 
     // 预置 6 个 MTE3_MTE2 flag,Phase 2 的 prime/steady 的 WaitFlag 可立即通过。
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
     PipeBarrier<PIPE_ALL>();
-    // Phase 1: token三元组信息组装(rank, tokenIndex, topkIndex)
+    // Phase 1: 逐 token 读 readyRow 表 + 组装三元组
+    // 去重逻辑: 先查看该源 token 是否已被之前的专家拉回本地
+    //   readyRow < 0  → 已就绪, 提取行号, 后续 Phase 2 从本地 dispatchRevData 拷贝
+    //   readyRow >= 0 → 未就绪, 后续 Phase 2 从远端拉, 拉完后发布 readyRow
     for (int32_t i = 0; i < copyNum; ++i) {
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + i);
         int32_t tokenIndex = topkIndex / topK_;
+        // bypass 读绕 dcache, 拿到其他 AIV 核最新发布的 ready 行号
+        int32_t encodedReadyRow = ReadGmByPassDCache(readyRow + tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
+        if (encodedReadyRow < 0) {
+            // 已有本地可复用行: 从 dispatchRevData[srcRow] 拷, 省一次跨卡 HCCS 读
+            tripleTensor_[i * INT32_PER_256B].SetValue(SRC_KIND, SRC_LOCAL);
+            tripleTensor_[i * INT32_PER_256B].SetValue(SRC_ROW, encodedReadyRow & READY_ROW_MASK);
+        } else {
+            // 未就绪: 按原路径从远端卡拉, 拉完后把本行号发布到 readyRow
+            tripleTensor_[i * INT32_PER_256B].SetValue(SRC_KIND, SRC_REMOTE_AND_PUBLISH);
+            tripleTensor_[i * INT32_PER_256B].SetValue(SRC_ROW, 0);
+        }
     }
 
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
+    // 去重: MTE2 发射处分叉 — SRC_LOCAL 从本地 workspace 读, 否则从远端 peermem 读
     int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t tokenIndex = tripleTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
         TEventID eventId = kBufEvents[primeIdx];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+        if (tripleTensor_[primeIdx * INT32_PER_256B].GetValue(SRC_KIND) == SRC_LOCAL) {
+            // 本地拷贝: 从 dispatchRevData/dispatchRevScale 的 srcRow 读 token+scale (GM→UB)
+            // DataCopyPad 不支持 fp8/fp4, reinterpret_cast<uint8_t> 后搬运
+            int32_t srcRow = tripleTensor_[primeIdx * INT32_PER_256B].GetValue(SRC_ROW);
+            LocalTensor<uint8_t> bufU8 = copyTmpTensors_[primeIdx].template ReinterpretCast<uint8_t>();
+            GlobalTensor<uint8_t> tokenSrcU8 = localTokenGlobalTensor.template ReinterpretCast<uint8_t>();
+            uint32_t tokenBytes = static_cast<uint32_t>(widthA * sizeof(ActivationType));
+            DataCopyExtParams tokenParams{1U, tokenBytes, 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> tokenPad{false, 0U, 0U, 0U};
+            DataCopyPad(bufU8, tokenSrcU8[srcRow * tokenBytes], tokenParams, tokenPad);
+            uint32_t scaleBytes = static_cast<uint32_t>(widthAScale * sizeof(QuantScaleOutType));
+            DataCopyExtParams scaleParams{1U, scaleBytes, 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> scalePad{false, 0U, 0U, 0U};
+            GlobalTensor<uint8_t> scaleSrcU8 = localScaleGlobalTensor.template ReinterpretCast<uint8_t>();
+            DataCopyPad(bufU8[mxQuantTokenAlignBytes_], scaleSrcU8[srcRow * scaleBytes], scaleParams, scalePad);
+        } else {
+            // 远端拉: 保持当前行为, 从源卡 peermem 的 quantTokenScalePtr 读
+            DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+        }
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
+    // 去重: 此处 MTE2 发射也按 SRC_KIND 分叉, 逻辑与 prime 阶段一致
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
         int32_t outIdx = copyIdx % BufferNum;
         TEventID eventId = kBufEvents[outIdx];
@@ -727,13 +805,41 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
             uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
             // WaitFlag 此处等待的是本轮刚发出的 SetFlag<MTE3_MTE2>(eventId),即等本槽 MTE3 完成。
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+            if (tripleTensor_[nextIdx * INT32_PER_256B].GetValue(SRC_KIND) == SRC_LOCAL) {
+                // 本地拷贝路径 (与 prime 一致): 从已就绪行读 token+scale (GM→UB)
+                // DataCopyPad 不支持 fp8/fp4, reinterpret_cast<uint8_t> 后搬运
+                int32_t srcRow = tripleTensor_[nextIdx * INT32_PER_256B].GetValue(SRC_ROW);
+                LocalTensor<uint8_t> bufU8 = copyTmpTensors_[outIdx].template ReinterpretCast<uint8_t>();
+                GlobalTensor<uint8_t> tokenSrcU8 = localTokenGlobalTensor.template ReinterpretCast<uint8_t>();
+                uint32_t tokenBytes = static_cast<uint32_t>(widthA * sizeof(ActivationType));
+                DataCopyExtParams tokenParams{1U, tokenBytes, 0U, 0U, 0U};
+                DataCopyPadExtParams<uint8_t> tokenPad{false, 0U, 0U, 0U};
+                DataCopyPad(bufU8, tokenSrcU8[srcRow * tokenBytes], tokenParams, tokenPad);
+                uint32_t scaleBytes = static_cast<uint32_t>(widthAScale * sizeof(QuantScaleOutType));
+                DataCopyExtParams scaleParams{1U, scaleBytes, 0U, 0U, 0U};
+                DataCopyPadExtParams<uint8_t> scalePad{false, 0U, 0U, 0U};
+                GlobalTensor<uint8_t> scaleSrcU8 = localScaleGlobalTensor.template ReinterpretCast<uint8_t>();
+                DataCopyPad(bufU8[mxQuantTokenAlignBytes_], scaleSrcU8[srcRow * scaleBytes], scaleParams, scalePad);
+            } else {
+                DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+            }
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
-    // Phase 2 drain: 6 个 buffer-free flag
+    // Phase 2 drain: 等齐本核所有 MTE3, token/scale 已落地 workspace
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
+    }
+    // MTE3→S 同步: 保证 token/scale 数据先于 readyRow 标志位可见
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
+    // 去重发布: 对所有远端读的 token, 把本地行号写入 readyRow, 供后续专家本地拷贝
+    for (int32_t i = 0; i < copyNum; ++i) {
+        if (tripleTensor_[i * INT32_PER_256B].GetValue(SRC_KIND) == SRC_REMOTE_AND_PUBLISH) {
+            int32_t tokenIndex = tripleTensor_[i * INT32_PER_256B].GetValue(TOKEN_ID);
+            // row | 0x80000000: 高位=1 表示就绪, 低 31 位 = dispatchRevData 绝对行号
+            int32_t readyRowValue = (rowDstOffsetInCore + i) | READY_ROW_FLAG;
+            WriteGmByPassDCache(readyRow + tokenIndex, readyRowValue);
+        }
     }
     // Phase 3: triple 三元组搬出
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
@@ -1271,6 +1377,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SendAndQuantBuffInit();
     SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList();             // 清理workSpace空间上的flag位
+    ResetReadyRowTable();        // Dispatch 去重: 每轮开始前清零 readyRow, 避免上轮残留
 
     QuantProcessInRank();        // 对本卡token的量化
     if constexpr(g_coreType == AIV) {
