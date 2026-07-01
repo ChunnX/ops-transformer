@@ -176,8 +176,8 @@ private:
     TBuf<> tokenTargetTBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
-    TQue<QuePosition::VECIN, 1> moeSumQueue_;// 数据队列
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+    TQue<QuePosition::VECIN, 1> moeSumQueue_; // 数据队列
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
@@ -344,14 +344,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         return;
     }
     TBuf<> tokenMetadataBuf_;
-    tpipe_->InitBuffer(tokenMetadataBuf_, RECV_META_FIELDS * sizeof(int32_t)); 
-    LocalTensor<int32_t> expandIdxLocal = tokenMetadataBuf_.Get<int32_t>(); 
-    const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U}; 
+    tpipe_->InitBuffer(tokenMetadataBuf_, RECV_META_FIELDS * sizeof(int32_t));
+    LocalTensor<int32_t> expandIdxLocal = tokenMetadataBuf_.Get<int32_t>();
+    const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
     const DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
     
     for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-        DataCopyPad(expandIdxLocal, recvSrcMetadataGm_[tokenIndex * RECV_META_FIELDS], bskParams, copyPadParams);	 
-        SyncFunc<AscendC::HardEvent::MTE2_S>();	 
+        DataCopyPad(expandIdxLocal, recvSrcMetadataGm_[tokenIndex * RECV_META_FIELDS], bskParams, copyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         int32_t src_rank = expandIdxLocal.GetValue(0);
         int32_t src_token_idx = expandIdxLocal.GetValue(1);
         int32_t src_topK_idx = expandIdxLocal.GetValue(2);
