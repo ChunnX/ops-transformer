@@ -769,11 +769,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
             GlobalTensor<uint8_t> tokenSrcU8 = localTokenGlobalTensor.template ReinterpretCast<uint8_t>();
             uint32_t tokenBytes = static_cast<uint32_t>(widthA * sizeof(ActivationType));
             DataCopyExtParams tokenParams{1U, tokenBytes, 0U, 0U, 0U};
-            DataCopyPadExtParams<uint8_t> tokenPad{false, 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> tokenPad{true, 0U, 0U, 0U};
             DataCopyPad(bufU8, tokenSrcU8[srcRow * tokenBytes], tokenParams, tokenPad);
             uint32_t scaleBytes = static_cast<uint32_t>(widthAScale * sizeof(QuantScaleOutType));
             DataCopyExtParams scaleParams{1U, scaleBytes, 0U, 0U, 0U};
-            DataCopyPadExtParams<uint8_t> scalePad{false, 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> scalePad{true, 0U, 0U, 0U};
             GlobalTensor<uint8_t> scaleSrcU8 = localScaleGlobalTensor.template ReinterpretCast<uint8_t>();
             DataCopyPad(bufU8[mxQuantTokenAlignBytes_], scaleSrcU8[srcRow * scaleBytes], scaleParams, scalePad);
         } else {
@@ -813,11 +813,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
                 GlobalTensor<uint8_t> tokenSrcU8 = localTokenGlobalTensor.template ReinterpretCast<uint8_t>();
                 uint32_t tokenBytes = static_cast<uint32_t>(widthA * sizeof(ActivationType));
                 DataCopyExtParams tokenParams{1U, tokenBytes, 0U, 0U, 0U};
-                DataCopyPadExtParams<uint8_t> tokenPad{false, 0U, 0U, 0U};
+                DataCopyPadExtParams<uint8_t> tokenPad{true, 0U, 0U, 0U};
                 DataCopyPad(bufU8, tokenSrcU8[srcRow * tokenBytes], tokenParams, tokenPad);
                 uint32_t scaleBytes = static_cast<uint32_t>(widthAScale * sizeof(QuantScaleOutType));
                 DataCopyExtParams scaleParams{1U, scaleBytes, 0U, 0U, 0U};
-                DataCopyPadExtParams<uint8_t> scalePad{false, 0U, 0U, 0U};
+                DataCopyPadExtParams<uint8_t> scalePad{true, 0U, 0U, 0U};
                 GlobalTensor<uint8_t> scaleSrcU8 = localScaleGlobalTensor.template ReinterpretCast<uint8_t>();
                 DataCopyPad(bufU8[mxQuantTokenAlignBytes_], scaleSrcU8[srcRow * scaleBytes], scaleParams, scalePad);
             } else {
