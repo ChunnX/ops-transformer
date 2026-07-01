@@ -241,5 +241,5 @@ def mega_moe(
         activation_clamp=activation_clamp,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
-        weight2_type=weight2_type,
+        weight2_type=weight2_type
     )
