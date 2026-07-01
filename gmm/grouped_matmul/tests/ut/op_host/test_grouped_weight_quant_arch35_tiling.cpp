@@ -248,7 +248,7 @@ uint64_t MakeExpectedMxA8W4TilingKey(bool isSingleMultiSingle)
     append(GetTilingKeyIndex(1, {0, 1}), 2); // transB=true
     append(GetTilingKeyIndex(0, {0, 1}), 2); // transA=false
     append(GetTilingKeyIndex(static_cast<uint64_t>(optiling::Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4),
-                             {0, 1, 2, 3, 4, 5, 15}),
+                             {0, 1, 2, 3, 4, 5, 6, 15}),
            4);
     append(static_cast<uint64_t>(isSingleMultiSingle), 1);
     append(GetTilingKeyIndex(static_cast<uint64_t>(optiling::OptimizationAlgorithmSubCategory::N_FIRST_TAIL_RESPLIT),
@@ -559,7 +559,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_single
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -612,7 +612,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_fp16_nd_single
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -665,7 +665,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_with_o
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -721,7 +721,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a8w4_nz_int8_int4)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                            // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -774,7 +774,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_multi_
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},        // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -827,7 +827,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_transb
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -882,7 +882,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a8w4_nz_groupsize_19
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                            // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -935,7 +935,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_no_spl
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},        // perTokenScale
         },
         {// output info
-         {{{E, M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -990,7 +990,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a8w4_nz_fp16_output)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                          // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -1043,7 +1043,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_large_
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -1096,7 +1096,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_k0_mn_
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -1148,7 +1148,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_k0_m0)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -1202,7 +1202,7 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a8w4_nz_groupsize_25
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                            // perTokenScale
         },
         {// output info
-         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+         {{{M, N}, {M, N}}, ge::DT_BF16, ge::FORMAT_ND}},
         {
             // attr
             {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
