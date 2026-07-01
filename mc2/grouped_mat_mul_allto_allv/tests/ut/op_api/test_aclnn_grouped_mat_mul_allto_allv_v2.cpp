@@ -74,7 +74,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestGroupNullptr)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
-                        INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr, nullptr, "ccu", epWorldSize, sendCounts,
+                        INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr, nullptr, "ai_cpu", epWorldSize, sendCounts,
                               recvCounts, transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -149,7 +149,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestSendCountsTensorOptional)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, sendCountsTensor, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -174,7 +174,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestRecvCountsTensorOptional)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, recvCountsTensor, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -197,7 +197,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestSendCountsNull)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, nullptr, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, nullptr, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -220,7 +220,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestRecvCountsNull)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, nullptr,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, nullptr,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -247,7 +247,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestWithValidSendRecvCounts)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -272,7 +272,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestRecvCountsEmpty)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -296,7 +296,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestSendCountsEmpty)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -319,7 +319,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestGmmxNull)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(nullptr, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -342,7 +342,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestGmmWeightNull)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
@@ -365,7 +365,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestYNull)
     bool transMmWeight = false;
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(nullptr, nullptr));
     uint64_t workspaceSize = 0;
@@ -390,7 +390,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestMmWeightInvalid)
     TensorDesc yDesc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatMulAlltoAllvV2,
                         INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, mmWeight,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
                               transGmmWeight, transMmWeight),
                         OUTPUT(yDesc, nullptr));
     uint64_t workspaceSize = 0;
