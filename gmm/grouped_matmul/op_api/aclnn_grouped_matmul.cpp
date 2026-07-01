@@ -2548,6 +2548,16 @@ static bool IsPerTileQuantMode(gmm::GroupedMatmulParams &params)
     return false;
 }
 
+static bool IsWeightNzSingleMultiSingleMxScale(const gmm::GroupedMatmulParams &params)
+{
+    if (params.scaleOptional == nullptr || (*params.scaleOptional)[0] == nullptr) {
+        return false;
+    }
+    return params.groupType == gmm::SPLIT_M && params.x->Size() == 1 && params.weight->Size() > 1 &&
+           params.y->Size() == 1 && params.apiVersion == gmm::GMMApiVersion::WeightNz &&
+           (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0;
+}
+
 static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr,
                                                    const bool &isPerTileQuantMode)
 {
@@ -2581,6 +2591,18 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         if (!antiSTensorList.empty()) {
             params.antiquantScaleOptional = executorPtr->AllocTensorList(antiSTensorList.data(), antiSTensorList.size());
         }
+    }
+}
+
+static void SetWeightNzMultiScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr)
+{
+    if (!IsWeightNzSingleMultiSingleMxScale(params)) {
+        return;
+    }
+    std::vector<aclTensor *> scaleTensorList;
+    gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+    if (!scaleTensorList.empty()) {
+        params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
     }
 }
 
@@ -2620,6 +2642,9 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
         }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
+  }
+  if (!params.transposeWeight) {
+    SetWeightNzMultiScaleTensorListContiguous(params, executorPtr);
   }
 }
 
