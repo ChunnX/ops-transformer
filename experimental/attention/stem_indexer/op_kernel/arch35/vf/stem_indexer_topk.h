@@ -183,7 +183,6 @@ public:
             uint32_t mInnerIdx = mBaseIdx + rowIdx;
             uint32_t rowMrgOffset = mInnerIdx * mrgRowStride;
             uint32_t rowGlobalIdxOffset = mInnerIdx * topKAlign;
-            uint32_t rowIndicesOutOffset = rowIdx * topKAlign;
 
             uint32_t rowTopK = topkNumLocal.GetValue(mInnerIdx);
             rowTopK = (rowTopK > 256U) ? 256U : rowTopK;
@@ -193,7 +192,7 @@ public:
             idx2Local = idx1Local[256];
             idx3Local = idx2Local[256];
             hisIndexLocal[0] = reuseGlobalIndexLocal[rowGlobalIdxOffset];
-            hisIndexLocal[1] = indicesOutLocal[rowIndicesOutOffset];
+            hisIndexLocal[1] = indicesOutLocal;
 
             if (s2LoopNum == 1) {
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal,
@@ -201,8 +200,7 @@ public:
                     idx0Local, idx1Local, idx2Local, idx3Local,
                     nkValueLocal, rowTopK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal[rowIndicesOutOffset], tmpIndexLocal,
-                    SICommon::Align(rowTopK, (uint32_t)256));
+                AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(rowTopK, (uint32_t)256));
             } else {
                 if (loopIdx == 0) {
                     SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
@@ -224,6 +222,8 @@ public:
                         s2SeqLen);
                 }
             }
+            PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(hisIndexLocal[0], indicesOutLocal, SICommon::Align(rowTopK, (uint32_t)256));
         }
     }
 

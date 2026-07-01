@@ -183,7 +183,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(initBlockLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
     initBlockLenLocal_ = initBlockLenBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, TOPK_ROW_BATCH * MAX_TOPK_COUNT * sizeof(uint32_t));
+    pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, trunkLen_ * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
