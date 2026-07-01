@@ -174,7 +174,9 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
     if (IsTargetPlatformSocVersion(PASS_NAME.c_str(), PLATFORM_A2)) {
         return ge::GRAPH_SUCCESS;
     }
-    if (!IsTargetPlatformNpuArch(PASS_NAME.c_str(), NPUARCH_A5)) {
+    bool isA5 = IsTargetPlatformNpuArch(PASS_NAME.c_str(), NPUARCH_A5);
+    bool isA3 = IsTargetPlatformSocVersion(PASS_NAME.c_str(), PLATFORM_A3);
+    if (!isA5 && !isA3) {
         return ge::GRAPH_SUCCESS;
     }
     ge::GNode sharedCtxNode;
