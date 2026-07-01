@@ -16,7 +16,7 @@
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_ARCH35_H
 
 #include "../sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
-#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/arch35/sparse_lightning_indexer_klloss_grad_metadata_arch35.h"
+#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/arch35/sparse_lightning_indexer_kl_loss_grad_metadata_arch35.h"
 
 namespace aicpu {
 
@@ -38,7 +38,7 @@ enum class SparseMode : uint8_t {
 };
 
 enum class ValidSocVersion {
-    ASCEND910B = 0,
+    ASCEND910 = 0,
     ASCEND950,
     RESERVED_VERSION = 99999
 };
@@ -91,7 +91,7 @@ private:
     std::string layoutK_ = "BSND";
     int32_t maskMode_ = 0;
     uint32_t attentionMode_ = 0;
-    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
+    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910;
 
     int64_t preToken_ = INT64_MAX;
     int64_t nextToken_ = INT64_MAX;
@@ -260,14 +260,11 @@ inline int32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetQuery
 
 inline ValidSocVersion SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ProcessSocVersion()
 {
-    const std::string ascend950 = "Ascend950";
-    if (socVersion_.find(ascend950) != std::string::npos) {
-        return ValidSocVersion::ASCEND950;
+    if (socVersion_.find("Ascend910") != std::string::npos) {
+        return ValidSocVersion::ASCEND910;
     } else {
-        return ValidSocVersion::ASCEND910B;
+        return ValidSocVersion::ASCEND950; 
     }
-
-    return ValidSocVersion::RESERVED_VERSION;
 }
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit()
@@ -284,11 +281,9 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit(
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
     validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
+    if (validSocVersion_ == ValidSocVersion::ASCEND910) {
         s2BaseSize_ = 2048U;
     } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 128U;
-    } else {
         s2BaseSize_ = 128U;
     }
     return true;

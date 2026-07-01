@@ -24,10 +24,6 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
   add_aicpu_cust_kernel_modules(${OBJ_NAME})
   target_sources(${OBJ_NAME} PRIVATE ${AICPU_SRC})
   target_include_directories(${OBJ_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-  if ("arch22" IN_LIST ARCH_DIRECTORY)
-    target_compile_definitions(${OBJ_NAME} PRIVATE SLI_AICPU_ARCH22)
-  endif()
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
