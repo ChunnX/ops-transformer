@@ -430,6 +430,17 @@ private:
         CopyAttentionOut(reduceSumResUb, tIdx, head_i, dvIdx, curSingleV);
     }
 
+    __aicore__ inline bool IsCurrentBlock(int32_t seqlen)
+    {
+        load += seqlen;
+        bool ret = (blockIdx == usedblk && seqlen > 0);
+        if (load >= avgload) {
+            load = 0;
+            usedblk++;
+        }
+        return ret;
+    }
+
     __aicore__ inline void ProcessHead(uint32_t seq0, uint32_t seq1, uint32_t head_i, uint32_t stateBlockIdx)
     {
         CopyInGamaK(seq0, seq1, head_i);
@@ -445,31 +456,20 @@ private:
         }
     }
 
-    __aicore__ inline bool IsCurrentBlock(int32_t seqlen)
-    {
-        load += seqlen;
-        bool ret = (blockIdx == usedblk && seqlen > 0);
-        if (load >= avgload) {
-            load = 0;
-            usedblk++;
-        }
-        return ret;
-    }
-
 private:
+    TPipe *pipe_;
     GlobalTensor<inType> queryGm_;
     GlobalTensor<inType> keyGm_;
     GlobalTensor<inType> valueGm_;
-    GlobalTensor<inType> betaGm_;
-    GlobalTensor<float> gamaGm_;
-    GlobalTensor<float> gamaKGm_;
-    GlobalTensor<inType> initStateGm_;
+    GlobalTensor<outType> attnOutGm_;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> ssmStateIndicesGm_;
+    GlobalTensor<inType> betaGm_;
+    GlobalTensor<inType> initStateGm_;
+    GlobalTensor<float> gamaGm_;
+    GlobalTensor<float> gamaKGm_;
     GlobalTensor<int32_t> numAcceptedTokensGm_;
     GlobalTensor<outType> finalStateGm_;
-    GlobalTensor<outType> attnOutGm_;
-    TPipe *pipe_;
 
     TQue<QuePosition::VECIN, 1> inputQueue1_;
     TQue<QuePosition::VECOUT, 1> attnOutQueue_;

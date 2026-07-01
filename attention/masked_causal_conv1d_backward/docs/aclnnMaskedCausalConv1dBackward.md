@@ -45,8 +45,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *x,
   const aclTensor   *weight,
   const aclTensor   *maskOptional,
-  aclTensor         *gradXOut,
-  aclTensor         *gradWeightOut,
+  const aclTensor   *gradXOut,
+  const aclTensor   *gradWeightOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -55,7 +55,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  const aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnMaskedCausalConv1dBackwardGetWorkspaceSize

@@ -97,8 +97,16 @@ ge::graphStatus KvCompressEpilogTilingArch35::GetAttributes()
         quantMode_ = *attrQuantMode;
     }
     OP_CHECK_IF(quantMode_ != QUANT_MODE_GROUP_QUANT_BF16 && quantMode_ != QUANT_MODE_GROUP_QUANT_E8M0 &&
-                  quantMode_ != QUANT_MODE_HIFLOAT,
+                  quantMode_ != QUANT_MODE_HIF8_FP4,
               OP_LOGE(context_->GetNodeName(), "quantMode should be 0, 1 or 2"),
+              return ge::GRAPH_FAILED);
+
+    // mode2(rope hifloat8 + nope FLOAT4_E2M1) 仅支持 16/32/64 的 per-group 量化粒度
+    OP_CHECK_IF(quantMode_ == QUANT_MODE_HIF8_FP4 &&
+                  quantGroupSize_ != FP4_GROUP_SIZE_16 && quantGroupSize_ != FP4_GROUP_SIZE_32 &&
+                  quantGroupSize_ != FP4_GROUP_SIZE_64,
+              OP_LOGE(context_->GetNodeName(),
+                       "quant_group_size should be 16/32/64 when quant_mode==2, got %ld", quantGroupSize_),
               return ge::GRAPH_FAILED);
 
     const bool* attrRoundScale = attrs->GetAttrPointer<bool>(ROUND_SCALE_ATTR_INDEX);
@@ -159,6 +167,13 @@ ge::graphStatus KvCompressEpilogTilingArch35::ValidateShapes()
               OP_LOGE(context_->GetNodeName(), "d_ %% 64 should be 0 , got %ld", d_),
               return ge::GRAPH_FAILED);
 
+    // mode2: nope 段长度(d-64)必须能被 per-group 量化粒度整除
+    OP_CHECK_IF(quantMode_ == QUANT_MODE_HIF8_FP4 && (d_ - SLICE_SIZE) % quantGroupSize_ != 0,
+              OP_LOGE(context_->GetNodeName(),
+                       "(d-64) %% quant_group_size should be 0 when quant_mode==2, got d=%ld group=%ld",
+                       d_, quantGroupSize_),
+              return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -200,14 +215,37 @@ bool KvCompressEpilogTilingArch35::GetCacheViewLayout(
     blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
     rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
     blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
-    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
+    if (blockSize <= 0 || rowStride <= 0 || blockStride <= 0) {
+        return false;
+    }
+    const int64_t storageElems = inputShape->GetStorageShape().GetShapeSize();
+    if (storageElems > 0 && (blockStride > storageElems || rowStride > storageElems || blockSize > storageElems)) {
+        return false;
+    }
+    return true;
 }
 
 ge::graphStatus KvCompressEpilogTilingArch35::GetKvCacheLayout()
 {
-    kvCacheRowStride_ = kvCacheCol_;
+    auto cacheShapePtr = context_->GetInputShape(KV_COMPRESS_CACHE_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, cacheShapePtr);
+    const auto &cacheLogicalShape = cacheShapePtr->GetShape();
+    OP_CHECK_IF(cacheLogicalShape.GetDimNum() != CACHE_VIEW_DIM_NUM,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
+                       cacheLogicalShape.GetDimNum()),
+              return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cacheLogicalShape.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache dim2 (second-to-last) must be 1 (one compressed vector per token), got %ld",
+                       cacheLogicalShape.GetDim(CACHE_ONE_DIM)),
+              return ge::GRAPH_FAILED);
+
+    const auto &cacheStorage = cacheShapePtr->GetStorageShape();
+    int64_t cacheLastDim = cacheStorage.GetDim(cacheStorage.GetDimNum() - 1);
+    kvCacheRowStride_ = cacheLastDim;
     kvCacheBlockSize_ = 1;
-    kvCacheBlockStride_ = kvCacheCol_;
+    kvCacheBlockStride_ = cacheLastDim;
 
     int64_t viewBlockSize = 0;
     int64_t viewRowStride = 0;
@@ -238,40 +276,57 @@ ge::graphStatus KvCompressEpilogTilingArch35::DoOpTiling()
 
     int64_t concatCol;
     int64_t padCol;
-    if (quantMode_ == QUANT_MODE_HIFLOAT) {
-        scaleCol_ = 0;
-        concatCol = d_;
-        kvCacheCol_ = d_;
-        padCol = 0;
+    if (quantMode_ == QUANT_MODE_HIF8_FP4) {
+        // mode2 行布局: [rope hifloat8 64B][nope FLOAT4_E2M1 (d-64)/2 B][nope bf16 scale nGroup*2 B][pad]
+        scaleCol_ = (d_ - SLICE_SIZE) / quantGroupSize_;  // nGroup, (d-64)%G==0 已在 ValidateShapes 校验
+        concatCol = ROPE_HIF8_BYTES + (d_ - SLICE_SIZE) / 2 + scaleCol_ * FP4_SCALE_BYTES;
     } else {
+        // mode0/1 行布局: [rope bf16 128B][nope fp8 (d-64)B][scale]
         scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
         int64_t scaleBytes = 1;
         if (quantMode_ == QUANT_MODE_GROUP_QUANT_BF16) {
             scaleBytes = 2;
         }
         concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
-        kvCacheCol_ = RoundUp(concatCol, KV_CACHE_ROW_ALIGN);
-        padCol = kvCacheCol_ - concatCol;
     }
+    if (quantMode_ == QUANT_MODE_GROUP_QUANT_E8M0) {
+        kvCacheCol_ = concatCol;
+    } else {
+        kvCacheCol_ = RoundUp(concatCol, BLOCK_SIZE);
+    }
+    padCol = kvCacheCol_ - concatCol;
 
     if (GetKvCacheLayout() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
+    OP_CHECK_IF(kvCacheCol_ > kvCacheRowStride_,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache headDim(%ld) must be >= padded length kvCacheCol(%ld)", kvCacheRowStride_, kvCacheCol_),
+              return ge::GRAPH_FAILED);
+
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
+
+    int64_t scratchRowBytes = 0;
+    if (quantMode_ == QUANT_MODE_HIF8_FP4) {
+        int64_t numChunks = (d_ - SLICE_SIZE) / SLICE_SIZE;       // (d-64)/64
+        scratchRowBytes = numChunks * FP4_SCRATCH_SLOTS_PER_CHUNK * FP4_SCALE_BYTES;
+    }
 
     int64_t xSize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t ySize = rowOnceLoop * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;
     int64_t tmpBufferSize = RoundUp(rowOnceLoop, 8) * 4;
-    int64_t totalSize = xSize + ySize + tmpBufferSize;
+    int64_t scratchSize = rowOnceLoop * scratchRowBytes;
+    int64_t totalSize = xSize + ySize + tmpBufferSize + scratchSize;
     rowFactor_ = rowOnceLoop;
     // d全载,尝试搬入更多的bs
     while (rowFactor_ <= rowOfFormerBlock_) {
         xSize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
         ySize = rowFactor_ * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;
         tmpBufferSize = RoundUp(rowFactor_, 8) * 4;
-        totalSize = xSize + ySize + tmpBufferSize;
+        scratchSize = rowFactor_ * scratchRowBytes;
+        totalSize = xSize + ySize + tmpBufferSize + scratchSize;
         if (totalSize > ubSize_) {
             rowFactor_ = rowFactor_ - 1;
             break;
@@ -295,6 +350,7 @@ ge::graphStatus KvCompressEpilogTilingArch35::DoOpTiling()
     tilingData_.set_concatCol(concatCol);
     tilingData_.set_quantMode(quantMode_);
     tilingData_.set_roundScale(roundScale_);
+    tilingData_.set_perGroupSize(quantGroupSize_);
     tilingData_.set_padCol(padCol);
     tilingData_.set_rowOfFormerBlock(rowOfFormerBlock_);
     tilingData_.set_rowOfTailBlock(rowOfTailBlock_);
@@ -364,7 +420,8 @@ void KvCompressEpilogTilingArch35::DumpTilingInfo()
 
 uint64_t KvCompressEpilogTilingArch35::GetTilingKey() const
 {
-    return 0;
+    // 单一 tiling key; mode0/1/2 在 kernel 内按 tilingData->quantMode 运行时分支量化路径
+    return 0UL;
 }
 
 ge::graphStatus KvCompressEpilogTilingArch35::GetShapeAttrsInfo()
@@ -417,7 +474,6 @@ ge::graphStatus KvCompressEpilogTilingArch35::RunTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-// ---------- Tiling Entry Points ----------
 ge::graphStatus TilingForKvCompressEpilog(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr,

@@ -645,7 +645,9 @@ static ge::graphStatus QliGetHeadDim(const TilingRequiredParaInfo &qliQuery, Dat
     }
     qliHeadDim = qliQuery.shape->GetStorageShape().GetDim(qliDIndex);
     OP_CHECK_IF(qliHeadDim != HEAD_DIM_LIMIT,
-        OP_LOGE(qliOpName, "input query's last dim head_dim only support 128, but now is %u.", qliHeadDim),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qliOpName, "query",
+            Ops::Base::ToString(qliQuery.shape->GetStorageShape()).c_str(),
+            "input query's last dim head_dim only support 128"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -991,7 +993,7 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
 static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
-                                     int64_t qliS2Size, uint32_t qliAicNum)
+                                     int64_t qliS2Size, uint32_t qliAicNum, ge::DataType inputQType)
 {
     constexpr uint32_t qliMm1ResElemSize = 4;
     constexpr uint32_t qliDoubleBuffer = 2;
@@ -1009,9 +1011,10 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         constexpr uint32_t qli3510S1Base = 4;
         constexpr uint32_t qli3510S2Base = 128;
+        uint32_t scoreElemSize = (inputQType == ge::DT_INT8) ? sizeof(uint32_t) : sizeof(uint16_t);
         qliWorkspaceSize +=
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
-            sizeof(uint16_t) * qliAicNum;
+            scoreElemSize * qliAicNum;
     } else {
         constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
         qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
@@ -1033,7 +1036,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum,
+        tilingInfo->inputQType);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

@@ -24,7 +24,7 @@ static const std::string kA5SocInfo = "{\n"
                                      "  }\n"
                                      "}";
 
-std::vector<gert::TilingContextPara::OpAttr> DefaultExpertRangeAttrs(int64_t dropPadMode = 0)
+std::vector<gert::TilingContextPara::OpAttr> DefaultExpertRangeAttrs(int64_t dropPadMode = 0, int64_t k = 1)
 {
     return {
         {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dropPadMode)},
@@ -32,6 +32,7 @@ std::vector<gert::TilingContextPara::OpAttr> DefaultExpertRangeAttrs(int64_t dro
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(k)},
     };
 }
 } // namespace
@@ -54,7 +55,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_fl
         {
             {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(0),
+        DefaultExpertRangeAttrs(0, 1),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -79,7 +80,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_droppad_col
         {
             {{{259, 52}, {259, 52}}, ge::DT_BF16, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(1),
+        DefaultExpertRangeAttrs(1, 232),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -104,7 +105,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_bf
         {
             {{{674, 6825}, {674, 6825}}, ge::DT_BF16, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(3),
+        DefaultExpertRangeAttrs(3, 233),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -129,7 +130,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_fl
         {
             {{{16, 16}, {16, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(0),
+        DefaultExpertRangeAttrs(0, 1),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -154,7 +155,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_no
         {
             {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(0),
+        DefaultExpertRangeAttrs(0, 1),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -171,6 +172,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_ac
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{2, 4})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{4, 6})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
     };
     gert::TilingContextPara tilingContextPara(
         "MoeFinalizeRoutingV2",
@@ -203,6 +205,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_constant_ex
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{2, 4})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{4, 6})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
     };
     gert::TilingContextPara tilingContextPara(
         "MoeFinalizeRoutingV2",
@@ -239,6 +242,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_invalid_exp
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
     };
     gert::TilingContextPara tilingContextPara(
         "MoeFinalizeRoutingV2",
@@ -278,7 +282,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_dropless_sp
         {
             {{{4, 8192}, {4, 8192}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(2),
+        DefaultExpertRangeAttrs(2, 1),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -303,7 +307,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_kh_full_loa
         {
             {{{64, 512}, {64, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(0),
+        DefaultExpertRangeAttrs(0, 4),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -328,7 +332,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_droppad_col
         {
             {{{2, 16}, {2, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(1),
+        DefaultExpertRangeAttrs(1, 4),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,
@@ -345,6 +349,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_droppad_inv
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{2, 4})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
     };
     gert::TilingContextPara tilingContextPara(
         "MoeFinalizeRoutingV2",
@@ -376,6 +381,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_invalid_exp
         {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{2, 6})},
         {"constant_expert_range",
          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
     };
     gert::TilingContextPara tilingContextPara(
         "MoeFinalizeRoutingV2",
@@ -415,7 +421,7 @@ TEST_F(MoeFinalizeRoutingV2Arch35Tiling, MoeFinalizeRoutingV2_arch35_invalid_dro
         {
             {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        DefaultExpertRangeAttrs(99),
+        DefaultExpertRangeAttrs(99, 1),
         &compileInfo,
         "Ascend950",
         kA5SocInfo,

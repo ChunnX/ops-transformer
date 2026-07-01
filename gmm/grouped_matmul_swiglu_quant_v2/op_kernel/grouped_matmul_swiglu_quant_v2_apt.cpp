@@ -60,7 +60,11 @@ constexpr bool isMxFp4Input = (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value
 #endif
 }
 
+#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
+#else
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
+#endif
 __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList, GM_ADDR weight,
                                                           GM_ADDR weightScale, GM_ADDR weightAssistanceMatrix,
                                                           GM_ADDR bias, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
@@ -78,7 +82,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
         DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE,
-        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC>
+        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC, IS_SINGLE_MULTI_SINGLE>
         controller;
 
     controller.Init(x, weight, weightScale, groupList, xScale, y, yScale, &tilingDataIn);

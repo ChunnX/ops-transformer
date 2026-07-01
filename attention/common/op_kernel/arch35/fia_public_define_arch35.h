@@ -43,21 +43,6 @@ enum class FiaKernelType : uint8_t {
     FULL_QUANT
 };
 
-#if 0
-struct FDparams {
-    uint32_t *bN2IdxOfFdHead;
-    uint32_t *gS1IdxOfFdHead;
-    uint32_t *s2SplitNumOfFdHead;
-    uint32_t *gS1SplitNumOfFdHead;
-    uint32_t *gS1LastPartSizeOfFdHead;
-    uint32_t *gS1IdxEndOfFdHead;
-    uint32_t *gS1IdxEndOfFdHeadSplit;
-    uint32_t usedVecNumOfFd;
-    uint32_t gS1BaseSizeOfFd;
-};
-
-
-#endif
 struct FDparamsX {
     uint32_t fdCoreEnable;
     uint32_t fdBN2Idx;
@@ -238,59 +223,6 @@ struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
                                                 PAConstInfo,
                                                 LseConstInfo,
                                                 TensorListConstInfo {};
-
-// struct FusedTransposeInfo {
-//     // 以下是FlashDecode分支区分的信息
-//     uint32_t n2Idx = 0;
-//     uint32_t bIdx = 0;
-
-//     // 以下是需要用公式计算的信息
-//     uint32_t s1StartIdx = 0;
-//     uint32_t s1EndIdx = 0;
-//     uint32_t s1Count = 0;
-//     uint32_t gStartIdx = 0;
-//     uint32_t gEndIdx = 0;
-//     uint32_t gCount = 0;
-// };
-
-// struct MSplitInfo {
-//     uint32_t nBufferIdx = 0U;
-//     uint32_t nBufferStartM = 0U;
-//     uint32_t nBufferDealM = 0U;
-//     uint32_t vecStartM = 0U;
-//     uint32_t vecDealM = 0U;
-// };
-
-// enum class TASK_DEAL_MODE : uint32_t
-// {
-//     DEAL_ZERO = 0,
-//     SKIP = 1,
-//     CREATE_TASK = 2
-// };
-
-// template <LayOutTypeEnum LAYOUT, typename CONST_INFO_T>
-// __aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx, const CONST_INFO_T &constInfo)
-// {
-//     // GS1
-//     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NBSD ||
-//                   LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
-//         gIdx = gS1Idx / constInfo.qSeqSize;
-//         s1Idx = gS1Idx % constInfo.qSeqSize;
-//     } else {
-//         // S1G
-//         s1Idx = gS1Idx / constInfo.gSize;
-//         gIdx = gS1Idx % constInfo.gSize;
-//     }
-// }
-
-// __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
-// {
-//     sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
-//     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
-//     return sInnerToken;
-// }
-
-
 } // namespace AttentionCommon
 
 #endif // FIA_PUBLIC_DEFINE_H

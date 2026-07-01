@@ -124,6 +124,7 @@ struct ConstInfo {
     int64_t cmpRatio = 1;
     int64_t cmpResidualK = 0;
     bool batchSupperFlag = false;  // Qactual_seq长度是否为B+1
+    uint32_t keyStride0 = 0;
     bool returnValue = false;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度

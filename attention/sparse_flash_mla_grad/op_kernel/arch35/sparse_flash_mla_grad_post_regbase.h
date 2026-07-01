@@ -48,9 +48,9 @@ public:
     GlobalTensor<float> dsinkWorkspace;
     GlobalTensor<float> dsinkGm;
     uint32_t vBlockIdx;
-    uint32_t loop;
-    uint32_t inputTotalSize;
-    uint32_t qPostTailNum;
+    uint64_t loop;
+    uint64_t inputTotalSize;
+    uint64_t qPostTailNum;
 };
 
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,

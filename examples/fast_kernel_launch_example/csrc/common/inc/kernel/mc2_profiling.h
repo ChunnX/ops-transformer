@@ -25,34 +25,6 @@ constexpr int64_t NCL_DIM_NUM = 3;
 constexpr int64_t NCHW_DIM_NUM = 4;
 constexpr int64_t NCDHW_DIM_NUM = 5;
 
-struct aclProfTensor {
-    uint32_t type;         // tensor类型, 0: input, 1: output
-    uint32_t format;       // format类型： aclFormat
-    uint32_t dataType;     // dataType类型 aclDataType
-    uint32_t shapeDim;     // shape dim <= 8
-    uint32_t shape[8];     // shape
-};
-
-struct aclProfTensorInfo{
-    uint64_t opNameId;     // 通过uint64_t aclprofStr2Id(const char *message)转化
-    uint64_t opTypeId;     // 通过uint64_t aclprofStr2Id(const char *message)转化
-    uint32_t resv;
-    uint32_t tensorNum;
-    uint32_t kernelType;
-    uint32_t blockNums;
-    void *stream;          // stream信息, aclgraph
-    aclProfTensor *tensors;
-};
-
-struct aclprofEventAttributes {
-    uint16_t version;
-    uint16_t size;         // message size 
-    uint32_t messageType;  // 0: MESSAGE_TYPE_TENSOR_INFO
-    union message {
-        aclProfTensorInfo *tensorInfo;
-    } message;
-};
-
 static inline aclFormat GetFormat(int64_t dimNum) 
 {
     aclFormat format = ACL_FORMAT_ND;
@@ -90,7 +62,7 @@ static inline aclDataType ConvertType(const at::ScalarType& scalar_type) {
 }
 
 #define INIT_ACL_TENSOR_ARRAY(tensors1, ...) aclTensor* tensors1[] = {__VA_ARGS__}
-#define INPUT(x) aclProfTensor {                                                                            \
+#define INPUT(x) aclprofTensor {                                                                            \
     (uint32_t)0,                                                                                            \
     static_cast<uint32_t>(GetFormat(static_cast<int64_t>(x.sizes().size()))),                  \
     static_cast<uint32_t>(ConvertType(x.scalar_type())),                                                    \
@@ -107,7 +79,7 @@ static inline aclDataType ConvertType(const at::ScalarType& scalar_type) {
     }                                                                                                       \
 }
 
-#define OUTPUT(z) aclProfTensor {                                                                           \
+#define OUTPUT(z) aclprofTensor {                                                                           \
     (uint32_t)1,                                                                                            \
     static_cast<uint32_t>(GetFormat(static_cast<int64_t>(z.sizes().size()))),                  \
     static_cast<uint32_t>(ConvertType(z.scalar_type())),                                                    \
@@ -127,8 +99,8 @@ static inline aclDataType ConvertType(const at::ScalarType& scalar_type) {
 #define INIT_ACL_PROF_TENSOR_INFO(opName, opType, blockdim, kernelType, tensorInfo, stream, ...)            \
     uint64_t opNameId = aclprofStr2Id(opName);                                                              \
     uint64_t opTypeId = aclprofStr2Id(opType);                                                              \
-    struct aclProfTensor _macro_prof_tensors[] = {__VA_ARGS__};                                                         \
-    tensorInfo = {opNameId, opTypeId, 0, sizeof(_macro_prof_tensors)/sizeof(aclProfTensor), kernelType, blockdim, stream, _macro_prof_tensors}
+    struct aclprofTensor _macro_prof_tensors[] = {__VA_ARGS__};                                                         \
+    tensorInfo = {opNameId, opTypeId, 0, sizeof(_macro_prof_tensors)/sizeof(aclprofTensor), kernelType, blockdim, stream, _macro_prof_tensors}
 
 
 #endif //MC2_PROFILING_H

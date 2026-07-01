@@ -19,8 +19,8 @@
 #include "sparse_flash_mla_grad_tiling_data_regbase.h"
 
 // kernel通过宏定义隔离dtype编译tilingkey，降低耗时。tiling侧没有相关宏
-#ifndef ORIG_DTYPE_Q
-#define ORIG_DTYPE_Q (-1)
+#ifndef ORIG_DTYPE_QUERY
+#define ORIG_DTYPE_QUERY (-1)
 #endif
 
 #define ASCENDC_TPL_3_BW 3
@@ -59,7 +59,7 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMlaGrad, // 算子唯一标识，可以opType�
 );
 
 ASCENDC_TPL_SEL(
-#if (ORIG_DTYPE_Q == -1) || (ORIG_DTYPE_Q == DT_FLOAT16)
+#if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
@@ -79,7 +79,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
-        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 0, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
@@ -92,7 +92,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
-        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 0, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
@@ -122,11 +122,24 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
+        ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
+        ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
+        ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
+        ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
 #endif
-#if (ORIG_DTYPE_Q == -1) || (ORIG_DTYPE_Q == DT_BF16)
+#if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 1),
         ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
@@ -146,7 +159,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
-        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 0, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
@@ -159,7 +172,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
-        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 0, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
@@ -189,6 +202,19 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
+        ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
+        ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
+    ),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
+        ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
+        ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
+        ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),

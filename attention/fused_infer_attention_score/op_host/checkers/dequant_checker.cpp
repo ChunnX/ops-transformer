@@ -213,21 +213,29 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeFP8GQAFullquant(const FiaT
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
-                        "and valueAntiquantScale(%s) must be FLOAT32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
+    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                    DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
+                    "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32"),
                 return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                    DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
+                    "In FP8 GQA fullquant scenario, the datatype of key_antiquant_scale must be FLOAT32"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                    DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str(),
+                    "In FP8 GQA fullquant scenario, the datatype of value_antiquant_scale must be FLOAT32"),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(fiaInfo.opParamInfo.quantScale1.tensor != nullptr &&
                 fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, datatype of quantScale1(%s) must be float32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale1",
+                    DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str(),
+                    "In FP8 GQA fullquant scenario, the datatype of quant_scale1 must be FLOAT32"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -352,21 +360,22 @@ ge::graphStatus DequantChecker::CheckDequantModeFP8GQAFullquant(const FiaTilingI
     }
     OP_CHECK_IF(
         *fiaInfo.opParamInfo.queryQuantMode != PER_TOKEN_HEAD_MODE,
-        OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, queryQuantMode(%d) only support per-token-head(%u).",
-                *fiaInfo.opParamInfo.queryQuantMode, PER_TOKEN_HEAD_MODE),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "query_quant_mode",
+            std::to_string(*fiaInfo.opParamInfo.queryQuantMode).c_str(),
+            "In FP8 GQA fullquant scenario, query_quant_mode must be per-token-head(3)"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(*fiaInfo.opParamInfo.keyAntiquantMode != PER_TOKEN_HEAD_MODE,
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, keyAntiquantMode(%d) only support per-token-head(%u).",
-                        *fiaInfo.opParamInfo.keyAntiquantMode, PER_TOKEN_HEAD_MODE),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_antiquant_mode",
+                    std::to_string(*fiaInfo.opParamInfo.keyAntiquantMode).c_str(),
+                    "In FP8 GQA fullquant scenario, key_antiquant_mode must be per-token-head(3)"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         *fiaInfo.opParamInfo.valueAntiquantMode != PER_TENSOR_HEAD_MODE,
-        OP_LOGE(fiaInfo.opName,
-                "In FP8 GQA fullquant scenario, valueAntiquantMode(%d) only support per-tensor-head(%u).",
-                *fiaInfo.opParamInfo.valueAntiquantMode, PER_TENSOR_HEAD_MODE),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "value_antiquant_mode",
+            std::to_string(*fiaInfo.opParamInfo.valueAntiquantMode).c_str(),
+            "In FP8 GQA fullquant scenario, value_antiquant_mode must be per-tensor-head(0)"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -655,6 +664,7 @@ ge::graphStatus DequantChecker::CheckExistenceFP8GQAFullquant(const FiaTilingInf
                                                           quantModeName, "keyRopeAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
+
     // fp8 gqa 仅支持PA场景
     if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.blockTable.tensor,
                                                        quantModeName, "block_table")) {
@@ -866,26 +876,35 @@ ge::graphStatus DequantChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo 
     }
 
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, pseType should not be 2/3."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type", "2 or 3",
+                    "In FP8 GQA fullquant scenario, pse_type should not be 2/3"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fiaInfo.pseShiftFlag, OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, pse is not supported."),
+    OP_CHECK_IF(fiaInfo.pseShiftFlag,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
+                    "In FP8 GQA fullquant scenario, pse is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, left padding is not supported."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                    "query_padding_size and kv_padding_size",
+                    "In FP8 GQA fullquant scenario, left padding is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, system prefix is not supported."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                    "key_shared_prefix and value_shared_prefix",
+                    "In FP8 GQA fullquant scenario, system prefix is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, key/value tensorlist is not supported."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key and value",
+                    "In FP8 GQA fullquant scenario, key/value tensorlist is not supported"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::NO_ROPE,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, rope is not supported."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope and key_rope",
+                    "In FP8 GQA fullquant scenario, rope is not supported"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1122,7 +1141,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
         (d0 != keyAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
         (keyAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
         std::string shapeStr = ToStringRaw(keyAntiquantScaleShape);
-        std::string reasonMsg = "In MXFP8 fullquant decode scenario when layout of key is " +
+        std::string reasonMsg = "In MXFP8 fullquant scenario when layout of key is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
             ", the shape of keyAntiquantScale should be [totalBlockNum, n2Size, blockSize/d0Temp, qkHeadDim/64, d0, 2]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
@@ -1138,7 +1157,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
         (d0 != valueAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
         (valueAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
         std::string shapeStr = ToStringRaw(valueAntiquantScaleShape);
-        std::string reasonMsg = "In MXFP8 fullquant decode scenario, when layout of value is " +
+        std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
             ", the shape of valueAntiquantScale should be [totalBlockNum, n2Size, vHeadDim/d0, blockSize/64, d0, 2]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
@@ -1187,7 +1206,10 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     // qscale dim支持4维[T, N, D//64, 2]和5维[N2, T, G, D//64, 2]
     if ((dequantScaleQueryDimNum != 4 && dequantScaleQueryDimNum != 5)) {
         std::string dimStr = std::to_string(dequantScaleQueryDimNum) + "D";
-        std::string reasonMsg = "In MXFP8 fullquant scenario, the shape dim of dequantScaleQuery should be 4 or 5";
+        std::string reasonMsg = "In MXFP8 fullquant scenario, when the layout of query is " +
+            std::string(LayoutToSerialString(fiaInfo.qLayout)) + " and the layout of key/value is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+            ", the shape dim of dequantScaleQuery should be 4 or 5";
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
             dimStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -1196,7 +1218,9 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     if ((keyAntiquantScaleDimNum != scaleKVDim || valueAntiquantScaleDimNum != scaleKVDim)) {
         std::string dimStr = std::to_string(keyAntiquantScaleDimNum) + "D and " +
             std::to_string(valueAntiquantScaleDimNum) + "D";
-        std::string reasonMsg = "In MXFP8 fullquant scenario, the shape dim of keyAntiquantScale and "
+        std::string reasonMsg = "In MXFP8 fullquant scenario, when the layout of query is " +
+            std::string(LayoutToSerialString(fiaInfo.qLayout)) + " and the layout of key/value is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) + ", the shape dim of keyAntiquantScale and "
             "valueAntiquantScale should both be " + std::to_string(scaleKVDim) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
             dimStr.c_str(), reasonMsg.c_str());
@@ -1501,11 +1525,15 @@ ge::graphStatus DequantChecker::CheckQuantScale1ShapeFP8GQA(const FiaTilingInfo 
     }
     const gert::Tensor *quantScale1Tensor = fiaInfo.opParamInfo.quantScale1.tensor;
     // shape:[1]
-    OP_CHECK_IF((quantScale1Tensor != nullptr) &&
-                (quantScale1Tensor->GetStorageShape().GetDimNum() != NUM1 ||
-                quantScale1Tensor->GetShapeSize() != NUM1),
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the shape of quantScale1 must be [1]."),
-                return ge::GRAPH_FAILED);
+    if ((quantScale1Tensor != nullptr) &&
+        (quantScale1Tensor->GetStorageShape().GetDimNum() != NUM1 ||
+        quantScale1Tensor->GetShapeSize() != NUM1)) {
+        std::string shapeStr = ToStringRaw(quantScale1Tensor->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "quant_scale1",
+            shapeStr.c_str(),
+            "In FP8 GQA fullquant scenario, the shape of quant_scale1 must be [1]");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1521,18 +1549,24 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
     const gert::Shape dequantScaleQueryShape = fiaInfo.opParamInfo.dequantScaleQuery.tensor->GetStorageShape();
     const uint32_t dequantScaleQueryDimNum = dequantScaleQueryShape.GetDimNum();
     OP_CHECK_IF(dequantScaleQueryDimNum != 2,
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, the dim num of dequantScaleQuery(%u) should be 2 (NT layout).",
-                        dequantScaleQueryDimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                    std::to_string(dequantScaleQueryDimNum).c_str(),
+                    "In FP8 GQA fullquant scenario, the dim num of dequant_scale_query should be 2 (NT layout)"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.n1Size != dequantScaleQueryShape.GetDim(DIM_NUM_0) ||
-                queryInputShape.GetDim(DIM_NUM_1) != dequantScaleQueryShape.GetDim(DIM_NUM_1),
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, "
-                        "the shape of dequantScaleQuery([%ld, %ld]) should be [%ld, %ld] (NT layout).",
-                        dequantScaleQueryShape.GetDim(DIM_NUM_0), dequantScaleQueryShape.GetDim(DIM_NUM_1),
-                        fiaInfo.n1Size, queryInputShape.GetDim(DIM_NUM_1)),
-                return ge::GRAPH_FAILED);
+    if (fiaInfo.n1Size != dequantScaleQueryShape.GetDim(DIM_NUM_0) ||
+        queryInputShape.GetDim(DIM_NUM_1) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) {
+        std::string actualShape =
+            "[" + std::to_string(dequantScaleQueryShape.GetDim(DIM_NUM_0)) + ", " +
+            std::to_string(dequantScaleQueryShape.GetDim(DIM_NUM_1)) + "]";
+        std::string expectedShape =
+            "[" + std::to_string(fiaInfo.n1Size) + ", " +
+            std::to_string(queryInputShape.GetDim(DIM_NUM_1)) + "]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+            actualShape.c_str(),
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of dequant_scale_query should be " + expectedShape + " (NT layout).").c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // key scale: BnNBs layout [totalBlockNum, n2Size, blockSize]
     const gert::Shape keyInputShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
@@ -1540,18 +1574,31 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
     const uint32_t keyAntiquantScaleDimNum = keyAntiquantScaleShape.GetDimNum();
 
-    OP_CHECK_IF(fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0) ||
-                fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1) ||
-                fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, "
-                        "the shape of keyAntiquantScale([%ld, %ld, %ld]) should be [%ld, %ld, %ld] (BnNBs layout).",
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_0), keyAntiquantScaleShape.GetDim(DIM_NUM_1),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_2), fiaInfo.totalBlockNum,
-                        fiaInfo.n2Size, fiaInfo.blockSize),
+    OP_CHECK_IF(keyAntiquantScaleDimNum != DIM_NUM_3,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                    std::to_string(keyAntiquantScaleDimNum).c_str(),
+                    "In FP8 GQA fullquant scenario, the dim num of key_antiquant_scale should be 3 (BnNBs layout)"),
                 return ge::GRAPH_FAILED);
 
-    // pa场景 key kscale BnNBsD支持0/1轴非连续
+    if (fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0) ||
+        fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1) ||
+        fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) {
+        std::string actualShape =
+            "[" + std::to_string(keyAntiquantScaleShape.GetDim(DIM_NUM_0)) + ", " +
+            std::to_string(keyAntiquantScaleShape.GetDim(DIM_NUM_1)) + ", " +
+            std::to_string(keyAntiquantScaleShape.GetDim(DIM_NUM_2)) + "]";
+        std::string expectedShape =
+            "[" + std::to_string(fiaInfo.totalBlockNum) + ", " +
+            std::to_string(fiaInfo.n2Size) + ", " +
+            std::to_string(fiaInfo.blockSize) + "]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+            actualShape.c_str(),
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of key_antiquant_scale should be " + expectedShape + " (BnNBs layout).").c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    // pa场景 key kscale BnNBs支持0/1轴非连续
     int32_t dimIndex = 0;
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape,
                 fiaInfo.kScaleStrides, dimIndex)) && (dimIndex != 0 && dimIndex != 1)),
@@ -1574,16 +1621,19 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
     const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
     OP_CHECK_IF(valueAntiquantScaleDimNum != 1,
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, the dim num of valueAntiquantScale(%u) should be 1 (N layout).",
-                        valueAntiquantScaleDimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                    std::to_string(valueAntiquantScaleDimNum).c_str(),
+                    "In FP8 GQA fullquant scenario, the dim num of value_antiquant_scale should be 1 (N layout)"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                OP_LOGE(fiaInfo.opName,
-                        "In FP8 GQA fullquant scenario, "
-                        "the shape of valueAntiquantScale([%ld]) should be [%ld] (N layout).",
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_0), fiaInfo.n2Size),
-                return ge::GRAPH_FAILED);
+    if (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) {
+        std::string actualShape = "[" + std::to_string(valueAntiquantScaleShape.GetDim(DIM_NUM_0)) + "]";
+        std::string expectedShape = "[" + std::to_string(fiaInfo.n2Size) + "]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+            actualShape.c_str(),
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of value_antiquant_scale should be " + expectedShape + " (N layout).").c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // pa场景 value BnNBsD支持0/1轴非连续
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides,
@@ -1697,18 +1747,18 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
                 return ge::GRAPH_FAILED);
         }
     } else if (enableQKPerTokenHeadVPerHead_) {
+        std::string qkvDtypes = std::string(DataTypeToSerialString(fiaInfo.inputQType).c_str()) + ", " +
+                                std::string(DataTypeToSerialString(fiaInfo.inputKvType).c_str());
         OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN),
-                    OP_LOGE(fiaInfo.opName,
-                            "In FP8 GQA fullquant scenario, query datatype(%s) and key/value datatype(%s), "
-                            "should be FLOAT8_E4M3FN.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
-                            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query, key/value",
+                        qkvDtypes.c_str(),
+                        "In FP8 GQA fullquant scenario, query and key/value datatype should be FLOAT8_E4M3FN"),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16,
-                    OP_LOGE(fiaInfo.opName,
-                            "In FP8 GQA fullquant scenario, attentionOut datatype(%s) should be BF16/FLOAT16.",
-                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
+                        DataTypeToSerialString(fiaInfo.outputType).c_str(),
+                        "In FP8 GQA fullquant scenario, attention_out datatype should be BF16 or FLOAT16"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1823,21 +1873,21 @@ ge::graphStatus DequantChecker::CheckInputLayoutFP8GQAFullquant(const FiaTilingI
 
     OP_CHECK_IF((std::find(supportedLayoutList.begin(), supportedLayoutList.end(), inputLayout) ==
                 supportedLayoutList.end()),
-            OP_LOGE(fiaInfo.opName, "In FP8 GQA full quant scenario, "
-                    "input layout(%s) must be NTD_TND "
-                    "When input datatype is float8_e4m3.", fiaInfo.opParamInfo.layOut),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                fiaInfo.opParamInfo.layOut,
+                "In FP8 GQA fullquant scenario, input layout must be NTD_TND"),
             return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::NTD,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA full quant scenario, "
-                        "query layout only support NTD, but got %s.",
-                        LayoutToSerialString(fiaInfo.qLayout)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                    LayoutToSerialString(fiaInfo.qLayout),
+                    "In FP8 GQA fullquant scenario, query layout only support NTD"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvLayout != FiaLayout::BnNBsD,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA full quant scenario, "
-                        "key/value layout only support BnNBsD, but got %s.",
-                        LayoutToSerialString(fiaInfo.kvLayout)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                    LayoutToSerialString(fiaInfo.kvLayout),
+                    "In FP8 GQA fullquant scenario, key/value layout only support BnNBsD"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1961,12 +2011,13 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED;
         }
     } else if (enableQKPerTokenHeadVPerHead_) {
+        std::string dimValues = "qkHeadDim=" + std::to_string(fiaInfo.qkHeadDim) +
+                                ", vHeadDim=" + std::to_string(fiaInfo.vHeadDim);
         OP_CHECK_IF(
             (fiaInfo.qkHeadDim != NUM_128 || fiaInfo.vHeadDim != NUM_128),
-            OP_LOGE(fiaInfo.opName,
-                    "In the FP8 GQA full quant scenario, the D axis of query and key (%u) and the D axis of value "
-                    "(%u) are only support %u.",
-                    fiaInfo.qkHeadDim, fiaInfo.vHeadDim, NUM_128),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "query/key/value",
+                dimValues.c_str(),
+                "In FP8 GQA fullquant scenario, the D axis of query/key and value are only support 128"),
             return ge::GRAPH_FAILED);
     } else {
         if (fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < NUM1) {
@@ -2122,7 +2173,7 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
         if (inputKvType == ge::DT_INT4) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
                 ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
-                "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode");
+                "when keyAntiquantMode and valueAntiquantMode are per-tensor-head mode");
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF((inputKvType != ge::DT_INT8),
@@ -2336,7 +2387,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if ((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
              keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
             fiaInfo.inputKvType == ge::DT_INT8) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantModee",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantMode",
                 std::to_string(keyAntiquantMode).c_str(),
                 "When the datatype of key/value is int8 and the S axis of query > 1, "
                 "keyAntiquantMode 2, 3, 4, 5 are not supported");
@@ -2349,7 +2400,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
                 dtypeMsg.c_str(),
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, "
                 "the datatype of query and attention_out must be BF16");
             return ge::GRAPH_FAILED;
         }
@@ -2358,7 +2409,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 std::to_string(fiaInfo.s1Size).c_str(),
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, "
                 "the axis S of query should not be greater than 16");
             return ge::GRAPH_FAILED;
         }
@@ -2366,7 +2417,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
             fiaInfo.inputKvType == ge::DT_INT8 && !fiaInfo.batchContinuousFlag) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key and value",
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, tensorlist is not supported");
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, tensorlist is not supported");
             return ge::GRAPH_FAILED;
         }
         if (fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32) {
@@ -2564,6 +2615,21 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
                 ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
                 "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-head mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
+    }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
+        // per-token-head-PA模式，数据类型固定为FLOAT32
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token-head-PA mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-head-PA mode and "
                 "valueAntiquant/valueAntiquant is in split mode"),
             return ge::GRAPH_FAILED);
     }

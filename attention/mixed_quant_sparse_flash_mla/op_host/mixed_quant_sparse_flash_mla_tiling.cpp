@@ -39,6 +39,9 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr,
+        OP_LOGE(opName_, "quantMode attr is nullptr."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -135,7 +138,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
     opParamInfo_.tileSize = nullptr;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
@@ -201,6 +204,7 @@ ge::graphStatus QSMLAInfoParser::GetKvLayout()
     const map<string, QSMLALayout> layoutKVMap = {
         {"PA_BBND",     QSMLALayout::PA_BBND},
         {"TND",       QSMLALayout::TND},
+        {"BSND",       QSMLALayout::BSND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -346,7 +350,7 @@ ge::graphStatus QSMLAInfoParser::GetS1Size()
 
 ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == QSMLALayout::TND) {
+    if (kvLayout_ == QSMLALayout::TND || kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
@@ -399,6 +403,7 @@ ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
         return ge::GRAPH_FAILED;
     }
     s2Size_ = oriMaxBlockNumPerBatch_ * oriBlockSize_;
+    cmpS2Size_ = cmpMaxBlockNumPerBatch_ * cmpBlockSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -406,9 +411,16 @@ ge::graphStatus QSMLAInfoParser::GetS2Size()
 {
     if (kvLayout_ == QSMLALayout::TND) {
         s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::T, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::BSND) {
+        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::S, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::S, kvLayout_);
+        return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+        return GetS2SizeForPageAttention();
     }
-    return GetS2SizeForPageAttention();
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus QSMLAInfoParser::GetQkHeadDim()
@@ -481,6 +493,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.n2Size = n2Size_;
     qsmlaInfo.s1Size = s1Size_;
     qsmlaInfo.s2Size = s2Size_;
+    qsmlaInfo.cmpS2Size = cmpS2Size_;
     qsmlaInfo.gSize = gSize_;
     qsmlaInfo.qkHeadDim = qkHeadDim_;
     qsmlaInfo.qTSize = qTSize_;
@@ -505,7 +518,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
-    qsmlaInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
+    qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.tileSize = 64;
     qsmlaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
@@ -586,9 +599,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
             return ge::GRAPH_FAILED);
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
     } else {
-        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -625,6 +638,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     // -------------set tilingdata-----------------
     tilingData_.baseParams.set_batchSize(tilingInfo->bSize);
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
+    tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
     tilingData_.baseParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
@@ -659,7 +673,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-            static_cast<uint32_t>(isSplitG),
+            static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
             ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);

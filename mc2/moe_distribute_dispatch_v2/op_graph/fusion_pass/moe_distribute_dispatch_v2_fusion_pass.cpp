@@ -74,7 +74,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddAttr(ge::GNode &moeDistrib
 // 创建 V3 节点，拷贝 V2 的输入/输出描述，添加 context 输入（port 0），拷贝属性
 ge::graphStatus MoeDistributeDispatchV2FusionPass::CreateFusionNode(
     ge::Graph &graph, ge::GNode &moeDistributeDispatchNode,
-    int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc, ge::GNode &fusionNode)
+    int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc, ge::GNode &fusionNode) const
 {
     ge::AscendString nameStr;
     moeDistributeDispatchNode.GetName(nameStr);
@@ -137,7 +137,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(
 // 单节点融合：创建 V3 节点 + 重连所有边
 ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(
     ge::Graph &graph, ge::GNode &moeDistributeDispatchNode,
-    ge::GNode &contextNode, int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc)
+    ge::GNode &contextNode, int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc) const
 {
     ge::GNode fusionNode;
     if (CreateFusionNode(graph, moeDistributeDispatchNode, hccl_buff_size, tensorDesc, fusionNode) !=
@@ -149,7 +149,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(
 
 // 获取或创建 Mc2MoeContext Const 节点，构造 TensorDesc，调用 FusionNode
 ge::graphStatus MoeDistributeDispatchV2FusionPass::Fusion(
-    ge::Graph &graph, ge::GNode &moeDistributeDispatchNode, ge::GNode &sharedCtxNode)
+    ge::Graph &graph, ge::GNode &moeDistributeDispatchNode, ge::GNode &sharedCtxNode) const
 {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     int64_t hccl_buff_size = 0;

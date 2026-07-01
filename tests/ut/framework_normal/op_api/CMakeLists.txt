@@ -33,6 +33,9 @@ if(UT_TEST_ALL OR OP_API_UT)
   add_library(${OPAPI_NAME}_ut SHARED
           $<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>
           )
+  if(TARGET opbase_util_objs)
+    add_dependencies(${OPAPI_NAME}_ut opbase_util_objs)
+  endif()
   target_link_libraries(${OPAPI_NAME}_ut PRIVATE
           ${OPHOST_NAME}_opapi_obj
           opapi_stub
