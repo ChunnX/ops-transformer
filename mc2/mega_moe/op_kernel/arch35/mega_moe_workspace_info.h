@@ -100,8 +100,8 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 // a4w4 NZ 场景：weight1/weight2 均为 fp4 NZ 格式。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 // 
-constexpr uint8_t COMM_MODE_ON_SERVER = 0U; // mte
-constexpr uint8_t COMM_MODE_CROSS_SERVER = 1U; // urma
+constexpr uint8_t TOPO_TYPE_MTE = 0U; // mte
+constexpr uint8_t TOPO_TYPE_URMA = 1U; // urma
 
 } // namespace
 
@@ -209,7 +209,7 @@ struct WorkspaceInfo {
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
         }
 
-        if (tilingData->commMode == COMM_MODE_CROSS_SERVER) {
+        if (tilingData->topoType == TOPO_TYPE_URMA) {
             maskSlotPtr = base + workspaceSize;
             int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
             int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /

@@ -169,11 +169,11 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    int64_t commModeType = TILINGKEY_TPL_URMA;
-    //int64_t commModeType = TILINGKEY_TPL_MTE;
-    tilingData->commMode = static_cast<uint8_t>(commModeType);
+    int64_t topoType = TILINGKEY_TPL_URMA;
+    //int64_t topoType = TILINGKEY_TPL_MTE;
+    tilingData->topoType = static_cast<uint8_t>(topoType);
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, commModeType);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,

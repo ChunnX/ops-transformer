@@ -65,7 +65,7 @@ struct PeermemInfo {
         offset += Ops::Base::CeilAlign(
             (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
 
-        if (tilingData->commMode != COMM_MODE_CROSS_SERVER) {
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
             quantTokenScalePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
             uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
