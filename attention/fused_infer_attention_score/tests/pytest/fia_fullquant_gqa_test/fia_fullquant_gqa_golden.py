@@ -743,8 +743,8 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
         mask = mask.bool().npu()
 
     # 将kv从cache中取切片
-    k = k[:, :, :128, :].contiguous()
-    v = v[:, :, :128, :].contiguous()
+    k = k[:, :, :128, :]
+    v = v[:, :, :128, :]
 
     # 打印调试信息
     print(f"[INFO] q dtype: {q.dtype}, shape: {q.shape}")
