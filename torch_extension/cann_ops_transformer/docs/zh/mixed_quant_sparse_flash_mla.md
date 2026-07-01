@@ -1,15 +1,13 @@
-# mixed\_quant\_sparse\_flash\_mla\_metadata / mixed\_quant\_sparse\_flash\_mla
+# mixed_quant_sparse_flash_mla
 
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
@@ -42,8 +40,10 @@
 
 ## 函数原型
 
+调用mixed_quant_sparse_flash_mla接口之前，先调用前置接口mixed_quant_sparse_flash_mla_metadata，完成mixed_quant_sparse_flash_mla负载均衡的计算。
+
 ```python
-cann_ops_transformer.ops.mixed_quant_sparse_flash_mla_metadata(
+cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -78,7 +78,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla_metadata(
 ```
 
 ```python
-cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
+cann_ops_transformer.mixed_quant_sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -114,6 +114,40 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 ```
 
 ## 参数说明
+
+### mixed_quant_sparse_flash_mla_metadata
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| num_heads_q | int | 必选 | 表示Query的head个数，支持2、4、8、16、32、64、128。 | int32 | - |
+| num_heads_kv | int | 必选 | 表示Key和Value对应的多头数，仅支持1。 | int32 | - |
+| head_dim | int | 必选 | 表示注意力头的维度，仅支持512。 | int32 | - |
+| quant_mode | int | 必选 | 表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2，量化模式2只支持layout_kv为PA_BBND。默认值为None。 | int32 | - |
+| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
+| cu_seqlens_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
+| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| seqused_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| seqused_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| cmp_residual_kv | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| ori_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
+| cmp_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
+| batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
+| max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，默认值为0。 | int32 | - |
+| max_seqlen_ori_kv | int | 可选 | 表示ori_kv的最长Sequence Length，默认值为0。 | int32 | - |
+| max_seqlen_cmp_kv | int | 可选 | 表示cmp_kv的最长Sequence Length，默认值为0。 | int32 | - |
+| ori_topk | int | 可选 | 预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。 | int32 | - |
+| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数，支持0、512、1024。默认值为0。 | int32 | - |
+| rope_head_dim | int | 可选 | 表示rope头的维度，仅支持64。默认值为64。 | int32 | - |
+| cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率，支持1、4、128。默认值为1。 | int32 | - |
+| ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。 | int32 | - |
+| cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
+| ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| layout_q | str | 可选 | 表示Query的排列格式，支持"BSND"、"TND"，默认值为"BSND"。 | string | - |
+| layout_kv | str | 可选 | 表示Key的排列格式，支持"BSND"、"TND"、"PA_BBND"，默认值为"BSND"。 | string | - |
+| has_ori_kv | bool | 可选 | 用于标识是否含有ori_kv，默认值为True。 | bool | - |
+| has_cmp_kv | bool | 可选 | 用于标识是否含有cmp_kv，默认值为True。 | bool | - |
 
 ### mixed_quant_sparse_flash_mla
 
@@ -152,52 +186,18 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | attention_out | 输出 | attention计算输出。 | FLOAT16、BFLOAT16 | ND |
 | softmax_lse | 输出 | softmax的log-sum-exp结果；未使能返回时为占位Tensor。 | FLOAT | ND |
 
-### mixed_quant_sparse_flash_mla_metadata
-
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
-|--------|----------|-----------|------|----------|-------------|
-| num_heads_q | int | 必选 | 表示Query的head个数，支持2、4、8、16、32、64、128。 | int32 | - |
-| num_heads_kv | int | 必选 | 表示Key和Value对应的多头数，仅支持1。 | int32 | - |
-| head_dim | int | 必选 | 表示注意力头的维度，仅支持512。 | int32 | - |
-| quant_mode | int | 必选 | 表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2。默认值为None。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv的有效Sequence Length，仅layout_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_ori_kv | Tensor | 可选 | 表示不同Batch中ori_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_cmp_kv | Tensor | 可选 | 表示不同Batch中cmp_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| cmp_residual_kv | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| ori_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
-| cmp_topk_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor。 | int32 | (B, S1, N2)或(T1, N2) |
-| batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
-| max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，默认值为0。 | int32 | - |
-| max_seqlen_ori_kv | int | 可选 | 表示ori_kv的最长Sequence Length，默认值为0。 | int32 | - |
-| max_seqlen_cmp_kv | int | 可选 | 表示cmp_kv的最长Sequence Length，默认值为0。 | int32 | - |
-| ori_topk | int | 可选 | 预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。 | int32 | - |
-| cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数，支持0、512、1024。默认值为0。 | int32 | - |
-| rope_head_dim | int | 可选 | 表示rope头的维度，仅支持64。默认值为64。 | int32 | - |
-| cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率，支持1、4、128。默认值为1。 | int32 | - |
-| ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。 | int32 | - |
-| cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
-| ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
-| ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
-| layout_q | str | 可选 | 表示Query的排列格式，支持"BSND"、"TND"，默认值为"BSND"。 | string | - |
-| layout_kv | str | 可选 | 表示Key的排列格式，支持"BSND"、"TND"、"PA_BBND"，默认值为"BSND"。 | string | - |
-| has_ori_kv | bool | 可选 | 用于标识是否含有ori_kv，默认值为True。 | bool | - |
-| has_cmp_kv | bool | 可选 | 用于标识是否含有cmp_kv，默认值为True。 | bool | - |
-
 ## 返回值说明
-
-### mixed_quant_sparse_flash_mla
-
-- **attention_out**：`mixed_quant_sparse_flash_mla`的第一个输出，shape和`q`一致，dtype和`q`一致。
-- **softmax_lse**：`mixed_quant_sparse_flash_mla`的第二个输出。`return_softmax_lse=False`时返回FLOAT32标量占位Tensor；`return_softmax_lse=True`时返回FLOAT32的log-sum-exp结果。
 
 ### mixed_quant_sparse_flash_mla_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
 | metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
+
+### mixed_quant_sparse_flash_mla
+
+- **attention_out**：`mixed_quant_sparse_flash_mla`的第一个输出，shape和`q`一致，dtype和`q`一致。
+- **softmax_lse**：`mixed_quant_sparse_flash_mla`的第二个输出。`return_softmax_lse=False`时返回FLOAT32标量占位Tensor；`return_softmax_lse=True`时返回FLOAT32的log-sum-exp结果。
 
 ## 约束说明
 
@@ -241,3 +241,382 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 ## 确定性计算
 
 - 默认支持确定性计算
+
+## 调用说明
+
+### SWA，BSND输入，aclnn直调
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+
+torch_npu.npu.set_device(0)
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 64
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+quant_mode = 1
+cmp_ratio = 1  # SWA示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
+
+seqused_q = torch.tensor([16], dtype=torch.int32, device="npu")
+seqused_ori_kv = torch.tensor([64], dtype=torch.int32, device="npu")
+
+q = torch.randn(B, S1, N1, Dq, dtype=qDtype, device="npu")
+ori_kv = torch.randn(B, S2, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+cmp_kv = None
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "BSND"
+layout_kv = "BSND"
+
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(seqused_q),
+    max_seqlen_ori_kv = max(seqused_ori_kv),
+    ori_topk = 0,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 0,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+
+npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=0,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
+
+### HCA，LayoutQ BSND，LayoutKv PA_BBND输入，aclnn直调
+
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+
+torch_npu.npu.set_device(0)
+
+def scatter_to_pa(kv_bnsd, block_size, block_num, max_block_num_per_batch):
+    B, N2, S, D = kv_bnsd.shape
+    kv_expand = torch.zeros(B, N2, max_block_num_per_batch * block_size, D, dtype=kv_bnsd.dtype, device=kv_bnsd.device)
+    kv_expand[:, :, :S, :] = kv_bnsd
+    kv_pa = torch.zeros(block_num, block_size, N2, D, dtype=kv_bnsd.dtype, device=kv_bnsd.device)
+    block_table = torch.zeros(B, max_block_num_per_batch, dtype=torch.int32, device=kv_bnsd.device)
+    cur_block_id = 0
+    for i_B in range(B):
+        for i_block in range(max_block_num_per_batch):
+            block_table[i_B, i_block] = cur_block_id
+            block_start = i_block * block_size
+            for i_N2 in range(N2):
+                kv_pa[cur_block_id, :, i_N2, :] = kv_expand[i_B, i_N2, block_start:block_start + block_size, :]
+            cur_block_id += 1
+    return kv_pa, block_table
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 2050
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+quant_mode = 1
+cmp_ratio = 128
+
+block_size1 = 128
+block_size2 = 128
+ori_max_block_num_per_batch = math.ceil(S2 / block_size1)
+block_num1 = ori_max_block_num_per_batch * B
+
+seqused_ori_kv = torch.tensor([S2], dtype=torch.int32, device="npu")
+cmp_max_s2 = S2 // cmp_ratio
+seqused_cmp_kv = torch.tensor([cmp_max_s2], dtype=torch.int32, device="npu")
+cmp_residual_kv = torch.tensor([S2 % cmp_ratio], dtype=torch.int32, device="npu")
+seqused_q = torch.tensor([16], dtype=torch.int32, device="npu")
+
+q = torch.randn(B, S1, N1, Dq, dtype=qDtype, device="npu")
+
+ori_kv_bnsd = torch.randn(B, N2, S2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+ori_kv, ori_block_table = scatter_to_pa(ori_kv_bnsd, block_size1, block_num1, ori_max_block_num_per_batch)
+
+if cmp_max_s2 > 0:
+    cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
+    block_num2 = cmp_max_block_num_per_batch * B
+    cmp_kv_bnsd = torch.randn(B, N2, cmp_max_s2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+    cmp_kv, cmp_block_table = scatter_to_pa(cmp_kv_bnsd, block_size2, block_num2, cmp_max_block_num_per_batch)
+else:
+    block_num2 = 0
+    cmp_kv = None
+    cmp_block_table = None
+
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "BSND"
+layout_kv = "PA_BBND"
+
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(seqused_q),
+    max_seqlen_ori_kv = max(seqused_ori_kv),
+    max_seqlen_cmp_kv = max(seqused_cmp_kv),
+    ori_topk = 0,
+    cmp_topk = 0,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 3,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+
+npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    ori_block_table=ori_block_table,
+    cmp_block_table=cmp_block_table,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=3,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
+
+### CSA，TND输入，graph调用
+```python
+import torch
+import torch_npu
+import math
+import cann_ops_transformer
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
+
+torch_npu.npu.set_device(0)
+
+class Network(torch.nn.Module):
+    def __init__(self):
+        super(Network, self).__init__()
+
+    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices,
+                cu_seqlens_q, seqused_q, cu_seqlens_ori_kv, seqused_ori_kv,
+                cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_residual_kv,
+                sinks, metadata, quant_mode, rope_head_dim, softmax_scale, cmp_ratio,
+                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right,
+                layout_q, layout_kv, topk_value_mode, return_softmax_lse):
+        npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
+            q=q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            cmp_sparse_indices=cmp_sparse_indices,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q,
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            seqused_ori_kv=seqused_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+            seqused_cmp_kv=seqused_cmp_kv,
+            cmp_residual_kv=cmp_residual_kv,
+            sinks=sinks,
+            metadata=metadata,
+            quant_mode=quant_mode,
+            rope_head_dim=rope_head_dim,
+            softmax_scale=softmax_scale,
+            cmp_ratio=cmp_ratio,
+            ori_mask_mode=ori_mask_mode,
+            cmp_mask_mode=cmp_mask_mode,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            topk_value_mode=topk_value_mode,
+            return_softmax_lse=return_softmax_lse)
+        return npu_result
+
+qDtype = torch.bfloat16
+kvDtype = torch.float8_e4m3fn
+B = 1
+S1 = 16
+S2 = 2050
+N1 = 64
+N2 = 1
+Dq = 512
+Dkv = 608
+K = 512
+quant_mode = 1
+cmp_ratio = 128
+
+q_seqlens = [S1] * B
+ori_kv_seqlens = [S2] * B
+
+cu_seqlens_q = torch.tensor([sum(q_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+cu_seqlens_ori_kv = torch.tensor([sum(ori_kv_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+cu_seqlens_cmp_kv = torch.tensor([sum(s // cmp_ratio for s in ori_kv_seqlens[:i]) for i in range(B + 1)], dtype=torch.int32, device="npu")
+
+total_q = cu_seqlens_q[-1].item()
+total_ori_kv = cu_seqlens_ori_kv[-1].item()
+total_cmp_kv = cu_seqlens_cmp_kv[-1].item()
+
+seqused_q = torch.tensor(q_seqlens, dtype=torch.int32, device="npu")
+seqused_ori_kv = torch.tensor(ori_kv_seqlens, dtype=torch.int32, device="npu")
+seqused_cmp_kv = torch.tensor([s // cmp_ratio for s in ori_kv_seqlens], dtype=torch.int32, device="npu")
+cmp_residual_kv = torch.tensor([s % cmp_ratio for s in ori_kv_seqlens], dtype=torch.int32, device="npu")
+
+q = torch.randn(total_q, N1, Dq, dtype=qDtype, device="npu")
+ori_kv = torch.randn(total_ori_kv, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+cmp_kv = torch.randn(total_cmp_kv, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+
+cmp_sparse_indices = torch.full((total_q, N2, K), fill_value=-1, dtype=torch.int32, device="npu")
+for i_B in range(B):
+    cur_act_q = seqused_q[i_B].item()
+    s1_prefix = cu_seqlens_q[i_B].item()
+    cur_ori_kv = seqused_ori_kv[i_B].item()
+    for i_N2 in range(N2):
+        for i_S1 in range(cur_act_q):
+            cur_valid_s2_max = math.floor((cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+            valid_blocks_max = max(0, cur_valid_s2_max)
+            block_indices = torch.randperm(valid_blocks_max, device="npu").to(torch.int32)
+            valid_blocks_topk = min(valid_blocks_max, K)
+            cmp_sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
+
+sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
+
+layout_q = "TND"
+layout_kv = "TND"
+
+print("mixed_quant_sparse_flash_mla_metadata...")
+metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+    num_heads_q = N1,
+    num_heads_kv = N2,
+    head_dim = Dq,
+    cu_seqlens_q=cu_seqlens_q,
+    cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+    cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+    seqused_q=seqused_q,
+    seqused_ori_kv=seqused_ori_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    quant_mode=quant_mode,
+    batch_size = B,
+    max_seqlen_q = max(q_seqlens),
+    max_seqlen_ori_kv = max(ori_kv_seqlens),
+    max_seqlen_cmp_kv = max(s // cmp_ratio for s in ori_kv_seqlens),
+    ori_topk = 0,
+    cmp_topk = K,
+    rope_head_dim=64,
+    cmp_ratio = cmp_ratio,
+    ori_mask_mode = 4,
+    cmp_mask_mode = 3,
+    ori_win_left = 127,
+    ori_win_right = 0,
+    layout_q = layout_q,
+    layout_kv = layout_kv,
+    has_ori_kv = ori_kv is not None,
+    has_cmp_kv = cmp_kv is not None,
+    )
+torch.npu.synchronize()
+metadata.npu()
+
+print("torch.compile...")
+torch._dynamo.reset()
+npu_mode = Network().npu()
+config = CompilerConfig()
+config.mode = "reduce-overhead"
+config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+config.experimental_config.frozen_parameter = True
+npu_backend = torchair.get_npu_backend(compiler_config=config)
+npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
+
+print("mixed_quant_sparse_flash_mla (graph)...")
+npu_result = npu_mode(
+    q=q,
+    ori_kv=ori_kv,
+    cmp_kv=cmp_kv,
+    cmp_sparse_indices=cmp_sparse_indices,
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_q=seqused_q,
+    cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+    seqused_ori_kv=seqused_ori_kv,
+    cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+    seqused_cmp_kv=seqused_cmp_kv,
+    cmp_residual_kv=cmp_residual_kv,
+    sinks=sinks,
+    metadata=metadata,
+    quant_mode=quant_mode,
+    rope_head_dim=64,
+    softmax_scale=1.0 / math.sqrt(Dq),
+    cmp_ratio=cmp_ratio,
+    ori_mask_mode=4,
+    cmp_mask_mode=3,
+    ori_win_left=127,
+    ori_win_right=0,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    topk_value_mode=1,
+    return_softmax_lse=False)
+
+torch.npu.synchronize()
+```
