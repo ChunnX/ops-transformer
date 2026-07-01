@@ -112,6 +112,11 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     if (attentionOut != nullptr) {
         attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
     }
+    auto softmaxLseFormat = ge::FORMAT_ND;
+    if (softmaxLseOptional != nullptr) {
+        softmaxLseFormat =
+            static_cast<ge::Format>(ge::GetPrimaryFormat(softmaxLseOptional->GetStorageFormat()));
+    }
     auto qDequantScaleFormat = ge::FORMAT_ND;
     if (qDequantScaleOptional != nullptr) {
         qDequantScaleFormat =
@@ -131,7 +136,7 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
         !IsSupportedFormat(blockSparseMaskFormat) || !IsSupportedFormat(attenMaskFormat) ||
         !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat) ||
         !IsSupportedFormat(qDequantScaleFormat) || !IsSupportedFormat(kDequantScaleFormat) ||
-        !IsSupportedFormat(vDequantScaleFormat)) {
+        !IsSupportedFormat(vDequantScaleFormat) || !IsSupportedFormat(softmaxLseFormat)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
