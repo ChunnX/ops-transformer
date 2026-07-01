@@ -134,7 +134,7 @@ protected:
     int32_t deterMode;
     float scaleValue;
 
-    const char *templateName = "slikbase";
+    const char *templateName = "dlikgbase";
 
     // TilingKey
     LayoutTypeRegbase tilingKeyLayout;
@@ -164,8 +164,8 @@ protected:
 
     DenseLightningIndexerGradRegBaseTilingData *tilingData =
         context_->GetTilingData<DenseLightningIndexerGradRegBaseTilingData>();
-    SLIGradBaseParamsRegbase *sliGradBaseParams_ = &tilingData->baseParams;
-    SLIGradMultiCoreParamsRegbase *sliGradMultiCoreParams_ = &tilingData->multiCoreParams;
+    DLIKGradBaseParamsRegbase *dlikGradBaseParams_ = &tilingData->baseParams;
+    DLIKGradMultiCoreParamsRegbase *dlikGradMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 } // optiling
 #endif

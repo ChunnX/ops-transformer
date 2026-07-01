@@ -25,11 +25,11 @@
 #include "vf/vf_cast_dup.h"
 #include "vf/vf_reduce_sum.h"
 
-namespace Slig {
+namespace Dlikg {
 TEMPLATES_DEF
-class SligBlockVec {
+class DlikgBlockVec {
 public:
-    __aicore__ inline SligBlockVec(){};
+    __aicore__ inline DlikgBlockVec(){};
     __aicore__ inline void InitParams(const DLIKGradConstInfo &vecConstInfo,
         const optiling::DenseLightningIndexerGradRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
@@ -139,7 +139,7 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitParams(const DLIKGradConstInfo &vecConstInfo,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitParams(const DLIKGradConstInfo &vecConstInfo,
     const optiling::DenseLightningIndexerGradRegBaseTilingData *tiling)
 {
     this->constInfo = vecConstInfo;
@@ -147,7 +147,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitParams(const DLIKGradCon
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
     GM_ADDR attnSoftmaxL1, GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes,
     GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
     GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
@@ -180,7 +180,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(this->gatherTbuf, DLIKGradConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->gatherOutQue, 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_9K * 2);
@@ -199,7 +199,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector0(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo)
 {
@@ -217,7 +217,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector0(
 
 TEMPLATES_DEF_NO_DEFAULT
 // template <bool gatherRope>
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
     int64_t mergeMte3Idx, int64_t realS2Idx, int64_t keyBNBOffset, int64_t s2IdLimit, const DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor)
 {
@@ -238,7 +238,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t SligBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t realS2Idx, const DLIKGradRunInfo &runInfo,
+__aicore__ inline int64_t DlikgBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t realS2Idx, const DLIKGradRunInfo &runInfo,
     int64_t s2IdLimit)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
@@ -249,7 +249,7 @@ __aicore__ inline int64_t SligBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t re
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
     int64_t realS2Idx1, int64_t realS2Idx2, const DLIKGradRunInfo &runInfo, DLIKGradKRunInfo &kRunInfo,
     GlobalTensor<INPUT_T> srcTensor)
 {
@@ -297,7 +297,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2Size, 
 
 TEMPLATES_DEF_NO_DEFAULT
 template <event_t IdStart, bool syGmEn>
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
     int64_t s2GmStartOffset, int64_t mergeMte3Idx, const DLIKGradRunInfo &runInfo, DLIKGradKRunInfo &kRunInfo)
 {
     if (mte2Size <= mte3Size) {
@@ -332,7 +332,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyOutMrgeResult(int64_t mt
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
     const DLIKGradRunInfo &runInfo, DLIKGradKRunInfo &kRunInfo)
 {
     int64_t topkGmIdx = (s2GmOffset + kRunInfo.s2Idx * runInfo.s2BaseSize);
@@ -341,7 +341,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRealS2Idx(int64_t s2GmOff
 
 TEMPLATES_DEF_NO_DEFAULT
 template <event_t IdStart, bool syGmEn>
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::MergeKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, const DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor)
 {
@@ -384,7 +384,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx,
+__aicore__ inline bool DlikgBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx,
     int64_t &bS1Index, int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK,
     int64_t taskId)
 {
@@ -465,7 +465,7 @@ __aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1In
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx,
     DLIKGradRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK)
 {
     runInfo.taskId = taskId;
@@ -486,10 +486,10 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId, i
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t SligBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
+__aicore__ inline int32_t DlikgBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
     int32_t actualSeqLensQ, int32_t actualSeqLensK)
 {
-    if (constInfo.sparseMode == SLIMaskMode::RightDown) {
+    if (constInfo.sparseMode == DLISparseMode::RightDown) {
         if (constInfo.cmpRatio == 1) {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -500,7 +500,7 @@ __aicore__ inline int32_t SligBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bI
         return Max(((actualSeqLensK * constInfo.cmpRatio + cmpResidualK) - actualSeqLensQ + s1Idx + 1) /
             constInfo.cmpRatio,
             0);
-    } else if (constInfo.sparseMode == SLIMaskMode::DefaultMask) {
+    } else if (constInfo.sparseMode == DLISparseMode::DefaultMask) {
         return actualSeqLensK;
     } else {
         return 0;
@@ -508,7 +508,7 @@ __aicore__ inline int32_t SligBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bI
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInWeight(DLIKGradRunInfo &runInfo)
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyInWeight(DLIKGradRunInfo &runInfo)
 {
     LocalTensor<float> weightInUb = weightInQue.template AllocTensor<float>();
     DataCopyExtParams dataCopyParams;
@@ -524,7 +524,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInWeight(DLIKGradRunInfo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo)
 {
@@ -556,7 +556,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, DLIKGradRunInfo &runInfo)
 {
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
@@ -587,7 +587,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo)
 {
@@ -667,7 +667,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo)
 {
@@ -755,7 +755,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGradRunInfo &runInfo,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGradRunInfo &runInfo,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf)
 {
     CrossCoreWaitFlag<MODE_NUM_2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
@@ -846,7 +846,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGrad
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, int64_t coreKOffset, DLIKGradRunInfo &runInfo,
     int32_t idx, GlobalTensor<T> &scatterAddGm)
 {
@@ -954,7 +954,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ReInitBuffers(TPipe *pipe)
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ReInitBuffers(TPipe *pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(this->scatterAddInQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32K);
@@ -966,7 +966,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ReInitBuffers(TPipe *pipe)
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector8()
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector8()
 {
     int64_t avgCost = CeilDiv(constInfo.totalCost, GetBlockNum() * GetTaskRation());
     int32_t t2Start = Min(constInfo.aivIdx * avgCost, constInfo.totalCost);
@@ -1015,7 +1015,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector8()
 }
 
 TEMPLATES_DEF
-class SligBlockVecDummy {
+class DlikgBlockVecDummy {
 public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
         GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
@@ -1042,5 +1042,5 @@ public:
     __aicore__ inline void ReInitBuffers(TPipe *pipe){};
     __aicore__ inline void ProcessVector8(){};
 };
-} // namespace Slig
+} // namespace Dlikg
 #endif

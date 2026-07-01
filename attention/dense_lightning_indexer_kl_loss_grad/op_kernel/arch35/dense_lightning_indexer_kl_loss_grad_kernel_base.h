@@ -437,12 +437,12 @@ __aicore__ inline int32_t DenseLightningIndexerKLLossGradKernelBase<CubeBlockTyp
     int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, int32_t cmpResidualK, int64_t cmpRatio,
     DLISparseMode sparseMode)
 {
-    if (sparseMode == SLIMaskMode::RightDown) {
+    if (sparseMode == DLISparseMode::RightDown) {
         if (cmpRatio == 1) {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
         return Max(((actualSeqLensK * cmpRatio + cmpResidualK) - actualSeqLensQ + s1Idx + 1) / cmpRatio, 0);
-    } else if (sparseMode == SLIMaskMode::DefaultMask) {
+    } else if (sparseMode == DLISparseMode::DefaultMask) {
         return actualSeqLensK;
     } else {
         return 0;
@@ -761,6 +761,6 @@ __aicore__ inline int32_t DenseLightningIndexerKLLossGradKernelBase<CubeBlockTyp
         return defaultLens;
     }
 }
-} // namespace Slig
+} // namespace Dlikg
 
 #endif

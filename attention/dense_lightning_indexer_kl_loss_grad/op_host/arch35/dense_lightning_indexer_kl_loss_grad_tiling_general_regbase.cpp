@@ -655,17 +655,17 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAtt
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout(),
         OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
     // 将基本输入参数传给tilingdata
-    sliGradBaseParams_->set_bSize(bSize);
-    sliGradBaseParams_->set_t1Size(t1Size);
-    sliGradBaseParams_->set_t2Size(t2Size);
-    sliGradBaseParams_->set_n2Size(n2Size);
-    sliGradBaseParams_->set_gSizeQueryIndex(gSizeQueryIndex);
-    sliGradBaseParams_->set_s1Size(s1Size);
-    sliGradBaseParams_->set_s2Size(s2Size);
-    sliGradBaseParams_->set_dSizeQueryIndex(dSizeQueryIndex);
-    sliGradBaseParams_->set_kSize(kSize);
-    sliGradBaseParams_->set_sparseMode(sparseMode);
-    sliGradBaseParams_->set_cmpRatio(cmpRatio);
+    dlikGradBaseParams_->set_bSize(bSize);
+    dlikGradBaseParams_->set_t1Size(t1Size);
+    dlikGradBaseParams_->set_t2Size(t2Size);
+    dlikGradBaseParams_->set_n2Size(n2Size);
+    dlikGradBaseParams_->set_gSizeQueryIndex(gSizeQueryIndex);
+    dlikGradBaseParams_->set_s1Size(s1Size);
+    dlikGradBaseParams_->set_s2Size(s2Size);
+    dlikGradBaseParams_->set_dSizeQueryIndex(dSizeQueryIndex);
+    dlikGradBaseParams_->set_kSize(kSize);
+    dlikGradBaseParams_->set_sparseMode(sparseMode);
+    dlikGradBaseParams_->set_cmpRatio(cmpRatio);
 
     OP_LOGW(context_,
         "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],"
@@ -688,7 +688,7 @@ int64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetS2RealSize(int32
         }
     }
     s2RealSize = AlignUp(s2RealSize, 512L);
-    return std::min(s2RealSize, (int64_t)sliGradBaseParams_->get_kSize());
+    return std::min(s2RealSize, (int64_t)dlikGradBaseParams_->get_kSize());
 }
 
 bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)
@@ -696,7 +696,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitSparseValidArray(s
     OP_CHECK_IF(sparseValidArray.size() == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."), return false);
 
-    uint32_t sparseMode = sliGradBaseParams_->get_sparseMode();
+    uint32_t sparseMode = dlikGradBaseParams_->get_sparseMode();
     if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
         return true;
     } else if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_BSND) {
@@ -734,8 +734,8 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::BalanceLoad(const std:
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
     int64_t validAicNum =
-        std::min(static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()), static_cast<int64_t>(aicNum));
-    int64_t totalSize = sliGradMultiCoreParams_->get_totalSize();
+        std::min(static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()), static_cast<int64_t>(aicNum));
+    int64_t totalSize = dlikGradMultiCoreParams_->get_totalSize();
     int64_t maxVal = *std::max_element(localValue.begin(), localValue.end());
     int64_t tmpMaxVal = maxVal;
 
@@ -819,10 +819,10 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetSparseStartIdx(
     const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-    int64_t validAicNum = static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum());
-    int64_t totalSize = sliGradMultiCoreParams_->get_totalSize();
-    int64_t *sparseStartIdx = sliGradMultiCoreParams_->get_bS1Ptr();
-    int64_t splitFactorSize = sliGradMultiCoreParams_->get_splitFactorSize();
+    int64_t validAicNum = static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum());
+    int64_t totalSize = dlikGradMultiCoreParams_->get_totalSize();
+    int64_t *sparseStartIdx = dlikGradMultiCoreParams_->get_bS1Ptr();
+    int64_t splitFactorSize = dlikGradMultiCoreParams_->get_splitFactorSize();
 
     OP_CHECK_IF(totalSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "totalSize should be larger than 0."),
         return false);
@@ -849,7 +849,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetSparseStartIdx(
 
 void DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetSparseParamsRegbase(int64_t maxCoreNum)
 {
-    std::vector<int64_t> sparseValidArray(sliGradMultiCoreParams_->get_totalSize(), 0);
+    std::vector<int64_t> sparseValidArray(dlikGradMultiCoreParams_->get_totalSize(), 0);
     InitSparseValidArray(sparseValidArray);
     SetSparseStartIdx(sparseValidArray, maxCoreNum);
 }
@@ -868,14 +868,14 @@ int64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::CalcTotalSize()
 void DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
 {
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(coreNum));
-    sliGradMultiCoreParams_->set_coreNum(static_cast<int32_t>(aicNum));
-    sliGradMultiCoreParams_->set_totalSize(totalSize);
-    sliGradMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
+    dlikGradMultiCoreParams_->set_coreNum(static_cast<int32_t>(aicNum));
+    dlikGradMultiCoreParams_->set_totalSize(totalSize);
+    dlikGradMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
 }
 
 void DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitOutputSplit()
 {
-    SLIGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
+    DLIKGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
     auto &dKeyIndexShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
     int64_t totalsize = 0;
     uint32_t singlecoresize = 0;
@@ -898,32 +898,32 @@ void DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitOutputSplit()
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTiling()
 {
     // softmaxOut、dw、dq
-    int64_t dAlign16 = (sliGradBaseParams_->get_dSizeQueryIndex() + 15) >> 4 << 4;
+    int64_t dAlign16 = (dlikGradBaseParams_->get_dSizeQueryIndex() + 15) >> 4 << 4;
     // query
-    int64_t allNumQuery = sliGradBaseParams_->get_bSize() * sliGradBaseParams_->get_n2Size() *
-        sliGradBaseParams_->get_gSizeQueryIndex() * sliGradBaseParams_->get_s1Size() * dAlign16;
+    int64_t allNumQuery = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
+        dlikGradBaseParams_->get_gSizeQueryIndex() * dlikGradBaseParams_->get_s1Size() * dAlign16;
     // TND时候要按照真实的query的num数计算
-    if (sliGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
-        allNumQuery = sliGradBaseParams_->get_t1Size() * sliGradBaseParams_->get_n2Size() *
-            sliGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
+    if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
+        allNumQuery = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
+            dlikGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
     }
 
     // weight
-    int64_t allNumWeight = sliGradBaseParams_->get_bSize() * sliGradBaseParams_->get_n2Size() *
-        sliGradBaseParams_->get_s1Size() * sliGradBaseParams_->get_gSizeQueryIndex();
+    int64_t allNumWeight = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
+        dlikGradBaseParams_->get_s1Size() * dlikGradBaseParams_->get_gSizeQueryIndex();
     // TND时候要按照真实的cmp_softmax_l1的num数计算
-    if (sliGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
-        allNumWeight = sliGradBaseParams_->get_t1Size() * sliGradBaseParams_->get_n2Size() *
-            sliGradBaseParams_->get_gSizeQueryIndex();
+    if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
+        allNumWeight = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
+            dlikGradBaseParams_->get_gSizeQueryIndex();
     }
 
     // softmaxOut
-    int64_t allNumSoftmaxOut = sliGradBaseParams_->get_bSize() * sliGradBaseParams_->get_s1Size() *
-        sliGradBaseParams_->get_n2Size() * sliGradBaseParams_->get_kSize();
+    int64_t allNumSoftmaxOut = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_s1Size() *
+        dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_kSize();
     // TND时候要按照真实的softmaxOut的num数计算
-    if (sliGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
+    if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumSoftmaxOut =
-            sliGradBaseParams_->get_t1Size() * sliGradBaseParams_->get_n2Size() * sliGradBaseParams_->get_kSize();
+            dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_kSize();
     }
     uint32_t typeSize = B16;
     uint32_t usedCoreNum = aivNum;
@@ -973,19 +973,19 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
         softmaxOutPreBlockTail = softmaxOutPreBlockTailTmp == 0 ? softmaxOutPreBlockFactor : softmaxOutPreBlockTailTmp;
     }
 
-    sliGradMultiCoreParams_->set_postUbBaseSize(postUbBaseSize);
+    dlikGradMultiCoreParams_->set_postUbBaseSize(postUbBaseSize);
 
-    sliGradMultiCoreParams_->set_qPreBlockFactor(qPreBlockFactor);
-    sliGradMultiCoreParams_->set_qPreBlockTotal(qPreBlockTotal);
-    sliGradMultiCoreParams_->set_qPreBlockTail(qPreBlockTail);
+    dlikGradMultiCoreParams_->set_qPreBlockFactor(qPreBlockFactor);
+    dlikGradMultiCoreParams_->set_qPreBlockTotal(qPreBlockTotal);
+    dlikGradMultiCoreParams_->set_qPreBlockTail(qPreBlockTail);
 
-    sliGradMultiCoreParams_->set_weightPreBlockFactor(weightPreBlockFactor);
-    sliGradMultiCoreParams_->set_weightPreBlockTotal(weightPreBlockTotal);
-    sliGradMultiCoreParams_->set_weightPreBlockTail(weightPreBlockTail);
+    dlikGradMultiCoreParams_->set_weightPreBlockFactor(weightPreBlockFactor);
+    dlikGradMultiCoreParams_->set_weightPreBlockTotal(weightPreBlockTotal);
+    dlikGradMultiCoreParams_->set_weightPreBlockTail(weightPreBlockTail);
 
-    sliGradMultiCoreParams_->set_softmaxOutPreBlockFactor(softmaxOutPreBlockFactor);
-    sliGradMultiCoreParams_->set_softmaxOutPreBlockTotal(softmaxOutPreBlockTotal);
-    sliGradMultiCoreParams_->set_softmaxOutPreBlockTail(softmaxOutPreBlockTail);
+    dlikGradMultiCoreParams_->set_softmaxOutPreBlockFactor(softmaxOutPreBlockFactor);
+    dlikGradMultiCoreParams_->set_softmaxOutPreBlockTotal(softmaxOutPreBlockTotal);
+    dlikGradMultiCoreParams_->set_softmaxOutPreBlockTail(softmaxOutPreBlockTail);
 
     dqWorkspaceLen = (allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     dwWorkspaceLen = (allNumWeight * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
@@ -1023,21 +1023,21 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoOpTiling(
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::PostTiling()
 {
     OP_LOGI(context_, "====================================== BASE PARAMS ===========================================");
-    OP_LOGI(context_, "sliGradBaseParams_.bSize = [%ld]", sliGradBaseParams_->get_bSize());
-    OP_LOGI(context_, "sliGradBaseParams_.cmpRatio = [%ld]", sliGradBaseParams_->get_cmpRatio());
-    OP_LOGI(context_, "sliGradBaseParams_.dSizeQueryIndex = [%ld]", sliGradBaseParams_->get_dSizeQueryIndex());
-    OP_LOGI(context_, "sliGradBaseParams_.gSizeQueryIndex = [%ld]", sliGradBaseParams_->get_gSizeQueryIndex());
-    OP_LOGI(context_, "sliGradBaseParams_.kSize = [%ld]", sliGradBaseParams_->get_kSize());
-    OP_LOGI(context_, "sliGradBaseParams_.layoutType = [%ld]", sliGradBaseParams_->get_layoutType());
-    OP_LOGI(context_, "sliGradBaseParams_.n2Size = [%ld]", sliGradBaseParams_->get_n2Size());
-    OP_LOGI(context_, "sliGradBaseParams_.s1Size = [%ld]", sliGradBaseParams_->get_s1Size());
+    OP_LOGI(context_, "dlikGradBaseParams_.bSize = [%ld]", dlikGradBaseParams_->get_bSize());
+    OP_LOGI(context_, "dlikGradBaseParams_.cmpRatio = [%ld]", dlikGradBaseParams_->get_cmpRatio());
+    OP_LOGI(context_, "dlikGradBaseParams_.dSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_dSizeQueryIndex());
+    OP_LOGI(context_, "dlikGradBaseParams_.gSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_gSizeQueryIndex());
+    OP_LOGI(context_, "dlikGradBaseParams_.kSize = [%ld]", dlikGradBaseParams_->get_kSize());
+    OP_LOGI(context_, "dlikGradBaseParams_.layoutType = [%ld]", dlikGradBaseParams_->get_layoutType());
+    OP_LOGI(context_, "dlikGradBaseParams_.n2Size = [%ld]", dlikGradBaseParams_->get_n2Size());
+    OP_LOGI(context_, "dlikGradBaseParams_.s1Size = [%ld]", dlikGradBaseParams_->get_s1Size());
     OP_LOGI(context_, "==================================== MULTI CORE PARAMS =======================================");
-    OP_LOGI(context_, "sliGradMultiCoreParams_.coreNum = [%ld]", sliGradMultiCoreParams_->get_coreNum());
-    OP_LOGI(context_, "sliGradMultiCoreParams_.splitFactorSize = [%ld]",
-        sliGradMultiCoreParams_->get_splitFactorSize());
-    OP_LOGI(context_, "sliGradMultiCoreParams_.totalSize = [%ld]", sliGradMultiCoreParams_->get_totalSize());
+    OP_LOGI(context_, "dlikGradMultiCoreParams_.coreNum = [%ld]", dlikGradMultiCoreParams_->get_coreNum());
+    OP_LOGI(context_, "dlikGradMultiCoreParams_.splitFactorSize = [%ld]",
+        dlikGradMultiCoreParams_->get_splitFactorSize());
+    OP_LOGI(context_, "dlikGradMultiCoreParams_.totalSize = [%ld]", dlikGradMultiCoreParams_->get_totalSize());
     OP_LOGI(context_, "===================================== INIT OUTPUT PARAMS =====================================");
-    SLIGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
+    DLIKGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
     OP_LOGI(context_, "initoutput.singleCoreSize = [%ld]", initoutput->get_singleCoreSize());
     OP_LOGI(context_, "initoutput.totalOutputSize = [%ld]", initoutput->get_totalOutputSize());
     return ge::GRAPH_SUCCESS;
@@ -1096,11 +1096,11 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
         multicoreTotalsize =
-            (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()) +
+            (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()) +
             scatterAddOutSize * 2;
     } else {
         multicoreTotalsize =
-            singlecoreTotalSize * static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+            singlecoreTotalSize * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
     }
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);

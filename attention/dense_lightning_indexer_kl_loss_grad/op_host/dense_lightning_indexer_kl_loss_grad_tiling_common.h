@@ -84,7 +84,7 @@ struct AiCoreParams {
     uint64_t l0cSize = 0;
 };
 
-// SLIG tiling类定义 继承TilingBaseClass
+// DLIKG tiling类定义 继承TilingBaseClass
 struct DenseLightningIndexerGradCompileInfo {
     int64_t core_num;
     uint32_t aivNum;

@@ -171,16 +171,6 @@ struct DLIKGradKRunInfo {
     int32_t dRopeValue;
 };
 
-struct SLIGradSYRunInfo {
-    int32_t kRealBaseSize; // gather一次做的真实行数
-    int32_t kIdx;
-};
-struct SLIGradPRunInfo {
-    int32_t kRealBaseSize; //
-    int32_t kIdx;
-};
-// / @}
-
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
 
@@ -194,11 +184,6 @@ constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
 
 constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
 constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
-
-template <typename T> __aicore__ inline T SLIGAlign(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-}
 
 template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
 {

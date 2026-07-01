@@ -19,11 +19,11 @@
 #include "kernel_tiling/kernel_tiling.h"
 namespace optiling {
 // ------------------公共定义--------------------------
-const uint32_t SLI_MAX_AIC_CORE_NUM_REGBASE = 36;
+const uint32_t DLIKG_MAX_AIC_CORE_NUM_REGBASE = 36;
 constexpr uint32_t MAX_CORE_NUM_REGBASE = 36; // 目前使用AIC核的最大值为36
 
 // -----------算子TilingData定义---------------
-class SLIGradBaseParamsRegbase {
+class DLIKGradBaseParamsRegbase {
 public:
     // 基础输入参数
     int32_t bSize;
@@ -179,7 +179,7 @@ public:
     }
 };
 
-class SLIGradMultiCoreParamsRegbase {
+class DLIKGradMultiCoreParamsRegbase {
 public:
     uint32_t coreNum;
     uint32_t rsvd;
@@ -313,7 +313,7 @@ public:
     }
 };
 
-class SLIGradInitOutputParamsRegbase {
+class DLIKGradInitOutputParamsRegbase {
 public:
     uint32_t singleCoreSize; // 单核需要初始化的元素个数
     uint32_t rsvd;
@@ -338,7 +338,7 @@ public:
     }
 };
 
-class SLIGradVecApiParamsRegbase {
+class DLIKGradVecApiParamsRegbase {
 public:
     SoftMaxTiling softmaxYTilingData;
     SoftMaxTiling simpleSoftmaxPTilingData;
@@ -346,10 +346,10 @@ public:
 
 class DenseLightningIndexerGradRegBaseTilingData {
 public:
-    SLIGradBaseParamsRegbase baseParams;
-    SLIGradMultiCoreParamsRegbase multiCoreParams;
-    SLIGradInitOutputParamsRegbase initOutputParams;
-    SLIGradVecApiParamsRegbase vectorParams;
+    DLIKGradBaseParamsRegbase baseParams;
+    DLIKGradMultiCoreParamsRegbase multiCoreParams;
+    DLIKGradInitOutputParamsRegbase initOutputParams;
+    DLIKGradVecApiParamsRegbase vectorParams;
 };
 } // namespace optiling
 #endif // DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_H

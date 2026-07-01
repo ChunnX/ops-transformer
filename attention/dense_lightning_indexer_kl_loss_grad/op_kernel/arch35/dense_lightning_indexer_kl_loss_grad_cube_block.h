@@ -18,11 +18,11 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "dense_lightning_indexer_kl_loss_grad_regbase_common.h"
-namespace Slig {
+namespace Dlikg {
 using T = float;
 
 TEMPLATES_DEF
-class SligBlockCube {
+class DlikgBlockCube {
 public:
     TPipe *pipe;
     constexpr static uint32_t QUERY_INDEX_BUFFER_SIZE = 128 * 128 * 2;
@@ -66,7 +66,7 @@ public:
 
     DLIKGradConstInfo constInfo{};
 
-    __aicore__ inline SligBlockCube(){};
+    __aicore__ inline DlikgBlockCube(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitCubeBuffers();
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
@@ -94,7 +94,7 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::SetCubeBlockParams(TPipe *tPipe,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::SetCubeBlockParams(TPipe *tPipe,
     BufferManager<BufferType::L1> *l1BuffMgr)
 {
     this->pipe = tPipe;
@@ -102,7 +102,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::SetCubeBlockParams(TPipe *t
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 {
     // init l1 buffer
     sYQueryL1Buf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
@@ -121,7 +121,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery,
     GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res)
 {
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
@@ -132,7 +132,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR qu
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor,
     GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
 {
     Nd2NzParams nd2nzPara;
@@ -148,7 +148,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyGmToL1(LocalTensor<INPU
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor,
     const DLIKGradRunInfo &info, DLIKGradConstInfo &constInfo)
 {
     auto srcGm = queryIndexGm[info.queryIndexTensorOffset];
@@ -156,7 +156,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm2AToL1(LocalTensor<
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor,
     uint64_t gatherOffset, uint32_t mSizeAct, uint32_t realDSize, uint32_t headOffset)
 {
     auto srcGm = gatherSYResGm[gatherOffset];
@@ -164,7 +164,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo)
@@ -231,7 +231,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm3(
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo)
@@ -300,7 +300,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm3(
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut)
 {
@@ -364,9 +364,9 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
 };
 
 TEMPLATES_DEF
-class SligBlockCubeDummy {
+class DlikgBlockCubeDummy {
 public:
-    __aicore__ inline SligBlockCubeDummy(){};
+    __aicore__ inline DlikgBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitCubeBuffers(){};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
@@ -394,8 +394,8 @@ template <typename T> struct CubeBlockTraits; // 声明
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)       \
     };
 
-DEFINE_CUBE_BLOCK_TRAITS(SligBlockCube);
-DEFINE_CUBE_BLOCK_TRAITS(SligBlockCubeDummy);
+DEFINE_CUBE_BLOCK_TRAITS(DlikgBlockCube);
+DEFINE_CUBE_BLOCK_TRAITS(DlikgBlockCubeDummy);
 
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;

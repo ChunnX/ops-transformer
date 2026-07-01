@@ -43,7 +43,7 @@ static const std::string VALUE_NAME = "value";
 ge::graphStatus TilingDenseLightningIndexerKLLossGrad(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
-    auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    auto dlikgPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
