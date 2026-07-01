@@ -537,6 +537,13 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     OP_LOGD("allGatherMatmulV2GetWorkspaceSizeAIVMode start");
+    // 校验comm_mode取值
+    if (std::strncmp(commMode, "aiv", CMP_MAX_LEN) != 0) {
+    }else {
+        OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode",
+            commMode, "'aiv'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     bool transposeX1 = IsTransposeLastTwoDims(x1);
     bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
     bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);
