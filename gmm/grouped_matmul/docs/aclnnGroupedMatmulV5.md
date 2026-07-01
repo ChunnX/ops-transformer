@@ -9,26 +9,7 @@ abbr {
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
-## 目录
 
-- [1. 产品支持情况](#1-产品支持情况)
-- [2. 专业术语](#2-专业术语)
-- [3. 功能说明](#3-功能说明)
-- [4. 函数原型](#4-函数原型)
-- [5. aclnnGroupedMatmulV5GetWorkspaceSize](#5-aclnngroupedmatmulv5getworkspacesize)
-- [6. aclnnGroupedMatmulV5](#6-aclnngroupedmatmulv5)
-- [7. 约束说明](#7-约束说明)
-  - [7.1 公共约束](#71-公共约束)
-  - [7.2 Ascend 950PR/Ascend 950DT](#72-ascend-950prascend-950dt)
-    - [7.2.1 场景速查表](#721-场景速查表)
-  - [7.3 Atlas A3/A2 训练系列产品](#73-atlas-a3a2-训练系列产品)
-    - [7.3.1 场景速查表](#731-场景速查表)
-- [8. 接口调用](#8-接口调用)
-  - [8.1 调用流程](#81-调用流程)
-  - [8.2 配置示例](#82-配置示例)
-    - [8.2.1 groupListOptional 配置示例](#821-grouplistoptional-配置示例)
-    - [8.2.2 tuningConfigOptional 配置示例](#822-tuningconfigoptional-配置示例)
-  - [8.3 示例代码索引](#83-示例代码索引)
 
 ---
 
