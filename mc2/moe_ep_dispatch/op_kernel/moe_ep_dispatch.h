@@ -106,7 +106,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::Mc2MoeContext *mc2Context_{nullptr};
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> topkIdxGMTensor_;
