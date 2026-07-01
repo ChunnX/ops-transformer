@@ -46,7 +46,6 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
@@ -288,16 +287,7 @@ public:
         }
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
-        // prefix
-        if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = fiaSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = fiaSystemPrefixParams.prefixSeqInnerSize;
-            if (!constInfo.isActualSharedPrefixLenNull) {
-                constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
-            }
-        } else {
-            constInfo.actualKVPrefixSize = 0;
-        }
+        constInfo.actualKVPrefixSize = 0;
         // learnableSink
         constInfo.learnableSinkFlag = false;
 
@@ -574,16 +564,15 @@ public:
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
-
+        int64_t s1FirstToken = 0;
+        int64_t s1LastToken = 0;
+        
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
                                1;
 
-        int64_t s1FirstToken = 0;
-        int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
@@ -594,18 +583,19 @@ public:
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
             } else {
                 // start and end locate in tow or more G, but working same as crossing one complete block
-                s1FirstToken = 0;
                 s1LastToken = static_cast<int64_t>(actSeqLensQ);
+                s1FirstToken = 0;
             }
         }
-
+        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
         // 3. trans index of token to index of block
         uint32_t s2StartWithSparse = 0U;
         uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
-        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv)
+            || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;

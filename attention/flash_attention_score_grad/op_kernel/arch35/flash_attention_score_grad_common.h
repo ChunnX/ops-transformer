@@ -41,6 +41,7 @@ constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
 constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
+constexpr uint8_t SYNC_ALL_PRE_FLAG = 13;
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -80,6 +81,7 @@ constexpr uint16_t QUANT_UB2L1_SRC_OFFSET = 512;
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
+constexpr uint32_t PRE_INIT_UB_SIZE = 6 * 1024;
 
 constexpr uint32_t RESERVED_WORKSPACE_SIZE = 64 * 1024;
 constexpr bool INPUT_DISABLE = 0;
@@ -163,6 +165,7 @@ constexpr uint16_t UNROLL_FACTOR = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_FOUR = 4;
+constexpr uint32_t NUM_FIVE = 5;
 constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr static bool end = true;

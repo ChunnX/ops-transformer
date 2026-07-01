@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import sys
 import shutil
 import subprocess
 import logging
@@ -68,7 +69,7 @@ class ABI3Wheel(bdist_wheel):
     """
     def get_tag(self):
         python, abi, plat = super().get_tag()
-        python = "cp38"
+        python = f"cp3{sys.version_info.minor}"
         abi = "abi3"
         return python, abi, plat
 
@@ -106,9 +107,9 @@ class CMakeBuildCommand(Command):
         TORCH_NPU_PATH = os.path.dirname(torch_npu.__file__)
         logging.info(f"Using Torch NPU path: {TORCH_NPU_PATH}")
 
-        # Get NPU_ARCH from environment variable or set default
-        NPU_ARCH = os.environ.get('NPU_ARCH', 'ascend910b')
-        logging.info(f"Using NPU_ARCH: {NPU_ARCH}")
+        # Get NPU_SOC_VERSION from environment variable or set default
+        NPU_SOC_VERSION = os.environ.get('NPU_SOC_VERSION', 'ascend910b')
+        logging.info(f"Using NPU_SOC_VERSION: {NPU_SOC_VERSION}")
 
         CANN_3RD_LIB_PATH = os.path.abspath("../../third_party")
 
@@ -118,7 +119,7 @@ class CMakeBuildCommand(Command):
                                 '-DCMAKE_BUILD_TYPE=Release',
                                 f'-DTorch_DIR={Torch_DIR}',
                                 f'-DTORCH_NPU_PATH={TORCH_NPU_PATH}',
-                                f'-DNPU_ARCH={NPU_ARCH}',
+                                f'-DNPU_SOC_VERSION={NPU_SOC_VERSION}',
                                 f'-DCANN_3RD_LIB_PATH={CANN_3RD_LIB_PATH}'
                                 ]
         subprocess.check_call(cmake_config_command, cwd=os.getcwd())

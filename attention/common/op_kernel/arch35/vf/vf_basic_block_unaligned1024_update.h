@@ -25,21 +25,26 @@ namespace FaVectorApi {
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 16, uint32_t s2BaseSize = 512,
     bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0>
 __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
-    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ T2 * expUb5, __ubuf__ T2 * expUb6,
-    __ubuf__ T2 * expUb7, __ubuf__ T2 * expUb8, __ubuf__ OUTPUT_T * pseUb, __ubuf__ T * maxUb, __ubuf__ T * srcUb, __ubuf__ T * expMaxUb,
-    __ubuf__ T * inMaxUb, __ubuf__ T * tmpExpSumUb, __ubuf__ T * tmpMaxUb, __ubuf__ T * tmpMaxUb2,
-    __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2, __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5,
-    __ubuf__ uint32_t * maskUb6, __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, __ubuf__ uint32_t * maskUb9, __ubuf__ uint32_t * maskUb10,
-    __ubuf__ uint32_t * maskUb11, __ubuf__ uint32_t * maskUb12, __ubuf__ uint32_t * maskUb13, __ubuf__ uint32_t * maskUb14,
-    __ubuf__ uint32_t * maskUb15, __ubuf__ uint32_t * maskUb16, const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
-    const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3, const uint32_t oriTailN4, const uint32_t oriTailN5,
-    const uint32_t oriTailN6, const uint32_t oriTailN7, const uint32_t oriTailN8, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3,
-    const uint32_t tailN4, const uint32_t tailN5, const uint32_t tailN6, const uint32_t tailN7, const uint32_t tailN8, uint32_t pltOriTailN1,
-    uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4, uint32_t pltOriTailN5, uint32_t pltOriTailN6, uint32_t pltOriTailN7, uint32_t pltOriTailN8,
-    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, uint32_t pltTailN5, uint32_t pltTailN6, uint32_t pltTailN7, uint32_t pltTailN8,
-    uint32_t pltN, float divValue, const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
+    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4,
+    __ubuf__ T2 * expUb5, __ubuf__ T2 * expUb6, __ubuf__ T2 * expUb7, __ubuf__ T2 * expUb8,
+    __ubuf__ OUTPUT_T * pseUb, __ubuf__ T * maxUb, __ubuf__ T * srcUb,
+    __ubuf__ T * expMaxUb, __ubuf__ T * inMaxUb, __ubuf__ T * tmpExpSumUb,
+    __ubuf__ T * tmpMaxUb, __ubuf__ T * tmpMaxUb2, VREG_FLOAT_MASKUB_16_DECL,
+    const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
+    const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3,
+    const uint32_t oriTailN4, const uint32_t oriTailN5, const uint32_t oriTailN6,
+    const uint32_t oriTailN7, const uint32_t oriTailN8, const uint32_t tailN1,
+    const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4,
+    const uint32_t tailN5, const uint32_t tailN6, const uint32_t tailN7,
+    const uint32_t tailN8, uint32_t pltOriTailN1, uint32_t pltOriTailN2,
+    uint32_t pltOriTailN3, uint32_t pltOriTailN4, uint32_t pltOriTailN5,
+    uint32_t pltOriTailN6, uint32_t pltOriTailN7, uint32_t pltOriTailN8,
+    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3,
+    uint32_t pltTailN4, uint32_t pltTailN5, uint32_t pltTailN6,
+    uint32_t pltTailN7, uint32_t pltTailN8, uint32_t pltN, float divValue,
+    const uint16_t m, const uint32_t pseStride, const float slopes,
+    const float posShift, const T scale, const T minValue)
 {
-    RegTensor<float> vreg_min;
     VREG_FLOAT_DECL_16(vreg_sel);
     RegTensor<float> vreg_sel9_new;
     RegTensor<float> vreg_sel10_new;
@@ -80,23 +85,14 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
-    MaskReg preg_n_b16 = UpdateMask<uint16_t>(pltN);
 
-    MaskReg preg_tail_n1 = UpdateMask<T>(pltTailN1);
     MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
-    MaskReg preg_tail_n2 = UpdateMask<T>(pltTailN2);
     MaskReg preg_ori_tail_n2 = UpdateMask<T>(pltOriTailN2);
-    MaskReg preg_tail_n3 = UpdateMask<T>(pltTailN3);
     MaskReg preg_ori_tail_n3 = UpdateMask<T>(pltOriTailN3);
-    MaskReg preg_tail_n4 = UpdateMask<T>(pltTailN4);
     MaskReg preg_ori_tail_n4 = UpdateMask<T>(pltOriTailN4);
-    MaskReg preg_tail_n5 = UpdateMask<T>(pltTailN5);
     MaskReg preg_ori_tail_n5 = UpdateMask<T>(pltOriTailN5);
-    MaskReg preg_tail_n6 = UpdateMask<T>(pltTailN6);
     MaskReg preg_ori_tail_n6 = UpdateMask<T>(pltOriTailN6);
-    MaskReg preg_tail_n7 = UpdateMask<T>(pltTailN7);
     MaskReg preg_ori_tail_n7 = UpdateMask<T>(pltOriTailN7);
-    MaskReg preg_tail_n8 = UpdateMask<T>(pltTailN8);
     MaskReg preg_ori_tail_n8 = UpdateMask<T>(pltOriTailN8);
 
     ProcessVec1MainLoop1024<T, T2, hasAtten, pseMode>(
@@ -106,19 +102,12 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
         ARG_FLOAT_SEL_16,
         ARG_FLOAT_SEL_NEW_8,
         ARG_FLOAT_ALIBI_16_VREG,
-        vreg_input_max,
-        preg_all, preg_all_b16,
-        preg_ori_tail_n1, preg_ori_tail_n2,
-        preg_ori_tail_n3, preg_ori_tail_n4,
-        preg_ori_tail_n5, preg_ori_tail_n6,
-        preg_ori_tail_n7, preg_ori_tail_n8,
-        tmpMaxUb,
-        pseUb,
-        maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
+        vreg_input_max, preg_all, preg_all_b16,
+        preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4,
+        preg_ori_tail_n5, preg_ori_tail_n6, preg_ori_tail_n7, preg_ori_tail_n8,
+        tmpMaxUb, pseUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
         maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16,
-        minValue, m, slopes, scale, posShift,
-        pseStride, nPadding,
-        ureg_max);
+        minValue, m, slopes, scale, posShift, pseStride, nPadding, ureg_max);
 
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
@@ -235,22 +224,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl1024(
     __ubuf__ T * tmpMaxUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T * tmpMaxUb2 = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr() + 64;
 
-    __ubuf__ uint32_t * maskUb1 = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ uint32_t * maskUb2 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize);
-    __ubuf__ uint32_t * maskUb3 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 2);
-    __ubuf__ uint32_t * maskUb4 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 3);
-    __ubuf__ uint32_t * maskUb5 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 4);
-    __ubuf__ uint32_t * maskUb6 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 5);
-    __ubuf__ uint32_t * maskUb7 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 6);
-    __ubuf__ uint32_t * maskUb8 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 7);
-    __ubuf__ uint32_t * maskUb9 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 8);
-    __ubuf__ uint32_t * maskUb10 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 9);
-    __ubuf__ uint32_t * maskUb11 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 10);
-    __ubuf__ uint32_t * maskUb12 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 11);
-    __ubuf__ uint32_t * maskUb13 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 12);
-    __ubuf__ uint32_t * maskUb14 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 13);
-    __ubuf__ uint32_t * maskUb15 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 14);
-    __ubuf__ uint32_t * maskUb16 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 15);
+    DO_MASKUB_INIT_16(maskTensor);
 
     ProcessVec1UpdateGeneralImpl1024VF<T, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
         expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8, pseUb, maxUb, srcUb, expMaxUb,
@@ -259,7 +233,8 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl1024(
         maskUb12, maskUb13, maskUb14, maskUb15, maskUb16, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
         oriTailN3, oriTailN4, oriTailN5, oriTailN6, oriTailN7, oriTailN8, tailN1, tailN2, tailN3, tailN4, tailN5,
         tailN6, tailN7, tailN8, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltOriTailN5, pltOriTailN6,
-        pltOriTailN7, pltOriTailN8, pltTailN1, pltTailN2, pltTailN3, pltTailN4, pltTailN5, pltTailN6, pltTailN7, pltTailN8,
+        pltOriTailN7, pltOriTailN8, pltTailN1, pltTailN2, pltTailN3, pltTailN4,
+        pltTailN5, pltTailN6, pltTailN7, pltTailN8,
         pltN, divValue, m, pseStride, slopes, posShift, scale, minValue);
 }
 } // namespace

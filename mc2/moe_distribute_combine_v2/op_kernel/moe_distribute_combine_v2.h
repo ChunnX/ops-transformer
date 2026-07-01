@@ -426,7 +426,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
         isShareExpertRankFlag_ = true;
     }
 
-    rankNumPerShareExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
+    if (sharedExpertNum_ != 0U) { // 除零保护
+        rankNumPerShareExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
+    }
 
     stateOffset_ = STATE_OFFSET;
     uint32_t hFloatSize = axisH_ * static_cast<uint32_t>(sizeof(float));

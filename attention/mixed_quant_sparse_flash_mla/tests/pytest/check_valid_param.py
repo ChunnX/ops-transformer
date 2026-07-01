@@ -27,7 +27,7 @@ def check_valid_param(params):
     if params.get('layout_kv') not in ["BSND", "PA_BBND", "TND"]:
         raise ValueError(f"不支持的KV shape: {params.get('layout_kv')}")
 
-    if params.get('template_run_mode') not in ["SCFA", "CFA", "SWA"]:
+    if params.get('template_run_mode') not in ["CSA", "HCA", "SWA"]:
         raise ValueError(f"不支持的template_run_mode: {params.get('template_run_mode')}")
 
     B = params.get('B')

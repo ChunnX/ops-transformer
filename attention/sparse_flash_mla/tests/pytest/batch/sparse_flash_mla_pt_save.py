@@ -25,7 +25,7 @@ import sparse_flash_mla_golden
 import torch
 
 excel_path = os.getenv("SAS_EXCEL_PATH", "./excel/example.xlsx")
-excel_sheet = os.getenv("SAS_EXCEL_SHEET", "SCFA")
+excel_sheet = os.getenv("SAS_EXCEL_SHEET", "CSA")
 ENABLED_PARAMS_FROM_FILE = utils.load_excel_test_cases(excel_path, excel_sheet)
 save_path = os.getenv("SAS_PT_SAVE_PATH", "./data")
 

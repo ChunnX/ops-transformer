@@ -17,20 +17,31 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mhc_post.h"
+#include "arch35/mhc_post_regbase.h"
 
 using namespace AscendC;
 using namespace MhcPost;
 
-template <uint16_t usePermanentX>
+template <uint16_t USE_PERMANENT_X, uint16_t USE_REGBASE>
 __global__ __aicore__ void mhc_post(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output,
                                     GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(MhcPostTilingData);
-    GET_TILING_DATA_WITH_STRUCT(MhcPostTilingData, tilingData, tiling);
+
     TPipe tPipe;
 
-    MhcPostKernel<DTYPE_X, usePermanentX> op(&tPipe, &tilingData);
-    op.Init(x, hRes, hOut, hPost, output, workspace);
-    op.Process();
+    if constexpr (USE_REGBASE == 0) {
+        REGISTER_TILING_FOR_TILINGKEY("USE_REGBASE == 0", MhcPostTilingData);
+        GET_TILING_DATA_WITH_STRUCT(MhcPostTilingData, tilingData, tiling);
+        MhcPostKernel<DTYPE_X, USE_PERMANENT_X> op(&tPipe, &tilingData);
+        op.Init(x, hRes, hOut, hPost, output, workspace);
+        op.Process();
+    } else if (USE_REGBASE == 1) {
+        REGISTER_TILING_FOR_TILINGKEY("USE_REGBASE == 1", MhcPostRegbaseTilingData);
+        GET_TILING_DATA_WITH_STRUCT(MhcPostRegbaseTilingData, tilingData, tiling);
+        MhcPostRegbase<DTYPE_X> op(&tPipe, &tilingData);
+        op.Init(x, hRes, hOut, hPost, output, workspace);
+        op.Process();
+    }
 }

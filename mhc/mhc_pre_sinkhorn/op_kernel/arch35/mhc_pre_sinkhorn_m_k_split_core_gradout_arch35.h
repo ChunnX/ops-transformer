@@ -30,7 +30,7 @@ public:
     {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR workspace,
-        const MhcPreSinkhornTilingData* tilingDataPtr, TPipe* pipePtr)
+        const MhcPreSinkhornRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -238,7 +238,7 @@ public:
 
 private:
     TPipe* pipe;
-    const MhcPreSinkhornTilingData* tilingData;
+    const MhcPreSinkhornRegbaseTilingData* tilingData;
     // (M, K) * (N, K)
 
     GlobalTensor<T> xGm;
@@ -279,7 +279,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
         GM_ADDR post, GM_ADDR combFrag, GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
         GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR workspace,
-        const MhcPreSinkhornTilingData* tilingDataPtr, TPipe* pipePtr)
+        const MhcPreSinkhornRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -503,7 +503,7 @@ public:
 
 private:
     TPipe* pipe;
-    const MhcPreSinkhornTilingData* tilingData;
+    const MhcPreSinkhornRegbaseTilingData* tilingData;
     GlobalTensor<float> hcScaleGm;
     GlobalTensor<float> hcBaseGm;
     GlobalTensor<T> xGm;

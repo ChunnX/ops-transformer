@@ -46,6 +46,13 @@ constexpr uint64_t M_L1_MAX_SIZE = 256;
 constexpr uint64_t K_MULIT_CORE_SPLIT_BASE_SIZE = 256;
 constexpr uint64_t A_L1_SIZE = 128 * 256;
 constexpr uint64_t K_L1_MAX_SIZE = 1024;
+// Ascend950(regbase, A5) only supports these two tail-axis(c) sizes, which differs from A2/A3(membase).
+constexpr int64_t C_VALID_VALUE_4096 = 4096;
+constexpr int64_t C_VALID_VALUE_7168 = 7168;
+constexpr int64_t HCMULT_VALUE = 4;
+constexpr int64_t NUM_ITERS_VALUE = 20;
+constexpr size_t X_DIM_NUM_3 = 3;
+constexpr size_t X_DIM_NUM_4 = 4;
 } // namespace
 
 MhcPreSinkhornTilingRegbase::MhcPreSinkhornTilingRegbase(gert::TilingContext *tilingContext) : context_(tilingContext)
@@ -59,6 +66,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetPlatformInfo()
         auto compileInfoPtr = context_->GetCompileInfo<MhcPreSinkhornCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
+        aicCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -90,7 +98,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetAttr()
     normEps_ = normEpsAttr == nullptr ? 1e-6 : *normEpsAttr;
 
     auto needGradAttr = attrs->GetAttrPointer<bool>(4);
-    needGrad_ = needGradAttr == nullptr ? false : *needGradAttr;
+    needGrad_ = needGradAttr == nullptr ? true : *needGradAttr;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -101,19 +109,30 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetShapeAttrsInfoInner()
     auto xShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
     size_t xDimNum = xShape->GetStorageShape().GetDimNum();
-    if (xDimNum == 3) {
+    if (xDimNum == X_DIM_NUM_3) {
         bs_ = xShape->GetStorageShape().GetDim(0);
         hcMult_ = xShape->GetStorageShape().GetDim(1);
         d_ = xShape->GetStorageShape().GetDim(2);
-    } else if (xDimNum == 4) {
+    } else if (xDimNum == X_DIM_NUM_4) {
         int64_t b = xShape->GetStorageShape().GetDim(0);
         int64_t s = xShape->GetStorageShape().GetDim(1);
         bs_ = b * s;
         hcMult_ = xShape->GetStorageShape().GetDim(2);
         d_ = xShape->GetStorageShape().GetDim(3);
+    } else {
+        OP_LOGE(context_->GetNodeName(), "x dim num should be 3 or 4, but is %ld", static_cast<int64_t>(xDimNum));
+        return ge::GRAPH_FAILED;
     }
 
+    OP_CHECK_IF(d_ != C_VALID_VALUE_4096 && d_ != C_VALID_VALUE_7168,
+                OP_LOGE(context_->GetNodeName(),
+                        "On Ascend950, x last dim c only supports %ld or %ld, but is %ld. "
+                        "Please set x last dim c to 4096 or 7168.",
+                        C_VALID_VALUE_4096, C_VALID_VALUE_7168, d_),
+                return ge::GRAPH_FAILED);
+
     auto shapeHcFn = context_->GetInputShape(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeHcFn);
     hcMix_ = shapeHcFn->GetStorageShape().GetDim(0);
     OP_CHECK_IF(shapeHcFn->GetStorageShape().GetDim(1) != d_ * hcMult_,
                 OP_LOGE(context_->GetNodeName(), "HcFn dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
@@ -121,18 +140,28 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetShapeAttrsInfoInner()
                 return ge::GRAPH_FAILED);
 
     auto shapeHcScale = context_->GetInputShape(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeHcScale);
     int64_t scaleFirstDim = shapeHcScale->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 3,
                 OP_LOGE(context_->GetNodeName(), "hc_scale size should be equal with 3, but is %ld", scaleFirstDim),
                 return ge::GRAPH_FAILED);
 
     auto shapeHcBase = context_->GetInputShape(3);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeHcBase);
     int64_t baseFirstDim = shapeHcBase->GetStorageShape().GetDim(0);
     OP_CHECK_IF(baseFirstDim != hcMix_,
                 OP_LOGE(context_->GetNodeName(), "hc_base size should be equal with mixhc, but is %ld", baseFirstDim),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "get attr failed."),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(hcMult_ != HCMULT_VALUE,
+                OP_LOGE(context_->GetNodeName(), "hcMult should be %ld, but is %ld", HCMULT_VALUE, hcMult_),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(iterTimes_ != NUM_ITERS_VALUE,
+                OP_LOGE(context_->GetNodeName(), "numIters should be %ld, but is %ld", NUM_ITERS_VALUE, iterTimes_),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -149,7 +178,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpTiling()
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
     hcMultAlign_ = RoundUp(hcMult_, BLOCK_SIZE / sizeof(float));
-    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
     int64_t xSize = rowOnceLoop * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
     int64_t ySize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t postSize = rowOnceLoop * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -199,7 +228,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpTiling()
     // d全载,尝试搬入更多的bs
     if (dFactor_ == d_) {
         while (rowFactor_ <= mUbSize) {
-            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
             xSize = rowFactor_ * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
             ySize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
             postSize = rowFactor_ * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -260,7 +289,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpGradoutTiling()
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
     hcMultAlign_ = RoundUp(hcMult_, BLOCK_SIZE / sizeof(float));
-    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
     int64_t xSize = rowOnceLoop * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
     int64_t ySize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t postSize = rowOnceLoop * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -320,7 +349,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpGradoutTiling()
     // d全载,尝试搬入更多的bs
     if (dFactor_ == d_) {
         while (rowFactor_ <= mUbSize) {
-            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
             xSize = rowFactor_ * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
             ySize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
             postSize = rowFactor_ * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -618,6 +647,11 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcOpTiling()
     uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
     uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
+
+    // 如果开启了一致性，则强制走M分核模板
+    if (context_->GetDeterministicLevel() == 2) {
+        kDimNum = 1;
+    }
 
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
     uint64_t actualKBlockNum = CeilDiv(kSize, splitKSize);

@@ -29,7 +29,7 @@
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 支持静态量化，量化方式包括：1. pertensor-perchannel（T-C）；2. pertensor-pertensor（T-T）。支持BFLOAT16、FLOAT16和FLOAT32输出，且支持带bias场景。
       - 支持动态量化，量化方式包括：1. pertoken-perchannel（K-C）；2. pertoken-pertensor（K-T）；3. pertensor-pertensor（T-T）；4. pertensor-perchannel（T-C）；5. MX量化；6. pergroup-perblock（G-B）。支持BFLOAT16、FLOAT16和FLOAT32输出，且支持带bias场景。
-      - 支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，仅支持perchannel模式。
+      - 支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，支持perchannel和pergroup模式（INT4支持perchannel和pergroup，其余weight类型仅支持perchannel）。
 
 **说明：**
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
@@ -953,12 +953,17 @@ aclnnStatus aclnnGroupedMatmulV4(
 
       - 当weight的数据类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，antiquantOffsetOptional仅支持传入空指针或空tensorList，weight仅支持转置。
       - 若weight的类型为INT4，则weight中每一组tensor的最后一维大小都应是偶数。$weight_i$的最后一维指weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
-      - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中g为matmul组数即分组数）：
+      - 当weight的数据类型为INT4时，支持perchannel和pergroup模式。perchannel与pergroup模式通过antiquantScaleOptional的维度数自动判定：单单单场景antiquantScaleOptional维度为2时为perchannel，维度为3时为pergroup；多多多场景antiquantScaleOptional维度为1时为perchannel，维度为2时为pergroup。
+      - 在pergroup场景下，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。
+      - 在pergroup场景下，groupSize取值仅支持32、64、128、256。当weight转置时，要求pergroup长度$s_i$是偶数。
+      - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中g为matmul组数即分组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
 
           |groupType| 使用场景 | shape限制 |
           |:---------:|:---------:| :------ |
-          |-1|weight多tensor|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
-          |0|weight单tensor|每个tensor 2维，shape为（g, N）|
+          |-1|weight多tensor（perchannel）|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
+          |-1|weight多tensor（pergroup）|每个tensor 2维，shape为（$G_i$, $n_i$） |
+          |0|weight单tensor（perchannel）|每个tensor 2维，shape为（g, N）|
+          |0|weight单tensor（pergroup）|每个tensor 3维，shape为（g, G, N）|
 
     </details>
 

@@ -264,7 +264,7 @@ aclnnStatus aclnnGroupedMatmul(
       </tr>
     </tbody></table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - x、weight支持FLOAT16、BFLOAT16、INT8
     - y支持FLOAT16、BFLOAT16、INT8、FLOAT32
   - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -339,7 +339,7 @@ aclnnStatus aclnnGroupedMatmul(
 
 - 确定性计算：
   - aclnnGroupedMatmul默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；

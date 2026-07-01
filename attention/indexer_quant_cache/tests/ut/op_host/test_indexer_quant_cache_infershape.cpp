@@ -33,8 +33,8 @@ TEST_F(IndexerQuantCacheProto, indexer_quant_cache_infershape_float16)
 {
     gert::InfershapeContextPara infershapeContextPara("IndexerQuantCache",
         {
-            {{{2048, 128}, {2048, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},      // cache
-            {{{2048, 1}, {2048, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // cacheScale
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},  // cache 4D [blockNum,blockSize,1,headDim]
+            {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},              // cacheScale 4D
             {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},              // x
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},                           // slotMapping
         },
@@ -55,8 +55,8 @@ TEST_F(IndexerQuantCacheProto, indexer_quant_cache_infershape_dynamic)
 {
     gert::InfershapeContextPara infershapeContextPara("IndexerQuantCache",
         {
-            {{{-2}, {2048, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},      // cache
-            {{{-2}, {2048, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},                 // cacheScale
+            {{{-2}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},      // cache 4D
+            {{{-2}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},                 // cacheScale 4D
             {{{-2}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},             // x
             {{{-2}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},                    // slotMapping
         },
