@@ -123,6 +123,8 @@ public:
         int32_t listLen;
         int32_t expertPerRank;
         uint64_t maxOutputSize;
+        // for reuse workspace, gmm1 out preRow Stride use max(n,k)
+        uint64_t gmmOutPreRowStride;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -195,6 +197,7 @@ public:
                 moeInitRoutingQuantV2TilingData_.srcToDstCapacityComputeParamsOp;
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
+            gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
         }
 
         CATLASS_HOST_DEVICE
@@ -224,6 +227,7 @@ public:
               ptrScales(ptrScales_), ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
+            gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
         }
     };
 
@@ -628,7 +632,7 @@ private:
             LayoutB layoutB1 = params.layoutB1;
             LayoutScale layoutScale = params.layoutScale1;
             LayoutC layoutC;
-            layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n());
+            layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n(), params.gmmOutPreRowStride);
             blockScheduler.Update(inGroupProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
             uint32_t coreLoops = blockScheduler.GetCoreLoops();
             // Determine the starting loopIdx of the current core under the current groupIdx
@@ -703,7 +707,7 @@ private:
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
-            gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();
+            gmGroupOffsetC += inGroupProblemShape.m() * params.gmmOutPreRowStride;
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
 
@@ -1298,14 +1302,14 @@ private:
                     uint32_t rowStartThisCore = dequantSum[syncIdx];
                     MatrixCoord offsetC{rowStartThisCore, 0};
                     MatrixCoord shapeC{curRowNum, params.problemShape.n()};
-                    LayoutC layoutC{curRowNum, params.problemShape.n()};
+                    LayoutC layoutC{curRowNum, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, gmCGMM1[gmOffsetC], runtimeRank, params.listLen, resource,
-                                   params.epilogueCoreNum, params.swigluLimit);
+                                   params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1324,10 +1328,10 @@ private:
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                   params.epilogueCoreNum, params.swigluLimit, 1);
+                                   params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
-                                   params.swigluLimit, 1);
+                                   params.swigluLimit, params.gmmOutPreRowStride);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1342,7 +1346,7 @@ private:
                     uint32_t dequantLen = dequantSum2;
                     MatrixCoord shapeC{dequantLen, params.problemShape.n()};
                     LayoutC layoutC;
-                    layoutC = LayoutC{dequantLen, params.problemShape.n()};
+                    layoutC = LayoutC{dequantLen, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
@@ -1590,46 +1594,47 @@ private:
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
             int64_t workspaceOffset = 0;
+
             expandedRowIdx = params.ptrWorkspace;
-
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
+
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
+            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
 
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
-
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
+
             ptrPerTokenScale2 = params.ptrWorkspace + workspaceOffset;
-
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
-            ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
 
+            ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-            ptrC = params.ptrWorkspace + workspaceOffset; // 7
+
+            // gmm out resues workspace
+            ptrC = params.ptrWorkspace + workspaceOffset;
+            ptrC2 = params.ptrWorkspace + workspaceOffset;
+            workspaceOffset += params.maxOutputSize * params.gmmOutPreRowStride * sizeof(ElementC);
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC) * 2;
-                ptrC2 = params.ptrWorkspace + workspaceOffset; // 8
-                workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC) * 2;
-            } else {
-                workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC);
-                ptrC2 = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC);
+                // when W4A8 M
+                workspaceOffset += params.maxOutputSize * params.gmmOutPreRowStride * sizeof(ElementC);
             }
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                // swiglu out and gmm2 prechannel dequant res reuse workspace
                 ptrA1Int4 = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * params.problemShape.k();
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * k2;
+                // sizeof(ElementA) is 1
+                workspaceOffset += params.maxOutputSize *
+                    params.problemShape.k() > k2 ? params.problemShape.k() : k2;
+
                 ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
                 ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * params.problemShape.k() * sizeof(ElementA);
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * k2 * sizeof(ElementA);
+                workspaceOffset += params.maxOutputSize *
+                    params.problemShape.k() > k2 ? params.problemShape.k() : k2 * sizeof(ElementA);
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
