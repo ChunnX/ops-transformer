@@ -80,7 +80,8 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
         commMode = mc2tiling::A5_CCU_SCHED_ENGINE;
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr, "The value of comm_mode must be 'ai_cpu' or 'ccu'");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr,
+                                              "The value of comm_mode must be 'ai_cpu' or 'ccu'");
         return ge::GRAPH_FAILED;
     }
 
