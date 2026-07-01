@@ -705,7 +705,7 @@ class GeneralizedQLIV2:
                 actual_seq_lengths_query = seqused_q
                 self.has_seqused_q = True
             else:
-                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32)
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
@@ -713,21 +713,19 @@ class GeneralizedQLIV2:
             k_scale_shape = [k_t_size, k_head_num]
             self.cu_seqlens_k = torch.tensor(self.trans_tnd_actseq(cu_seqlens_k[1:]))
             actualSeqLengths_k = self.cu_seqlens_k
-            k_shape = self.k_shape
             if seqused_k is not None:
                 self.seqused_k = seqused_k
                 self.has_seqused_k = True
                 actualSeqLengths_k = self.seqused_k
         elif layout_key == "BSND":
             layout_key_scale = "BSN"
-            k_shape = self.k_shape
             k_scale_shape = [batch_size, k_seq, k_head_num]
             if seqused_k is not None:
                 self.seqused_k = seqused_k
                 actual_seq_lengths_key = seqused_k
                 self.has_seqused_k = True
             else:
-                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(torch.int32)
             actualSeqLengths_k = actual_seq_lengths_key
 
         elif layout_key == "PA_BBND":
