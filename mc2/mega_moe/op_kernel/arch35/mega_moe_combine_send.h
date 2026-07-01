@@ -240,7 +240,6 @@ __aicore__ inline void DrainUrmaConnections(
             continue;
         }
         params.combineCommParams.hcomm->Drain(GetUrmaCommHandle(params.combineCommParams.mc2Context, dr, rankId));
-        PipeBarrier<PIPE_ALL>();
     }
 }
 
