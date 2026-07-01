@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ static const std::initializer_list<op::DataType> MOE_GATING_TOP_K_V2_DTYPE_SUPPO
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> MOE_GATING_TOP_K_V2_DTYPE_SUPPORT_LIST_INT = {
     DataType::DT_INT32, DataType::DT_INT64};
+static const std::initializer_list<op::DataType> MOE_GATING_TOP_K_V2_DTYPE_SUPPORT_LIST_INT32 = {
+    DataType::DT_INT32};
 
 static inline bool CheckNotNull(const aclTensor* x, const aclTensor* yOut,
                                 const aclTensor* expertIdxOut, const aclTensor* outOut)
@@ -61,7 +63,7 @@ static inline bool CheckDtypeValid(const aclTensor* x, const aclTensor* biasOpti
         OP_CHECK_DTYPE_NOT_SAME(x, yOut, return false);
     }
     if (expertIdxOut != nullptr && expertIdxOut->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(expertIdxOut, MOE_GATING_TOP_K_V2_DTYPE_SUPPORT_LIST_INT, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(expertIdxOut, MOE_GATING_TOP_K_V2_DTYPE_SUPPORT_LIST_INT32, return false);
     }
     if (outOut != nullptr && outOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(outOut, MOE_GATING_TOP_K_V2_DTYPE_SUPPORT_LIST_X, return false);
