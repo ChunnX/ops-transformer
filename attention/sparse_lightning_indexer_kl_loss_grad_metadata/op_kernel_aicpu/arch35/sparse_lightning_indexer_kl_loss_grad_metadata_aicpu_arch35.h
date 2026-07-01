@@ -263,7 +263,7 @@ inline ValidSocVersion SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::
     if (socVersion_.find("Ascend910") != std::string::npos) {
         return ValidSocVersion::ASCEND910;
     } else {
-        return ValidSocVersion::ASCEND950; 
+        return ValidSocVersion::ASCEND950;
     }
 }
 
