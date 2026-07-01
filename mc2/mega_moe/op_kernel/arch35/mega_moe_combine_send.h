@@ -177,7 +177,7 @@ __aicore__ inline void CombineQuantizedTokens(
 // =============================================
 // CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
 // =============================================
-template <uint8_t QuantMode, typename T, bool IsLayered = false>
+template <uint8_t QuantMode, typename T>
 __aicore__ inline void CombineTokenGroup(
     uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
     GM_ADDR gmm2OutAddr, Params& params, LocalTensor<int32_t>& tripleTensor,
@@ -221,6 +221,7 @@ __aicore__ inline void CombineTokenGroup(
         CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
             ubQuantDataFp8, params);
     }
+    
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
