@@ -1,4 +1,4 @@
-# sparse_flash_mla / sparse_flash_mla_metadata
+# sparse_flash_mla
 
 ## 产品支持情况
 
@@ -23,7 +23,7 @@
   - **CSA（Compressed Sparse Attention）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
   - **HCA（Heavily Compressed Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
-  `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
+  `sparse_flash_mla_metadata`是`sparse_flash_mla`的metadata前置接口，用于在主接口执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主接口必须传入该metadata。典型调用流程如下：
 
   1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
   2. 调用`sparse_flash_mla_metadata`生成`metadata`。
@@ -44,7 +44,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.ops.sparse_flash_mla(
+cann_ops_transformer.sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -78,7 +78,7 @@ cann_ops_transformer.ops.sparse_flash_mla(
 ```
 
 ```python
-cann_ops_transformer.ops.sparse_flash_mla_metadata(
+cann_ops_transformer.sparse_flash_mla_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -262,7 +262,7 @@ q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -273,7 +273,7 @@ metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     cmp_topk=0,
     cmp_ratio=cmp_ratio,
     ori_mask_mode=4,
-    cmp_mask_mode=0,
+    cmp_mask_mode=3,
     ori_win_left=127,
     ori_win_right=0,
     layout_q="BSND",
@@ -282,7 +282,7 @@ metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     has_cmp_kv=False,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     sinks=sinks,
@@ -290,7 +290,7 @@ attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
     softmax_scale=1.0 / math.sqrt(D),
     cmp_ratio=cmp_ratio,
     ori_mask_mode=4,
-    cmp_mask_mode=0,
+    cmp_mask_mode=3,
     ori_win_left=127,
     ori_win_right=0,
     layout_q="BSND",
@@ -330,7 +330,7 @@ cmp_kv = torch.randn(B, S3, N2, D, dtype=dtype, device="npu")
 cmp_residual_kv = torch.zeros(B, dtype=torch.int32, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -352,7 +352,7 @@ metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -410,7 +410,7 @@ sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 cmp_sparse_indices = torch.full((sum(q_lens), N2, K), -1, dtype=torch.int32, device="npu")
 cmp_sparse_indices[:, :, :1] = torch.arange(1, dtype=torch.int32, device="npu").view(1, 1, 1)
 
-metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -425,6 +425,7 @@ metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     cmp_ratio=cmp_ratio,
     ori_mask_mode=4,
     cmp_mask_mode=3,
+    cmp_residual_kv=cmp_residual_kv,
     ori_win_left=127,
     ori_win_right=0,
     layout_q="TND",
@@ -433,7 +434,7 @@ metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -531,7 +532,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
     cmp_residual_kv = torch.tensor(residuals, dtype=torch.int32, device="npu")
     cmp_sparse_indices = make_cmp_sparse_indices(q_lens, ori_prefix_lens, cmp_lens)
 
-    metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
+    metadata = cann_ops_transformer.sparse_flash_mla_metadata(
         N1,
         N2,
         D,
@@ -546,6 +547,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         cmp_ratio=cmp_ratio,
         ori_mask_mode=4,
         cmp_mask_mode=3,
+        cmp_residual_kv=cmp_residual_kv,
         ori_win_left=127,
         ori_win_right=0,
         layout_q="TND",
@@ -554,7 +556,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         has_cmp_kv=True,
     )
 
-    attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
+    attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
         q,
         ori_kv=ori_kv,
         cmp_kv=cmp_kv,
