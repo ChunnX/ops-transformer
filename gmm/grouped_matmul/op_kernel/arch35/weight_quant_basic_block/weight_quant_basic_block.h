@@ -375,7 +375,6 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
             offsetParam.nL1Size;
     uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
     uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
-    uint64_t mxScaleL1NOffset = GetSubBlockIdx() * mxScaleNSize0;
     if (mxScaleNSize == 0) {
         return;
     }
@@ -389,7 +388,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
     vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
     auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
     auto mxScaleBL1CurrentU16 = mxScaleBL1Current.template ReinterpretCast<uint16_t>();
-    vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16, mxScaleL1NOffset, mxScaleNSize);
+    vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16, mxScaleNOffset, mxScaleNSize);
     vectorCompute_.SetVToMTE2();
     mxScaleBufIdx_++;
 }

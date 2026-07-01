@@ -24,11 +24,11 @@ using WeightQuantBatchMatmulV2::Arch35::BASIC_BLOCK_PROCESS_NUM;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::GMM_CACHE_LINE_SIZE;
+using WeightQuantBatchMatmulV2::Arch35::GMM_CACHE_LINE_4BIT_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
 using WeightQuantBatchMatmulV2::Arch35::MX_A8W4_A_L1_RESERVED_KB;
-using WeightQuantBatchMatmulV2::Arch35::MX_A8W4_L1_PREFETCH_SIZE_KB;
 using WeightQuantBatchMatmulV2::Arch35::PREFETCH_A_MAX_M_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
@@ -144,7 +144,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                   IsSameType<wType, fp4x2_e1m2_t>::value) {
         isCacheLineUnaligned =
-            offsetParam[0].kSize % (GMM_CACHE_LINE_SIZE * 2) != 0;
+            offsetParam[0].kSize % GMM_CACHE_LINE_4BIT_SIZE != 0;
     }
 
     BasicBlockControlParam ctrlParam;
