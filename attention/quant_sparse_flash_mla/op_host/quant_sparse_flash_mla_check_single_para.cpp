@@ -208,7 +208,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             oriBlockSize_), return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(dSizeOriKvInput_ != 512,
+    OP_CHECK_IF(dSizeOriKvInput_ != 512, // 512: 当前不支持泛化
         OP_LOGE(opName_, "Dimension of OriKv only support 512, but got %u", dSizeOriKvInput_),
         return ge::GRAPH_FAILED);
 
@@ -226,7 +226,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             return ge::GRAPH_FAILED;
         }
 
-        OP_CHECK_IF(dSizeCmpKvInput_ != 512,
+        OP_CHECK_IF(dSizeCmpKvInput_ != 512,  // 512: 当前不支持泛化
             OP_LOGE(opName_, "Dimension of CmpKv only support 512, but got %u", dSizeCmpKvInput_),
             return ge::GRAPH_FAILED);
 
@@ -265,8 +265,8 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout &actualLa
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaNumHeads() const
 {
-    OP_CHECK_IF(n1Size_ != 64 && n1Size_ != 128,
-        OP_LOGE(opName_, "n1Size_ only support 64 and 128 now, but got %u.", n1Size_),
+    OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
+        OP_LOGE(opName_, "n1Size_ only should be in range [1, 128], but got %u.", n1Size_),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
