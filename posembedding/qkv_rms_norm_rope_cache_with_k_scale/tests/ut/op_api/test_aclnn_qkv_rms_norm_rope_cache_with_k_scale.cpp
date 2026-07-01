@@ -33,7 +33,7 @@ using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
 constexpr size_t kLegacyCsvColumnCount = 54;
-constexpr size_t kCsvColumnCount = 59;
+constexpr size_t kCsvColumnCount = 61;
 constexpr int64_t kDefaultT = 128;
 constexpr int64_t kDefaultNq = 16;
 constexpr int64_t kDefaultNk = 2;
@@ -103,109 +103,119 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
         aclnnStatus ret = ACLNN_SUCCESS;
         const bool hasHeadNumsValue = ParseBool(hasHeadNums);
         const bool hasQkvLayoutValue = ParseBool(hasQkvLayout);
+        const bool hasQOutLayoutValue = ParseBool(hasQOutLayout);
         const char *qkvLayoutArg = hasQkvLayoutValue ? qkvLayout.c_str() : nullptr;
+        const char *qOutLayoutArg = hasQOutLayoutValue ? qOutLayout.c_str() : nullptr;
 
         if (!ParseBool(hasQkv)) {
             auto ut =
                 OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                           INPUT(nullptr, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                           OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQGamma)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, nullptr, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKGamma)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, nullptr, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasCosSin)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, nullptr, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasSlotMapping)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, nullptr, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, nullptr, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasVCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, nullptr, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasKScaleCache)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, nullptr, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasCuSeqLen)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasActualSeqLens)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      nullptr, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      nullptr, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasOptionalRotation)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, nullptr, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, nullptr, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasOptionalVScale)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, nullptr, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, nullptr, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!hasHeadNumsValue) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, nullptr, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, nullptr, qkvLayoutArg,
+                                      qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!hasQkvLayoutValue) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, nullptr, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, nullptr, qOutLayoutArg, epsilon),
+                                OUTPUT(qOut, qScale));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (!hasQOutLayoutValue) {
+            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, nullptr,
+                                      epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQOut)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(nullptr, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (!ParseBool(hasQScale)) {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, nullptr));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else {
             auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                                 INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, epsilon),
+                                      actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutArg, qOutLayoutArg, epsilon),
                                 OUTPUT(qOut, qScale));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }
@@ -265,6 +275,8 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
     string hasHeadNums;
     string qkvLayout;
     string hasQkvLayout;
+    string qOutLayout;
+    string hasQOutLayout;
     float epsilon = 1e-6f;
     string qOutShape;
     string qOutDtype;
@@ -363,9 +375,13 @@ vector<QkvRmsNormRopeCacheWithKScaleCase> LoadCases(const string &csvFilePath)
             if (legacyCsv) {
                 c.qkvLayout = "NTD";
                 c.hasQkvLayout = "true";
+                c.qOutLayout = "NTD";
+                c.hasQOutLayout = "true";
             } else {
                 c.qkvLayout = Trim(cols[i++]);
                 c.hasQkvLayout = Trim(cols[i++]);
+                c.qOutLayout = Trim(cols[i++]);
+                c.hasQOutLayout = Trim(cols[i++]);
             }
             c.epsilon = stof(Trim(cols[i++]));
             c.qOutShape = Trim(cols[i++]);

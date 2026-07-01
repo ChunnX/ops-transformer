@@ -523,6 +523,7 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
             npu_inputs["actual_seq_lens"],
             npu_inputs["head_nums"],
             npu_inputs["qkv_layout"],
+            npu_inputs["qkv_layout"],
             rotation=npu_inputs["rotation"],
             v_scale=npu_inputs["v_scale"],
             epsilon=npu_inputs["epsilon"],

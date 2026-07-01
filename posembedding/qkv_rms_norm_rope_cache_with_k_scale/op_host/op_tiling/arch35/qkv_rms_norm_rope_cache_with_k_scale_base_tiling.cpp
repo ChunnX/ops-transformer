@@ -38,7 +38,7 @@ constexpr uint64_t V_SCALE_INDEX = 11;
 
 constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
-constexpr uint64_t EPSILON_ATTR_INDEX = 2;
+constexpr uint64_t EPSILON_ATTR_INDEX = 3;
 
 constexpr float DEFAULT_EPSILON = 1e-6f;
 constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
