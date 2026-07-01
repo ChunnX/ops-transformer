@@ -482,10 +482,12 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                 outputIdxOffsetShapeDim),
                 return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
-            OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
-                qExpectShapeDim, sparseValuesShapeDim),
-            return ge::GRAPH_FAILED);
+        if (*opParamInfo_.returnValue == 1) {
+            OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
+                OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+                    qExpectShapeDim, sparseValuesShapeDim),
+                return ge::GRAPH_FAILED);
+        }
     }
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
@@ -709,6 +711,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                     opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
+        if (opParamInfo_.outputIdxOffset.tensor)
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE(opName_, "TND case input query and output_idx_offset dim 0 are %u, %ld "
