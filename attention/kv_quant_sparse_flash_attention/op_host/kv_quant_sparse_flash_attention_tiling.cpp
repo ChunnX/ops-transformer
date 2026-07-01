@@ -1160,7 +1160,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim()
         }
         OP_CHECK_IF(sparseBlockSize_ != 1,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse block size",
-                std::to_string(sparseBlockSize_).c_str(), "sparse block size must be 1."),
+                std::to_string(sparseBlockSize_).c_str(), "sparse block size must be 1"),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> sparseBlockSizeSupportList = {1, 2, 4, 8, 16};
