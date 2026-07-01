@@ -69,8 +69,8 @@ extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(con
     const aclTensor *commQuantScaleOptional, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
     const aclIntArray *recvCounts, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight,
     bool transMmWeight, int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t groupSize,
-    int64_t yDtype, int64_t mmDtype, int64_t commQuantDtypeOptional, const char *commMode, aclTensor *yOut,
-    aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t yDtype, int64_t mmDtype, int64_t commQuantDtypeOptional, const char *commMode, const aclTensor *yOut,
+    const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize,
     aclOpExecutor *executor, aclrtStream stream);
@@ -445,8 +445,8 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(const 
     const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
     int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional, int64_t groupSize,
     const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y,
-    aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, const aclTensor *y,
+    const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode,
