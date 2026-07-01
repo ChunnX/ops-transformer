@@ -590,7 +590,7 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
     * 静态量化模式支持细节：
       * Ascend 950PR/Ascend 950DT产品：仅支持V1场景，支持<b>静态对称量化</b>和<b>静态非对称量化</b>。
       * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - V1场景：对除`Norm`以外的cachemode，仅支持<b>静态对称量化</b>。
+        - V1场景：对除`Norm`以外的cachemode，仅支持<b>静态对称量化</b>。即使传入合法的offset，也不会被算子处理，仍视为<b>静态对称量化</b>。
         - V2场景：对所有cachemode，支持<b>静态对称量化</b>和<b>静态非对称量化</b>。
 
   * cache与index相关约束：
@@ -651,7 +651,7 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
         <tr>
             <td>PA_BNSD</td>
             <td rowspan="4"><li>不支持S轴广播：必须满足Srope=Skv。</td>
-            <td rowspan="4"><li>量化参数项：<ul><li>V1场景：支持shape为2维[1,D]或1维[D]。仅支持<b>静态对称量化</b>。<li>V2场景：支持shape为2维[N,D]。支持<b>静态对称量化</b>和<b>静态非对称量化</b>。</td>
+            <td rowspan="4"><li>支持无量化模式。<li>量化参数项：<ul><li>V1场景：支持shape为2维[1,D]或1维[D]。仅支持<b>静态对称量化</b>。<li>V2场景：支持shape为2维[N,D]。支持<b>静态对称量化</b>和<b>静态非对称量化</b>。</td>
         </tr>
         <tr>
             <td>PA_NZ</td>
