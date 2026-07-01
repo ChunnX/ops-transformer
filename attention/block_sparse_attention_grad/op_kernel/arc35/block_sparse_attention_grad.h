@@ -127,12 +127,12 @@ public:
         if (unlikely(first)) {
             runTimeInfo.is_kv_change = true;
             runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
-            kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
+            kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
         } else {
             runTimeInfo.is_kv_change = runTimeInfo.keyGmOffset != lastRunTimeInfo.keyGmOffset;
             if (runTimeInfo.is_kv_change) {
                 runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
-                kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
+                kv_ping_pong_idx_ = (kv_ping_pong_idx_ + 1) % 3;
             } else {
                 runTimeInfo.kv_ping_pong_idx = lastRunTimeInfo.kv_ping_pong_idx;
             }
@@ -170,21 +170,21 @@ public:
                 addr_.GetRunTimeInfo(nextRunTimeInfo_);
                 kv_reuse_check(runTimeInfo_[last_ping_pong_idx], runTimeInfo_[ping_pong_idx], nextRunTimeInfo_, taskId==0);
                 // mm12
-                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], taskId % 3);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
-                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], taskId % 3);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
                 // mm345
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
-                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                SET_FLAG(MTE1, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
+                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                // SET_FLAG(MTE1, MTE2, EVENT_ID0);
+                // WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {

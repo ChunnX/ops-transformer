@@ -34,12 +34,16 @@ private:
     // l1_tensor
     LocalTensor<INPUT_TYPE> query_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> query_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> query_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> key_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> key_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> key_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> value_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> value_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> value_l1_tensor_ding_;
     LocalTensor<INPUT_TYPE> dy_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> dy_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> dy_l1_tensor_ding_;
     // l0_tensor
     LocalTensor<INPUT_TYPE> l0_a_tensor_ping_;
     LocalTensor<INPUT_TYPE> l0_a_tensor_pong_;
@@ -94,20 +98,28 @@ public:
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         query_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        query_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
+        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         // key_l1
         key_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         key_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        key_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // value_l1
         value_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        value_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
         // dy_l1
         dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         dy_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        dy_l1_tensor_ding_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // l0
         l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
@@ -134,11 +146,15 @@ public:
 
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
                                         const LocalTensor<float> &mm1OutUb, const RunTimeInfo &runTimeInfo,
-                                        const uint32_t ping_pong_idx)
+                                        const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_a_tensor = l1_buffer_flag == 0 ? query_l1_tensor_ping_ :
+                                              (l1_buffer_flag == 1 ? query_l1_tensor_pong_ :
+                                                                     query_l1_tensor_ding_);
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? key_l1_tensor_pong_ :
+                                                     key_l1_tensor_ding_);
 
         ComputeMM12(queryGm[runTimeInfo.queryGmOffset], keyGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                     mm1OutUb, runTimeInfo);
@@ -147,11 +163,15 @@ public:
 
     __aicore__ inline void SendMatmulDyV(const GlobalTensor<INPUT_TYPE> &dyGm, const GlobalTensor<INPUT_TYPE> &valueGm,
                                          LocalTensor<float> &mm2OutUb, const RunTimeInfo &runTimeInfo,
-                                         const uint32_t ping_pong_idx)
+                                         const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_a_tensor = l1_buffer_flag == 0 ? dy_l1_tensor_ping_ :
+                                              (l1_buffer_flag == 1 ? dy_l1_tensor_pong_ :
+                                                                     dy_l1_tensor_ding_);
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? value_l1_tensor_pong_ :
+                                                     value_l1_tensor_ding_);
 
         ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                     mm2OutUb, runTimeInfo);
@@ -159,27 +179,33 @@ public:
     }
 
     __aicore__ inline void SendMatmulDq(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ :
+                (runTimeInfo.kv_ping_pong_idx == 1 ? key_l1_tensor_pong_ :
+                                                     key_l1_tensor_ding_);
 
         ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDk(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor = l1_buffer_flag == 0 ? query_l1_tensor_ping_ :
+                                              (l1_buffer_flag == 1 ? query_l1_tensor_pong_ :
+                                                                     query_l1_tensor_ding_);
         ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDv(const LocalTensor<INPUT_TYPE> &p_l1_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
+                                        const RunTimeInfo &runTimeInfo, const uint32_t l1_buffer_flag)
     {
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor = l1_buffer_flag == 0 ? dy_l1_tensor_ping_ :
+                                              (l1_buffer_flag == 1 ? dy_l1_tensor_pong_ :
+                                                                     dy_l1_tensor_ding_);
         ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
