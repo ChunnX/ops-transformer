@@ -547,7 +547,7 @@ public:
                     static_cast<int>(protocol));
     }
 
-    TopoType TopoType() const
+    TopoType GetTopoType() const
     {
         return topoType_;
     }
@@ -566,7 +566,8 @@ public:
                        const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem",
                        const std::string &opName = "moe_dispatch_ffn_combine")
         : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName),
-          backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
+          backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0),
+          topoType_(TopoType::INTRA_SUPER_NODE) {}
 
     at::Tensor create_context()
     {
@@ -586,7 +587,7 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
-    int64_t TopoType() const { return static_cast<int64_t>(topoType_); }
+    int64_t GetTopoType() const { return static_cast<int64_t>(topoType_); }
 
 private:
     static int64_t context_tensor_size()
@@ -612,7 +613,7 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_);
-                topoType_ = builder.TopoType();
+                topoType_ = builder.GetTopoType();
                 return;
             }
             default:
@@ -641,6 +642,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size)
-        .def_property_readonly("topo_type", &CommContextManager::TopoType);
+        .def_property_readonly("topo_type", &CommContextManager::GetTopoType);
 }
 } // op_api
