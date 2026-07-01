@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "aclnn_kernels/common/op_error_check.h"
@@ -70,6 +71,14 @@ void GmmaqPrint(const char *format, Args... args)
     std::fflush(stdout);
 }
 
+#define GMMAQ_CHECK_WITH_LOG(cond, retCode, logExpr)                                                                  \
+    do {                                                                                                              \
+        if (!(cond)) {                                                                                                \
+            logExpr;                                                                                                  \
+            return retCode;                                                                                           \
+        }                                                                                                             \
+    } while (0)
+
 bool IsFp8(DataType dtype)
 {
     return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
@@ -94,20 +103,32 @@ aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const
                               const aclTensor *weightScale, const aclTensor *y, const aclTensor *yScale,
                               int64_t yDtype)
 {
-    CHECK_COND(IsFp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, x only supports FLOAT8_E4M3FN or FLOAT8_E5M2.", OP_NAME);
-    CHECK_COND(weight->GetDataType() == DataType::DT_FLOAT8_E4M3FN, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, weight only supports FLOAT8_E4M3FN.", OP_NAME);
-    CHECK_COND(IsMxScaleDtype(xScaleOptional->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, xScaleOptional only supports FLOAT8_E8M0.", OP_NAME);
-    CHECK_COND(IsMxScaleDtype(weightScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, weightScale only supports FLOAT8_E8M0.", OP_NAME);
-    CHECK_COND(IsFp8(y->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, y only supports FLOAT8_E4M3FN or FLOAT8_E5M2.", OP_NAME);
-    CHECK_COND(y->GetDataType() == static_cast<DataType>(yDtype), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, y dtype must be the same as yDtype.", OP_NAME);
-    CHECK_COND(IsMxScaleDtype(yScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when the quant mode is MX, yScale only supports FLOAT8_E8M0.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(IsFp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "x", op::ToString(x->GetDataType()).GetString(),
+                                  "FLOAT8_E4M3FN or FLOAT8_E5M2 when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(weight->GetDataType() == DataType::DT_FLOAT8_E4M3FN, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "weight", op::ToString(weight->GetDataType()).GetString(),
+                                  "FLOAT8_E4M3FN when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(xScaleOptional->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "xScaleOptional", op::ToString(xScaleOptional->GetDataType()).GetString(),
+                                  "FLOAT8_E8M0 when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(weightScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "weightScale", op::ToString(weightScale->GetDataType()).GetString(),
+                                  "FLOAT8_E8M0 when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(IsFp8(y->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "y", op::ToString(y->GetDataType()).GetString(),
+                                  "FLOAT8_E4M3FN or FLOAT8_E5M2 when the quant mode is MX"));
+    if (y->GetDataType() != static_cast<DataType>(yDtype)) {
+        const std::string actual = op::ToString(y->GetDataType()).GetString();
+        const std::string expected = std::to_string(yDtype);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "y, yDtype",
+            ("{" + actual + ", " + expected + "}").c_str(),
+            "when the quant mode is MX, the dtype of y must be the same as yDtype");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(yScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "yScale", op::ToString(yScale->GetDataType()).GetString(),
+                                  "FLOAT8_E8M0 when the quant mode is MX"));
     return ACLNN_SUCCESS;
 }
 
@@ -184,13 +205,31 @@ void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
 
 aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
 {
-    CHECK_COND(tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [%s] must not be nullptr.",
-               OP_NAME, name);
-    CHECK_COND(tensorList->Size() == SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], [%s] only supports one tensor in current MX quant mode, but got %zu.",
-               OP_NAME, name, tensorList->Size());
-    CHECK_COND((*tensorList)[FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               "In op [%s], [%s][0] must not be nullptr.", OP_NAME, name);
+    GMMAQ_CHECK_WITH_LOG(tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, name, "nullptr",
+                                             "the tensorList can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(tensorList->Size() == SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_TENSORNUM(OP_NAME, name, tensorList->Size(), std::to_string(SINGLE_TENSOR_SIZE)));
+    const std::string tensorName = std::string(name) + "[0]";
+    GMMAQ_CHECK_WITH_LOG((*tensorList)[FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, tensorName.c_str(), "nullptr",
+                                             "the tensor in tensorList can not be nullptr"));
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckTensorDimNum(const aclTensor *tensor, const char *name, size_t expectedDimNum)
+{
+    auto actualDimNum = tensor->GetViewShape().GetDimNum();
+    GMMAQ_CHECK_WITH_LOG(actualDimNum == expectedDimNum, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(OP_NAME, name, std::to_string(actualDimNum), std::to_string(expectedDimNum)));
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckTensorShapeEqual(const aclTensor *tensor, const char *name, const op::Shape &expectedShape)
+{
+    GMMAQ_CHECK_WITH_LOG(tensor->GetViewShape() == expectedShape, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE(OP_NAME, name, op::ToString(tensor->GetViewShape()).GetString(),
+                                  op::ToString(expectedShape).GetString()));
     return ACLNN_SUCCESS;
 }
 
@@ -338,8 +377,9 @@ aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tenso
         op::Shape viewShape = inputTensor->GetViewShape();
         op::Shape shape;
         shape.SetScalar();
-        CHECK_COND(viewShape.GetDimNum() >= WEIGHT_SCALE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], weightScale view shape dim num must be greater than or equal to 4.", OP_NAME);
+        GMMAQ_CHECK_WITH_LOG(viewShape.GetDimNum() >= WEIGHT_SCALE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weightScale",
+                std::to_string(viewShape.GetDimNum()), "weightScale dim num must be greater than or equal to 4"));
         shape.AppendDim(viewShape.GetDim(DIM_0));
         shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_2));
         shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_3));
@@ -368,8 +408,9 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
         uint32_t viewShapeDimsNum = viewShape.GetDimNum();
         op::Shape shape;
         shape.SetScalar();
-        CHECK_COND(viewShapeDimsNum >= X_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], weight view shape dim num must be greater than or equal to 2.", OP_NAME);
+        GMMAQ_CHECK_WITH_LOG(viewShapeDimsNum >= X_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight", std::to_string(viewShapeDimsNum),
+                "weight dim num must be greater than or equal to 2"));
         for (uint32_t i = 0; i < viewShapeDimsNum - X_DIM_NUM; ++i) {
             shape.AppendDim(viewShape.GetDim(i));
         }
@@ -402,11 +443,14 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, con
                OP_NAME, static_cast<int>(transposeWeightByStride), static_cast<int>(transposeWeightScale),
                static_cast<int>(transposeX), static_cast<int>(transposeXScale), static_cast<int>(transposeWeight));
 
-    CHECK_COND(transposeWeightScale == transposeWeightByStride, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], the transposition of weightScale must be equal to the transposition of weight.",
-               OP_NAME);
-    CHECK_COND(!transposeX && !transposeXScale, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], x and xScaleOptional only support non-transposed input.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(transposeWeightScale == transposeWeightByStride, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightScale", transposeWeightScale ? "transposed" :
+            "non-transposed", "the transposition of weightScale must be equal to the transposition of weight"));
+    GMMAQ_CHECK_WITH_LOG(!transposeX && !transposeXScale, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(OP_NAME, "x, xScaleOptional",
+            (std::string("{") + (transposeX ? "transposed" : "non-transposed") + ", " +
+             (transposeXScale ? "transposed" : "non-transposed") + "}").c_str(),
+            "x and xScaleOptional only support non-transposed input"));
 
     if (transposeWeightScale && transposeWeightByStride) {
         transposeWeight = true;
@@ -436,22 +480,26 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
                                            weightScale->GetViewShape().GetDim(DIM_2);
     GmmaqPrint("In op [%s], CheckMxQuantShape start. M=%ld, K=%ld, E=%ld, N=%ld, transposeWeight=%d.",
                OP_NAME, m, k, e, n, static_cast<int>(transposeWeight));
-    CHECK_COND(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], the first dim of groupList must be in range [1, 1024], but got %ld.", OP_NAME, e);
-    CHECK_COND(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], K must be greater than 0 unless M or N is 0.", OP_NAME);
-    CHECK_COND(n % MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], N must be divisible by 64, but got %ld.", OP_NAME, n);
+    GMMAQ_CHECK_WITH_LOG(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupList dim 0", std::to_string(e),
+                                             "groupList dim 0 must be in range [1, 1024]"));
+    GMMAQ_CHECK_WITH_LOG(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "K", std::to_string(k),
+                                             "K must be greater than 0 unless M or N is 0"));
+    GMMAQ_CHECK_WITH_LOG(n % MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "N", std::to_string(n),
+                                             "N must be divisible by 64"));
 
     const auto &weightShape = weight->GetStorageShape();
     const auto &weightViewShape = weight->GetViewShape();
     const auto &weightScaleShape = weightScale->GetViewShape();
-    CHECK_COND(weightShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weight dim 0 must equal E, but got %ld and %ld.", OP_NAME,
-               weightShape.GetDim(DIM_0), e);
-    CHECK_COND(weightScaleShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weightScale dim 0 must equal E, but got %ld and %ld.", OP_NAME,
-               weightScaleShape.GetDim(DIM_0), e);
+    GMMAQ_CHECK_WITH_LOG(weightShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weight dim 0", std::to_string(weightShape.GetDim(DIM_0)),
+                                             "weight dim 0 must be equal to groupList dim 0"));
+    GMMAQ_CHECK_WITH_LOG(weightScaleShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightScale dim 0",
+            std::to_string(weightScaleShape.GetDim(DIM_0)),
+            "weightScale dim 0 must be equal to groupList dim 0"));
 
     op::Shape xScaleExpectShape = {m, CeilDivInt64(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
     op::Shape yExpectShape = {m, n};
@@ -459,9 +507,11 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     GmmaqPrint("In op [%s], expected xScale shape %s, y shape %s, yScale shape %s.", OP_NAME,
                op::ToString(xScaleExpectShape).GetString(), op::ToString(yExpectShape).GetString(),
                op::ToString(yScaleExpectShape).GetString());
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(xScaleOptional, xScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(y, yExpectShape, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(yScale, yScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorShapeEqual(xScaleOptional, "xScaleOptional", xScaleExpectShape) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorShapeEqual(y, "y", yExpectShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorShapeEqual(yScale, "yScale", yScaleExpectShape) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
 
     op::Shape weightExpectShape;
     op::Shape weightScaleExpectShape;
@@ -478,14 +528,14 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
         op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
         GmmaqPrint("In op [%s], expected weight logical view shape %s.", OP_NAME,
                    op::ToString(weightViewExpectShape).GetString());
-        CHECK_COND(weightViewShape == weightViewExpectShape, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], expected weight logical view shape to be %s, but got %s.", OP_NAME,
-                   op::ToString(weightViewExpectShape).GetString(), op::ToString(weightViewShape).GetString());
+        CHECK_RET(CheckTensorShapeEqual(weight, "weight", weightViewExpectShape) == ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
     }
-    CHECK_COND(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], expected weight storage shape to be %s, but got %s.", OP_NAME,
-               op::ToString(weightExpectShape).GetString(), op::ToString(weightShape).GetString());
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(weightScale, weightScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
+    GMMAQ_CHECK_WITH_LOG(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE(OP_NAME, "weight storageShape", op::ToString(weightShape).GetString(),
+                                  op::ToString(weightExpectShape).GetString()));
+    CHECK_RET(CheckTensorShapeEqual(weightScale, "weightScale", weightScaleExpectShape) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -493,24 +543,28 @@ aclnnStatus CheckRequiredParams(const aclTensor *x, const aclTensor *groupList, 
                                 const aclTensorList *weightScale, const char *activationType, const aclTensor *y,
                                 const aclTensor *yScale)
 {
-    CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [x] must not be nullptr.", OP_NAME);
-    CHECK_COND(groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [groupList] must not be nullptr.",
-               OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(x != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "x", "nullptr", "x can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupList", "nullptr", "groupList can not be nullptr"));
     aclnnStatus checkTensorListRet = CheckTensorList(weight, "weight");
     CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
     checkTensorListRet = CheckTensorList(weightScale, "weightScale");
     CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
-    CHECK_COND(y != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [y] must not be nullptr.", OP_NAME);
-    CHECK_COND(yScale != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [yScale] must not be nullptr.", OP_NAME);
-    CHECK_COND(activationType != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               "In op [%s], [activationType] must not be nullptr.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(y != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "y", "nullptr", "y can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(yScale != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "yScale", "nullptr", "yScale can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(activationType != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "activationType", "nullptr",
+                                             "activationType can not be nullptr"));
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus CheckActivationType(const char *activationType)
 {
-    CHECK_COND(std::strcmp(activationType, GELU_TANH) == 0, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], activationType only supports gelu_tanh, but got %s.", OP_NAME, activationType);
+    GMMAQ_CHECK_WITH_LOG(std::strcmp(activationType, GELU_TANH) == 0, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE(OP_NAME, "activationType", activationType, GELU_TANH));
     return ACLNN_SUCCESS;
 }
 
@@ -518,8 +572,8 @@ aclnnStatus ResolveAndCheckQuantMode(const aclTensor *x, const aclTensor *xScale
                                      const char *&effectiveQuantMode)
 {
     if (!IsEmptyQuantMode(quantMode)) {
-        CHECK_COND(std::strcmp(quantMode, QUANT_MODE_MX) == 0, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], quant_mode 参数当前仅支持为 MX", OP_NAME);
+        GMMAQ_CHECK_WITH_LOG(std::strcmp(quantMode, QUANT_MODE_MX) == 0, ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE(OP_NAME, "quantMode", quantMode, QUANT_MODE_MX));
         effectiveQuantMode = quantMode;
         return ACLNN_SUCCESS;
     }
@@ -529,11 +583,11 @@ aclnnStatus ResolveAndCheckQuantMode(const aclTensor *x, const aclTensor *xScale
         return ACLNN_SUCCESS;
     }
 
-    CHECK_COND(false, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], 当前数据类型组合无法匹配到该算子支持的任何一种量化模式，x数据类型：%s，"
-               "x_scale数据类型：%s",
-               OP_NAME, op::ToString(x->GetDataType()).GetString(),
-               xScaleOptional == nullptr ? "nullptr" : op::ToString(xScaleOptional->GetDataType()).GetString());
+    const std::string actualDtypes = std::string("{") + op::ToString(x->GetDataType()).GetString() + ", " +
+                                     (xScaleOptional == nullptr ? "nullptr" :
+                                     op::ToString(xScaleOptional->GetDataType()).GetString()) + "}";
+    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "x, xScaleOptional", actualDtypes.c_str(),
+        "the current dtype combination can not match any quant mode supported by this op");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -543,9 +597,8 @@ aclnnStatus ResolveAndCheckRoundMode(const char *roundMode, const char *&effecti
         effectiveRoundMode = ROUND_MODE_RINT;
         return ACLNN_SUCCESS;
     }
-    CHECK_COND(std::strcmp(roundMode, ROUND_MODE_RINT) == 0, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], MX quant only supports roundMode rint, but got %s.",
-               OP_NAME, roundMode);
+    GMMAQ_CHECK_WITH_LOG(std::strcmp(roundMode, ROUND_MODE_RINT) == 0, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE(OP_NAME, "roundMode", roundMode, ROUND_MODE_RINT));
     effectiveRoundMode = roundMode;
     return ACLNN_SUCCESS;
 }
@@ -555,20 +608,22 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t yDtype, const char 
                               const aclTensorList *bias)
 {
     CHECK_RET(ResolveAndCheckRoundMode(roundMode, effectiveRoundMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(IsFp8DtypeValue(yDtype), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], yDtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got %ld.",
-               OP_NAME, yDtype);
-    CHECK_COND(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], groupListType only supports 0 or 1, but got %ld.",
-               OP_NAME, groupListType);
-    CHECK_COND(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], scaleAlg only supports 0 or 1 in MX quant mode, but got %ld.",
-               OP_NAME, scaleAlg);
-    CHECK_COND(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], dstTypeMax only supports 0.0 in current MX quant mode, but got %f.",
-               OP_NAME, dstTypeMax);
-    CHECK_COND(IsEmptyTensorList(bias), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], non-empty bias is not supported in current MX quant mode.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(IsFp8DtypeValue(yDtype), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "yDtype", std::to_string(yDtype),
+                                             "yDtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+    GMMAQ_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType),
+                                             "groupListType must be 0 or 1"));
+    GMMAQ_CHECK_WITH_LOG(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "scaleAlg", std::to_string(scaleAlg),
+                                             "scaleAlg must be 0 or 1 when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "dstTypeMax", std::to_string(dstTypeMax),
+                                             "dstTypeMax must be 0.0 when the quant mode is MX"));
+    GMMAQ_CHECK_WITH_LOG(IsEmptyTensorList(bias), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(OP_NAME, "bias",
+            std::string("bias=" + std::to_string(bias == nullptr ? 0UL : bias->Size())),
+            "bias must be nullptr or an empty tensorList when the quant mode is MX"));
     GmmaqPrint("In op [%s], MX attribute check passed. bias size=%zu.", OP_NAME,
                bias == nullptr ? 0UL : bias->Size());
     return ACLNN_SUCCESS;
@@ -584,18 +639,21 @@ aclnnStatus CheckMxQuantDim(const aclTensor *x, const aclTensor *groupList, cons
                weight->GetViewShape().GetDimNum(), weight->GetStorageShape().GetDimNum(),
                weightScale->GetViewShape().GetDimNum(), groupList->GetViewShape().GetDimNum(),
                y->GetViewShape().GetDimNum(), yScale->GetViewShape().GetDimNum());
-    OP_CHECK_WRONG_DIMENSION(x, X_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(xScaleOptional, SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(weight->GetViewShape().GetDimNum() == WEIGHT_LOGICAL_DIM_NUM,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weight view shape dim num must be 3, but got %zu.", OP_NAME,
-               weight->GetViewShape().GetDimNum());
-    OP_CHECK_WRONG_DIMENSION(weightScale, WEIGHT_SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(groupList, GROUP_LIST_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(y, OUT_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(yScale, OUT_SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(weight->GetStorageShape().GetDimNum() == WEIGHT_NZ_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weight storage shape dim num must be 5.", OP_NAME);
+    CHECK_RET(CheckTensorDimNum(x, "x", X_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(xScaleOptional, "xScaleOptional", SCALE_DIM_NUM) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(weight, "weight", WEIGHT_LOGICAL_DIM_NUM) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(weightScale, "weightScale", WEIGHT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(groupList, "groupList", GROUP_LIST_DIM_NUM) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(y, "y", OUT_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(yScale, "yScale", OUT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    GMMAQ_CHECK_WITH_LOG(weight->GetStorageShape().GetDimNum() == WEIGHT_NZ_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(OP_NAME, "weight storageShape",
+            std::to_string(weight->GetStorageShape().GetDimNum()), std::to_string(WEIGHT_NZ_DIM_NUM)));
     return ACLNN_SUCCESS;
 }
 
@@ -617,26 +675,24 @@ aclnnStatus CheckMxQuantFormat(const aclTensor *x, const aclTensor *groupList, c
                op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(y->GetStorageFormat()))).GetString(),
                op::ToString(yScale->GetStorageFormat()).GetString(),
                op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(yScale->GetStorageFormat()))).GetString());
-    CHECK_COND(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], x only supports ND, but got %s.", OP_NAME,
-               op::ToString(x->GetStorageFormat()).GetString());
-    CHECK_COND(!op::IsPrivateFormat(xScaleOptional->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], xScaleOptional only supports ND, but got %s.", OP_NAME,
-               op::ToString(xScaleOptional->GetStorageFormat()).GetString());
-    CHECK_COND(!op::IsPrivateFormat(groupList->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], groupList only supports ND, but got %s.", OP_NAME,
-               op::ToString(groupList->GetStorageFormat()).GetString());
-    CHECK_COND(!op::IsPrivateFormat(weightScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weightScale only supports ND, but got %s.", OP_NAME,
-               op::ToString(weightScale->GetStorageFormat()).GetString());
-    CHECK_COND(!op::IsPrivateFormat(y->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], y only supports ND, but got %s.", OP_NAME,
-               op::ToString(y->GetStorageFormat()).GetString());
-    CHECK_COND(!op::IsPrivateFormat(yScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], yScale only supports ND, but got %s.", OP_NAME,
-               op::ToString(yScale->GetStorageFormat()).GetString());
-    CHECK_COND(IsNzFormat(weight), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weight only supports FRACTAL_NZ format.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "x", op::ToString(x->GetStorageFormat()).GetString(), "ND"));
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(xScaleOptional->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "xScaleOptional", op::ToString(xScaleOptional->GetStorageFormat()).GetString(),
+                                   "ND"));
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(groupList->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "groupList", op::ToString(groupList->GetStorageFormat()).GetString(),
+                                   "ND"));
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(weightScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weightScale", op::ToString(weightScale->GetStorageFormat()).GetString(),
+                                   "ND"));
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(y->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "y", op::ToString(y->GetStorageFormat()).GetString(), "ND"));
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(yScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "yScale", op::ToString(yScale->GetStorageFormat()).GetString(), "ND"));
+    GMMAQ_CHECK_WITH_LOG(IsNzFormat(weight), ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight", op::ToString(weight->GetStorageFormat()).GetString(),
+                                   "FRACTAL_NZ"));
     return ACLNN_SUCCESS;
 }
 
@@ -647,8 +703,9 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
                                int64_t scaleAlg, float dstTypeMax, const aclTensor *y, const aclTensor *yScale,
                                aclOpExecutor *executor)
 {
-    CHECK_COND(xScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               "In op [%s], [xScaleOptional] must not be nullptr in gelu_tanh MX quant mode.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(xScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "xScaleOptional", "nullptr",
+                                             "xScaleOptional can not be nullptr when the quant mode is MX"));
     const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
 
@@ -659,8 +716,9 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckMxQuantDtype(x, w, xScaleOptional, wScale, y, yScale, yDtype);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    CHECK_COND(groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], groupList only supports INT64.", OP_NAME);
+    GMMAQ_CHECK_WITH_LOG(groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, "groupList", op::ToString(groupList->GetDataType()).GetString(),
+                                  "INT64"));
     checkRet = CheckMxQuantFormat(x, groupList, w, wScale, xScaleOptional, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckMXTranspose(x, groupList, xScaleOptional, weight, weightScale, transposeWeight, executor);
@@ -698,8 +756,8 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                                       y, yScale, executor);
         CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     } else {
-        CHECK_COND(false, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], quant_mode 参数当前仅支持为 MX", OP_NAME);
+        OP_LOGE_FOR_INVALID_VALUE(OP_NAME, "quantMode", effectiveQuantMode, QUANT_MODE_MX);
+        return ACLNN_ERR_PARAM_INVALID;
     }
     GmmaqPrint("In op [%s], CheckParams success.", OP_NAME);
     return ACLNN_SUCCESS;
