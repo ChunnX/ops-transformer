@@ -1262,6 +1262,7 @@ private:
             static_cast<int32_t>(peermemInfo.offsetD),
             tokenPerExpertLayout
         };
+        epilogueParams.offsetWinOutD = static_cast<int32_t>(peermemInfo.offsetWinOutD);
 
         uint32_t n = params.problemShape.n();
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams);
