@@ -10,7 +10,7 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv.cpp
- * \brief
+ * \brief 算子定义文件，注册 GroupedMatMulAlltoAllv 算子的输入/输出/属性及 AICore 配置
  */
 #include "register/op_def_registry.h"
 
@@ -21,36 +21,47 @@ class GroupedMatMulAlltoAllv : public OpDef
 public:
     explicit GroupedMatMulAlltoAllv(const char* name) : OpDef(name)
     {
+        // 路由专家 GroupedMatMul 的左矩阵（经过 AlltoAllv 通信后），必选输入
         this->Input("gmm_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+
+        // 路由专家 GroupedMatMul 的右矩阵（权重），三维，必选输入
         this->Input("gmm_weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+
+        // 发送计数张量，当前版本不支持，需传空
         this->Input("send_counts_tensor")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+
+        // 接收计数张量，当前版本不支持，需传空
         this->Input("recv_counts_tensor")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+
+        // 共享专家 MatMul 的左矩阵，需与 mm_weight 同时传入或同为空
         this->Input("mm_x")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+
+        // 共享专家 MatMul 的右矩阵（权重）
         this->Input("mm_weight")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
@@ -58,24 +69,26 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
+        // 路由专家最终计算结果，必选输出
         this->Output("y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        // 共享专家 MatMul 的输出
         this->Output("mm_y")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("group").AttrType(REQUIRED).String();
-        this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-        this->Attr("send_counts").AttrType(REQUIRED).ListInt();
-        this->Attr("recv_counts").AttrType(REQUIRED).ListInt();
-        this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);
-        this->Attr("trans_mm_weight").AttrType(OPTIONAL).Bool(false);
-        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
+        this->Attr("group").AttrType(REQUIRED).String();             // 专家并行通信域名称
+        this->Attr("ep_world_size").AttrType(REQUIRED).Int();         // 专家并行通信域大小
+        this->Attr("send_counts").AttrType(REQUIRED).ListInt();       // 发送 token 数列表
+        this->Attr("recv_counts").AttrType(REQUIRED).ListInt();       // 接收 token 数列表
+        this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);  // gmm_weight 是否转置
+        this->Attr("trans_mm_weight").AttrType(OPTIONAL).Bool(false);   // mm_weight 是否转置
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("");       // 通信模式：""/ccu/ai_cpu
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -87,8 +100,9 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape,复用二进制,后续图支持后修改
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend910_93", aicore_config);
-        this->AICore().AddConfig("ascend950", aicore_config);
+        this->AICore().AddConfig("ascend910_93", aicore_config);  // Atlas A3
+        this->AICore().AddConfig("ascend950", aicore_config);     // Ascend 950
+        // 指定 group 属性作为 HCCL 通信域
         this->MC2().HcclGroup({"group"});
     }
 };

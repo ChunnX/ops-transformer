@@ -10,9 +10,8 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_infer_shape.cc
- * \brief
+ * \brief 算子 shape 推导与数据类型推导实现
  */
-
 #include "mc2_log.h"
 #include "register/op_impl_registry.h"
 #include "common/utils/op_mc2.h"
@@ -40,13 +39,14 @@ static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
 
+// 未知维度值（-1），用于动态 shape 场景
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 
+// 校验路由专家 gmmX[A, K] 与 gmmWeight[ep, ?, ?] 的 K 维是否匹配，满足 MatMul 要求
 static graphStatus CheckDims(const gert::InferShapeContext* context, const gert::Shape* gmmXShape,
                              const gert::Shape* gmmWeightShape, bool transGmmWeight)
 {
     auto result = ge::GRAPH_SUCCESS;
-
     auto gmmXDimNum = gmmXShape->GetDimNum();
     auto gmmWeightDimNum = gmmWeightShape->GetDimNum();
     if (gmmXDimNum != DIM_NUM_2) {
@@ -58,6 +58,7 @@ static graphStatus CheckDims(const gert::InferShapeContext* context, const gert:
         result = ge::GRAPH_FAILED;
     }
 
+    // K 维匹配校验：gmmX 第 1 维为 K，gmmWeight 转置时 K 取第 2 维，否则取第 1 维
     auto k1 = gmmXShape->GetDim(DIM_1);
     auto k2 = gmmWeightShape->GetDim(DIM_1);
     if (transGmmWeight) {
@@ -71,11 +72,11 @@ static graphStatus CheckDims(const gert::InferShapeContext* context, const gert:
     return result;
 }
 
+// 校验共享专家 mmX[A, K] 与 mmWeight[?, ?] 的 K 维是否匹配
 static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, const gert::Shape* mmXShape,
                                      const gert::Shape* mmWeightShape, bool transMmWeight)
 {
     auto result = ge::GRAPH_SUCCESS;
-
     auto xDimNum = mmXShape->GetDimNum();
     auto mmWeightDimNum = mmWeightShape->GetDimNum();
     if (xDimNum != DIM_NUM_2) {
@@ -87,6 +88,7 @@ static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, con
         result = ge::GRAPH_FAILED;
     }
 
+    // K 维匹配校验：mmX 第 1 维为 K，mmWeight 转置时 K 取第 1 维，否则取第 0 维
     auto k1 = mmXShape->GetDim(DIM_1);
     auto k2 = mmWeightShape->GetDim(DIM_0);
     if (transMmWeight) {
@@ -100,6 +102,7 @@ static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, con
     return result;
 }
 
+// 推导路由专家 GMM 输出 y 的 shape：y[bsk, N1]，bsk 由 recvCounts 累加得到
 static ge::graphStatus InferGMMOutputShape(
     const gert::InferShapeContext* context,
     gert::Shape* gmmYShape,
@@ -121,6 +124,7 @@ static ge::graphStatus InferGMMOutputShape(
                    VECTOR_INFER_SHAPE_INNER_ERR_REPORT
                    (context->GetNodeName(), "recvCounts size should not be smaller than e * epWorldSize."),
                    return ge::GRAPH_FAILED);
+        // 累加 recvCounts 中所有元素，得到本卡接收的 token 总数 bsk
         for (int64_t i = 0UL; i < arraySize; i++) {
             bsk += static_cast<const int64_t*>(recvCountsPtr->GetData())[i];
         }
@@ -130,6 +134,7 @@ static ge::graphStatus InferGMMOutputShape(
     return ge::GRAPH_SUCCESS;
 }
 
+// 推导共享专家 MM 输出 mm_y 的 shape：mm_y[BS, N2]
 static ge::graphStatus InferMMOutputShape(
     const gert::InferShapeContext* context,
     const gert::Shape* mmXShape,
@@ -149,6 +154,7 @@ static ge::graphStatus InferMMOutputShape(
         mmYShape->SetDim(DIM_1, FIRST_ELE_SIZE);
         mmYShape->SetDim(DIM_0, FIRST_ELE_SIZE);
         if (bs != FIRST_ELE_SIZE) {
+            // N2 取决于 mmWeight 是否转置：转置取第 0 维，不转置取第 1 维
             int64_t n2 = *transMmWeightPtr ? mmWeightShape->GetDim(DIM_0) : mmWeightShape->GetDim(DIM_1);
             mmYShape->SetDim(DIM_0, bs);
             mmYShape->SetDim(DIM_1, n2);
@@ -186,8 +192,9 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
 
     int64_t e = gmmWeightShape->GetDim(DIM_0);
     int64_t bsk = 0;
+    // N1 取决于 gmmWeight 是否转置：转置取第 1 维，不转置取第 2 维
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
-    
+
     ge::graphStatus ret = InferGMMOutputShape(context, gmmYShape, epWorldSizePtr,
                                               recvCountsPtr, sendCountsPtr, e, bsk, n1);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -201,6 +208,7 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
     return ge::GRAPH_SUCCESS;
 }
 
+// 输出数据类型与输入 gmm_x 保持一致
 static ge::graphStatus InferDataTypeGroupedMatMulAlltoAllv(gert::InferDataTypeContext* context)
 {
     auto dType = context->GetInputDataType(INDEX_IN_GMM_X);

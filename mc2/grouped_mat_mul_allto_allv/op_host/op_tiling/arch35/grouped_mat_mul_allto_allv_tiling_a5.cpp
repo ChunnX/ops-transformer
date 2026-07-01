@@ -10,8 +10,8 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling_a5.cpp
+ * \brief arch35（Ascend 950）平台 tiling 模板注册
  */
-
 #include "grouped_mat_mul_allto_allv_tiling_a5.h"
 #include "op_host/tiling_templates_registry.h"
 
@@ -20,5 +20,6 @@ using namespace ge;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+// 注册 tiling 模板，优先级 0（最高）
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GroupedMatmulAllToAllvTiling, 0);
 }

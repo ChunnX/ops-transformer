@@ -31,27 +31,40 @@ using namespace op;
 extern "C" {
 #endif
 
+// HCCL 通信服务类型枚举：决定 AlltoAllv 通信使用的底层硬件引擎
 enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,  // AICPU 通信：通过 AI CPU 软件栈驱动，兼容性好但延迟较高
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,        // MTE 通信：通过 Memory Transfer Engine
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,        // CCU 通信：通过 Cube Communication Unit，低延迟高性能（仅 Ascend 950 支持）
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+// 弱符号：由运行时库提供实现，若链接的库版本不支持则为 nullptr（通过 if 判断保护）
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+// 将通信模式枚举值存入 executor，供第二阶段接口读取
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+// 从 executor 读取第一阶段存储的通信模式枚举值
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
+/*
+ * 解析通信模式字符串为枚举值
+ *
+ * 通信模式选择策略（仅 Ascend 950 平台）：
+ *   - "ai_cpu" -> AICPU 模式
+ *   - "ccu"    -> CCU 模式
+ *   - ""       -> 自动选择：卡数 <= 8 用 CCU（低延迟），卡数 > 8 用 AICPU（高扩展性）
+ *
+ * CCU 在低卡数场景延迟更低、吞吐更高；AICPU 在高卡数场景更稳定可靠。
+ * 非 Ascend 950 平台不解析，统一使用 AICPU 模式。
+ */
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    // 获取卡数
     uint32_t rankSize = 0;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
     CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
     const size_t maxLength = 6UL;
-    // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
@@ -71,7 +84,6 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
     return ACLNN_SUCCESS;
 }
 
-// check nullptr
 static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const char *group, bool transGmmWeight, bool transMmWeight, aclTensor *y,
@@ -79,7 +91,6 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
 {
     (void)transGmmWeight;
     (void)transMmWeight;
-    // 检查必选入参出参为非空
     OP_CHECK_NULL(gmmX, return false);
     OP_CHECK_NULL(gmmWeight, return false);
     OP_CHECK_NULL(y, return false);
@@ -115,8 +126,8 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntA
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t recvSize = 0U; // recvCounts的大小
-    uint64_t sendSize = 0U; // recvCounts的大小
+    uint64_t recvSize = 0U;
+    uint64_t sendSize = 0U;
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
@@ -130,7 +141,6 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
-// 入参校验
 static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
@@ -151,6 +161,16 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
     return ACLNN_SUCCESS;
 }
 
+/*
+ * 第一阶段接口：计算 workspace 大小并构造 executor
+ *
+ * 执行流程：
+ *   1. 入参校验（CheckParams + CheckSendAndRecv）
+ *   2. 解析 commMode 字符串为通信模式枚举值（CheckAndHandleCommMode）
+ *   3. 调用 Inner 接口计算 workspace 大小并构造 executor
+ *   4. 将通信模式枚举值编码为 void* 存入 executor 的 userHandle，
+ *      供第二阶段接口读取以设置底层 HCCL 通信引擎类型
+ */
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const char *group, const char *commMode, int64_t epWorldSize,
@@ -174,6 +194,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
         recvCounts, transGmmWeight, transMmWeight, str_commMode, y, mmYOptional, workspaceSize, executor);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
+    // 将通信模式枚举值跨阶段传递：编码为 void* 存入 executor->userHandle
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
@@ -181,11 +202,25 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX,
     return ret;
 }
 
+/*
+ * 第二阶段接口：执行实际的通信与计算
+ *
+ * 执行流程：
+ *   1. 从 executor->userHandle 读出第一阶段存储的通信模式枚举值
+ *   2. 根据平台架构和通信模式设置 HCCL 服务类型：
+ *      - Ascend 950 (DAV_3510)：按用户指定的 commMode 设置 CCU 或 AICPU
+ *      - 其他平台（如 Atlas A3）：统一使用 AICPU 模式
+ *   3. 调用 Inner 接口执行 AlltoAllv 通信 + GroupedMatMul 计算
+ *
+ * 注意：NnopbaseSetHcclServerType 为弱符号，仅在运行时库支持时才调用，
+ * 确保向后兼容性。
+ */
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
     aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            // Ascend 950 平台：从 userHandle 解码通信模式，按用户选择设置 CCU 或 AICPU
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
@@ -197,6 +232,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSiz
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         } else {
+            // 非 Ascend 950 平台（如 Atlas A3）：统一使用 AICPU 模式
             OP_LOGD("Arch22 platform, use AICPU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }

@@ -10,10 +10,10 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_gen_task_training.cpp
- * \brief
+ * \brief 训练场景下的任务生成实现：负责为 GroupedMatMulAlltoAllv 算子生成底层执行任务，
+ *        根据平台架构与通信模式选择 CCU 或 AICPU 两种任务生成路径。
  */
 #include <vector>
-
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
@@ -25,7 +25,10 @@
 namespace ops {
 static const size_t ATTR_COMM_MODE_INDEX = 6;
 static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
+// 卡数阈值：卡数 <= 8 时 arch35 平台默认使用 CCU 通信模式
 static const size_t RANK_DIM_BOUNDARY = 8;
+
+// 从上下文获取卡数（rank size）与通信模式字符串
 static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, int64_t &rankSize,
                                             std::string &commMode)
 {
@@ -49,6 +52,13 @@ static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext 
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * 算子参数计算函数：根据平台架构与通信模式，确定底层任务使用的 server 类型与 stream 类型
+ *
+ * 通信路径选择策略（仅 arch35/Ascend 950 平台支持 CCU）：
+ *   - CCU 路径：显式指定 "ccu"，或未指定且卡数 <= 8（低延迟）
+ *   - AICPU 路径：显式指定 "ai_cpu"，或非 arch35 平台，或未指定且卡数 > 8（高扩展性）
+ */
 ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
     int64_t rankSize = 0;
@@ -74,6 +84,13 @@ ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *co
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
 
+/*
+ * 算子任务生成函数：根据平台架构与通信模式，选择 AICPU 或 CCU 路径生成底层执行任务
+ *
+ * 任务生成路径选择策略同参数计算函数：
+ *   - AICPU 路径：非 arch35 平台、或显式指定 "ai_cpu"、或未指定且卡数 > 8
+ *   - CCU 路径：arch35 平台且显式指定 "ccu"、或未指定且卡数 <= 8
+ */
 ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
@@ -94,7 +111,6 @@ ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext
     }
 }
 
-// new ver
 IMPL_OP(GroupedMatMulAlltoAllv)
     .CalcOpParam(GroupedMatMulAlltoAllvCalcParamFunc)
     .GenerateTask(GroupedMatMulAlltoAllvGenTaskFunc);

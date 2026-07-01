@@ -24,18 +24,19 @@ using namespace op;
 extern "C" {
 #endif
 
+// HCCL 通信服务类型枚举：决定 AlltoAllv 通信使用的底层硬件引擎
 enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,  // AICPU 通信：通过 AI CPU 软件栈驱动，兼容性好但延迟较高
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,        // MTE 通信：通过 Memory Transfer Engine
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,        // CCU 通信：通过 Cube Communication Unit，低延迟高性能（仅 Ascend 950 支持）
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+// 弱符号：由运行时库提供实现，若链接的库版本不支持则为 nullptr（通过 if 判断保护）
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-// check nullptr
 static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
                             const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional,
                             const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, const char* group,
@@ -43,10 +44,10 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
 {
     (void)transGmmWeight;
     (void)transMmWeight;
-    // 检查必选入参出参为非空
     OP_CHECK_NULL(gmmX, return false);
     OP_CHECK_NULL(gmmWeight, return false);
     OP_CHECK_NULL(y, return false);
+    // send/recv counts tensor 当前版本不支持，必须为 nullptr（计数通过属性传入）
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize",
             "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
@@ -56,6 +57,7 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
         OP_LOGE_WITH_INVALID_INPUT("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", "group");
         return false;
     }
+    // 共享专家三参数必须同时提供或同时缺省，不允许部分提供
     if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
         (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize",
@@ -75,8 +77,8 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
         OP_LOGE_WITH_INVALID_INPUT("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", "recvCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t recvSize = 0U;  // recvCounts的大小
-    uint64_t sendSize = 0U;  // recvCounts的大小
+    uint64_t recvSize = 0U;
+    uint64_t sendSize = 0U;
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
@@ -90,7 +92,6 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
-// 入参校验
 static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight,
                                const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional,
                                const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, const char* group,
@@ -113,6 +114,16 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
     return ACLNN_SUCCESS;
 }
 
+/*
+ * 第一阶段接口：计算 workspace 大小并构造 executor
+ *
+ * V1 通信模式选择策略（与 V2 的区别）：
+ *   不接收 commMode 参数，根据平台架构自动决定：
+ *     - Ascend 950 (DAV_3510) -> "ccu"（低延迟高性能）
+ *     - 其他平台 -> "ai_cpu"（兼容性好）
+ *
+ * 通信模式枚举值通过 userHandle 存入 executor，供第二阶段接口读取。
+ */
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
     const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
@@ -126,7 +137,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
-    
+
+    // V1 根据平台架构自动选择通信模式（V2 由调用方通过 commMode 参数指定）
     const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "ai_cpu";
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -134,6 +146,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
         const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
         str_commMode, y, mmYOptional, workspaceSize, executor);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
+
+    // 将通信模式枚举值编码为 void* 存入 executor 的 userHandle，
+    // 第二阶段接口通过 GetUserHandle 读出，据此设置 HCCL 服务类型
     if (*executor != nullptr) {
         uint8_t commModeType = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ?
             Mc2Comm::COMM_MODE_CCU :
@@ -144,11 +159,20 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     return ret;
 }
 
+/*
+ * 第二阶段接口：执行实际计算
+ *
+ * 根据通信模式设置 HCCL 服务类型（AICPU/CCU），然后调用 Inner 接口执行。
+ * 平台差异：
+ *   - Ascend 950：根据 userHandle 中的通信模式选择 AICPU 或 CCU
+ *   - 其他平台：统一使用 AICPU
+ */
 aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                         aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            // 从 executor 读出第一阶段存储的通信模式枚举值
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

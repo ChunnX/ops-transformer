@@ -10,8 +10,14 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling.cpp
+ * \brief GroupedMatMulAlltoAllv 算子 tiling（切分）实现，负责参数校验、本地参数设置及 tiling key 生成
+ *
+ * tiling 阶段核心职责：
+ *   1. 从 context 中提取算子输入/输出/属性，校验数据类型、shape 维度、参数一致性
+ *   2. 将校验后的参数保存到 localParams_，供后续 tiling data 序列化使用
+ *   3. 根据 hasSharedMm、权重转置标志、通信模式组合生成 tilingKey，用于编译期选择对应 kernel 模板
+ *   4. 通信模式解析：Ascend 950 支持 ccu/aicpu 自动选择，其他平台固定 aicpu
  */
-
 #include "grouped_mat_mul_allto_allv_tiling.h"
 #include "op_mc2.h"
 #include "mc2_log.h"
@@ -34,6 +40,7 @@ namespace optiling {
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+// 各平台支持的 rank size 集合：A5(Ascend 950) 支持 2~64，A3(Atlas A3) 支持 8~128
 const std::set<int64_t> GroupedMatmulAllToAllvTiling::A5_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 const std::set<int64_t> GroupedMatmulAllToAllvTiling::A3_SUPPORT_RANK_SIZE{8, 16, 32, 64, 128};
 
@@ -65,15 +72,20 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorSupp
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * 校验共享专家（mm）相关输入输出参数的一致性
+ * mmX/mmWeight/mmY 三者必须同时存在或同时为空，不允许混合使用
+ */
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
 {
     auto mmXTensorShape = context_->GetOptionalInputShape(MM_X_OPTIONAL_INDEX);
     auto mmWeightTensorShape = context_->GetOptionalInputShape(MM_WEIGHT_OPTIONAL_INDEX);
-    auto mmYShape = context_->GetOutputShape(OUTPUT_MM_Y_OPTIONAL_INDEX);
+    auto mmYShape = context->GetOutputShape(OUTPUT_MM_Y_OPTIONAL_INDEX);
 
     bool isMmXNull = (mmXTensorShape == nullptr);
     bool isMmWeightNull = (mmWeightTensorShape == nullptr);
     bool isMmYNull = (mmYShape == nullptr);
+    // mm_y shape 维度为 0 时视为空
     if (!isMmYNull) {
         isMmYNull = mmYShape->GetStorageShape().GetDimNum() == 0;
     }
@@ -89,6 +101,17 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * 校验并设置路由专家（gmm）相关本地参数
+ * 校验 gmmX/gmmWeight/y 的数据类型一致性，提取 shape 维度信息保存到 localParams_
+ *
+ * 维度映射关系（gmmX[A, H1] @ gmmWeight[ep, ?, ?] -> y[BsK, N1]）：
+ *   A     - 本卡发送 token 数（gmmX 第 0 维）
+ *   H1    - 路由专家 hidden size（gmmX 第 1 维）
+ *   ep    - 单卡专家数（gmmWeight 第 0 维）
+ *   BsK   - 本卡接收 token 数（y 第 0 维，由 AlltoAllv 通信决定）
+ *   N1    - 路由专家输出 head_num（y 第 1 维）
+ */
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
 {
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
@@ -124,10 +147,11 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
     localParams_.gmmYDtype = localParams_.yDtype;
 
     const gert::StorageShape *gmmXStorageShape = context_->GetInputShape(GMM_X_INDEX);
-    const gert::StorageShape *yStorageShape = context_->GetOutputShape(OUTPUT_Y_INDEX);
+    const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(gmmXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmX"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "y"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "y"),
+                    return ge::GRAPH_FAILED);
 
     auto status = CheckShapeDimensions(gmmXStorageShape, DIM_TWO, "gmmXShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
@@ -136,13 +160,13 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
     status = CheckShapeDimensions(yStorageShape, DIM_TWO, "yShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
-    localParams_.A = gmmXStorageShape->GetStorageShape().GetDim(DIM_ZERO);
-    localParams_.H1 = gmmXStorageShape->GetStorageShape().GetDim(DIM_ONE);
-    localParams_.ep = gmmWeightStorageShape->GetStorageShape().GetDim(DIM_ZERO);
+    localParams_.A = gmmXStorageShape->GetStorageShape().GetDim(DIM_ZERO);          // 本卡发送 token 数 A
+    localParams_.H1 = gmmXStorageShape->GetStorageShape().GetDim(DIM_ONE);           // 路由专家 hidden size H1
+    localParams_.ep = gmmWeightStorageShape->GetStorageShape().GetDim(DIM_ZERO);     // 单卡专家数 e
     localParams_.gmmWeightDim1 = gmmWeightStorageShape->GetStorageShape().GetDim(DIM_ONE);
     localParams_.gmmWeightDim2 = gmmWeightStorageShape->GetStorageShape().GetDim(DIM_TWO);
-    localParams_.BsK = yStorageShape->GetStorageShape().GetDim(DIM_ZERO);
-    localParams_.N1 = yStorageShape->GetStorageShape().GetDim(DIM_ONE);
+    localParams_.BsK = yStorageShape->GetStorageShape().GetDim(DIM_ZERO);            // 本卡接收 token 数 BsK
+    localParams_.N1 = yStorageShape->GetStorageShape().GetDim(DIM_ONE);              // 路由专家输出 head_num N1
 
     return ge::GRAPH_SUCCESS;
 }
@@ -190,8 +214,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     status = CheckShapeDimensions(mmYStorageShape, DIM_TWO, "mmYShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
-    localParams_.Bs = mmXStorageShape->GetStorageShape().GetDim(DIM_ZERO);
-    localParams_.H2 = mmXStorageShape->GetStorageShape().GetDim(DIM_ONE);
+    localParams_.Bs = mmXStorageShape->GetStorageShape().GetDim(DIM_ZERO);          // batch sequence size Bs
+    localParams_.H2 = mmXStorageShape->GetStorageShape().GetDim(DIM_ONE);            // 共享专家 hidden size H2
     localParams_.mmWeightDim0 = mmWeightStorageShape->GetStorageShape().GetDim(DIM_ZERO);
     localParams_.mmWeightDim1 = mmWeightStorageShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t mmYDim0 = mmYStorageShape->GetStorageShape().GetDim(DIM_ZERO);
@@ -199,7 +223,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "mmX/mmY",
                         std::to_string(localParams_.Bs).c_str(), "Shape dim 0 of mmX must be equal to shape dim 0 of mmY."),
                     return ge::GRAPH_FAILED);
-    localParams_.N2 = mmYStorageShape->GetStorageShape().GetDim(DIM_ONE);
+    localParams_.N2 = mmYStorageShape->GetStorageShape().GetDim(DIM_ONE);            // 共享专家输出 head_num N2
 
     return ge::GRAPH_SUCCESS;
 }
@@ -217,12 +241,14 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
     auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK(transMmWeightPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "transMmWeight"),
                     return ge::GRAPH_FAILED);
+    // 无共享专家时 trans_mm_weight 不能为 true
     OP_TILING_CHECK(*transMmWeightPtr == true && !localParams_.hasSharedMm,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transMmWeight",
                         std::to_string(*transMmWeightPtr).c_str(), "should not be true when mmX is null"),
                     return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
+    // 非量化场景，scale 数据类型统一设为 gmm_x 数据类型
     localParams_.gmmXScaleDtype = localParams_.gmmXDtype;
     localParams_.gmmWeightScaleDtype = localParams_.gmmXDtype;
     localParams_.mmXScaleDtype = localParams_.gmmXDtype;
@@ -252,6 +278,10 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
     return CheckParamsRelationMmTransShape();
 }
 
+/*
+ * 校验 ep 通信域属性并设置本地参数
+ * 解析 group/epWorldSize 获取 rank 数量，校验 rank size 和专家数是否在支持范围内
+ */
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
@@ -261,6 +291,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
     int64_t rankDim = 0;
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "epWorldSize"), return ge::GRAPH_FAILED);
+    // ep_world_size 为默认值时通过通信域动态获取，否则直接使用属性值
     if (*epWorldSizePtr == RANK_DEFAULT_NUM) {
         OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankDim), OP_LOGE(opName_, "GetRankSize failed."),
                         return ge::GRAPH_FAILED);
@@ -268,6 +299,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
         rankDim = *epWorldSizePtr;
     }
 
+    // 根据当前架构选择支持的 rank size 集合
     std::string supportRankSizeRange;
     const std::set<int64_t> &supportRankSize =
         (npuArch_ == NpuArch::DAV_3510) ? A5_SUPPORT_RANK_SIZE : A3_SUPPORT_RANK_SIZE;
@@ -280,12 +312,14 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
         return ge::GRAPH_FAILED);
     localParams_.epWorldSize = rankDim;
 
+    // 校验单卡专家数 ep 在 (0, 32] 范围内
     bool isEpNumMatch = (localParams_.ep > 0) && (localParams_.ep < 33);
     if (!isEpNumMatch) {
         OP_LOGE_FOR_INVALID_VALUE(opName_, "ep", std::to_string(localParams_.ep).c_str(),
             std::to_string(MAX_EXPERT_NUM_PER_RANK).c_str());
         return ge::GRAPH_FAILED;
     }
+    // 总专家数 = 单卡专家数 × rank 数，校验不超过最大值
     uint64_t expertNum = localParams_.ep * rankDim;
     OP_TILING_CHECK(
         expertNum > MAX_EXPERT_NUM,
@@ -313,6 +347,13 @@ uint32_t GroupedMatmulAllToAllvTiling::GetCommModeIndex() const
     return ATTR_COMM_MODE;
 }
 
+/*
+ * 解析并转换通信模式字符串为枚举值
+ * 通信模式选择策略：
+ *   - "ai_cpu" -> AICPU 模式
+ *   - "ccu"    -> CCU 模式
+ *   - ""       -> 自动选择：rank 数 <= 8 用 CCU（低延迟），> 8 用 AICPU（高扩展性）
+ */
 ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::TilingContext *context,
     uint8_t &commMode) const
 {
@@ -345,6 +386,17 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
+/*
+ * 计算 tiling key，用于编译期选择对应的 kernel 模板
+ *
+ * tiling key 由 4 个维度组合生成（共 2*2*2*2=16 种）：
+ *   - hasSharedMm：是否包含共享专家 MatMul
+ *   - isGmmWeightTrans：路由专家权重是否转置
+ *   - isMmWeightTrans：共享专家权重是否转置
+ *   - commMode：通信模式（CCU=0, AICPU=1）
+ *
+ * 通信模式解析：Ascend 950 按用户配置解析，其他平台固定 AICPU
+ */
 uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;

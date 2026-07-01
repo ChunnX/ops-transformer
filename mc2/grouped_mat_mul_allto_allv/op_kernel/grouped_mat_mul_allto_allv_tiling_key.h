@@ -1,23 +1,25 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling_key.h
- * \brief
+ * \brief 定义 GroupedMatMulAlltoAllv 算子的 tiling key 模板参数与模板选择列表。
+ *        tiling key 由四个维度组合而成：是否计算 MatMul、gmm_weight 是否转置、
+ *        共享专家 mm_weight 是否转置、通信模式（CCU/AICPU），用于在编译期实例化对应的 kernel 模板。
  */
 #ifndef __GROUPED_MAT_MUL_ALLTO_ALLV_TILING_KEY_H__
 #define __GROUPED_MAT_MUL_ALLTO_ALLV_TILING_KEY_H__
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-// 通信模式
+// 通信模式枚举：CCU=0（Ascend 950 低卡数场景），AICPU=1（高卡数或 Atlas A3 场景）
 #ifndef TILINGKEY_TPL_CCU
 #define TILINGKEY_TPL_CCU 0
 #endif
@@ -25,12 +27,18 @@
 #define TILINGKEY_TPL_AICPU 1
 #endif
 
+// 声明 tiling key 的模板参数列表，4 个维度共组合出 2*2*2*2=16 种 kernel 实例：
+//   TILINGKEY_COMPUTE_MATMUL         - 是否执行 MatMul 计算（0/1）
+//   TILINGKEY_GMM_WEIGHT_TRANS       - 路由专家 gmm_weight 是否转置（0/1）
+//   TILINGKEY_SHARED_MM_WEIGHT_TRANS - 共享专家 mm_weight 是否转置（0/1）
+//   TILINGKEY_COMM_MODE              - 通信模式（CCU=0 或 AICPU=1）
 ASCENDC_TPL_ARGS_DECL(GroupedMatMulAlltoAllv, ASCENDC_TPL_BOOL_DECL(TILINGKEY_COMPUTE_MATMUL, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_GMM_WEIGHT_TRANS, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, 0, 1),
                       ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST,
                                              TILINGKEY_TPL_CCU, TILINGKEY_TPL_AICPU),);
 
+// 枚举所有 16 种模板参数组合，运行时由 tiling key 映射选择对应 kernel
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_COMPUTE_MATMUL, 0),

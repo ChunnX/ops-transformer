@@ -14,6 +14,8 @@
 #ifndef GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 #define GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 
+// arch22（Atlas A3）平台的 kernel tiling 数据结构复用量化版本的 arch35 实现
+// 通过 __has_include 按多种相对路径依次探测，兼容不同工程目录结构下的引用
 #if __has_include("../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
 #include "../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #elif __has_include("../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
