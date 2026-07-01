@@ -264,7 +264,7 @@ __aicore__ constexpr VfConfig GetVfConfig()
         if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
             return {.vfNStandardLen = 256, .vfKStandardLen = 64};
         } else if constexpr (vecConfig.ubMte2InnerSize > 0) {
-            return {.vfNStandardLen = 32 * GetKBUnit<half>() / vecConfig.ubMte2InnerSize,  // 32KB对应的scale元素数
+            return {.vfNStandardLen = 32 * GetKBUnit<half>() / vecConfig.ubMte2InnerSize,  // 32KB对应的N长度
                     .vfKStandardLen = vecConfig.ubMte2InnerSize};
         }
     } else {
