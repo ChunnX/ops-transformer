@@ -35,14 +35,14 @@ aclnnStatus aclnnMoeFinalizeRoutingV4GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    const aclTensor* xOptional,
-    const aclTensor* alpha1Optional,
-    const aclTensor* alpha2Optional,
-    const aclTensor* vOptional,
+    const aclTensor *xOptional,
+    const aclTensor *alpha1Optional,
+    const aclTensor *alpha2Optional,
+    const aclTensor *vOptional,
     int64_t           dropPadMode,
-    const aclIntArray* zeroExpertRange,
-    const aclIntArray* copyExpertRange,
-    const aclIntArray* constantExpertRange,
+    const aclIntArray *zeroExpertRange,
+    const aclIntArray *copyExpertRange,
+    const aclIntArray *constantExpertRange,
     int64_t           k,
     const aclTensor *out,
     uint64_t        *workspaceSize,
@@ -84,7 +84,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
   </tr></thead>
   <tbody>
   <tr>
-    <td>expandedX</td>
+    <td>expandedX(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedX ，MoE的FFN输出。</td>
     <td>-</td>
@@ -94,7 +94,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>expandedRowIdx</td>
+    <td>expandedRowIdx(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedRowIdx。</td>
     <td>-</td>
@@ -104,7 +104,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>x1Optional</td>
+    <td>x1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x1，表示第一个共享专家。</td>
     <td>-</td>
@@ -114,7 +114,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>x2Optional</td>
+    <td>x2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x2，表示第二个共享专家。</td>
     <td>-</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>biasOptional</td>
+    <td>biasOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的bias，表示偏置量。</td>
     <td>-</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>scalesOptional</td>
+    <td>scalesOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的scales。</td>
     <td>-</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>expertIdxOptional</td>
+    <td>expertIdxOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expertIdx。</td>
     <td>Tensor中的值取值范围是[0, E-1]。</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>xOptional</td>
+    <td>xOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x。</td>
     <td>-</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>alpha1Optional</td>
+    <td>alpha1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的a1。</td>
     <td>-</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>alpha2Optional</td>
+    <td>alpha2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的a2。</td>
     <td>-</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>vOptional</td>
+    <td>vOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的v。</td>
     <td>-</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>√</td>
   </tr>
   <tr>
-    <td>dropPadMode</td>
+    <td>dropPadMode(int64_t)</td>
     <td>输入</td>
     <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
@@ -204,9 +204,9 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
   <tr>
-    <td>zeroExpertRange</td>
+    <td>zeroExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd],左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd]，左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -214,9 +214,9 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
   <tr>
-    <td>copyExpertRange</td>
+    <td>copyExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd],左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd]，左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -224,9 +224,9 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
     <tr>
-    <td>constantExpertRange</td>
+    <td>constantExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示costant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd],左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>表示costant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd]，左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
   <tr>
-    <td>k</td>
+    <td>k(int64_t)</td>
     <td>输入</td>
     <td>表示每个token选出的top-K专家个数。</td>
     <td>scalesOptional不为空时，若k>1则校验k必须与scalesOptional的shape第二维一致；scalesOptional为空时，直接使用k推导输出shape。默认值为1。</td>
@@ -244,7 +244,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
   <tr>
-    <td>out</td>
+    <td>out(aclTensor*)</td>
     <td>输出</td>
     <td>公式中的输出。</td>
     <td>-</td>
@@ -254,7 +254,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>×</td>
   </tr>
   <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize(uint64_t)</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -264,7 +264,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
     <td>-</td>
   </tr>
   <tr>
-    <td>executor</td>
+    <td>executor(aclOpExecutor**)</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
@@ -307,18 +307,18 @@ aclnnStatus aclnnMoeFinalizeRoutingV4(
   </thead>
   <tbody>
     <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
     <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
     </tr>
     <tr>
-    <td> ACLNN_ERR_PARAM_INVALID </td>
-    <td> 161002 </td>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
     <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td rowspan="2"> 561002 </td>
+    <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td rowspan="2">561002</td>
     <td>多个输入tensor之间的shape信息不匹配。</td>
     </tr>
     <tr>
