@@ -399,10 +399,6 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FiaTilingInfo &fia
 
 ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureAlibi(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
             return ge::GRAPH_FAILED;
