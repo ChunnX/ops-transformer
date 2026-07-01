@@ -859,6 +859,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetShapeAttrsInfo()
     }
     td_->opInfo.set_pseType(tmpData_.pseType);
 
+    if (isMaxWorkspace_) {
+        return ge::GRAPH_SUCCESS;
+    }
     SetBandIdx();
     status = CheckTokens();
     if (status != ge::GRAPH_SUCCESS) {
