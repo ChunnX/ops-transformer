@@ -121,12 +121,16 @@ struct WorkspaceInfo {
     GM_ADDR gmm2CombineSyncCounterPtr;
 
     GM_ADDR maskSlotPtr; // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr; // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr; // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr; // dispatch done
+    GM_ADDR dispatchL2CommPtr; // dispatch l2 communication workspace
     GM_ADDR combineCommNotifyPtr; // 合并发送通知临时GM
     GM_ADDR combineCommDataPtr; // combine communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
     {
         workspaceSize = 0;
         dispatchRevDataPtr = base;
@@ -215,6 +219,29 @@ struct WorkspaceInfo {
             
             workspaceSize += Ops::Base::CeilAlign(
                 (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+            
+            dispatchL1CommPtr = base + workspaceSize;
+            uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+            uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
+            uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
+                static_cast<uint32_t>(ALIGN_512));
+            uint32_t serverWorkspaceBytes = ALIGN_32 + tilingData->bs * recordBytes;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
+            
+            dispatchCursorPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32),
+                static_cast<int64_t>(ALIGN_512));
+            
+            dispatchDonePtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32),
+                static_cast<int64_t>(ALIGN_512));
+            
+            dispatchL2CommPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
+                static_cast<int64_t>(ALIGN_512));
 
             combineCommDataPtr = base + workspaceSize;
             uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(uint32_t)), (int64_t)ALIGN_32); //todo: 16_t

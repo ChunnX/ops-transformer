@@ -53,7 +53,7 @@ __aicore__ inline void CombineTokens(
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
-            GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset,0)));
+            GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset],
             l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
@@ -208,7 +208,7 @@ __aicore__ inline void PollNotifyAndSendData(
                     uint32_t dataLen = sendTensor.GetValue(tokenActualLenIndex);
                     uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
                     uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-                    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset, 1) +
+                    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset) +
                         gmDstOffset * sizeof(ElementMMadOut2);
                     params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
                     // 标记已处理, 避免重复发送
@@ -426,7 +426,7 @@ __aicore__ inline void CombineQuantizedTokens(
 
     AscendC::GlobalTensor<QuantOutType> gmRemoteD;
     uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset,0);
+    __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
 
     uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantTokenSize;
