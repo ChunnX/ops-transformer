@@ -13,6 +13,7 @@
 import torch
 import math
 import multiprocessing as mp
+import logging
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -176,7 +177,7 @@ def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
     elif cut_bit_type == "SSR":
         carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
     else:
-        print(f"unknown round type")
+        logging.error(f"unknown round type")
         return 0
 
     if carry_exp_status:
@@ -280,7 +281,7 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
             m_value = 1
             exponent_value = (x & HIF8_EXP_MASK_DML) - HIF8_DML_EXP_OFFSET
         else:
-            print("error, dot error")
+            logging.error("error, dot error")
             m_value = 0.0
             exponent_value = 0
         return sign * pow(2.0, exponent_value) * m_value

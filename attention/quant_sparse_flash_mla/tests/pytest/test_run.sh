@@ -13,7 +13,7 @@
 QSMLA_PT_SAVE_SCRIPT="./batch/test_quant_sparse_flash_mla_pt_save.py"
 TEST_QSMLA_PT_BATCH_SCRIPT="test_quant_sparse_flash_mla_batch.py"
 TEST_QSMLA_SINGLE_SCRIPT="test_quant_sparse_flash_mla_single.py"
-
+RUN_GRAPH=0
 # 默认参数
 PT_SAVE_DIR="qsmla_testcase"
 EXCEL_FILE="./excel/example.xlsx"
@@ -25,7 +25,8 @@ KEEP_PT=false
 # 单用例算子调测
 run_single() {
     echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    export RUN_GRAPH="$RUN_GRAPH"
+    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
 }
 
 # 批量从excel读取用例、golden计算并保存pt文件
@@ -62,6 +63,7 @@ run_batch_exec() {
 
     echo "找到 $pt_count 个pt文件，开始执行NPU测试"
     export QSMLA_PT_DIR="$PT_SAVE_DIR"
+    export RUN_GRAPH="$RUN_GRAPH"
     python3 -m pytest -rA -s $TEST_QSMLA_PT_BATCH_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
     if [ $? -ne 0 ]; then
         echo "batch_exec 执行失败"
@@ -115,9 +117,11 @@ show_help() {
     echo "  --sheet <名称>    指定excel sheet名（默认: decode）"
     echo "  --pt-dir <目录>   指定pt文件保存/读取目录（默认: qsmla_testcase）"
     echo "  --keep-pt         执行完成后保留pt文件（默认清理，仅batch命令）"
+    echo "  --run-graph       执行aclgraph模式（默认不开启）"
     echo ""
     echo "示例："
-    echo "  $0 single                              # 执行single模式"
+    echo "  $0 single                              # eager模式下执行single模式"
+    echo "  $0 single                              # aclgraph模式下执行single模式"
     echo "  $0 batch_save                          # 用默认参数生成pt文件"
     echo "  $0 batch_save --excel my.xlsx --sheet prefill --pt-dir my_pt"
     echo "  $0 batch_exec                          # 用默认pt目录执行NPU测试"
@@ -173,6 +177,31 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                     exit 1
                 fi
                 KEEP_PT=true
+                shift
+                ;;
+            --run-graph)
+                if [ "$COMMAND" == "batch_save" ]; then
+                    echo "错误：--run-graph 不适用于batch_save"
+                    exit 1
+                fi
+                RUN_GRAPH=1
+                shift
+                ;;
+            *)
+                echo "错误：未知选项 '$1'"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+fi
+
+
+if [ "$COMMAND" = "single" ] ; then
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --run-graph)
+                RUN_GRAPH=1
                 shift
                 ;;
             *)
