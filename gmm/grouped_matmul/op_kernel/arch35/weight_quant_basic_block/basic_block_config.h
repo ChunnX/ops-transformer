@@ -33,6 +33,7 @@ constexpr int16_t SHIFT_FOR_BF16 = 1;
 constexpr static uint64_t UB_HIGH_BIT_NZ_KB = 128;  // NZ场景weight输出高比特buffer
 constexpr static uint64_t UB_HIGH_BIT_ND_KB = 66;   // ND场景weight输出高比特buffer
 constexpr static uint64_t UB_ANTI_QUANT_SCALE_MXFP4_KB = 8;  // MXFP4场景scale buffer
+constexpr static uint64_t UB_MXA8W4_BIAS_KB = 2;  // MxA8W4场景bias/biasReduced buffer
 
 struct WqmmConfig {
     bool aTrans;
@@ -207,16 +208,16 @@ __aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
             .weightInputLowbitUbTotalSize = 80 * GetKBUnit<int8_t>(),  // 80KB
             .highBitDataUbTotalSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>(),
-            .biasUbTotalSize = 2 * GetKBUnit<half>(),  // 2KB
-            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),  // 2KB
+            .biasUbTotalSize = UB_MXA8W4_BIAS_KB * GetKBUnit<half>(),
+            .biasReducedUbTotalSize = UB_MXA8W4_BIAS_KB * GetKBUnit<half>(),
             .antiQuantScaleUbTotalSize = 0,
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
             .weightInputLowBitUbSingleBufferSize = 80 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 0,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
-            .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .biasReducedSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
+            .biasUbSingleBufferSize = UB_MXA8W4_BIAS_KB * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
+            .biasReducedSingleBufferSize = UB_MXA8W4_BIAS_KB * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantOffsetUbSingleBufferSize = 0,
             .highBitDataUbSingleBufferSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
