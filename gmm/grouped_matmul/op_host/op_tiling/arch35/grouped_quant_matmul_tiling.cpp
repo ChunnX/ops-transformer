@@ -13,7 +13,6 @@
  * \brief
  */
 #include "grouped_quant_matmul_tiling.h"
-#include <cstdio>
 #include <sstream>
 
 #include <alog_pub.h>
