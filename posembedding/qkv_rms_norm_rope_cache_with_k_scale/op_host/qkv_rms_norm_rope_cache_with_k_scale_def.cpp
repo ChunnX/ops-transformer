@@ -64,6 +64,7 @@ public:
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
         this->Attr("qkv_layout").AttrType(REQUIRED).String();
+        this->Attr("q_out_layout").AttrType(REQUIRED).String();
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         OpAICoreConfig config950;

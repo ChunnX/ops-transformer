@@ -95,6 +95,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
     actual_seq_lens,
     head_nums,
     qkv_layout,
+    q_out_layout,
     *,
     rotation=None,
     v_scale=None,
@@ -116,6 +117,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
     actual_seq_lens,
     head_nums,
     qkv_layout,
+    q_out_layout,
     *,
     rotation=None,
     v_scale=None,
@@ -140,7 +142,8 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 | cu_seq_len | Tensor | 必选 | 当前调用内各batch token数的前缀和，对应公式中的`cu_seq_len`。 | torch.int32 | `[Batch+1]` |
 | actual_seq_lens | Tensor | 必选 | 每个batch追加本次token后的实际序列长度，对应公式中的`actual_seq_lens`。 | torch.int32 | `[Batch]` |
 | head_nums | List[int] | 必选 | Q/K/V头数数组，依次映射为公式中的`Nq`、`Nk`、`Nv`。必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
-| qkv_layout | str | 必选 | `qkv`、`q_out`和`q_scale`的N/T轴布局标识，对应公式中`T`、`Nq`、`Nk`、`Nv`所在轴。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
+| qkv_layout | str | 必选 | `qkv`的N/T轴布局标识，对应公式中`T`、`Nq`、`Nk`、`Nv`所在轴。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
+| q_out_layout | str | 必选 | `q_out`和`q_scale`的N/T轴布局标识。大小写敏感，仅支持`"TND"`和`"NTD"`；当前实现要求与`qkv_layout`一致。 | str | - |
 | rotation | Tensor | 可选 | Q/K共享矩阵乘权重，对应公式中的`rotation`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.bfloat16 | `[D,D]` |
 | v_scale | Tensor | 可选 | V分支量化缩放因子，对应公式中的`v_scale`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.float32 | `[Nv]` |
 | epsilon | float | 可选 | RMSNorm防除零参数，对应公式中的`epsilon`，默认值为`1e-6`。 | float | - |
@@ -171,7 +174,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 - `qkv_rms_norm_rope_cache_with_k_scale`为原地接口，会修改调用方传入的`k_cache`、`v_cache`和`k_scale_cache`。
 - `qkv_rms_norm_rope_cache_with_k_scale_functional`会克隆输入cache，并返回更新后的cache副本。
 - 当前实现仅支持`D=128`，且`Nv`必须等于`Nk`。
-- `qkv`、`q_out`和`q_scale`必须保持相同N/T布局：
+- `qkv_layout`和`q_out_layout`必须相同；`qkv`、`q_out`和`q_scale`必须保持相同N/T布局：
   - `qkv_layout="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[T,Nq,D]`，`q_scale=[T,Nq]`。
   - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
 - `k_cache`、`v_cache`和`k_scale_cache`的`BlockNum`和`BlockSize`必须一致。
@@ -231,6 +234,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
       actual_seq_lens,
       head_nums,
       qkv_layout,
+      qkv_layout,
       rotation=rotation,
       v_scale=v_scale,
       epsilon=1e-6,
@@ -280,6 +284,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
           cu_seq_len,
           actual_seq_lens,
           head_nums,
+          qkv_layout,
           qkv_layout,
           rotation=rotation,
           v_scale=v_scale,
