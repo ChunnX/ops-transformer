@@ -258,8 +258,8 @@ public:
                                                       std::is_same<C_T, int8_t>::value && !IS_PERTILE,
                                                   int8_t, bfloat16_t>::type;
     using dequantScaleQNopeType = float; // dequantScaleQNope的类型
-    using dequantScaleQNormType = float; // dequantScaleQNorm的类型
-    using dequantScaleType = float;
+    using dequantScaleQNormType = D_S; // dequantScaleQNorm的类型
+    using dequantScaleType = D_S;
 
     static constexpr CACHE_MODE cacheMode = C_M;
     static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
