@@ -160,7 +160,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     aclOpExecutor **executor);
 ```
 
-
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   void             *workspace,
