@@ -84,19 +84,19 @@ private:
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
         int32_t copyStartIdx, int32_t copyNum);
-    __aicore__ inline void ResetUrmaDispatchState();
-    __aicore__ inline void Level1DispatchUrma(int32_t localExpertId);
-    __aicore__ inline void Level1DispatchUrmaComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum,
+    __aicore__ inline void ResetDispatchState();
+    __aicore__ inline void DispatchTokenToRmtServer(int32_t localExpertId);
+    __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum,
         int32_t roundTag);
-    __aicore__ inline void Level1DispatchUrmaComputeToken(GlobalTensor<int32_t> &topkIdsGlobal,
+    __aicore__ inline void DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal,
         int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
-    __aicore__ inline void Level1DispatchUrmaSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
+    __aicore__ inline void DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
         uint32_t realComputeCoreNum, int32_t roundTag);
-    __aicore__ inline void Level1DispatchUrmaSendSlot(uint32_t targetServerForSender, int32_t slot);
-    __aicore__ inline int32_t Level1DispatchUrmaUpdateSendCursor(uint32_t targetServerForSender, int32_t cursor,
+    __aicore__ inline void DispatchToken(uint32_t targetServerForSender, int32_t slot);
+    __aicore__ inline int32_t UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor,
         int32_t endCount);
-    __aicore__ inline bool Level1DispatchUrmaAllComputeDone(uint32_t realComputeCoreNum, int32_t roundTag);
-    __aicore__ inline void ReadRelayTokenToCopyTmp(uint32_t relayRank, uint64_t remoteCopyOffset,
+    __aicore__ inline bool DispatchSyncWithCompute(uint32_t realComputeCoreNum, int32_t roundTag);
+    __aicore__ inline void ReceiveTokenFromRmtServer(uint32_t relayRank, uint64_t remoteCopyOffset,
         int32_t bufferIdx, uint32_t copyInNum);
     __aicore__ inline void QuantTokenToWorkspaceRecord(uint32_t tokenIdx, GM_ADDR recordAddr);
     __aicore__ inline uint64_t SendWorkspaceServerOffset(uint32_t targetServer);
@@ -612,7 +612,7 @@ __aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayTokenOf
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatchState()
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchState()
 {
     if constexpr(g_coreType == AIC) {
         return;
@@ -702,7 +702,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaComputeToken(
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeToken(
     GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart,
     uint32_t dedupWordsPerServer)
 {
@@ -741,7 +741,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaComputeKernel(
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeKernel(
     int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag)
 {
     uint32_t computeIdx = blockIdx_;
@@ -759,7 +759,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     topkIdsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.expertIdxGmAddr));
     for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
         PipeBarrier<PIPE_ALL>();
-        Level1DispatchUrmaComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
+        DispatchComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
         PipeBarrier<PIPE_ALL>();
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
@@ -769,7 +769,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaSendSlot(
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     uint32_t targetServerForSender, int32_t slot)
 {
     uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
@@ -804,7 +804,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaUpdateSendCursor(
+__aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateDispatchTokenCnt(
     uint32_t targetServerForSender, int32_t cursor, int32_t endCount)
 {
     while (cursor < endCount) {
@@ -824,7 +824,7 @@ __aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1Dispatc
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaAllComputeDone(
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSyncWithCompute(
     uint32_t realComputeCoreNum, int32_t roundTag)
 {
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
@@ -839,7 +839,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrmaSendKernel(
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(
     uint32_t senderCoreStart, uint32_t senderCoreNum, uint32_t realComputeCoreNum, int32_t roundTag)
 {
     __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchCursorPtr);
@@ -868,7 +868,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             }
             for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
                 PipeBarrier<PIPE_ALL>();
-                Level1DispatchUrmaSendSlot(targetServerForSender, slot);
+                DispatchToken(targetServerForSender, slot);
                 PipeBarrier<PIPE_ALL>();
             }
             scanCursor = scanEnd;
@@ -876,14 +876,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 scanCursor = cursor;
             }
             int32_t oldCursor = cursor;
-            cursor = Level1DispatchUrmaUpdateSendCursor(targetServerForSender, cursor, endCount);
+            cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
                 PipeBarrier<PIPE_ALL>();
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
                 PipeBarrier<PIPE_ALL>();
             }
             PipeBarrier<PIPE_ALL>();
-            if (Level1DispatchUrmaAllComputeDone(realComputeCoreNum, roundTag) &&
+            if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) &&
                 cursor == ReadGmByPassDCache(countPtr)) {
                 break;
             }
@@ -893,7 +893,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToRmtServer(int32_t localExpertId)
 {
     if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
         return;
@@ -905,14 +905,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     int32_t roundTag = localExpertId + 1;
 
     if (blockIdx_ < senderCoreStart) {
-        Level1DispatchUrmaComputeKernel(localExpertId, realComputeCoreNum, roundTag);
+        DispatchComputeKernel(localExpertId, realComputeCoreNum, roundTag);
     } else {
-        Level1DispatchUrmaSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
+        DispatchSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
     }
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenToCopyTmp(uint32_t relayRank,
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t relayRank,
     uint64_t remoteCopyOffset, int32_t bufferIdx, uint32_t copyInNum)
 {
     GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) +
@@ -1153,7 +1153,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         PipeBarrier<PIPE_ALL>();
         if (useUrmaDispatch) {
             uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-            ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
+            ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         } else {
             uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
             DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
@@ -1187,7 +1187,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             PipeBarrier<PIPE_ALL>();
             if (useUrmaDispatch) {
                 uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-                ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, outIdx, copyInNum);
+                ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
             } else {
                 uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
                 DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
@@ -1793,7 +1793,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     SendAndQuantBuffInit();
     SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList();             // 清理workSpace空间上的flag位
-    ResetUrmaDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
+    ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
 
     if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
         QuantProcessInRank();    // 普通 dispatch 对本卡 token 预量化
@@ -1826,7 +1826,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             PipeBarrier<PIPE_ALL>();
-            Level1DispatchUrma(0);
+            DispatchTokenToRmtServer(0);
             PipeBarrier<PIPE_ALL>();
             SendCntCal(0, nextSendCnt);
             PipeBarrier<PIPE_ALL>();
@@ -1846,7 +1846,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
                 PipeBarrier<PIPE_ALL>();
-                Level1DispatchUrma(localExpertId + 1);
+                DispatchTokenToRmtServer(localExpertId + 1);
                 PipeBarrier<PIPE_ALL>();
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 PipeBarrier<PIPE_ALL>();
