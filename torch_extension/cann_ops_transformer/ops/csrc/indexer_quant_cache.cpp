@@ -25,8 +25,8 @@ constexpr int64_t QUANT_MODE_MIN = 0;
 constexpr int64_t QUANT_MODE_MAX = 3;    // 0:MX-FP8 1:Normal 2:HiFloat8 3:MX-FP4
 }  // namespace
 
-std::tuple<at::Tensor, at::Tensor> indexer_quant_cache(
-    const at::Tensor &cache, const at::Tensor &cache_scale, const at::Tensor &x,
+void indexer_quant_cache(
+    at::Tensor &cache, at::Tensor &cache_scale, const at::Tensor &x,
     const at::Tensor &slot_mapping, int64_t quant_mode, bool round_scale, double x_scale)
 {
     // 入参校验
@@ -42,19 +42,14 @@ std::tuple<at::Tensor, at::Tensor> indexer_quant_cache(
     TORCH_CHECK(tail_dim > 0 && tail_dim % TAIL_DIM_ALIGN == 0,
         "The last dim (d) of x should be positive and 32-aligned, but got ", tail_dim);
 
-    at::Tensor cache_out{nullptr};
-    at::Tensor cache_scale_out{nullptr};
     auto local_device = c10::Device(cache.device());
     const c10::OptionalDeviceGuard device_guard(local_device);
-    cache_out = cache.clone();
-    cache_scale_out = cache_scale.clone();
 
     float x_scale_f = static_cast<float>(x_scale);
     StorageShapeTensor x_wrapped{x};
     StorageShapeTensor slot_mapping_wrapped{slot_mapping};
-    ACLNN_CMD(aclnnIndexerQuantCache, cache_out, cache_scale_out, x_wrapped, slot_mapping_wrapped,
+    ACLNN_CMD(aclnnIndexerQuantCache, cache, cache_scale, x_wrapped, slot_mapping_wrapped,
               quant_mode, round_scale, x_scale_f);
-    return std::make_tuple(cache_out, cache_scale_out);
 }
 
 // Bind the C++ function to Python module

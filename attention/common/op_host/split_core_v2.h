@@ -47,21 +47,21 @@ template <class T>
 using BlockCost = std::array<std::array<T, static_cast<size_t>(BLOCK_MAX_TYPE)>, static_cast<size_t>(BLOCK_MAX_TYPE)>;
 
 template <typename T>
-T Clip(T value, T minValue, T maxValue)
+T Clip(T value, T min, T max)
 {
-    if (value < minValue) {
-        return minValue;
+    if (value < min) {
+        return min;
     }
-    if (value > maxValue) {
-        return maxValue;
+    if (value > max) {
+        return max;
     }
     return value;
 }
 
 template <typename T>
-inline bool IsWithinTolerance(T limit, T tolerance, T value)
+inline bool IsWithinTolerance(T limit, T toler, T value)
 {
-    return limit + tolerance >= value;
+    return limit + toler >= value;
 }
 
 // 分核功能模块输入：输入case的基本信息

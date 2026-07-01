@@ -17,12 +17,12 @@
 
 - 语义说明：
 
-    底层aclnn接口对cacheRef、cacheScaleRef为原地实现；本Python接口为函数式语义，对输入cache、cache_scale做拷贝后在副本上更新并返回，未被slot_mapping命中的行保留原值。调用方需使用返回的cache与cache_scale。
+    底层aclnn接口对cacheRef、cacheScaleRef为原地实现；本Python接口同为原地语义：直接在输入cache、cache_scale上更新，未被slot_mapping命中的行保留原值。schema中cache、cache_scale分别标注为`Tensor(a!)`、`Tensor(b!)`，**本接口无返回值**，调用后直接使用入参cache、cache_scale。
 
 ## 函数原型
 
 ```
-cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *, quant_mode="fp8", round_scale=True, x_scale=1.0) -> (Tensor, Tensor)
+cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *, quant_mode="fp8", round_scale=True, x_scale=1.0) -> None
 ```
 
 ## 参数说明
@@ -112,45 +112,9 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
 </tbody>
 </table>
 
-## 输出说明
+## 返回值说明
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 132px">
-<col style="width: 480px">
-<col style="width: 330px">
-<col style="width: 280px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>维度(shape)</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>cache</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>更新后的KV Cache，shape与dtype与输入cache相同。数据格式为$ND$。</td>
-        <td>与输入cache一致</td>
-        <td>(blockNum, blockSize, 1, headDim)</td>
-    </tr>
-    <tr>
-        <td>cache_scale</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>更新后的scale因子，shape与dtype与输入cache_scale相同。数据格式为$ND$。</td>
-        <td>与输入cache_scale一致</td>
-        <td>(blockNum, blockSize, 1, scaleHeadDim)</td>
-    </tr>
-</tbody>
-</table>
+该接口无返回值。计算结果直接原地写回输入张量`cache`与`cache_scale`，二者在计算后shape和dtype保持不变；未被`slot_mapping`命中的行保留原值。
 
 ## 约束说明
 
@@ -190,7 +154,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     x = torch.randn(bs, d, dtype=torch.float16).npu()
     slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
 
-    cache, cache_scale = indexer_quant_cache(
+    indexer_quant_cache(
         cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
     print(cache.shape, cache.dtype, cache_scale.shape, cache_scale.dtype)
     ```
@@ -203,11 +167,11 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     import torchair
 
     def fn(cache, cache_scale, x, slot_mapping):
-        return torch.ops.cann_ops_transformer.indexer_quant_cache(
+        torch.ops.cann_ops_transformer.indexer_quant_cache(
             cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
 
     npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
     compiled = torch.compile(fn, backend=npu_backend, dynamic=False)
-    cache, cache_scale = compiled(cache, cache_scale, x, slot_mapping)
+    compiled(cache, cache_scale, x, slot_mapping)
     print(cache.shape, cache.dtype, cache_scale.shape, cache_scale.dtype)
     ```

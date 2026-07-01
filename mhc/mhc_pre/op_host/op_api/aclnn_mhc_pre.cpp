@@ -41,7 +41,8 @@ constexpr size_t DIM_NUM_4 = 4UL;
 
 constexpr int64_t N_VALID_VALUES[] = {4, 6, 8};
 constexpr int64_t D_ALIGNMENT = 16;
-constexpr int64_t ALPHA_DIM_SIZE = 3;
+constexpr int64_t ALPHA_DIM_SIZE_3 = 3;
+constexpr int64_t ALPHA_DIM_SIZE_2 = 2;
 constexpr int64_t PHI_DIM_OFFSET = 2;
 
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
@@ -64,6 +65,7 @@ struct MhcParamsBase {
     aclTensor *invRmsOptional = nullptr;
     aclTensor *hMixOptional = nullptr;
     aclTensor *hPreOptional = nullptr;
+    bool hasResi = true;
 
     // 用于存储转换后的连续tensor（在ConvertDataContiguous中使用）
     const aclTensor *xContiguous = nullptr;
@@ -152,8 +154,9 @@ static bool CheckNotNull(const MhcParamsBase &params)
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HPost tensor is nullptr");
         return false;
     }
-    if (params.hRes == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HRes tensor is nullptr");
+    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
+    if (alphaSize == ALPHA_DIM_SIZE_3 && params.hRes == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HRes tensor is nullptr when alpha size is 3");
         return false;
     }
     return true;
@@ -243,13 +246,24 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
         return false;
     }
 
-    int64_t n2Plus2n = n * n + 2 * n;
+    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
+    int64_t expectedPhiRows = 0;
+    int64_t expectedBiasSize = 0;
+    
+    // dim of phi,bias
+    if (alphaSize == ALPHA_DIM_SIZE_2) {
+        expectedPhiRows = 2 * n;
+        expectedBiasSize = 2 * n;
+    } else {
+        expectedPhiRows = n * n + 2 * n;
+        expectedBiasSize = n * n + 2 * n;
+    }
 
-    if (!CheckPhiShape(params.phi, n2Plus2n, nD)) {
+    if (!CheckPhiShape(params.phi, expectedPhiRows, nD)) {
         return false;
     }
 
-    if (!CheckBiasShape(params.bias, n2Plus2n)) {
+    if (!CheckBiasShape(params.bias, expectedBiasSize)) {
         return false;
     }
 
@@ -263,8 +277,9 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
 static bool CheckAlphaShape(const aclTensor *alphaTensor)
 {
     auto alphaShape = alphaTensor->GetViewShape();
-    if (alphaShape.GetDim(0) != ALPHA_DIM_SIZE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor shape must be (3), but got (%ld)", alphaShape.GetDim(0));
+    int64_t alphaSize = alphaShape.GetDim(0);
+    if (alphaSize != ALPHA_DIM_SIZE_2 && alphaSize != ALPHA_DIM_SIZE_3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor shape must be (2) or (3), but got (%ld)", alphaSize);
         return false;
     }
     return true;
@@ -301,7 +316,7 @@ static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t 
 {
     auto phiShape = phiTensor->GetViewShape();
     if (phiShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be n^2+2n=%ld, but got %ld", n2Plus2n,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n,
                 phiShape.GetDim(0));
         return false;
     }
@@ -316,7 +331,7 @@ static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
 {
     auto biasShape = biasTensor->GetViewShape();
     if (biasShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be n^2+2n=%ld, but got %ld", n2Plus2n,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n,
                 biasShape.GetDim(0));
         return false;
     }
@@ -474,6 +489,9 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     ret = ConvertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
+    int64_t alphaSize = params.alphaContiguous->GetViewShape().GetDim(0);
+    params.hasResi = (alphaSize == ALPHA_DIM_SIZE_3);
+
     int64_t outFlag =
         (params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr) ? 1 : 0;
     auto outParams = l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous,
@@ -489,26 +507,28 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     auto ret1 = l0op::ViewCopy(out1, params.hPost, executor);
     CHECK_RET(ret1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto out2 = std::get<2>(outParams);
-    auto retView = l0op::ViewCopy(out2, params.hRes, executor);
-    CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (params.hasResi && params.hRes != nullptr) {
+        auto out2 = std::get<2>(outParams);
+        auto ret2 = l0op::ViewCopy(out2, params.hRes, executor);
+        CHECK_RET(ret2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     if (params.invRmsOptional != nullptr) {
         auto out3 = std::get<3>(outParams);
-        retView = l0op::ViewCopy(out3, params.invRmsOptional, executor);
+        auto retView = l0op::ViewCopy(out3, params.invRmsOptional, executor);
         CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     if (params.hMixOptional != nullptr) {
         auto out4 = std::get<4>(outParams);
-        retView = l0op::ViewCopy(out4, params.hMixOptional, executor);
-        CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto retView2 = l0op::ViewCopy(out4, params.hMixOptional, executor);
+        CHECK_RET(retView2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     if (params.hPreOptional != nullptr) {
         auto out5 = std::get<5>(outParams);
-        retView = l0op::ViewCopy(out5, params.hPreOptional, executor);
-        CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto retView3 = l0op::ViewCopy(out5, params.hPreOptional, executor);
+        CHECK_RET(retView3 != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     return ACLNN_SUCCESS;

@@ -105,7 +105,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]</td>
+      <td>[n^2+2n, nD]或[2n, nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -115,7 +115,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[3]</td>
+      <td>[3]或[2]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -125,7 +125,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[n^2+2n]</td>
+      <td>[n^2+2n]或[2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -175,14 +175,14 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,D] 或 [T,D]</td>
+      <td>[B,S,n] 或 [T,n]</td>
       <td>-</td>
   </tr>
   <tr>
       <td>hRes</td>
       <td>输出</td>
       <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。</td>
-      <td>不能为空Tensor。</td>
+      <td>不能为空Tensor，当alpha=2时为0。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>[B,S,n,n] 或 [T,n,n]</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n^2+2n] 或 [T,n^2+2n]</td>
+      <td>[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -331,6 +331,8 @@ aclnnStatus aclnnMhcPre(
 - 规格约束：
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
+  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
+  - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
 ## 调用示例
 

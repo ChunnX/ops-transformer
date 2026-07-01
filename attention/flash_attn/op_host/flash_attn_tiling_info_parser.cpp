@@ -318,7 +318,10 @@ ge::graphStatus FaInfoParser::GetS1Size()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    if (opParamInfo_.blockTable.tensor != nullptr) {
+    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
+                       layoutKV_ == FaLayout::PA_NZ);
+
+    if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
@@ -358,6 +361,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
+    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+            "When layout_kv is PA, block_table must be provided but got nullptr."),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

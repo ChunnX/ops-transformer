@@ -80,17 +80,17 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   </tr></thead>
   <tbody>
   <tr>
-        <td>expandedX</td>
-        <td>输入</td>
-        <td>公式中的expandedX ，MoE的FFN输出。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>drop less场景：(NUM_ROWS * K, H)，<br>drop pad场景：(E, C, H)。</td>
-        <td>√</td>
+    <td>expandedX(aclTensor*)</td>
+    <td>输入</td>
+    <td>公式中的expandedX ，MoE的FFN输出。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>drop less场景：(NUM_ROWS * K, H)，<br>drop pad场景：(E, C, H)。</td>
+    <td>√</td>
   </tr>
   <tr>
-    <td>expandedRowIdx</td>
+    <td>expandedRowIdx(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedRowIdx。</td>
     <td>-</td>
@@ -100,7 +100,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>x1Optional</td>
+    <td>x1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x1，表示第一个共享专家。</td>
     <td>-</td>
@@ -110,7 +110,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>x2Optional</td>
+    <td>x2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x2，表示第二个共享专家。</td>
     <td>-</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>biasOptional</td>
+    <td>biasOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的bias，表示偏置量。</td>
     <td>-</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>scalesOptional</td>
+    <td>scalesOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的scales。</td>
     <td>-</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>expertIdxOptional</td>
+    <td>expertIdxOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expertIdx。</td>
     <td>Tensor中的值取值范围是[0, E-1]。</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>dropPadMode</td>
+    <td>dropPadMode(int64_t)</td>
     <td>输入</td>
     <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>-</td>
   </tr>
   <tr>
-    <td>out</td>
+    <td>out(aclTensor*)</td>
     <td>输出</td>
     <td>公式中的输出。</td>
     <td>-</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>×</td>
   </tr>
   <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize(uint64_t)</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>-</td>
   </tr>
   <tr>
-    <td>executor</td>
+    <td>executor(aclOpExecutor**)</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
@@ -223,18 +223,18 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   </thead>
   <tbody>
     <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
     <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
     </tr>
     <tr>
-    <td> ACLNN_ERR_PARAM_INVALID </td>
-    <td> 161002 </td>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
     <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
-    <td rowspan="2"> 561103 </td>
+    <td rowspan="2">ACLNN_ERR_INNER_NULLPTR</td>
+    <td rowspan="2">561103</td>
     <td>多个输入tensor之间的shape信息不匹配。</td>
     </tr>
     <tr>

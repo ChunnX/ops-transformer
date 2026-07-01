@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
+| :------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
@@ -11,7 +11,17 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持C1A（Sliding Window Attention，SWA）、C4A（Compressed Sparse Attention，CSA）、C128A（Heavily Compressed Attention，HCA）三类Attention计算场景。
+- 算子功能：
+
+  `SparseFlashMlaMetadata`接口用于生成一个任务列表`metadata`，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseFlashMla`算子使用。主算子必须传入该`metadata`。
+  
+  `SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`MixedQuantSparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`MixedQuantSparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
@@ -170,70 +180,70 @@
     <tr>
       <td>softmax_scale</td>
       <td>可选属性</td>
-      <td>对应公式中的softmax_scale。默认值为1.0。</td>
+      <td>对应公式中的softmax_scale。</td>
       <td>FLOAT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1、4、128。默认值为1。</td>
+      <td>表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1、4、128。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。默认值为0。</td>
+      <td>表示`q`和`ori_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。<br/>4: Band模式。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`cmp_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。默认值为0。</td>
+      <td>表示`q`和`cmp_kv`计算的mask模式。<br/>0: No Mask。<br/>3: RightDownCausal模式。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_left</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。默认值为-1。</td>
+      <td>表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_right</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中`q`对未来token计算的数量，支持-1或非负数，其中-1表示窗口不受限。默认值为-1。</td>
+      <td>表示`q`和`ori_kv`计算中`q`对未来token计算的数量，支持-1或非负数，其中-1表示窗口不受限。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>表示输入`q`的数据排布格式，支持"BSND"和"TND"。默认值为"BSND"。</td>
+      <td>表示输入`q`的数据排布格式，支持"BSND"和"TND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>表示输入`ori_kv`和`cmp_kv`的数据排布格式，支持"BSND"、"TND"和"PA_BBND"。默认值为"BSND"。</td>
+      <td>表示输入`ori_kv`和`cmp_kv`的数据排布格式，支持"BSND"、"TND"和"PA_BBND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>topk_value_mode</td>
       <td>可选属性</td>
-      <td>表示TopK索引取值模式。默认值为1。</td>
+      <td>表示TopK索引取值模式。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>return_softmax_lse</td>
       <td>可选属性</td>
-      <td>表示是否返回`softmax_lse`。默认值为False。</td>
+      <td>表示是否返回`softmax_lse`。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -257,10 +267,10 @@
 ## 约束说明
 - 该接口支持训练、推理场景下使用。
 - 该接口支持aclgraph模式。
-- 该接口当前支持三种计算场景：C1A（Sliding Window Attention，SWA）场景仅传入`ori_kv`；C4A（Compressed Sparse Attention，CSA）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；C128A（Heavily Compressed Attention，HCA）场景传入`ori_kv`及`cmp_kv`。
+- 该接口当前支持三种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 - 通用规格约束如下：
-  - N2仅支持1，D仅支持512。
-  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。C4A场景传4，C128A场景传128。
+  - N2仅支持1，D仅支持512。其中，`ori_kv`和`cmp_kv`的D_kv由nope(448)和rope(64)拼接而成。
+  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。CSA场景支持传4，HCA场景支持传128。
   - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
   - `cmp_sparse_indices`的TopK长度支持512或1024。
   - PageAttention的block_size支持16的倍数，且不超过1024。
@@ -285,7 +295,7 @@
   - `ori_kv`和`cmp_kv`的shape分别为[ori\_block\_num, ori\_block\_size, KV\_N, D]和[cmp\_block\_num, cmp\_block\_size, KV\_N, D]，其中ori\_block\_num和cmp\_block\_num为PageAttention时block总数，ori\_block\_size和cmp\_block\_size为一个block的token数，ori\_block\_size和cmp\_block\_size取值为16的倍数，最大支持1024，KV_N仅支持1。
   - `ori_block_table`和`cmp_block_table`的shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2和S3对应的block数量，即S2\_max / block\_size和S3\_max / block\_size向上取整。
 - `metadata`为算子实际需要使用的分核结果，目前该参数必传，shape大小固定为[1024]。
-- `layout_kv`支持输入"BSND"、"TND"和"PA_BBND"，默认值为"BSND"，需满足上述`layout_q`和`layout_kv`组合约束。
+- `layout_kv`支持输入"BSND"、"TND"和"PA_BBND"，需满足上述`layout_q`和`layout_kv`组合约束。
   - 当输入为PA_BBND时，`seqused_ori_kv`和`ori_block_table`必须传入；当输入为BSND时，`seqused_ori_kv`可用于表达每个batch的`ori_kv`有效长度；当输入为TND时，`ori_kv`有效长度由`cu_seqlens_ori_kv`表达。
   - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2,D]，cmp_kv的shape为[B, S3, N2,D]。
   - 当输入为TND时，`cu_seqlens_ori_kv`必须传入；若存在`cmp_kv`，`cu_seqlens_cmp_kv`也必须传入。
