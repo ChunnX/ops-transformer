@@ -26,7 +26,6 @@
 #include "adv_api/reduce/sum.h"
 #include "adv_api/hcomm/hcomm.h"
 
-#include "kernel_operator.h"
 #include "moe_ep_combine_tiling_key.h"
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
