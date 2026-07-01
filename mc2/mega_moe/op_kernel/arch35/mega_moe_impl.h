@@ -416,11 +416,11 @@ __aicore__ inline void GroupMatmul2(
                         static_cast<int64_t>(L1_TILE_N))});
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
-                // while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-                //     int64_t st = AscendC::GetSystemCycle();
-                //     while (AscendC::GetSystemCycle() - st < 100) {
-                //     }
-                // }
+                while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 100) {
+                    }
+                }
             }
 
             // 公共：切片 A/B/Scale
