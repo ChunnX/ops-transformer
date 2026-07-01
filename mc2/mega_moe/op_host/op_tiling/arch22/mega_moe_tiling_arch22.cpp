@@ -566,15 +566,15 @@ static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t h
 
     uint32_t expertPerRank;
     if (listLen == 1) {
-        // 场景1：传入一个 3 维 tensor，shape 为 (num_experts_per_rank, hidden_size, N)
-        OP_TILING_CHECK(w1TensorDims != THREE_DIMS,
-            OP_LOGE(K_INNER_DEBUG, "weight1 must be 3-dimension when listLen=1, but got %u dim.", w1TensorDims),
+        // listLen==1 表示本卡仅 1 个 expert, expertPerRank 恒为 1, weight1 为 2 维 (hidden_size, N)
+        expertPerRank = 1U;
+        OP_TILING_CHECK(w1TensorDims != TWO_DIMS,
+            OP_LOGE(K_INNER_DEBUG, "weight1 must be 2-dimension when listLen=1, but got %u dim.", w1TensorDims),
             return GRAPH_FAILED);
-        expertPerRank = w1Tensor->GetStorageShape().GetDim(0);
-        int64_t w1Dim1 = w1Tensor->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(w1Dim1 != hiddenSize,
-            OP_LOGE(K_INNER_DEBUG, "weight1's dim1 not equal to hidden_size, weight1's dim1 = %ld, hidden_size = %ld.",
-                w1Dim1, hiddenSize), return GRAPH_FAILED);
+        int64_t w1Dim0 = w1Tensor->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(w1Dim0 != hiddenSize,
+            OP_LOGE(K_INNER_DEBUG, "weight1's dim0 not equal to hidden_size, weight1's dim0 = %ld, hidden_size = %ld.",
+                w1Dim0, hiddenSize), return GRAPH_FAILED);
     } else {
         // 场景2：传入多个 2 维 tensor，每个 shape 为 (hidden_size, N)
         expertPerRank = listLen;
