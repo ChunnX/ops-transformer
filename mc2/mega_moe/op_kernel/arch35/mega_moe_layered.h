@@ -284,10 +284,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr -
         params_.peermemInfo.rankSyncInWorldPtr);
-    quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr -
-        params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr -
-        urmaRankAddr_[rankId_]);
+        params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
@@ -635,9 +633,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetDispatchSta
     if constexpr(g_coreType == AIC) {
         return;
     }
-    if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
-        return;
-    }
+
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(serverIdx));
@@ -913,9 +909,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToRmtServer(int32_t localExpertId)
 {
-    if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
-        return;
-    }
     uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
     uint32_t senderCoreStart = blockNum_ - senderCoreNum;
@@ -1138,11 +1131,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
         params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
-    bool useUrmaDispatch = (params_.tilingData->commMode == COMM_MODE_CROSS_SERVER);
-    if (!useUrmaDispatch) {
-        remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-            GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_)));
-    }
     uint32_t srcServer = static_cast<uint32_t>(remoteRankIdx) / rankPerServer_;
     uint32_t srcRankInServer = static_cast<uint32_t>(remoteRankIdx) % rankPerServer_;
     uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
@@ -1246,60 +1234,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
             AscendC::PipeBarrier<PIPE_V>();
         }
-    }
-    if (params_.tilingData->commMode != COMM_MODE_CROSS_SERVER) {
-        for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) {
-            uint32_t dstRankIdx = idx / blockNumPerRank_;
-            uint64_t sendToCurExpTokenCnt = 0;
-            GatherMask(validTopkIndexTensor_, topkIndexTensor_,
-                gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
-                true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
-            uint32_t aivIdxInGroup = idx % blockNumPerRank_;
-            int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
-                cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
-            int32_t rowsThisCore = 0;
-            int32_t rowDstOffsetInCore = 0;
-            if (rowStartIdxInDst < maxOutputSize_) {
-                int32_t rowsCopyCnt = sendToCurExpTokenCnt;
-                if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
-                    rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
-                }
-                int32_t rowsNumInCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(blockNumPerRank_));
-                int32_t rowSrcIdxInCore = aivIdxInGroup * rowsNumInCore;
-                rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore;
-                if (rowDstOffsetInCore + rowsNumInCore > rowStartIdxInDst + rowsCopyCnt) {
-                    rowsNumInCore = rowStartIdxInDst + rowsCopyCnt - rowDstOffsetInCore;
-                }
-                if (rowsNumInCore > 0) {
-                    uint32_t tripleTensorAddr = ubBufferUsedAddr_;
-                    uint32_t tripleTensorSize = rowsNumInCore * ALIGN_32;
-                    tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
-                        tripleTensorSize / sizeof(int32_t));
-                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-                    CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-                    rowsThisCore = rowsNumInCore;
-                }
-            }
-
-            // Phase 2: flag位AtomicAdd，确认当前token需要atomic的槽位
-            if (rowsThisCore > 0) {
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-                // rowDstOffsetInCore 是跨expert累加的全局偏移(含前置 expert 的行数)，需要减掉前置专家行数;
-                int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
-                int32_t rowEndLocal = rowStartLocal + rowsThisCore;
-                int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
-                int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-                __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-                for (int32_t w = waveLo; w <= waveHi; ++w) {
-                    int32_t waveStartLocal = w * L1_TILE_M_I32;
-                    int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
-                    int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
-                    int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                    AtomicAdd(flagBase + w, int32_t(hi - lo));
-                }
-            }
-        }
-        return;
     }
 
     constexpr int32_t MAX_TRIPLE_ROWS_PER_CHUNK = static_cast<int32_t>(DISPATCH_WAVE_TILE_M);
