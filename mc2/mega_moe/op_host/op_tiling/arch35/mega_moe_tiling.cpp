@@ -581,10 +581,14 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
     const int64_t expertTokenNumsDim0 = expertTokenNumsStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsDim0);
 
-    OP_TILING_CHECK(expertTokenNumsDim0 != expertPerRank,
+    // expertTokenNums 仅报告路由专家的 token 数，不包含共享专家
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+    int64_t moeExpertPerRank = static_cast<int64_t>(*moeExpertNumPtr) / static_cast<int64_t>(*epWorldSizePtr);
+    OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",
             (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
-            (std::string("The shape [dim0] of expertTokenNums must be equal to expertPerRank(") + std::to_string(expertPerRank) + ").").c_str()),
+            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(") + std::to_string(moeExpertPerRank) + ").").c_str()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
