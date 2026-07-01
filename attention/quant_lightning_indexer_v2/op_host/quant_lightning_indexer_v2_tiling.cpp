@@ -277,7 +277,16 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
                     return ge::GRAPH_FAILED);
+    } else if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
+                OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
+                        "but now return_value is %ld.",
+                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
+                OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
+                        "but now max_seqlen_q is %ld.",
+                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -507,6 +516,7 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
     uint32_t weightsShapeDim = opParamInfo_.weights.shape->GetStorageShape().GetDimNum();
     uint32_t outShapeDim = opParamInfo_.attenOut.shape->GetStorageShape().GetDimNum();
+    uint32_t sparseValuesShapeDim = opParamInfo_.sparseValues.shape->GetStorageShape().GetDimNum();
     uint32_t expectShapeDim = DIM_NUM_FOUR;
     if (qLayout_ == DataLayout::TND) {
         expectShapeDim = DIM_NUM_THREE;
@@ -519,6 +529,17 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u", expectShapeDim,
                          outShapeDim),
                return ge::GRAPH_FAILED);
+    if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
+        uint32_t outputIdxOffsetShapeDim = opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDimNum();
+        OP_CHECK_IF((outputIdxOffsetShapeDim != expectShapeDim - 1),
+            OP_LOGE(opName_, "the dim num of output_idx_offset's shape should be %u, but now is %u", expectShapeDim - 1,
+            outputIdxOffsetShapeDim),
+            return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF(sparseValuesShapeDim != expectShapeDim,
+            OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+            expectShapeDim, sparseValuesShapeDim),
+            return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(weightsShapeDim == expectShapeDim - 1),
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", expectShapeDim - 1,
                          weightsShapeDim),
