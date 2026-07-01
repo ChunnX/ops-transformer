@@ -124,8 +124,7 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 
 ## 调用示例
 
-下面示例展示非量化调用，完整代码见
-[`test_aclnn_moe_token_permute_v2.cpp`](../examples/test_aclnn_moe_token_permute_v2.cpp)。量化调用时需要按
+下面示例展示非量化调用，量化调用时需要按
 `quantMode`调整`permuteTokensOut`和`expandedScaleOut`的数据类型及shape。
 
 ```cpp
