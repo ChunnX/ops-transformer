@@ -176,6 +176,7 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
+    static constexpr uint32_t MAX_CORENUM_USE_SEND = 8U;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
     LocalTensor<uint32_t> gatherMaskInt32Tensor_;
@@ -909,7 +910,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToRmtServer(int32_t localExpertId)
 {
-    uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
+    uint32_t senderCoreLimit = (serverNum_ < MAX_CORENUM_USE_SEND) ? serverNum_ : MAX_CORENUM_USE_SEND;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
     uint32_t senderCoreStart = blockNum_ - senderCoreNum;
     uint32_t realComputeCoreNum = blockNum_ - senderCoreNum;
@@ -1157,13 +1158,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         TEventID eventId = kBufEvents[primeIdx];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         PipeBarrier<PIPE_ALL>();
-        if (useUrmaDispatch) {
-            uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-            ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
-        } else {
-            uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
-            DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
-        }
+        uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+        ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         PipeBarrier<PIPE_ALL>();
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
@@ -1191,13 +1187,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             // WaitFlag 此处等待的是本轮刚发出的 SetFlag<MTE3_MTE2>(eventId),即等本槽 MTE3 完成。
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
             PipeBarrier<PIPE_ALL>();
-            if (useUrmaDispatch) {
-                uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
-                ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
-            } else {
-                uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
-                DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
-            }
+            uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+            ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
             PipeBarrier<PIPE_ALL>();
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
@@ -1671,7 +1662,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
         if (rankIndex == rankId_) {
             continue;
         }
-        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(urmaRankAddr_[rankIndex]) + rankId_ * 16;
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
         hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
