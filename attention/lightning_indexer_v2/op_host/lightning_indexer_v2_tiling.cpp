@@ -207,6 +207,14 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                     "but now layout_key is %s, layout_query is %s.",
             std::string(opParamInfo_.layOutKey).c_str(),
             std::string(opParamInfo_.layOut).c_str()), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < 0) && (*opParamInfo_.maxSeqlenQ != -1),
+                OP_LOGE(opName_, "input attr max_seqlens_q must = -1 or > 0, "
+                        "but now max_seqlen_q is %ld.",
+                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
+                OP_LOGE(opName_, "input attr return_value must = -1 or > 0, "
+                        "but now return_value is %ld.",
+                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
  	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
@@ -218,10 +226,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     
-    OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < 0) && (*opParamInfo_.maxSeqlenQ != -1),
-                OP_LOGE(opName_, "input attr max_seqlens_q must = -1 or > 0, "
-                        "but now max_seqlen_q is %ld.",
-                *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -660,10 +664,12 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                 (opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize) ||
                 (opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE(opName_, "TND case input query, weights, sparse_indices, sparse_values "
-                    "and output_idx_offset dim 0 are %u, %ld, %ld "
+                    "and output_idx_offset dim 0 are %u, %ld, %ld, %ld, %ld "
                     "respectively, they must be same.",
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
-                    opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
+                    opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0),
+                    opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0),
+                    opParamInfo_.outputIdxOffset.shape->GetStorageShape().GetDim(0))
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
