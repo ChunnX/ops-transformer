@@ -435,10 +435,10 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
-        GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
-
         CommProtocol protocol1 = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        GetUrmaCommResource(commHandle, engine, protocol1, commContextStruct, rankSize, hcclBuffSize);
+        GetHcclCommResource(commHandle, engine, protocol1, commContextStruct, rankSize, hcclBuffSize);
+
+        // GetUrmaCommResource(commHandle, engine, protocol1, commContextStruct, rankSize, hcclBuffSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
