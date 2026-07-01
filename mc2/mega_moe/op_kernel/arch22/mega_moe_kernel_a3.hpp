@@ -1628,7 +1628,7 @@ private:
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
                 // sizeof(ElementA) is 1
                 workspaceOffset += params.maxOutputSize *
-                    params.problemShape.k() > k2 ? params.problemShape.k() : k2;
+                    (params.problemShape.k() > k2 ? params.problemShape.k() : k2);
 
                 ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
                 ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
@@ -1636,7 +1636,7 @@ private:
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
                 workspaceOffset += params.maxOutputSize *
-                    params.problemShape.k() > k2 ? params.problemShape.k() : k2 * sizeof(ElementA);
+                    (params.problemShape.k() > k2 ? params.problemShape.k() : k2) * sizeof(ElementA);
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
