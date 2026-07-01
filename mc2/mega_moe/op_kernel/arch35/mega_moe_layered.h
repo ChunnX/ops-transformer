@@ -252,7 +252,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     rankIdInServer_ = rankId_ % rankPerServer_;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
-        urmaRankAddr_[i] = (GM_ADDR)mc2Context_->urmacclBuffer[i];
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -742,7 +741,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeT
         }
         sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
         uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-        GM_ADDR recordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) +
+        GM_ADDR recordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) +
             relayOffset;
         if (targetServer != serverId_) {
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
@@ -805,7 +804,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     PipeBarrier<PIPE_ALL>();
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
-    GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) + relayOffset;
+    GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
     AscendC::PRINTF("[MegaMoe][L1Send] rank=%u peer=%u block=%u targetServer=%u slot=%d token=%d relayOff=%llu\n",
         rankId_, peerRank, blockIdx_, targetServerForSender, slot, tokenIdx,
         static_cast<unsigned long long>(relayOffset));
@@ -934,7 +933,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t relayRank,
     uint64_t remoteCopyOffset, int32_t bufferIdx, uint32_t copyInNum)
 {
-    GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) +
+    GM_ADDR remoteRecordAddr = GetRankWinAddrWithOffset(relayRank, dispatchWinOffset_) +
         remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
     if (relayRank == rankId_) {
@@ -1142,7 +1141,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     bool useUrmaDispatch = (params_.tilingData->commMode == COMM_MODE_CROSS_SERVER);
     if (!useUrmaDispatch) {
         remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-            GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_, COMM_MODE_ON_SERVER)));
+            GetRankWinAddrWithOffset(remoteRankIdx, quantWinOffset_)));
     }
     uint32_t srcServer = static_cast<uint32_t>(remoteRankIdx) / rankPerServer_;
     uint32_t srcRankInServer = static_cast<uint32_t>(remoteRankIdx) % rankPerServer_;
