@@ -585,14 +585,14 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
                     }
                 }
-                if (taskId > 0 && notLastTwoLoop) {
+                if (likely(taskId > 0 && notLastTwoLoop)) {
                     if ASCEND_IS_AIV {
                         auto &runInfo3 = runInfo[(taskId + 3) & 3];
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
                                                    this->constInfo);
                     }
                 }
-                if (taskId > 1 && notLast) {
+                if (likely(taskId > 1 && notLast)) {
                     if ASCEND_IS_AIC {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) & 3];
                         if constexpr (bmm2Write2Ub) {
@@ -604,7 +604,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                         }
                     }
                 }
-                if (taskId > 2) {
+                if (likely(taskId > 2)) {
                     if ASCEND_IS_AIV {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
                         if constexpr (bmm2Write2Ub) {

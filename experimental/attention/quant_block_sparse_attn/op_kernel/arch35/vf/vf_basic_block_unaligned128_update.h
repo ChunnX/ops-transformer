@@ -105,7 +105,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
 
         if constexpr (hasAtten == 1) {
             // atten mask
-            if (!isMlaSgd) {
+            if constexpr (!isMlaSgd) {
                 LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
                     preg_compare, (__ubuf__ uint32_t *&)maskUb, nPadding);
                 LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(

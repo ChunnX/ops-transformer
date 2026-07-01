@@ -131,7 +131,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -143,7 +143,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
         StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
@@ -170,14 +170,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     if (needAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -483,7 +483,7 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -495,7 +495,7 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
         StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
@@ -522,14 +522,14 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     if (needAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -885,7 +885,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
@@ -913,14 +913,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     if (needAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -1223,7 +1223,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
@@ -1251,14 +1251,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    mem_bar(VST_VLD);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     if (needAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
