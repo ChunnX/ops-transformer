@@ -88,14 +88,6 @@ static ge::graphStatus EngramFetchWaitTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-struct EngramFetchWaitCompileInfo {};
-
-ge::graphStatus TilingParseForEngramFetchWait(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
 IMPL_OP_OPTILING(EngramFetchWait)
     .Tiling(EngramFetchWaitTilingFunc);
 
