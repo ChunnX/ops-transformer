@@ -218,8 +218,7 @@ public:
             m_rankSize = WinContext_->rankSize;
         }
         m_segmentSize = WinContext_->winSize;
-        m_tailReservedSize = IS_A2 ? (m_rankSize * 16 * sizeof(int32_t) + sizeof(int32_t))
-                                   : (m_rankSize * STATE_OFFSET);
+        m_tailReservedSize = m_rankSize * STATE_OFFSET;
     }
 #else
     FORCE_INLINE_AICORE
@@ -233,8 +232,7 @@ public:
         symmetricPtr = symmetricPtr_;
         m_rank = rank;
         m_rankSize = rankSize;
-        m_tailReservedSize = IS_A2 ? (m_rankSize * 16 * sizeof(int32_t) + sizeof(int32_t))
-                                   : (rankSize * STATE_OFFSET);
+        m_tailReservedSize = rankSize * STATE_OFFSET;
     }
 #endif
 
