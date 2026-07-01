@@ -238,6 +238,8 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 </details>
 
+> 仅量化场景（per-token）、反量化场景支持激活函数计算。
+
 <a id="63-ascend-950prascend-950dt"></a>
 
 ### 6.3 Ascend 950PR/Ascend 950DT

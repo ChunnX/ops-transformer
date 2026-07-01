@@ -451,6 +451,13 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 0 | FLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16/null | FLOAT16 | null | FLOAT16 |
 
 - weight 为 FLOAT8 系列时，antiquantOffsetOptional 仅支持空指针或空 TensorList，weight 仅支持转置。
+- 若 weight 的类型为 INT4，则 weight 中每一组 tensor 的最后一维大小都应是偶数。$weight_i$ 的最后一维指 weight 不转置时 $weight_i$ 的 N 轴或当 weight 转置时 $weight_i$ 的 K 轴。
+- antiquantScaleOptional 和非空的 biasOptional、antiquantOffsetOptional 要满足下表（其中 $g$ 为 matmul 组数即分组数）：
+
+  | groupType | 使用场景 | shape 限制 |
+  |:---:|:---|:---|
+  | -1 | weight 多 tensor | 每个 tensor 1 维，shape 为（$n_i$），不允许存在一个 tensorList 中部分 tensor 的 shape 为（$n_i$）部分 tensor 为空的情况 |
+  | 0 | weight 单 tensor | 每个 tensor 2 维，shape 为（$g$, N）|
 
 </details>
 
@@ -716,13 +723,12 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
 | 场景 | 设备 | 示例文件 | 说明 |
 |------|:---:|------|------|
 | 非量化 | 公共 | [test_aclnn_grouped_matmul.cpp](../examples/test_aclnn_grouped_matmul.cpp) | 非量化基础示例（涵盖通用调用流程） |
-| 全量化-A8W8 / 静态量化 | 公共 | [test_aclnn_grouped_matmul_v5_a8w8.cpp](../examples/test_aclnn_grouped_matmul_v5_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
-| 伪量化-A16W8 | 公共 | [test_aclnn_grouped_matmul_v5_a16w8.cpp](../examples/test_aclnn_grouped_matmul_v5_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
-| 伪量化-A16W4 | 公共 | [test_aclnn_grouped_matmul_v5_a16w4.cpp](../examples/test_aclnn_grouped_matmul_v5_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
-| 伪量化（weight NZ） | A5 | [arch35/test_aclnn_grouped_matmul_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_weight_nz.cpp) | A5 伪量化 NZ 格式示例 |
-| 伪量化（V5 NZ） | A5 | [arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_weight_nz.cpp) | A5 V5 伪量化 NZ 示例 |
-| MX 量化 | A5 | [arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_v4_mx_quant.cpp) | A5 MX 量化示例 |
-| 全量化（动态 K-C） | A5 | [arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
-| G-B 量化 | A5 | [arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
-| 全量化-A4W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_v5_a4w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_v5_a4w4.cpp) | x=INT4, weight=INT4, scale=UINT64, out=FP16 |
-| 伪量化-A8W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_v5_a8w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_v5_a8w4.cpp) | x=INT8, weight=INT4, scale=UINT64, perTokenScale=FLOAT |
+| 全量化-A8W8 / 静态量化 | 公共 | [test_aclnn_grouped_matmul_a8w8.cpp](../examples/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
+| 伪量化-A16W8 | 公共 | [test_aclnn_grouped_matmul_a16w8.cpp](../examples/test_aclnn_grouped_matmul_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
+| 伪量化-A16W4 | 公共 | [test_aclnn_grouped_matmul_a16w4.cpp](../examples/test_aclnn_grouped_matmul_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
+| 伪量化（Weight NZ） | A5 | [arch35/test_aclnn_grouped_matmul_weight_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_weight_nz.cpp) | A5 伪量化 NZ 格式示例（BF16 × FLOAT4_E2M1, antiquantScale=FLOAT8_E8M0） |
+| MX 量化 | A5 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | A5 MX 量化示例 |
+| 全量化（动态 K-C） | A5 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
+| G-B 量化 | A5 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
+| 全量化-A4W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_a4w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_a4w4.cpp) | x=INT4, weight=INT4, scale=UINT64, out=FP16 |
+| 伪量化-A8W4 | A2/A3 | [arch22/test_aclnn_grouped_matmul_a8w4.cpp](../examples/arch22/test_aclnn_grouped_matmul_a8w4.cpp) | x=INT8, weight=INT4, scale=UINT64, perTokenScale=FLOAT |
