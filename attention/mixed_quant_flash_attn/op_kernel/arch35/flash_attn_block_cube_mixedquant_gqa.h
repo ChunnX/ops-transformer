@@ -16,11 +16,21 @@
 #ifndef FLASH_ATTN_BLOCK_CUBE_MIXEDQUANT_GQA_H_
 #define FLASH_ATTN_BLOCK_CUBE_MIXEDQUANT_GQA_H_
 
-#include "../utils/mixed_quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
 #include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/offset_calculator.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/FixpipeOut.h"         // PFA_CFG_ROW_MAJOR_UB
+#include "../../../common/op_kernel/memory_copy_arch35.h" // SeqLenFromTensorList
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "../utils/mixed_quant_flash_attn_common_def.h"
 
 namespace BaseApi {
+
+using AscendC::TPipe;
+using namespace fa_base_matmul;
 
 template <inferFaLayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormatMQ()
@@ -79,7 +89,8 @@ public:
 
     using QSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<Q_MODE, int32_t, true>,
                                                      ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    using KvSeqParserType = ActualSeqLensParser<KV_MODE, int32_t>;
+    using KvSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                     ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<Q_T, KV_FORMAT, int32_t>;
@@ -109,7 +120,6 @@ public:
     static constexpr inferFaLayOutTypeEnum LAYOUT_Q_MQ = inputLayoutType;
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormatMQ<inputLayoutType>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormatMQ<KvLayoutType>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormatMQ<KvLayoutType>();
 
     static constexpr bool IS_TND_LAYOUT = (inputLayoutType == inferFaLayOutTypeEnum::LAYOUT_TND);
     static constexpr bool Q_NEEDS_WZH = IS_TND_LAYOUT;
@@ -119,7 +129,8 @@ public:
 
     using QSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<Q_MODE, int32_t, true>,
                                                      ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    using KvSeqParserType = ActualSeqLensParser<KV_MODE, int32_t>;
+    using KvSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                     ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<Q_T, KV_FORMAT, int32_t>;

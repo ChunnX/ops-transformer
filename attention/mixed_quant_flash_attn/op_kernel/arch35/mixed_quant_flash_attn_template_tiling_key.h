@@ -48,7 +48,7 @@ ASCENDC_TPL_ARGS_DECL(MixedQuantFlashAttn,
                        // hasAttenMask (1-bit)
                        //    0: false
                        //    1: true
-                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
+                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, 0, 1),
 
                        // config (3-bit)
                        //    config=0: sOuter=64, sInner=256, D=128
@@ -62,7 +62,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCEN
                                                            InOutLayoutType_BNSD, InOutLayoutType_TND),
                                       ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BBH,
                                                            KvLayoutType_PA_BNBD),
-                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
+                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
                                       ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0),
                                       ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST,
                                                            AntiquantMode_PER_TOKEN_HEAD_GROUP),

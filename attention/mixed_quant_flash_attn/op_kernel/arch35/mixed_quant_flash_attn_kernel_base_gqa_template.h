@@ -16,21 +16,22 @@
 #ifndef MIXED_QUANT_FLASH_ATTN_KERNEL_BASE_GQA_TEMPLATE_H_
 #define MIXED_QUANT_FLASH_ATTN_KERNEL_BASE_GQA_TEMPLATE_H_
 
-#include "flash_attn_block_cube_mixedquant_gqa.h"
-#include "flash_attn_block_vec_mixedquant_gqa.h"
-#include "flash_attention_mixedquant_block_vec_flashdecode.h"
-#include "mixed_quant_flash_attn_tiling_data.h"
-#include "../utils/mixed_quant_flash_attn_common_def.h"
+#include "../utils/mixed_quant_flash_attn_utils.h"
 
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/fia_public_define.h"
-#include "../../../common/op_kernel/arch35/fia_public_define_arch35.h"
 #include "../../../common/op_kernel/buffer_manager.h"
 #include "../../../common/op_kernel/buffers_policy.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 #include "../../../common/op_kernel/vector_common.h"
+
+#include "flash_attn_block_cube_mixedquant_gqa.h"
+#include "flash_attn_block_vec_mixedquant_gqa.h"
+#include "flash_attention_mixedquant_block_vec_flashdecode.h"
+#include "mixed_quant_flash_attn_tiling_data.h"
+#include "../utils/mixed_quant_flash_attn_common_def.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -82,13 +83,17 @@ public:
     using QSeqParserType = typename std::conditional<(LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND),
                                                      ActualSeqLensParser<Q_MODE, int32_t, true>,
                                                      ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    using KvSeqParserType = ActualSeqLensParser<KV_MODE, int32_t>;
+    using KvSeqParserType = typename std::conditional<(LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND),
+                                                     ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                     ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     typename std::conditional<(LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE, int32_t>>::type
         qCuSeqLensParser;
 
-    ActualSeqLensParser<KV_MODE, int32_t> kvCuSeqLensParser;
+    typename std::conditional<(LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND),
+                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE, int32_t>>::type
+        kvCuSeqLensParser;
 
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;

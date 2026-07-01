@@ -83,6 +83,51 @@ static constexpr uint32_t MQFA_CV_RATIO = 2;
 static constexpr uint32_t MQFA_BYTE_BLOCK = 32;
 static constexpr uint32_t MQFA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
+// kernel stream related struct
+struct FDparamsX {
+    uint32_t fdCoreEnable;
+    uint32_t fdBN2Idx;
+    uint32_t fdMIdx;
+    uint32_t fdS2SplitNum;
+    uint32_t mStart;
+    uint32_t mLen;
+    uint32_t fdWorkspaceIdx;
+};
+
+struct RunInfoX {
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    bool isValid = false;
+    bool isChangeBatch = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t gIdx = 0;
+    uint32_t s1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
+    uint32_t actMSize = 0;    // GS1方向上的长度
+    uint32_t actMSizeAlign32; // GS1 方向上长度对齐
+    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+
+    uint32_t actSingleLoopS2Size = 0; // S2方向长度
+    uint32_t actSingleLoopS2SizeAlign;
+    // uint32_t curS2LoopTimes = 0;
+    bool isS2SplitCore = false;
+    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint64_t qPaddingBeginOffset = 0;
+    uint64_t kvPaddingBeginOffset = 0;
+};
+
 struct MixedQuantCommonConstInfo {
     uint32_t bSize;
     uint64_t t1Size;

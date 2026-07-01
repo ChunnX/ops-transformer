@@ -291,9 +291,7 @@ public:
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
-        } else {
+        
             kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
         }
     }
