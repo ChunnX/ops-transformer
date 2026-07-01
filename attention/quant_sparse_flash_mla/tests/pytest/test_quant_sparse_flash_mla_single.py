@@ -22,11 +22,21 @@ from pathlib import Path
 import multiprocessing as mp
 import utils
 import logging
+import os
 
 pt_save_path = "qsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
+is_run_graph = os.environ.get("RUN_GRAPH", "0") == "1"
+
+# 日志配置
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-5s] %(filename)s:%(lineno)d %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    force=True
+)
 
 param_combinations = []
 for params in ENABLED_PARAMS:
@@ -102,8 +112,12 @@ def qsmla(param_combinations):
 
     # 获得cpu结果(真值)和算子结果（测试值）
     try:
-        npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
-            test_data, device_id=device_id)
+        if is_run_graph:
+            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+                test_data, device_id=device_id)
+        else:
+            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+                test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         logging.exception(e)

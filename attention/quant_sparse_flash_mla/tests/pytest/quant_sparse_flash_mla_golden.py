@@ -22,6 +22,7 @@ from generate_hifloat8_data import (
     trans_float_tensor_to_hifuint8,
     trans_hifuint8_tensor_to_float,
 )
+import logging
 
 DATA_RANGE_LEFT = -2
 DATA_RANGE_RIGHT = 2
@@ -115,7 +116,7 @@ class GeneralizedSFAQuant:
         s2_base_size = 128
 
         for i_B in range(B):
-            print(f"i_B = {i_B}/{B}")
+            logging.info(f"i_B = {i_B}/{B}")
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
@@ -123,7 +124,7 @@ class GeneralizedSFAQuant:
                 cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
             )
             for i_N2 in range(self.N2):
-                print(f"    i_N2 = {i_N2}/{self.N2}")
+                logging.info(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
                 for i_S1 in range(cur_act_q):
                     milestones = [
@@ -132,7 +133,7 @@ class GeneralizedSFAQuant:
                     milestones = list(dict.fromkeys(milestones))
                     if i_S1 in milestones:
                         current_pct = (i_S1 / cur_act_q) * 100
-                        print(
+                        logging.info(
                             f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
                         )
                     if i_S1 < cur_act_q - cur_ori_act_kv:  # 根据 win_kv 判断行无效
@@ -237,17 +238,8 @@ class GeneralizedSFAQuant:
                         # MM2
                         mm2_res = torch.matmul(acc_s_cast, v_tile)
                         acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
-                        # if i_S2 == 0:
-                        #     torch.set_printoptions(threshold=torch.inf)
-                        #     print(acc_o[:4, :])
-                        #     print(acc_o[32:36, :])
-
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
-                    torch.set_printoptions(threshold=torch.inf)
-                    # print(acc_o[:4, :])
-                    # print(acc_o[32:36, :])
-
                     acc_o = acc_o / hifp8_scale_value
                     attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(torch.bfloat16)
         return attn_out
@@ -383,8 +375,8 @@ class GeneralizedSFAQuant:
         cmp_residual_kv,
         sinks,
     ):
-        print("cpu执行中...")
-        print(f"template_run_mode = {self.template_run_mode}")
+        logging.info("cpu执行中...")
+        logging.info(f"template_run_mode = {self.template_run_mode}")
 
         q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(
             q, q.shape, self.layout_q, cu_seqlens_q, self.seqused_q
@@ -764,7 +756,7 @@ def save_test_case(input_data, output_dir):
 
     # 保存数据
     torch.save(input_data, input_filepath)
-    print(f"测试用例已保存到: {input_filepath}")
+    logging.info(f"测试用例已保存到: {input_filepath}")
 
     return input_filepath
 
@@ -978,7 +970,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         sinks,
     )
 
-    print("mode:%s\n", template_run_mode)
+    logging.info("mode:%s\n", template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
