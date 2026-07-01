@@ -1086,7 +1086,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
                                                           matmul::Matmul<a1Type, b1Type, T2, bias1Type, MM_CFG> &bmm1)
 {
     if constexpr (hasRope == true) {
-        bmm1.SetOrgShape(extraInfo.s1RealSize, this->mm1Kb, this->mm1Ka2, this->mm1Kb2, extraInfo.s2RealSize);
+        bmm1.SetOrgShape(extraInfo.s1RealSize, extraInfo.s2RealSize, this->mm1Kb, this->mm1Ka2, this->mm1Kb2);
         this->Bmm1SetTensorARope(extraInfo, bmm1);
         this->SetBmm1TensorBRope(extraInfo, bmm1);
         if constexpr (enableL1Reuse) {
@@ -1096,7 +1096,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
         }
     }
 
-    bmm1.SetOrgShape(extraInfo.s1RealSize, this->mm1Kb, this->mm1Ka1, this->mm1Kb1, extraInfo.s2RealSize);
+    bmm1.SetOrgShape(extraInfo.s1RealSize, extraInfo.s2RealSize, this->mm1Kb, this->mm1Ka1, this->mm1Kb1);
     this->Bmm1SetTensorA(extraInfo, bmm1);
     this->SetBmm1TensorB(extraInfo, bmm1);
     if constexpr (enableL1Reuse) {
