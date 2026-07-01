@@ -535,8 +535,8 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
             outputIdxOffsetShapeDim),
             return ge::GRAPH_FAILED);
     }
-    if (opParamInfo_.valuesOut.tensor != nullptr) {
-        uint32_t sparseValuesShapeDim = opParamInfo_.valuesOut.shape->GetStorageShape().GetDimNum();
+    if (opParamInfo_.sparseValues.tensor != nullptr) {
+        uint32_t sparseValuesShapeDim = opParamInfo_.sparseValues.shape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(sparseValuesShapeDim != expectShapeDim,
                 OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
                 expectShapeDim, sparseValuesShapeDim),
