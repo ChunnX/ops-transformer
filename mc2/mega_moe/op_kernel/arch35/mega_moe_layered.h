@@ -792,7 +792,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + mxQuantTokenScaleAlignBytes_,
         recordAddr + mxQuantTokenScaleAlignBytes_, ALIGN_32);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
+    PipeBarrier<PIPE_ALL>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMegaMoeTypeClass>
