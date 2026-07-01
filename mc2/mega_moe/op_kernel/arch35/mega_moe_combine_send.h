@@ -175,43 +175,6 @@ __aicore__ inline void CombineQuantizedTokens(
 }
 
 // =============================================
-// CombineQuantizedTokensByUrma：通过URMA将量化后的 token 发送到目标 rank
-// =============================================
-template <typename QuantOutType>
-__aicore__ inline void CombineQuantizedTokensByUrma(
-    uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
-    uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
-    LocalTensor<QuantOutType>& ubQuant, Params& params)
-{
-    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    int64_t quantRowSize = n + nScale;
-    uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
-    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
-    uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
-
-    AscendC::GlobalTensor<QuantOutType> gmRemoteD;
-    GM_ADDR dstPeermemPtr = params.workspaceInfo.combineCommPtr + static_cast<uint64_t>(toRankId) * quantRowSize *
-        params.tilingData->bs * params.tilingData->expertPerRank * sizeof(QuantOutType);
-    if (toRankId == rankId) {
-        dstPeermemPtr = params.peermemInfo.combineSendPtr;
-    }
-    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
-    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantRowSize;
-
-    AscendC::DataCopyExtParams singleCopyParams{
-        1, static_cast<uint32_t>(quantRowSize), 0, 0, 0};
-    AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
-    PipeBarrier<PIPE_ALL>();
-    if (toRankId != rankId) {
-        uint64_t channelHandle = GetUrmaCommHandle(params.mc2Context, toRankId, rankId);
-        GM_ADDR srcAddr = dstPeermemPtr + dstBaseOffset * sizeof(QuantOutType);
-        GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset) +
-            dstBaseOffset * sizeof(QuantOutType);
-        params.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantRowSize * sizeof(QuantOutType));
-    }
-}
-
-// =============================================
 // CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
 // =============================================
 template <uint8_t QuantMode, typename T, bool IsLayered = false>
@@ -255,13 +218,8 @@ __aicore__ inline void CombineTokenGroup(
         
         // MTE3: send to GM
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
-        if constexpr (IsLayered) {
-            CombineQuantizedTokensByUrma<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
-                ubQuantDataFp8, params);
-        } else {
-            CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
-                ubQuantDataFp8, params);
-        }
+        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
+            ubQuantDataFp8, params);
     }
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
