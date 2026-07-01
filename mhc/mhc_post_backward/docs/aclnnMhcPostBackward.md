@@ -85,7 +85,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -99,7 +99,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与hRes一致</td>
       <td>ND</td>
@@ -157,7 +157,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHRes</td>
@@ -168,7 +167,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHout</td>
@@ -179,7 +177,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHpost</td>
@@ -242,7 +239,7 @@ aclnnStatus aclnnMhcPostBackward(
           <td>gradOutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
         </tr>
           <tr>
-          <td>gradOutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
+          <td>gradOutput、x、hRes、hOut、hPost的shape维度或取值不在支持的范围内。</td>
         </tr>
         <tr>
           <td>gradOutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
@@ -294,7 +291,9 @@ aclnnStatus aclnnMhcPostBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N的取值目前仅支持4、6和8。
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：参数说明中维度N的取值目前仅支持4，维度D的取值需要128对齐并且取值范围为[1,100000]。
+- <term>Ascend 950PR/Ascend 950DT</term>：参数说明中维度N的取值目前仅支持4、6和8。
 
 
 ## 调用示例

@@ -23,6 +23,7 @@
 #include "tiling/tiling_api.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
     // ------------------公共定义--------------------------
@@ -237,6 +238,7 @@ public:
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
     ge::DataType weightsType_ = ge::DT_FLOAT16;

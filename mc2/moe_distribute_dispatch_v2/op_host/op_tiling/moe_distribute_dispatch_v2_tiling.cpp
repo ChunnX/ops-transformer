@@ -63,7 +63,8 @@ namespace {
     constexpr int64_t MAX_TP_WORLD_SIZE_LAYERED = 1;
     constexpr int64_t BS_UPPER_BOUND = 512;
     constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
-    constexpr int64_t FULLMESH_BS_UPPER_BOUND = 256;
+    constexpr int64_t FULLMESH_BS_UPPER_BOUND_A3 = 256;
+    constexpr int64_t FULLMESH_BS_UPPER_BOUND_A5 = BS_UPPER_BOUND;
     constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
     constexpr uint32_t RANK_NUM_PER_NODE = 16U;
 
@@ -799,18 +800,23 @@ static bool CheckCommAlgAttrs(const gert::TilingContext *context, const char *no
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(config.expertIdsIndex);
     const int64_t expertIdsDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     uint32_t k = static_cast<uint32_t>(expertIdsDim1);
+    int64_t fullMeshBsUpperBound = mc2tiling::GetSocVersion(context) == "Ascend950" ?
+        FULLMESH_BS_UPPER_BOUND_A5 : FULLMESH_BS_UPPER_BOUND_A3;
 
     // 检查comm_alg和tpWorldSize是否冲突
     OP_TILING_CHECK(isSetFullMeshV2 && (tpWorldSize == TP_WORLD_SIZE_TWO), OP_LOGE(nodeName, "When comm_alg is fullmesh_v2, tp_world_size cannot be 2."),
         return false);
     // 检查comm_alg和bs是否冲突
-    OP_TILING_CHECK(isSetFullMeshV2 && (bs > FULLMESH_BS_UPPER_BOUND),
+    OP_TILING_CHECK(isSetFullMeshV2 && (bs > fullMeshBsUpperBound),
         OP_LOGE(nodeName,
-            "When comm_alg is fullmesh_v2, bs should be between [1, %ld], but got %u.",
-            FULLMESH_BS_UPPER_BOUND, bs),
+            "When comm_alg is fullmesh_v2, bs should be between [1, %lld], but got %u.",
+            fullMeshBsUpperBound, bs),
         return false);
     // 检查comm_alg和topK是否冲突
-    OP_TILING_CHECK(isSetFullMeshV2 && (k > FULLMESH_K_MAX), OP_LOGE(nodeName, "When comm_alg is fullmesh_v2, topK should be between [1, %ld], but got %u.", FULLMESH_K_MAX, k),
+    OP_TILING_CHECK(isSetFullMeshV2 && (k > FULLMESH_K_MAX),
+        OP_LOGE(nodeName,
+            "When comm_alg is fullmesh_v2, topK should be between [1, %lld], but got %u.",
+            FULLMESH_K_MAX, k),
         return false);
     // 校验动态缩容和分层不能同时启用
     OP_TILING_CHECK((isLayered && hasElasticInfo),

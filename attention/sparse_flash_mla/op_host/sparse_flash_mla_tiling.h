@@ -25,6 +25,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -100,9 +101,7 @@ constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 8;   // A2/A3
-constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 9;     // A2/A3
-constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 10;    // A2/A3
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -167,6 +166,7 @@ TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
 TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
+TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
@@ -213,8 +213,6 @@ struct SMLAParaInfo {
     const uint32_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    const uint32_t *oriKvStride0 = nullptr; // A2/A3
-    const uint32_t *cmpKvStride0 = nullptr; // A2/A3
     const uint32_t *oriWinLeft = nullptr;
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
@@ -234,7 +232,7 @@ public:
     SMLAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -277,7 +275,7 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     bool returnSoftmaxLse = false;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -338,6 +336,7 @@ private:
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
+    ge::graphStatus CheckSingleParaTopkLength() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaOriSparseIndices() const;
@@ -427,7 +426,7 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     uint64_t l2CacheSize_ = 0;
 
     bool isSameSeqAllKVTensor_ = true;
@@ -489,6 +488,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetSinks();
+    uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
 
@@ -550,7 +550,7 @@ public:
     // template mode
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
 
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
     ge::DataType oriKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
@@ -594,7 +594,7 @@ private:
     uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
     uint32_t usedCoreNum_ = 0;
-    
+
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 64;
 };

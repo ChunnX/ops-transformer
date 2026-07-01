@@ -389,14 +389,14 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const c
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
-    uint8_t commMode = 0;
+    uint8_t commModeVal = 0;
     OP_TILING_CHECK(
-            GetAndConvertCommMode(commMode),
+            GetAndConvertCommMode(commModeVal),
             OP_LOGE(opName_, "Get commMode failed."),
             return ge::GRAPH_FAILED);
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+    } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
@@ -429,14 +429,14 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
-    uint8_t commMode = 0;
+    uint8_t commModeVal = 0;
     OP_TILING_CHECK(
-            GetAndConvertCommMode(commMode),
+            GetAndConvertCommMode(commModeVal),
             OP_LOGE(opName_, "Get commMode failed."),
             return ge::GRAPH_FAILED);
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+    } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {

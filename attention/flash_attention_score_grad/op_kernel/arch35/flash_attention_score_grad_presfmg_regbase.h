@@ -50,7 +50,6 @@ public:
     __aicore__ inline void CalculateSoftmaxGrad(int64_t taskId, int64_t sfmgOutputOffset,
                                                 int64_t curNBurst, int64_t deqScaleIdx = 0);
     __aicore__ inline void DoSoftmaxGrad();
-    __aicore__ inline void DoSoftmaxGradFp8();
 
     constexpr static uint32_t HEAD_DIM_ALIGN = static_cast<uint32_t>(dTemplateType);
     constexpr static uint32_t TEMP_DIM_ALIGN_320 = 320;
@@ -156,10 +155,6 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         nd = n1 * d;
         bnd = b * n1 * d;
 
-        // fp8专用
-        ns1o = n1 * Ceil(s1, QUANT_BLOCK_SIZE);
-        s1o = Ceil(s1, QUANT_BLOCK_SIZE);
-
         usedCoreNum = tilingData->preTilingData.sfmgUsedCoreNum;
         layout = tilingData->s1s2BNGS1S2BaseParams.layout;
 
@@ -229,14 +224,8 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             }
         }
 
-        if constexpr (IsSameType<T1, hifloat8_t>::value) {
-            // FP8量化方案中，采用不同的数据分块方案
-            CalTempDimAlign();
-            DoSoftmaxGradFp8();
-        } else {
-            CalTempDimAlign();
-            DoSoftmaxGrad();
-        }
+        CalTempDimAlign();
+        DoSoftmaxGrad();
     }
 }
 
@@ -363,34 +352,27 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
     LocalTensor<T1> dxInTensor = input2Que[taskId & 1].DeQue<T1>();
     auto output1Buf = out1Que.AllocTensor<T2>();
 
-    if constexpr (IsSameType<T1, hifloat8_t>::value) {
-        float deqScaleDxValue = deqScaleDyGm.GetValue(deqScaleIdx);
-        AscendC::MyAntiQuantSoftmaxGradFrontCast<T1, T2, OUTDTYPE, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
-            deqScaleDxValue, static_cast<uint32_t>(curNBurst),
+    if constexpr (HEAD_DIM_ALIGN <= 256) {
+        AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
+            output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
             static_cast<uint32_t>(dAlignToBlockB16));
     } else {
-        if constexpr (HEAD_DIM_ALIGN <= 256) {
+        if (d <= 384) {
+            AscendC::MySoftmaxGradFrontCast<T1, T2, 384, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                            static_cast<uint32_t>(curNBurst),
+                                                                            static_cast<uint32_t>(dAlignToBlockB16));
+        } else if (d <= 512) {
+            AscendC::MySoftmaxGradFrontCast<T1, T2, 512, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                            static_cast<uint32_t>(curNBurst),
+                                                                            static_cast<uint32_t>(dAlignToBlockB16));
+        } else if (d <= 640) {
+            AscendC::MySoftmaxGradFrontCast<T1, T2, 640, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
+                                                                            static_cast<uint32_t>(curNBurst),
+                                                                            static_cast<uint32_t>(dAlignToBlockB16));
+        } else {
             AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
                 output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
                 static_cast<uint32_t>(dAlignToBlockB16));
-        } else {
-            if (d <= 384) {
-                AscendC::MySoftmaxGradFrontCast<T1, T2, 384, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
-                                                                             static_cast<uint32_t>(curNBurst),
-                                                                             static_cast<uint32_t>(dAlignToBlockB16));
-            } else if (d <= 512) {
-                AscendC::MySoftmaxGradFrontCast<T1, T2, 512, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
-                                                                             static_cast<uint32_t>(curNBurst),
-                                                                             static_cast<uint32_t>(dAlignToBlockB16));
-            } else if (d <= 640) {
-                AscendC::MySoftmaxGradFrontCast<T1, T2, 640, HEAD_DIM_ALIGN>(output1Buf, yInTensor, dxInTensor,
-                                                                             static_cast<uint32_t>(curNBurst),
-                                                                             static_cast<uint32_t>(dAlignToBlockB16));
-            } else {
-                AscendC::MySoftmaxGradFrontCast<T1, T2, HEAD_DIM_ALIGN, HEAD_DIM_ALIGN>(
-                    output1Buf, yInTensor, dxInTensor, static_cast<uint32_t>(curNBurst),
-                    static_cast<uint32_t>(dAlignToBlockB16));
-            }
         }
     }
     out1Que.EnQue(output1Buf);
@@ -456,64 +438,6 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             input1Que[taskId & 1].FreeTensor(input1Buf);
             input2Que[taskId & 1].FreeTensor(input2Buf);
             sfmgOutputOffset += tilingData->preTilingData.singleLoopNBurstNum;
-            taskId++;
-        }
-    }
-}
-
-PRE_FUNCTION_TEMPLATE
-__aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::DoSoftmaxGradFp8()
-{
-    // process
-    if (vBlockIdx < usedCoreNum) {
-        int64_t normalAxisSize = tilingData->preTilingData.normalAxisSize;
-        // FP8 Per-Block 量化中保证 nBurst=128
-        int64_t nBurst = tilingData->preTilingData.singleLoopNBurstNum;  // 一次普通loop处理多少个D
-        int64_t curS = s1;
-        int64_t taskId = 0;
-        int64_t dataBlockIdx = (int)vBlockIdx - (int)usedCoreNum;
-        int64_t numOf128InS1 = ((int)s1 + nBurst - 1) / nBurst; // s1按大小切分成128的block
-        int64_t s1Residual = (int)s1 % nBurst == 0 ? nBurst : (int)s1 % nBurst; // 尾块大小
-        
-        if constexpr (IS_D_NO_EQUAL) {
-            LocalTensor<uint8_t> input1Bufb8 = input1Que[0].AllocTensor<uint8_t>();
-            LocalTensor<uint8_t> input2Bufb8 = input2Que[0].AllocTensor<uint8_t>();
-            Duplicate<uint8_t>(input1Bufb8, 0, nBurst * tempDimAlign);
-            Duplicate<uint8_t>(input2Bufb8, 0, nBurst * tempDimAlign);
-            input1Que[0].FreeTensor(input1Bufb8);
-            input2Que[0].FreeTensor(input2Bufb8);
-            
-            input1Bufb8 = input1Que[1].AllocTensor<uint8_t>();
-            input2Bufb8 = input2Que[1].AllocTensor<uint8_t>();
-            Duplicate<uint8_t>(input1Bufb8, 0, nBurst * tempDimAlign);
-            Duplicate<uint8_t>(input2Bufb8, 0, nBurst * tempDimAlign);
-            input1Que[1].FreeTensor(input1Bufb8);
-            input2Que[1].FreeTensor(input2Bufb8);
-        }
-        while (true) {
-            dataBlockIdx += usedCoreNum; // 用核数做偏移量
-            // 下方的逻辑等价于，每次偏到理论没有尾块的s1blockstart上，然后减去这之前可能有的所有尾块大小
-            int64_t sfmgOutputOffset = dataBlockIdx * nBurst - (dataBlockIdx / numOf128InS1) * (nBurst - s1Residual);
-            if (sfmgOutputOffset >= normalAxisSize) {
-                break;
-            }
-
-            input1Buf = input1Que[taskId & 1].AllocTensor<OUTDTYPE>();
-            input2Buf = input2Que[taskId & 1].AllocTensor<T1>();
-            int64_t curNBurst = ((dataBlockIdx + 1) % numOf128InS1 == 0) ? s1Residual : nBurst;
-            InitIndex(sfmgOutputOffset * d, curS);
-            CopyInSfmg(curNBurst, curS);
-
-            input1Que[taskId & 1].EnQue(input1Buf);
-            input2Que[taskId & 1].EnQue(input2Buf);
-            int64_t deqDyScaleIdx = bIdx * ns1o + nIdx * s1o + soIdx; // dequant GM默认排布BNSD
-            CalculateSoftmaxGrad(taskId, sfmgOutputOffset, curNBurst, deqDyScaleIdx);
-            if constexpr (IS_D_NO_EQUAL) {
-                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t>&>(input1Buf), 0, nBurst * tempDimAlign);
-                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t>&>(input2Buf), 0, nBurst * tempDimAlign);
-            }
-            input1Que[taskId & 1].FreeTensor(input1Buf);
-            input2Que[taskId & 1].FreeTensor(input2Buf);
             taskId++;
         }
     }

@@ -42,9 +42,6 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
 
     // 默认先不按DN处理
     constexpr bool useDn = false;
-    // constexpr bool useDn =
-    //     IsDn(false, false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, (uint32_t)s1TemplateType == 64,
-    //          dTemplateType, hasRope, enableKVPrefix, true, IsSameType<INPUT_T, hifloat8_t>::value);
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 

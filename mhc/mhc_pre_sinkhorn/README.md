@@ -207,3 +207,4 @@
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_pre_sinkhorn](examples/test_aclnn_mhc_pre_sinkhorn.cpp) | 通过[aclnnMhcPreSinkHorn](docs/aclnnMhcPreSinkhorn.md)接口方式调用MhcPreSinkHorn算子。 |
+| PyTorch API | - | 通过[mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |

@@ -51,14 +51,14 @@ struct ScatterCacheParams {
     int64_t tokenIndex;
 };
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                     const ScatterCacheParams &scatterCacheParams)
 {
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
-    if constexpr (!isNz) {
+    if constexpr (!IS_NZ) {
         DataCopy(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride], inputLocal,
                  scatterCacheParams.col);
     } else {
@@ -72,21 +72,21 @@ __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalT
     }
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams)
 {
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
-    if constexpr (!isNz) {
+    if constexpr (!IS_NZ) {
         // blockCount, blockLen, srcStride, dstStride
         DataCopyParams dataCopyParams{1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
         DataCopyPad(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride], inputLocal, dataCopyParams);
     }
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams, int64_t rowsInCurBatch,
                                              int64_t cacheOffset, int64_t nextBatchOffset)
@@ -96,7 +96,7 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     }
     int64_t copyCnt = scatterCacheParams.col * rowsInCurBatch;
 
-    if constexpr (!isNz) {
+    if constexpr (!IS_NZ) {
         DataCopy(cacheGm[cacheOffset], inputLocal, copyCnt);
         if (rowsInCurBatch != scatterCacheParams.row) {
             DataCopy(cacheGm[nextBatchOffset], inputLocal[copyCnt],
@@ -115,13 +115,13 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     }
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageTokenOffset, int64_t tokenOffsetInPage,
                                                       int64_t rowsThisStep, bool spill, int64_t nextPageId,
                                                       int64_t headSize, CkvkrParams &ckvkrParams)
 {
     ckvkrParams.rowsInCurBatch = rowsThisStep;
-    if constexpr (isNz) {
+    if constexpr (IS_NZ) {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
         ckvkrParams.cacheOffset = pageTokenOffset * headSize + tokenOffsetInPage * col0;
     } else {

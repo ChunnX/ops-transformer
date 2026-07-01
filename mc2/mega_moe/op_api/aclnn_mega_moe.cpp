@@ -102,8 +102,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         "moeExpertNum must be > 0, got %ld.", moeExpertNum);
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID,
         "epWorldSize must be > 0, got %ld.", epWorldSize);
-    CHECK_COND(maxRecvTokenNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "maxRecvTokenNum must be > 0, got %ld.", maxRecvTokenNum);
+    CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID,
+        "maxRecvTokenNum must be >= 0, got %ld.", maxRecvTokenNum);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {

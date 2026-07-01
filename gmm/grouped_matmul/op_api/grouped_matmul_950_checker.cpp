@@ -82,19 +82,19 @@ const char *AclnnGroupedMatmulDAV3510Checker<T>::GetAclnnOpName() const
 {
     switch (gmmParams_.apiVersion) {
         case gmm::GMMApiVersion::V1:
-            return "aclnnGroupedMatmul";
+            return "aclnnGroupedMatmulGetWorkspaceSize";
         case gmm::GMMApiVersion::V2:
-            return "aclnnGroupedMatmulV2";
+            return "aclnnGroupedMatmulV2GetWorkspaceSize";
         case gmm::GMMApiVersion::V3:
-            return "aclnnGroupedMatmulV3";
+            return "aclnnGroupedMatmulV3GetWorkspaceSize";
         case gmm::GMMApiVersion::V4:
-            return "aclnnGroupedMatmulV4";
+            return "aclnnGroupedMatmulV4GetWorkspaceSize";
         case gmm::GMMApiVersion::V5:
-            return "aclnnGroupedMatmulV5";
+            return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
-            return "aclnnGroupedMatmulWeightNz";
+            return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
         default:
-            return "aclnnGroupedMatmul";
+            return "aclnnGroupedMatmulGetWorkspaceSize";
     }
 }
 
@@ -263,7 +263,8 @@ template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() const
 {
     GMM_CHECK_REPORT(gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz,
-        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "apiVersion", GetAclnnOpName(), "aclnnGroupedMatmulWeightNz"));
+                     OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "apiVersion", GetAclnnOpName(),
+                                               "aclnnGroupedMatmulWeightNzGetWorkspaceSize"));
 
     auto wDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     bool isInputFp8e4m3 = gmmParams_.xDtype == DataType::DT_FLOAT8_E4M3FN && wDtype == DataType::DT_FLOAT8_E4M3FN;

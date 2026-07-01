@@ -16,6 +16,8 @@
 #ifndef SERVICE_ROPE_H
 #define SERVICE_ROPE_H
 
+#include "vf/vf_rope.h"
+
 namespace MlaProlog {
 /**
  * @brief RotaryPosEmb, 同时做row行的RotaryPosEmb，每一行的元素为col
@@ -23,49 +25,17 @@ namespace MlaProlog {
  * @param inputLocal 输入tensor [row * col]
  * @param cosLocal cos系数tensor [(row - 1) * sinCosRepStride + col]
  * @param sinLocal sin系数tensor [(row - 1) * sinCosRepStride + col] - 1 应已在sin中
- * @param shareTmpUb 临时buffer 内部需要的空间为 [2 * row * col * sizeof(C)]
  * @param row 待处理的行数
  * @param col 待处理的列数  col <= 512 / sizeof(C)
  * @param sinCosRepStride 行与行之间sin/cos系数的偏移，单位为元素个数。
  */
-template <typename C>
-__aicore__ inline void RotaryPosEmb(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal,
+template <typename O, typename C>
+__aicore__ inline void RotaryPosEmb(const LocalTensor<O> &outputLocal, const LocalTensor<C> &inputLocal,
                                     const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                    const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col,
-                                    uint8_t sinCosRepStride)
+                                    uint64_t row, uint64_t col, uint8_t sinCosRepStride)
 {
-    uint64_t cnt = row * col;
-    uint64_t rsvdCnt = 0;
-    LocalTensor<C> reArrLocal = shareTmpUb.ReinterpretCast<C>();
-    LocalTensor<C> outputLocalSinTmp = shareTmpUb.ReinterpretCast<C>()[cnt];
-    GatherMaskParams gatherMaskParams = {
-        1, // repeatTimes
-        1, // src0BlockStride
-        0, // src0RepeatStride
-        0  // src1RepeatStride
-    };
-    // 取奇数索引元素
-    GatherMask(reArrLocal, inputLocal, 1, true, col * row, gatherMaskParams, rsvdCnt);
-    // 取偶数索引元素
-    GatherMask(reArrLocal[cnt >> 1], inputLocal, 2, true, col * row, gatherMaskParams, rsvdCnt);
-    AscendC::PipeBarrier<PIPE_V>();
-    uint8_t blockNumPerRow = col / (ALIGN_BLOCK_SIZE / sizeof(C));
-    uint8_t blockNumPerRowHalf = blockNumPerRow >> 1;
-    uint8_t blockNumSinCosRepStride = sinCosRepStride / (ALIGN_BLOCK_SIZE / sizeof(C));
-    BinaryRepeatParams mulParams = {
-        1,                      // dstBlkStrideIn
-        1,                      // src0BlkStrideIn
-        1,                      // src1BlkStrideIn
-        blockNumPerRow,         // dstRepStrideIn
-        blockNumPerRowHalf,     // src0RepStrideIn
-        blockNumSinCosRepStride // src1RepStrideIn
-    };
-    Mul(outputLocal, reArrLocal, cosLocal, col >> 1, row, mulParams);
-    Mul(outputLocal[col >> 1], reArrLocal[cnt >> 1], cosLocal[col >> 1], col >> 1, row, mulParams);
-    Mul(outputLocalSinTmp, reArrLocal[cnt >> 1], sinLocal, col >> 1, row, mulParams);
-    Mul(outputLocalSinTmp[col >> 1], reArrLocal, sinLocal[col >> 1], col >> 1, row, mulParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    Add(outputLocal, outputLocal, outputLocalSinTmp, cnt);
+    RotaryPosEmbVF<O, C>(outputLocal, inputLocal, cosLocal, sinLocal,
+                         static_cast<uint32_t>(row), col, col, static_cast<uint64_t>(sinCosRepStride));
 }
 } // namespace MlaProlog
 #endif

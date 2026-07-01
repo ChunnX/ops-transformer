@@ -413,7 +413,7 @@ inline void SectionStreamKImpl::CalcS1GCache(uint32_t s1GIdx, const ComputeConte
     s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
     int64_t curTailS2Num = (gridInfo.s2TailSize[batchCache.bIdx] != 0U &&
         s1GCache.s2End == gridInfo.s2BaseNum[batchCache.bIdx]) ? 1L : 0L;
-    int64_t curNormalS2Num = static_cast<int64_t>(s1GCache.s1GBlock - curTailS2Num);
+    int64_t curNormalS2Num = static_cast<int64_t>(s1GCache.s1GBlock) - curTailS2Num;
     if (s1GIdx == (gridInfo.mBaseNum[batchCache.bIdx] - 1U) && gridInfo.mTailSize[batchCache.bIdx] != 0U) {
         s1GCache.s1GCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
             batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;

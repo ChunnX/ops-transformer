@@ -232,19 +232,6 @@ public:
         }
     }
 
-    __aicore__ inline void ClearOutput()
-    {
-        if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
-            }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
-        }
-    }
-
     __aicore__ inline bool IsInitAttentionOutGm()
     {
         // TND、NTD场景且不存在无效行,不需要初始化
@@ -262,6 +249,19 @@ public:
             }
         }
         return true;
+    }
+
+    __aicore__ inline void ClearOutput()
+    {
+        if (IsInitAttentionOutGm()) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+            InitOutputSingleCore();
+            if (constInfo.isSoftmaxLseEnable) {
+                InitLseOutputSingleCore();
+            }
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            SyncAll();
+        }
     }
 
     __aicore__ inline void InitOutputSingleCore()
@@ -882,8 +882,7 @@ public:
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
                 // 跨多个G
-                ret = (s1StartTdx < s1FirstValidToken);
-                ret = ret || (s1EndTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+                ret = (s1FirstValidToken > 0) || (s1LastValidToken < (runInfo.actS1Size - 1));
             }
         }
         return ret;
@@ -1308,7 +1307,6 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         // 对整个batch的结果置0
         if constexpr (POST_QUANT) { // out int8
-                                    // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
         } else {
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;

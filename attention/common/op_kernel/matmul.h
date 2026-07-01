@@ -336,7 +336,6 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
             loadData2DMxParamsB.yStartPosition = mmParam.singleN / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵Y轴方向的起始位置，即K维度方向，单位为32B。
             loadData2DMxParamsB.xStep = (kSplitSize + 15) / 16; // 源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
             loadData2DMxParamsB.yStep = (mmParam.singleK + 63) / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
-            // TODO: mmParam.singleM is ???
             loadData2DMxParamsB.srcStride = mmParam.singleM / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep; // 目标矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB,loadData2DMxParamsB);
@@ -355,7 +354,6 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
             loadData2DMxParamsB.yStartPosition = mmParam.singleN * 2 / HI_FP4_PTG_PCG_SCALE_PARAM; // 源矩阵Y轴方向的起始位置，即K维度方向，单位为32B。
             loadData2DMxParamsB.xStep = (kSplitSize + 15) / 16; // 源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
             loadData2DMxParamsB.yStep = (mmParam.singleK + 31) * 2 / HI_FP4_PTG_PCG_SCALE_PARAM; // 1个fp32伪装为2个bf16，故最小分型数量翻倍。源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
-            // TODO: mmParam.singleM is ???
             loadData2DMxParamsB.srcStride = mmParam.singleM * 2 / HI_FP4_PTG_PCG_SCALE_PARAM; // 源矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep; // 目标矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB,loadData2DMxParamsB);

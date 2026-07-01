@@ -91,10 +91,10 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if ((npuArch_ != NpuArch::DAV_2201) &&
+        (npuArch_ != NpuArch::DAV_3510)) {
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
@@ -390,34 +390,24 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
     // 获取B基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、Q和K都为TND时, cu_seqlens_q必须传入, 以cu_seqlens_q数组的长度为B轴大小
-    // 3、Q为TND，K为PA_BBND时，以cu_seqlens_k数组的长度为B轴大小
+    // 3、Q为TND，K为PA_BBND时，以cu_seqlens_q数组的长度为B轴大小
     if (qLayout_ == DataLayout::BSND) {
         bSize_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
         return ge::GRAPH_SUCCESS;
     } else {
         // TND
         uint32_t bSizeQuery;
-        uint32_t bSizeKey;
         GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cuSeqlensQ");
-        GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK");
         if (kLayout_ == DataLayout::TND) {
+            uint32_t bSizeKey;
+            GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK");
             OP_CHECK_IF(bSizeQuery != bSizeKey,
                 OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
                         "they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
-            bSize_ = bSizeQuery;
-        } else {
-            if (bSizeQuery == bSizeKey + 1) {
-                batchSupperFlag_ = 1;
-            }
-            OP_CHECK_IF((bSizeQuery != bSizeKey) && (batchSupperFlag_ == 0),
-                OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
-                        "they must be same.",
-                        bSizeQuery, bSizeKey),
-                return ge::GRAPH_FAILED);
-            bSize_ = bSizeKey;
         }
+        bSize_ = bSizeQuery;
         return ge::GRAPH_SUCCESS;
     }
 }
