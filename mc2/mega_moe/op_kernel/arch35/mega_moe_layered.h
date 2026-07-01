@@ -774,13 +774,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
     __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
         recordAddr + mxQuantTokenScaleAlignBytes_);
-    PipeBarrier<PIPE_ALL>();
     if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
         return;
     }
-    PipeBarrier<PIPE_ALL>();
     int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
-    PipeBarrier<PIPE_ALL>();
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_, COMM_MODE_CROSS_SERVER) + relayOffset;
