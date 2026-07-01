@@ -132,9 +132,9 @@ public:
 
         WaitVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
-        if (sDumpId != 0U && numRows > 0U && m > 0U) {
-            AscendC::DumpTensor(ubSBuf, sDumpId, 16);
-        }
+        // if (sDumpId != 0U && numRows > 0U && m > 0U) {
+        //     AscendC::DumpTensor(ubSBuf, sDumpId, 16);
+        // }
         if (numRows == 0U || m == 0U) {
             SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
@@ -181,15 +181,15 @@ public:
         if constexpr (P_CAST_COLS == 128) {
             CastExpToUbZN<P_CAST_COLS>(ubSBuf, ubPBuf, rowsAligned);
         }
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
         WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-        if (pDumpId != 0U && m > 0U) {
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::DumpTensor(ubPBuf, pDumpId, 16);
-        }
+        // if (pDumpId != 0U && m > 0U) {
+        //     AscendC::PipeBarrier<PIPE_V>();
+        //     AscendC::DumpTensor(ubPBuf, pDumpId, 16);
+        // }
         CopyUbZNToL1(l1PTile, ubPBuf, numRows, rowsAligned, groupSize, validSize);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
         SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
