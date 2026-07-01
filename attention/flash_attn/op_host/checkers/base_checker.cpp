@@ -95,7 +95,7 @@ uint32_t FABaseChecker::GetTypeSize(ge::DataType dtype)
 
 // 逐维比对strides与连续场景的期望stride, index返回首个非连续维, 全连续返回GRAPH_SUCCESS
 ge::graphStatus FABaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
-        const gert::Stride *strides, int32_t &index) const
+                                                     const gert::Stride *strides, int32_t &index) const
 {
     if (strides == nullptr || strides->GetDimNum() == 0) {
         return ge::GRAPH_SUCCESS;

@@ -1,0 +1,889 @@
+commit 2fe2ce70ab646e3c22840305e7a4486c48f90467 (from 29ef8aed02965aaa995afeeefe5f6721602f5a4e)
+Merge: 29ef8aed0 f4f49c8a4
+Author: linengyao <linengyao@noreply.gitcode.com>
+Date:   Wed Jun 17 22:19:36 2026 +0800
+
+    merge 'kvcache' into 'master'
+
+diff --git a/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp b/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+index 30873e973..3ee2830eb 100644
+--- a/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
++++ b/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+@@ -963,6 +963,17 @@ void FiaTilingNonQuantArch35::SetFATilingData()
+     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
+     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
+     tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
++
++    if (!fiaInfo_->isTensorV1) {
++        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
++        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
++        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
++        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
++        if (fiaInfo_->kRopeStrides != nullptr) {
++            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
++            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
++        }
++    }
+ }
+ 
+ ge::graphStatus FiaTilingNonQuantArch35::SetTilingData(FusedInferAttentionScoreTilingData &tilingData)
+diff --git a/attention/common/op_kernel/CopyInL1.h b/attention/common/op_kernel/CopyInL1.h
+index 0e03130d3..a54b3435a 100644
+--- a/attention/common/op_kernel/CopyInL1.h
++++ b/attention/common/op_kernel/CopyInL1.h
+@@ -37,7 +37,8 @@ struct PAShape{
+     uint32_t actHeadDim; // 实际拷贝col大小，考虑到N切块 s*d， 对应d
+     uint32_t copyRowNum;
+     uint32_t copyRowNumAlign;
+-    uint32_t pageStride;
++    uint32_t pageStride = 0;
++    uint32_t n2Stride = 0;
+ };
+ 
+ struct Position{
+@@ -245,11 +246,23 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
+         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+         }
+-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+-        uint64_t keyRopeOffset = idInBlockTable * ropeShape.blockSize * ropeShape.headNum * ropeShape.headDim;
++        uint64_t offset = (shape.pageStride > 0) ? (idInBlockTable * shape.pageStride) :
++            (idInBlockTable * shape.blockSize * shape.headNum * shape.headDim); // PA的偏移
++        uint64_t keyRopeOffset = (ropeShape.pageStride > 0) ? (idInBlockTable * ropeShape.pageStride) :
++            (idInBlockTable * ropeShape.blockSize * ropeShape.headNum * ropeShape.headDim);
+         if (kvLayout == KVLAYOUT::NZ) {
+-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+-            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.blockSize * ropeShape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
++            if (shape.n2Stride > 0) {
++                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
++                    remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
++            } else {
++               offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
++            }
++            if (ropeShape.n2Stride > 0) {
++                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.n2Stride) +
++                    remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
++            } else {
++                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.blockSize * ropeShape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
++            }
+             LocalTensor<L1Type> tmpNopeDstTensor = nopeTensor[copyFinishRowCnt * blockElementCnt];
+             GlobalTensor<L1Type> tmpNopeSrcTensor = nopeGmTensor[offset];
+             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+@@ -261,13 +274,26 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
+             uint64_t dStride = shape.headDim;
+             uint64_t dRopeStride = ropeShape.headDim;
+             if (kvLayout == KVLAYOUT::BBH) {
+-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) + remainRowCnt * ropeShape.headDim * ropeShape.headNum;
++                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) +
++                    remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
++                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) +
++                    remainRowCnt * ropeShape.headDim * ropeShape.headNum;
+                 dStride = shape.headDim * shape.headNum;
+                 dRopeStride = ropeShape.headDim * ropeShape.headNum;
+             } else{
+-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) + remainRowCnt * ropeShape.headDim;
++                if (shape.n2Stride > 0) {
++                    offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
++                        remainRowCnt * shape.headDim + startPos.dIdx;
++                } else {
++                    offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
++                }
++
++                if (ropeShape.n2Stride > 0) {
++                    keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.n2Stride) +
++                        remainRowCnt * ropeShape.headDim;
++                } else {
++                    keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) + remainRowCnt * ropeShape.headDim;
++                }
+             }
+ 
+             uint32_t dValue = shape.actHeadDim;
+@@ -305,9 +331,15 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
+         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+         }
+-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
++        uint64_t offset = (shape.pageStride > 0) ? (idInBlockTable * shape.pageStride) :
++            (idInBlockTable * shape.blockSize * shape.headNum * shape.headDim);
+         if (kvLayout == KVLAYOUT::NZ) {
+-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
++            if (shape.n2Stride > 0) {
++                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
++                    remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
++            } else {
++                offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
++            }
+             
+             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+@@ -315,10 +347,16 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
+         } else {
+             uint64_t dStride = shape.headDim;
+             if (kvLayout == KVLAYOUT::BBH) {
+-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
++                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) +
++                    remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                 dStride = shape.headDim * shape.headNum;
+             } else {
+-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
++                if (shape.n2Stride > 0) {
++                    offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
++                        remainRowCnt * shape.headDim + startPos.dIdx;
++                } else {
++                    offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
++                }
+             }
+ 
+             uint32_t dValue = shape.actHeadDim;
+@@ -352,7 +390,6 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
+         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
+         if (kvLayout == KVLAYOUT::NZ) {
+             offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+- 
+             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+diff --git a/attention/common/op_kernel/arch35/fia_block_cube_noquant_gqa.h b/attention/common/op_kernel/arch35/fia_block_cube_noquant_gqa.h
+index b3ddc6752..5f314ad15 100644
+--- a/attention/common/op_kernel/arch35/fia_block_cube_noquant_gqa.h
++++ b/attention/common/op_kernel/arch35/fia_block_cube_noquant_gqa.h
+@@ -273,12 +273,14 @@ public:
+ 
+         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
+             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
+-                                             constInfo.maxBlockNumPerBatch);
++                                             constInfo.maxBlockNumPerBatch,
++                                             constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
+             uint32_t d0 = 32 / sizeof(KV_T);
+             uint32_t d1 = headDim / d0;
+             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
+-                                             constInfo.maxBlockNumPerBatch);
++                                             constInfo.maxBlockNumPerBatch,
++                                             constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
+             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims,
+                                              constInfo.isKVHasLeftPadding, constInfo.kvRightPaddingSize);
+diff --git a/attention/common/op_kernel/arch35/fia_kernel_noquant_gqa.h b/attention/common/op_kernel/arch35/fia_kernel_noquant_gqa.h
+index 0ac6e4ff9..b88816c32 100644
+--- a/attention/common/op_kernel/arch35/fia_kernel_noquant_gqa.h
++++ b/attention/common/op_kernel/arch35/fia_kernel_noquant_gqa.h
+@@ -249,6 +249,11 @@ public:
+         constInfo.coreNum = fiaBaseParams.coreNum;
+         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
+ 
++        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
++        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
++        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
++        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
++
+         constInfo.sparseMode = fiaAttenMaskParams.sparseMode;
+         constInfo.preTokens = fiaAttenMaskParams.preTokens;
+         constInfo.nextTokens = fiaAttenMaskParams.nextTokens;
+diff --git a/attention/common/op_kernel/arch35/flash_attention_block_cube_noquant_mla.h b/attention/common/op_kernel/arch35/flash_attention_block_cube_noquant_mla.h
+index 2a8df2a34..72174467d 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_block_cube_noquant_mla.h
++++ b/attention/common/op_kernel/arch35/flash_attention_block_cube_noquant_mla.h
+@@ -235,9 +235,13 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<
+         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+         shape.copyRowNum = runInfo.s2RealSize;
+         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
++        shape.pageStride = this->tilingData->inputParamsRegbase.keyStrides.bnStride;
++        shape.n2Stride = this->tilingData->inputParamsRegbase.keyStrides.n2Stride;
+         PAShape ropeShape = shape;
+         ropeShape.headDim = headDimRope;
+         ropeShape.actHeadDim = headDimRope;
++        ropeShape.pageStride = this->tilingData->inputParamsRegbase.kRopeStrides.bnStride;
++        ropeShape.n2Stride = this->tilingData->inputParamsRegbase.kRopeStrides.n2Stride;
+         uint32_t dstNzC0Stride = (runInfo.s2RealSize + 15) >> 4 << 4;
+         LocalTensor<INPUT_T> mm1BRopeTensor = mm1BTensor[dstNzC0Stride * constInfo.dSize];
+         GlobalTensor<INPUT_T> mm1BNopeGmTensor = this->keyGm;
+diff --git a/attention/common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h b/attention/common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h
+index 8dc8bdef6..2f310341a 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h
++++ b/attention/common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h
+@@ -373,6 +373,12 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
+     constInfo.blockSize = inputParamsRegbase.blockSize;
+     constInfo.paLayoutType = inputParamsRegbase.paLayoutType;
+     constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
++    constInfo.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
++    constInfo.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
++    constInfo.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
++    constInfo.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
++    constInfo.keyRopeBnStride = inputParamsRegbase.kRopeStrides.bnStride;
++    constInfo.keyRopeN2Stride = inputParamsRegbase.kRopeStrides.n2Stride;
+ 
+     // service vector2
+     constInfo.transposeLayout = inputParamsRegbase.transposeLayout;
+diff --git a/attention/common/op_kernel/arch35/flash_attention_noquant_block_cube.h b/attention/common/op_kernel/arch35/flash_attention_noquant_block_cube.h
+index 8fcb0c0ff..ac7b272ef 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_noquant_block_cube.h
++++ b/attention/common/op_kernel/arch35/flash_attention_noquant_block_cube.h
+@@ -615,6 +615,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
+             } else {
+                 shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+             }
++            shape.pageStride = constInfo.valueBnStride;
++            shape.n2Stride = constInfo.valueN2Stride;
+             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
+             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
+         } else {
+@@ -740,6 +742,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos
+                 } else {
+                     shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+                 }
++                shape.pageStride = constInfo.valueBnStride;
++                shape.n2Stride = constInfo.valueN2Stride;
+                 GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
+                 GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
+             } else {
+@@ -1015,11 +1019,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
+         } else {
+             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+         }
++        shape.pageStride = constInfo.keyBnStride;
++        shape.n2Stride = constInfo.keyN2Stride;
+         GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
+         if constexpr (hasRope) {
+             PAShape ropeShape = shape;
+             ropeShape.headDim = constInfo.dSizeRope;
+             ropeShape.actHeadDim = constInfo.dSizeRope;
++            ropeShape.pageStride = constInfo.keyRopeBnStride;
++            ropeShape.n2Stride = constInfo.keyRopeN2Stride;
+             uint32_t dstNzC0Stride = shape.copyRowNumAlign;
+             LocalTensor<INPUT_T> mm1BRopeTensor = mm1BTensor[dstNzC0Stride * constInfo.dSize];
+             GlobalTensor<INPUT_T> mm1BRopeGmTensor = this->keyRopeGm.gmTensor;
+@@ -1209,6 +1217,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
+         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+         shape.copyRowNum = runInfo.s2RealSize;
+         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
++        shape.pageStride = constInfo.keyBnStride;
++        shape.n2Stride = constInfo.keyN2Stride;
+         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
+         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
+     } else {
+@@ -1603,6 +1613,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
+         } else {
+             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+         }
++        shape.pageStride = constInfo.keyBnStride;
++        shape.n2Stride = constInfo.keyN2Stride;
+         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
+         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
+     } else {
+@@ -1790,6 +1802,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
+             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+             shape.copyRowNum = runInfo.s2RealSize;
+             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
++            shape.pageStride = constInfo.keyBnStride;
++            shape.n2Stride = constInfo.keyN2Stride;
+             GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
+             GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
+         } else {
+@@ -1939,6 +1953,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
+         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+         shape.copyRowNum = runInfo.s2RealSize;
+         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
++        shape.pageStride = constInfo.keyBnStride;
++        shape.n2Stride = constInfo.keyN2Stride;
+         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
+         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
+     } else {
+@@ -2056,11 +2072,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1MLAFullQuan
+         nopeShape.maxblockNumPerBatch = maxBlockNumPerBatch;
+         nopeShape.copyRowNum = runInfo.s2RealSize;
+         nopeShape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5; // 31, 5: nope为Fp8，需要对齐到32
++        nopeShape.pageStride = constInfo.keyBnStride;
++        nopeShape.n2Stride = constInfo.keyN2Stride;
+         GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
+         PAShape ropeShape = nopeShape; //配置KRope的PA搬运参数
+         ropeShape.headDim = constInfo.dSizeRope;
+         ropeShape.actHeadDim = constInfo.dSizeRope;
+         ropeShape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4; // 15, 4: rope为Bf16，需要对齐到16
++        ropeShape.pageStride = constInfo.keyRopeBnStride;
++        ropeShape.n2Stride = constInfo.keyRopeN2Stride;
+         GlobalTensor<bfloat16_t> mm1BRopeGmTensor = this->keyRopeGm.gmTensor;
+         //先搬运KNope,再搬运Rope
+         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, nopeShape, startPos);
+diff --git a/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_infer.h b/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_infer.h
+index cdb5b1a22..6b1e0b743 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_infer.h
++++ b/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_infer.h
+@@ -202,6 +202,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
+         sharedParams.blockSize = inputParamsRegbase.blockSize;
+         sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
+         sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
++        sharedParams.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
++        sharedParams.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
++        sharedParams.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
++        sharedParams.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
++        sharedParams.keyRopeBnStride = inputParamsRegbase.kRopeStrides.bnStride;
++        sharedParams.keyRopeN2Stride = inputParamsRegbase.kRopeStrides.n2Stride;
+     }
+     // prefix
+     if constexpr (enableKVPrefix) {
+diff --git a/attention/common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h b/attention/common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h
+index eb8d8a382..dc1d7c9ef 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h
++++ b/attention/common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h
+@@ -76,6 +76,12 @@ FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::InitUniqueConstIn
+         this->constInfo.blockSize = this->sharedParams.blockSize;
+         this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
+         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
++        this->constInfo.keyBnStride = this->sharedParams.keyBnStride;
++        this->constInfo.keyN2Stride = this->sharedParams.keyN2Stride;
++        this->constInfo.valueBnStride = this->sharedParams.valueBnStride;
++        this->constInfo.valueN2Stride = this->sharedParams.valueN2Stride;
++        this->constInfo.keyRopeBnStride = this->sharedParams.keyRopeBnStride;
++        this->constInfo.keyRopeN2Stride = this->sharedParams.keyRopeN2Stride;
+     }
+ 
+     this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+diff --git a/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h b/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
+index 232af8bd4..874e0e127 100644
+--- a/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
++++ b/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
+@@ -57,6 +57,18 @@ public:
+     void set_attentionOutLastCoreIndex(uint64_t attentionOutLastCoreIndexParam) {this->attentionOutLastCoreIndex = attentionOutLastCoreIndexParam;}
+ };
+ 
++
++class StridesParams {
++public:
++    uint64_t bnStride = 0;
++    uint64_t n2Stride = 0;
++
++    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
++    uint64_t get_bnStride() const {return bnStride;}
++    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
++    uint64_t get_n2Stride() const {return n2Stride;}
++};
++
+ class InputParamsRegbase {
+ public:
+     int64_t bSize;
+@@ -138,6 +150,11 @@ public:
+     uint16_t antiquantPerHeadFlag;
+     uint32_t antiquantParaSeqSize;
+ 
++    // 增加strides参数
++    StridesParams keyStrides;
++    StridesParams valueStrides;
++    StridesParams kRopeStrides;
++
+     int64_t get_bSize() const {return bSize;}
+     void set_bSize(int64_t bSizeParam) {this->bSize = bSizeParam;}
+     int64_t get_t1Size() const {return t1Size;}
+@@ -293,6 +310,17 @@ public:
+     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
+     uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
+     void set_tndSoftmaxOut(uint8_t tndSoftmaxOutParam) {this->tndSoftmaxOut = tndSoftmaxOutParam;}
++
++    void set_keyStrides(StridesParams keyStrides) {this->keyStrides = keyStrides;}
++    StridesParams get_keyStrides() const {return keyStrides;}
++
++    void set_valueStrides(StridesParams valueStrides) {this->valueStrides = valueStrides;}
++
++    StridesParams get_valueStrides() const {return valueStrides;}
++
++    void set_kRopeStrides(StridesParams kRopeStrides) {this->kRopeStrides = kRopeStrides;}
++
++    StridesParams get_kRopeStrides() const {return kRopeStrides;}
+ };
+ 
+ class MultiCoreParamsRegbase {
+diff --git a/attention/common/op_kernel/arch35/util_regbase.h b/attention/common/op_kernel/arch35/util_regbase.h
+index 3c0bcae6a..71a3e158a 100644
+--- a/attention/common/op_kernel/arch35/util_regbase.h
++++ b/attention/common/op_kernel/arch35/util_regbase.h
+@@ -299,7 +299,14 @@ struct RunInfo<false> {
+     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
+     bool learnableSinkFlag = false; /* attentionsink */ \
+     float pScale;\
+-    float sinkValue = SINK_MIN_INF
++    float sinkValue = SINK_MIN_INF; \
++    /* strides */ \
++    uint64_t keyBnStride; \
++    uint64_t keyN2Stride; \
++    uint64_t valueBnStride; \
++    uint64_t valueN2Stride; \
++    uint64_t keyRopeBnStride; \
++    uint64_t keyRopeN2Stride
+ 
+ 
+ #define ROPE_INFO \
+@@ -521,6 +528,13 @@ struct CVSharedParams<true, true> {
+     int32_t paBlockNumSum;
+     uint32_t paLayoutType;
+ 
++    uint64_t keyBnStride;
++    uint64_t keyN2Stride;
++    uint64_t valueBnStride;
++    uint64_t valueN2Stride;
++    uint64_t keyRopeBnStride;
++    uint64_t keyRopeN2Stride;
++
+     // prefix
+     bool isActualSharedPrefixLenNull;
+     int64_t kvPrefixSize;
+diff --git a/attention/common/op_kernel/fia_tiling_data_public.h b/attention/common/op_kernel/fia_tiling_data_public.h
+index 7515bc1ff..85ce16b44 100644
+--- a/attention/common/op_kernel/fia_tiling_data_public.h
++++ b/attention/common/op_kernel/fia_tiling_data_public.h
+@@ -54,6 +54,11 @@ constexpr uint32_t FD_M_NUM_INDEX = 6;
+ struct stridesParams {
+     uint64_t bnStride = 0;
+     uint64_t n2Stride = 0;
++
++    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
++    uint64_t get_bnStride() const {return bnStride;}
++    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
++    uint64_t get_n2Stride() const {return n2Stride;}
+ };
+ 
+ struct FiaBaseParams {
+diff --git a/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp b/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
+index 6d80f669a..7bcc7afc5 100644
+--- a/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
++++ b/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
+@@ -1865,6 +1865,16 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
+     inputParams.set_s2Size(fiaInfo.s2Size);
+     inputParams.set_dSize(fiaInfo.qkHeadDim);
+     inputParams.set_dSizeV(fiaInfo.vHeadDim);
++    if (!fiaInfo.isTensorV1) {
++        inputParams.keyStrides.set_bnStride(fiaInfo.keyStrides->GetStride(0));
++        inputParams.keyStrides.set_n2Stride(fiaInfo.keyStrides->GetStride(1));
++        inputParams.valueStrides.set_bnStride(fiaInfo.valueStrides->GetStride(0));
++        inputParams.valueStrides.set_n2Stride(fiaInfo.valueStrides->GetStride(1));
++        if (fiaInfo.kRopeStrides != nullptr) {
++            inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeStrides->GetStride(0));
++            inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeStrides->GetStride(1));
++        }
++    }
+     inputParams.set_dSizeRope(DSIZE_64);
+     inputParams.set_scaleValue(fiaInfo.scaleValue);
+     inputParams.set_preTokens(fiaInfo.preToken);
+diff --git a/attention/fused_infer_attention_score/op_host/checkers/common_checker.cpp b/attention/fused_infer_attention_score/op_host/checkers/common_checker.cpp
+index 95af1a9b1..06009a560 100644
+--- a/attention/fused_infer_attention_score/op_host/checkers/common_checker.cpp
++++ b/attention/fused_infer_attention_score/op_host/checkers/common_checker.cpp
+@@ -1381,6 +1381,78 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
+     return ge::GRAPH_SUCCESS;
+ }
+ 
++ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) const
++{
++    if (fiaInfo.isTensorV1) {
++        return ge::GRAPH_SUCCESS;
++    }
++    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
++        return ge::GRAPH_SUCCESS;
++    }
++    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
++    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
++    uint32_t keyDimNum = keyShape.GetDimNum();
++    uint32_t valueDimNum = valueShape.GetDimNum();
++    int32_t dimIndex = 0;
++
++    if (!fiaInfo.pageAttentionFlag) {
++        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
++                        fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
++                    (CheckTensorContiguous(valueDimNum, valueShape,
++                        fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
++                    OP_LOGE(fiaInfo.opName,
++                            "In non-PA scenarios, key/value tensors must be contiguous."),
++                    return ge::GRAPH_FAILED);
++        return ge::GRAPH_SUCCESS;
++    }
++
++    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
++        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
++                        CheckTensorContiguous(keyDimNum, keyShape,
++                            fiaInfo.keyStrides, dimIndex)) &&
++                    (dimIndex != 0)),
++                    OP_LOGE(fiaInfo.opName,
++                            "In PA BBND scenarios, key only supports non-contiguous "
++                            "tensors in dimension 0, "
++                            "but the first non-contiguous dimension is index %d.",
++                            dimIndex),
++                    return ge::GRAPH_FAILED);
++        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
++                        CheckTensorContiguous(valueDimNum, valueShape,
++                            fiaInfo.valueStrides, dimIndex)) &&
++                    (dimIndex != 0)),
++                    OP_LOGE(fiaInfo.opName,
++                            "In PA BBND scenarios, value only supports non-contiguous "
++                            "tensors in dimension 0, "
++                            "but the first non-contiguous dimension is index %d.",
++                            dimIndex),
++                    return ge::GRAPH_FAILED);
++    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
++        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
++                        CheckTensorContiguous(keyDimNum, keyShape,
++                            fiaInfo.keyStrides, dimIndex)) &&
++                    (dimIndex != 0 && dimIndex != 1)),
++                    OP_LOGE(fiaInfo.opName,
++                            "In PA BNBD/NZ scenarios, key only supports non-contiguous "
++                            "tensors in dimensions 0 or 1, "
++                            "but the first non-contiguous dimension is index %d.",
++                            dimIndex),
++                    return ge::GRAPH_FAILED);
++        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
++                        CheckTensorContiguous(valueDimNum, valueShape,
++                            fiaInfo.valueStrides, dimIndex)) &&
++                    (dimIndex != 0 && dimIndex != 1)),
++                    OP_LOGE(fiaInfo.opName,
++                            "In PA BNBD/NZ scenarios, value only supports non-contiguous "
++                            "tensors in dimensions 0 or 1, "
++                            "but the first non-contiguous dimension is index %d.",
++                            dimIndex),
++                    return ge::GRAPH_FAILED);
++    }
++
++    return ge::GRAPH_SUCCESS;
++}
++
+ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+ {
+     if (enableNonQuant_) {
+@@ -1411,6 +1483,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
+             return ge::GRAPH_FAILED;
+         }
+     }
++    
+     if (CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
+         CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+         CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+@@ -1421,6 +1494,11 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
+         CheckMultiAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+         return ge::GRAPH_FAILED;
+     }
++
++    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
++        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
++        return ge::GRAPH_FAILED;
++    }
+     return ge::GRAPH_SUCCESS;
+ }
+ 
+diff --git a/attention/fused_infer_attention_score/op_host/checkers/common_checker.h b/attention/fused_infer_attention_score/op_host/checkers/common_checker.h
+index ae3e229b4..c171da400 100644
+--- a/attention/fused_infer_attention_score/op_host/checkers/common_checker.h
++++ b/attention/fused_infer_attention_score/op_host/checkers/common_checker.h
+@@ -53,6 +53,7 @@ private:
+     ge::graphStatus CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
+     ge::graphStatus CheckKeyDVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
+     ge::graphStatus CheckKeyShape(const FiaTilingInfo &fiaInfo);
++    ge::graphStatus CheckKVContiguous(const FiaTilingInfo &fiaInfo) const;
+     ge::graphStatus CheckQueryKeyConsistency(const FiaTilingInfo &fiaInfo);
+     ge::graphStatus CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo);
+     ge::graphStatus CheckMultiAttr(const FiaTilingInfo &fiaInfo);
+diff --git a/attention/fused_infer_attention_score/tests/pytest/test_fia_pa_noncontiguous.py b/attention/fused_infer_attention_score/tests/pytest/test_fia_pa_noncontiguous.py
+new file mode 100644
+index 000000000..7c39fd4d5
+--- /dev/null
++++ b/attention/fused_infer_attention_score/tests/pytest/test_fia_pa_noncontiguous.py
+@@ -0,0 +1,300 @@
++#!/usr/bin/python3
++# -*- coding: utf-8 -*-
++# -----------------------------------------------------------------------------------------------------------
++# Copyright (c) 2026 Huawei Technologies Co., Ltd.
++# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
++# CANN Open Software License Agreement Version 2.0 (the "License").
++# Please refer to the License for details. You may not use this file except in compliance with the License.
++# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
++# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
++# See LICENSE in the root of the software repository for the full text of the License.
++# -----------------------------------------------------------------------------------------------------------
++"""
++非量化 kvcache 非连续 stride 传递测试
++
++模板分发 (IsCapable → isReconstructTemp):
++  新模板 (FiaTilingNonQuantArch35):
++    D=128 且无 pse/sink/padding/prefix/后量化, sparseMode=0/3
++    支持 ROPE_COMBINE (D=192)
++  老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等)
++
++非连续规格: BnNBsD/NZ: dim0/dim01; BnBsH: dim0; 非PA: 不允许
++"""
++
++import logging, math, random
++import pytest, torch, torch_npu
++
++logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
++logger = logging.getLogger(__name__)
++
++DEVICE_ID = 0
++DTYPE = torch.float16
++
++
++def _block_table(batch, seqs_kv, bs):
++    vn = [math.ceil(s / bs) + 1 for s in seqs_kv]
++    total, mx = sum(vn), max(vn)
++    ids = list(range(total)); random.shuffle(ids)
++    tbl = -torch.ones(batch, mx, dtype=torch.int32)
++    off = 0
++    for b in range(batch):
++        tbl[b, :vn[b]] = torch.tensor(ids[off:off+vn[b]], dtype=torch.int32); off += vn[b]
++    return tbl, total
++
++
++def _kv_shape(fmt, total_blocks, bs, d, N_kv, B, kv_seq, q_layout, act_kv):
++    if fmt == "BnNBsD":  return (total_blocks, N_kv, bs, d)
++    if fmt == "BnBsH":   return (total_blocks, bs, N_kv * d)
++    if fmt == "NZ":      return (total_blocks, N_kv, d // 16, bs, 16)
++    if fmt == "none":
++        if q_layout == "BSND": return (B, kv_seq, N_kv, d)
++        if q_layout == "TND":  return (sum(act_kv), N_kv, d)
++        return (B, N_kv, kv_seq, d)
++    raise ValueError(fmt)
++
++
++def _make_kv(shape):
++    torch.manual_seed(100); k = torch.randn(*shape, dtype=DTYPE)
++    torch.manual_seed(200); v = torch.randn(*shape, dtype=DTYPE)
++    return k, v
++
++
++def _make_nc(tensor, nc):
++    if nc == "none": return tensor
++    pad_dim = 1 if nc == "dim0" else 2
++    Bv = tensor.shape[pad_dim]
++    shp = list(tensor.shape); shp[pad_dim] = Bv + 1
++    p = torch.zeros(shp, dtype=tensor.dtype, device=tensor.device)
++    ws = [slice(None)] * len(tensor.shape); ws[pad_dim] = slice(None, Bv)
++    p[tuple(ws)] = tensor
++    return p[tuple(ws)]
++
++
++def _cstrides(shape):
++    s = [1] * len(shape)
++    for i in range(len(shape) - 2, -1, -1): s[i] = s[i+1] * shape[i+1]
++    return tuple(s)
++
++
++def _accum(seqs):
++    out, acc = [], 0
++    for s in seqs:
++        acc += s
++        out.append(acc)
++    return out
++
++
++def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
++         q_n, kv_n, q_rope_npu=None, k_rope_npu=None, d=128, dr=0,
++         pre_tok=65535, next_tok=65535, mask_npu=None, sparse_mode=0):
++    torch_npu.npu.set_device(DEVICE_ID); torch.npu.synchronize()
++    if q_layout == "TND":
++        aq = torch.tensor(_accum(act_q), dtype=torch.int64)
++        akv = torch.tensor(act_kv if pa else _accum(act_kv), dtype=torch.int64)
++    else:
++        aq = torch.tensor(act_q, dtype=torch.int64)
++        akv = torch.tensor(act_kv, dtype=torch.int64)
++    if dr > 0:
++        r, _ = torch_npu.npu_fused_infer_attention_score_v2(
++            q_npu, k_npu, v_npu, query_rope=q_rope_npu, key_rope=k_rope_npu,
++            actual_seq_qlen=aq, actual_seq_kvlen=akv,
++            num_query_heads=q_n, num_key_value_heads=kv_n,
++            input_layout=q_layout, softmax_scale=scale,
++            pre_tokens=pre_tok, next_tokens=next_tok,
++            block_table=bt_npu if pa else None,
++            block_size=bs if pa else 0, out_dtype=DTYPE)
++    else:
++        r, _ = torch_npu.npu_fused_infer_attention_score(
++            q_npu, k_npu, v_npu,
++            atten_mask=mask_npu,
++            actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
++            num_heads=q_n, num_key_value_heads=kv_n,
++            input_layout=q_layout, scale=scale,
++            pre_tokens=pre_tok, next_tokens=next_tok,
++            block_table=bt_npu if pa else None,
++            block_size=bs if pa else 0,
++            sparse_mode=sparse_mode)
++    torch.npu.synchronize()
++    return r
++
++
++def _check(ref, out, tag):
++    d = (out.cpu().float() - ref.cpu().float()).abs()
++    mx, mn = d.max().item(), d.mean().item()
++    ok = (d <= 0.05).sum().item(); t = d.numel()
++    logger.info(f"  [{tag}] max={mx:.6f} mean={mn:.6f} pass={ok}/{t} {ok/t:.4f}")
++    assert torch.allclose(out.cpu().float(), ref.cpu().float(), rtol=0.00, atol=0.00), f"[{tag}] FAIL max={mx}"
++
++
++def _run_one(cfg, expect_pass):
++    B=cfg["B"]; N_q=cfg["N_q"]; N_kv=cfg["N_kv"]; pa=cfg["pa"]; fmt=cfg["fmt"]
++    ql=cfg["ql"]; nc=cfg["nc"]; kv_seq=cfg["kv_seq"]; bs=cfg["bs"]; q_seq=cfg["q_seq"]
++    d=cfg["d"]; dr=cfg.get("dr",0); dv=cfg.get("dv",d)
++    act_q=cfg.get("act_q", [q_seq]*B); act_kv=cfg.get("act_kv", [kv_seq]*B)
++    sparse_mode=cfg.get("sparse_mode", 0); pre_tok=cfg.get("pre_tok", 65535); next_tok=cfg.get("next_tok", 65535)
++    mask_shape=cfg.get("mask_shape", None)
++    scale=1.0/math.sqrt(d+dr)
++    bt,total_b=None,0
++    if pa: bt,total_b=_block_table(B,act_kv,bs)
++    else: total_b=B
++    bt_npu=bt.npu() if bt is not None else None
++
++    torch.manual_seed(42)
++    q_bnsd=torch.randn(B,N_q,q_seq,d,dtype=DTYPE)
++    if ql=="BSND": q_bnsd=q_bnsd.permute(0,2,1,3).contiguous()
++    elif ql=="TND":
++        T=sum(act_q); q_tnd=torch.zeros(T,N_q,d,dtype=DTYPE); t=0
++        for b,s in enumerate(act_q): q_tnd[t:t+s]=q_bnsd[b,:,:s,:].transpose(0,1); t+=s
++        q_bnsd=q_tnd
++    q_npu=q_bnsd.npu()
++
++    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq,ql,act_kv) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq,ql,act_kv)
++
++    q_rope,k_rope=None,None
++    if dr>0:
++        torch.manual_seed(300); qr=torch.randn(B,N_q,q_seq,dr,dtype=DTYPE)
++        if ql=="BSND": qr=qr.permute(0,2,1,3).contiguous()
++        elif ql=="TND":
++            T=sum(act_q); qr_tnd=torch.zeros(T,N_q,dr,dtype=DTYPE); t=0
++            for b,s in enumerate(act_q): qr_tnd[t:t+s]=qr[b,:,:s,:].transpose(0,1); t+=s
++            qr=qr_tnd
++        q_rope=qr.npu()
++        torch.manual_seed(400)
++        if pa:
++            kr_shape=kv_shape[:-1]+(dr,)  # PA: keyRope 与 key 同格式, 仅 D=64
++            k_rope=torch.randn(*kr_shape,dtype=DTYPE).npu()
++        else:
++            k_rope=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE).npu()
++
++    k_ref,v_ref=_make_kv(kv_shape)
++    mask_npu = None
++    if mask_shape:
++        mask_npu = torch.ones(mask_shape, dtype=torch.bool).npu()
++    ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr,
++                 pre_tok,next_tok,mask_npu,sparse_mode)
++
++    k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
++    k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
++    if nc!="none":
++        cs=_cstrides(k_nc.shape)
++        assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:dim0"
++        if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:dim1"
++        logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
++
++    if not expect_pass:
++        with pytest.raises(Exception) as ei:
++            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
++        logger.info(f"  [{cfg['id']}] ERROR: {ei.value}")
++        return
++    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
++    _check(ref_out,out,cfg["id"])
++
++
++# ==============================================================================
++# 新模板 (isReconstructTemp=true): D=128 GQA / D=192 ROPE_COMBINE, sparse=0/3,
++#   无 pse/sink/padding/prefix/后量化, layout BSH/BSND/BNSD/TND
++# ==============================================================================
++NEW_NORMAL = [
++    # BnNBsD
++    {"id":"NEW-BnNBsD-contig", "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
++     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
++    {"id":"NEW-BnNBsD-dim0",   "B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
++     "kv_seq":1536,"bs":256,"q_seq":6,"d":128,"act_q":[3,6]},
++    {"id":"NEW-BnNBsD-dim01",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim01",
++     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
++    # BnBsH
++    {"id":"NEW-BnBsH-contig",  "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BSND","nc":"none",
++     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
++    {"id":"NEW-BnBsH-dim0",    "B":3,"N_q":6,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"TND","nc":"dim0",
++     "kv_seq":2304,"bs":384,"q_seq":4,"d":128,"act_q":[2,4,3]},
++    # NZ
++    {"id":"NEW-NZ-contig",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
++     "kv_seq":2560,"bs":512,"q_seq":4,"d":128},
++    {"id":"NEW-NZ-dim0",       "B":2,"N_q":4,"N_kv":4,"pa":True,"fmt":"NZ","ql":"BSND","nc":"dim0",
++     "kv_seq":1536,"bs":256,"q_seq":3,"d":128},
++    {"id":"NEW-NZ-dim01",      "B":1,"N_q":1,"N_kv":1,"pa":True,"fmt":"NZ","ql":"TND","nc":"dim01",
++     "kv_seq":1024,"bs":128,"q_seq":5,"d":128},
++    # ROPE_COMBINE: D=192, V=128
++    {"id":"NEW-d192-dim0",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
++     "kv_seq":1536,"bs":384,"q_seq":4,"d":192,"dv":128},
++]
++
++NEW_ERROR = [
++    {"id":"NEW-BnBsH-dim01-ERR","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
++     "kv_seq":1024,"bs":256,"q_seq":5,"d":128},
++]
++
++# ==============================================================================
++# 老模板 (isReconstructTemp=false): 非PA, ROPE_SPLIT, D≠128, 等
++# ==============================================================================
++OLD_NORMAL = [
++    # ROPE_SPLIT: D=128+rope64, V=128
++    {"id":"OLD-ROPE-dim0",     "B":1,"N_q":4,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
++     "kv_seq":2048,"bs":512,"q_seq":4,"d":128,"dr":64,"dv":128},
++    {"id":"OLD-ROPE-dim01",    "B":2,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
++     "kv_seq":1024,"bs":256,"q_seq":6,"d":128,"dr":64,"dv":128},
++    # D=256 (D≠128 且非 ROPE_COMBINE, 路由至老模板)
++    {"id":"OLD-d256-contig",    "B":1,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
++     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
++    {"id":"OLD-d256-dim0",      "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim0",
++     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
++    {"id":"OLD-d256-dim01",     "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
++     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
++    # BnBsH + D=64
++    {"id":"OLD-d64BnBsH-contig","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"none",
++     "kv_seq":1536,"bs":256,"q_seq":4,"d":64},
++    {"id":"OLD-d64BnBsH-dim0",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim0",
++     "kv_seq":1536,"bs":256,"q_seq":4,"d":64},
++    # 非PA
++    {"id":"OLD-NonPA-contig",  "B":3,"N_q":3,"N_kv":1,"pa":False,"fmt":"none","ql":"TND","nc":"none",
++     "kv_seq":800,"bs":0,"q_seq":7,"d":64,"act_q":[3,5,7]},
++    # NZ + D=64 (D≠128 路由至老模板)
++    {"id":"OLD-NZ-d64-contig",  "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
++     "kv_seq":1024,"bs":128,"q_seq":4,"d":64},
++    {"id":"OLD-NZ-d64-dim0",    "B":2,"N_q":2,"N_kv":2,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim0",
++     "kv_seq":1024,"bs":128,"q_seq":3,"d":64},
++    {"id":"OLD-NZ-d64-dim01",   "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim01",
++     "kv_seq":1024,"bs":128,"q_seq":5,"d":64},
++]
++
++OLD_ERROR = [
++    {"id":"OLD-BnBsH-dim01-ERR","B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
++     "kv_seq":1024,"bs":128,"q_seq":4,"d":256},
++    {"id":"OLD-NonPA-dim0-ERR", "B":4,"N_q":4,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
++     "kv_seq":640,"bs":0,"q_seq":3,"d":64},
++    {"id":"OLD-NonPA-dim01-ERR","B":2,"N_q":6,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim01",
++     "kv_seq":512,"bs":0,"q_seq":6,"d":128},
++    # 非PA + rope: krope 非连续应拦截
++    {"id":"OLD-NonPA-rope-dim0-ERR","B":1,"N_q":2,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
++     "kv_seq":512,"bs":0,"q_seq":4,"d":128,"dr":64,"dv":128},
++]
++
++
++# ==============================================================================
++# pytest
++# ==============================================================================
++ALL_NORMAL = NEW_NORMAL + OLD_NORMAL
++ALL_ERROR  = NEW_ERROR  + OLD_ERROR
++
++@pytest.mark.parametrize("cfg", ALL_NORMAL, ids=[c["id"] for c in ALL_NORMAL])
++def test_normal(cfg):
++    logger.info(f"\n[NORMAL] {cfg['id']}")
++    _run_one(cfg, expect_pass=True)
++
++@pytest.mark.parametrize("cfg", ALL_ERROR, ids=[c["id"] for c in ALL_ERROR])
++def test_error(cfg):
++    logger.info(f"\n[ERROR]  {cfg['id']}")
++    _run_one(cfg, expect_pass=False)
++
++
++if __name__ == '__main__':
++    logger.info(f"新模板正例={len(NEW_NORMAL)} 异常={len(NEW_ERROR)}")
++    logger.info(f"老模板正例={len(OLD_NORMAL)} 异常={len(OLD_ERROR)}")
++    ok = True
++    for c in ALL_NORMAL:
++        try: _run_one(c, True); logger.info(f"  PASS")
++        except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
++    for c in ALL_ERROR:
++        try: _run_one(c, False); logger.info(f"  PASS")
++        except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
++    logger.info("\n全部通过!" if ok else "\n存在失败!")
+
