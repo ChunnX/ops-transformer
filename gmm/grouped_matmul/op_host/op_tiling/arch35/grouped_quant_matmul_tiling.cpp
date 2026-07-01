@@ -412,11 +412,6 @@ actual is %zu",
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
-    if (IsWeightNzSingleMultiSingleScenario() && wScaleNDim != logicalNSize && wScaleKDim == logicalNSize) {
-        const uint64_t tmp = wScaleNDim;
-        wScaleNDim = wScaleKDim;
-        wScaleKDim = tmp;
-    }
     if (wScaleKDim != 1 && wScaleNDim != 1) {
             OP_CHECK_IF(
                 (!IsWeightNzSingleMultiSingleScenario() && wScaleEDim != inputParams_.groupNum) ||
