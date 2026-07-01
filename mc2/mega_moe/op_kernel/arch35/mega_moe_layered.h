@@ -247,7 +247,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
-    rankPerServer_ /= 2;
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankPerServer_);
     serverId_ = rankId_ / rankPerServer_;
     rankIdInServer_ = rankId_ % rankPerServer_;
@@ -1720,12 +1719,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
         //         QuantScaleOutType, QuantScaleOutType, true, true>(
         //         params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
         //         state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-        } else {
-            // MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-            //     QuantScaleOutType, QuantScaleOutType, false, true>(
-            //     params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-            //     state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-        }
+        // } else {
+        //     MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+        //         QuantScaleOutType, QuantScaleOutType, false, true>(
+        //         params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+        //         state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+        // }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
         ProcessCombine(gmmAddrInfo, state, expertIdx);
