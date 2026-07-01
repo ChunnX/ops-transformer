@@ -260,9 +260,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     params_.b2GmAddr = GetTensorAddr(0, weight2);
     params_.bScaleGmAddr = GetTensorAddr(0, weightScales1);
     params_.b2ScaleGmAddr = GetTensorAddr(0, weightScales2);
-    params_.CombineCommParams.rankId = rankId_;
-    params_.CombineCommParams.hcomm = &hcomm_;
-    params_.CombineCommParams.mc2Context = mc2Context_;
+    params_.combineCommParams.rankId = rankId_;
+    params_.combineCommParams.hcomm = &hcomm_;
+    params_.combineCommParams.mc2Context = mc2Context_;
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
