@@ -592,6 +592,10 @@ function(add_tiling_modules)
       c_sec
     )
   endif()
+  # tiling_obj 可能在其它模块已创建，需对已存在的 target 补打内置包宏
+  if(ENABLE_BUILT_IN AND TARGET ${OPHOST_NAME}_tiling_obj)
+    target_compile_definitions(${OPHOST_NAME}_tiling_obj PRIVATE ENABLE_BUILT_IN=1)
+  endif()
 endfunction()
 
 function(add_graph_plugin_modules)
