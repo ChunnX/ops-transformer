@@ -483,7 +483,8 @@ ge::graphStatus Mc2MoeGraphContext::GetCommProtocol(const HcclComm &hcclHandle, 
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        auto cpStatus = CheckProtocolSupport(hcclHandle, layerList, layerNum);
+        protocol = (cpStatus == ge::GRAPH_SUCCESS) ? CommProtocol::COMM_PROTOCOL_UB_MEM : CommProtocol::COMM_PROTOCOL_UBC_CTP;
         return ge::GRAPH_SUCCESS;
     }
 
