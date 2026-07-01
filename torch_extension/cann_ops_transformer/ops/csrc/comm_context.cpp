@@ -29,6 +29,11 @@ constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 
+enum class TopoType : uint32_t {
+    INTRA_SUPER_NODE = 0,    // 超节点内通信（默认）
+    CROSS_SUPER_NODE = 1,    // 跨超节点通信
+};
+
 // ======================== 通信上下文 ==========================
 struct CommContext {
     uint32_t epRankId = 0;
@@ -198,7 +203,7 @@ public:
 
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
-        if (topoType_ == 1) {
+        if (topoType_ == TopoType::CROSS_SUPER_NODE) {
             commContextStruct.rankSizePerServer = rankNumPerUbDomain_;
         }
 
@@ -269,7 +274,6 @@ public:
                                                             &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
 
-            bool allSupportUrma = true;
             // 检查本卡与该层所有卡之间是否全部支持URMA协议
             for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
                 if (rankIdLists[rankIdx] == srcRankId || layerMap_.find(rankIdLists[rankIdx]) != layerMap_.end()) {
@@ -284,14 +288,13 @@ public:
                     ASCEND_LOGI("Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
                                 layerList[layerIndex], rankIdLists[rankIdx], srcRankId);
                     // 若不支持，则跳出循环
-                    allSupportUrma = false;
                     return;
                 }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
         }
         // 确认跨超组网
-        topoType_ = 1;
+        topoType_ = TopoType::CROSS_SUPER_NODE;
         ASCEND_LOGI("Cross-server confirmed, use URMA protocol for cross-server communication");
     }
 
@@ -333,7 +336,7 @@ public:
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
                     ASCEND_LOGI("Layer %u does not support UB_MEM with rank %u, break loop",
-                                layerList[layerIndex], rankIdLists[layerIndex]);
+                                layerList[layerIndex], rankIdLists[rankId]);
                     // 若不支持，则跳出循环
                     allSupportUbMem = false;
                     break;
@@ -348,9 +351,11 @@ public:
                         layerList[layerIndex], rankNumPerUbDomain_);
         }
         // 判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
-        TORCH_CHECK(rankNumPerUbDomain_ < rankSize && rankSize % rankNumPerUbDomain_ == 0,
+        if (rankNumPerUbDomain_ != 0){
+            TORCH_CHECK(rankNumPerUbDomain_ < rankSize && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
+        }
         CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol, srcRankId);
     }
 
@@ -432,7 +437,7 @@ public:
 
         uint32_t rankSizePerServer = 0;
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, commContextStruct);
-        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %d", rankSize - 1);
+        ASCEND_LOGI("Get HCCL communication channel success, channel num is: %u", rankSize - 1);
 
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
@@ -542,7 +547,7 @@ public:
                     static_cast<int>(protocol));
     }
 
-    uint32_t TopoType() const
+    TopoType TopoType() const
     {
         return topoType_;
     }
@@ -550,7 +555,7 @@ public:
     // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     uint32_t rankNumPerUbDomain_ = 0;
-    uint32_t topoType_ = 0;
+    TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
 };
 
 // ======================== CommContextManager ========================
@@ -581,7 +586,7 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
-    int64_t topo_type() const { return topoType_; }
+    int64_t TopoType() const { return static_cast<int64_t>(topoType_); }
 
 private:
     static int64_t context_tensor_size()
@@ -622,7 +627,7 @@ private:
     py::object backend_;
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
-    int64_t topoType_ = 0;
+    TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
 };
 
 // Bind the CommContextManager class to Python module
@@ -636,6 +641,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size)
-        .def_property_readonly("topo_type", &CommContextManager::topo_type);
+        .def_property_readonly("topo_type", &CommContextManager::TopoType);
 }
 } // op_api
