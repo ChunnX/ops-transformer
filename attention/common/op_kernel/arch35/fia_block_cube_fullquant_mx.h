@@ -995,8 +995,8 @@ public:
             constexpr uint32_t sizeOfInt16 = 2;
             LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
                 mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
-            InitConstValue(mm2AScaleTensor, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / 32,
-                0, 0x7f7f});
+            InitConstValue(mm2AScaleTensor,
+                {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
