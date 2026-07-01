@@ -571,9 +571,16 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
-    OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
-               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
+
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT && gSize_ != G_SIZE_LIMIT_32_950,
+            OP_LOGE(opName_, "input query's head_num divided by input key's head_num must equal 64 or 32"),
                return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
+                OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
+                return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
