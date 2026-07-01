@@ -52,7 +52,7 @@ namespace {
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr uint32_t MAX_SINGLE_MN = 64 * 256;
+constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
