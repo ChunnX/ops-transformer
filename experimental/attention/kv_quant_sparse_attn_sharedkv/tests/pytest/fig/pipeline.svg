@@ -1,155 +1,235 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 590" font-family="sans-serif">
-  <rect x="0" y="0" width="880" height="590" fill="#ffffff"/>
-
-  <!-- legend -->
-  <rect x="700" y="12" width="14" height="14" fill="#D6EAF8" stroke="#5499C7"/>
-  <text x="720" y="24" font-size="11" fill="#2C3E50">AIV</text>
-  <rect x="760" y="12" width="14" height="14" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="780" y="24" font-size="11" fill="#2C3E50">AIC</text>
-
-  <!-- ===================== BEFORE ===================== -->
-  <text x="16" y="34" font-size="15" font-weight="bold" fill="#2C3E50">修改前：取数与产出同一轮 —— cube 等 KV</text>
-
-  <!-- header row -->
-  <rect x="196" y="44" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="292" y="44" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="388" y="44" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="484" y="44" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <text x="244" y="62" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i 轮</text>
-  <text x="340" y="62" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+1 轮</text>
-  <text x="436" y="62" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+2 轮</text>
-  <text x="532" y="62" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+3 轮</text>
-
-  <!-- vec0 -->
-  <text x="24" y="88" font-size="13" font-weight="bold" fill="#2C3E50">AIV · vec0</text>
-  <text x="24" y="102" font-size="10" fill="#7F8C8D">UB 算 KV→写 GM</text>
-  <rect x="196" y="72" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="292" y="72" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="388" y="72" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="484" y="72" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <text x="244" y="96" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="340" y="96" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-  <text x="436" y="96" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
-  <text x="532" y="96" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
-
-  <!-- load -->
-  <text x="24" y="126" font-size="13" font-weight="bold" fill="#2C3E50">AIC · load</text>
-  <text x="24" y="140" font-size="10" fill="#7F8C8D">GM→L1（取数）</text>
-  <rect x="196" y="110" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="110" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="110" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="110" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="134" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="340" y="134" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-  <text x="436" y="134" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
-  <text x="532" y="134" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
-
-  <!-- bmm1 -->
-  <text x="24" y="164" font-size="13" font-weight="bold" fill="#2C3E50">AIC · bmm1</text>
-  <text x="24" y="178" font-size="10" fill="#7F8C8D">Q·Kᵀ</text>
-  <rect x="196" y="148" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="148" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="148" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="148" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="172" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
-  <text x="340" y="172" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="436" y="172" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-  <text x="532" y="172" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
-
-  <!-- bmm2 -->
-  <text x="24" y="202" font-size="13" font-weight="bold" fill="#2C3E50">AIC · bmm2</text>
-  <text x="24" y="216" font-size="10" fill="#7F8C8D">P·V</text>
-  <rect x="196" y="186" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="186" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="186" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="186" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="210" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
-  <text x="340" y="210" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
-  <text x="436" y="210" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="532" y="210" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-
-  <!-- before highlight: vec0+load collide on 块 i at 第 i 轮 -->
-  <rect x="196" y="72" width="96" height="38" fill="none" stroke="#E74C3C" stroke-width="2.5" stroke-dasharray="5 3"/>
-  <rect x="196" y="110" width="96" height="38" fill="none" stroke="#E74C3C" stroke-width="2.5" stroke-dasharray="5 3"/>
-  <line x1="580" y1="129" x2="592" y2="129" stroke="#E74C3C" stroke-width="1.2"/>
-  <text x="596" y="126" font-size="11" fill="#E74C3C">load 与 vec0 同轮、同一块（第 i 轮均为块 i）</text>
-  <text x="596" y="140" font-size="11" fill="#E74C3C">→ cube 等 AIV 产出 + 跨核同步</text>
-
-  <text x="16" y="244" font-size="12" fill="#7F8C8D">同时产出、在用的 KV 矩阵 = 3 份；每轮 load 与 vec0 撞在一起，cube 空等一次。</text>
-
-  <!-- separator -->
-  <line x1="16" y1="296" x2="864" y2="296" stroke="#ECF0F1" stroke-width="1.5"/>
-
-  <!-- ===================== AFTER ===================== -->
-  <text x="16" y="334" font-size="15" font-weight="bold" fill="#2C3E50">修改后：load 比 vec0 晚一轮（cube 提前一轮预取）—— cube 不等</text>
-
-  <!-- header row -->
-  <rect x="196" y="344" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="292" y="344" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="388" y="344" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <rect x="484" y="344" width="96" height="28" fill="#EAECEE" stroke="#BDC3C7"/>
-  <text x="244" y="362" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i 轮</text>
-  <text x="340" y="362" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+1 轮</text>
-  <text x="436" y="362" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+2 轮</text>
-  <text x="532" y="362" font-size="13" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+3 轮</text>
-
-  <!-- vec0 -->
-  <text x="24" y="388" font-size="13" font-weight="bold" fill="#2C3E50">AIV · vec0</text>
-  <text x="24" y="402" font-size="10" fill="#7F8C8D">UB 算 KV→写 GM</text>
-  <rect x="196" y="372" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="292" y="372" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="388" y="372" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <rect x="484" y="372" width="96" height="38" fill="#D6EAF8" stroke="#5499C7"/>
-  <text x="244" y="396" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="340" y="396" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-  <text x="436" y="396" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
-  <text x="532" y="396" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
-
-  <!-- load -->
-  <text x="24" y="426" font-size="13" font-weight="bold" fill="#2C3E50">AIC · load</text>
-  <text x="24" y="440" font-size="10" fill="#7F8C8D">GM→L1（预取）</text>
-  <rect x="196" y="410" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="410" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="410" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="410" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="434" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
-  <text x="340" y="434" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="436" y="434" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-  <text x="532" y="434" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
-
-  <!-- bmm1 -->
-  <text x="24" y="464" font-size="13" font-weight="bold" fill="#2C3E50">AIC · bmm1</text>
-  <text x="24" y="478" font-size="10" fill="#7F8C8D">Q·Kᵀ</text>
-  <rect x="196" y="448" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="448" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="448" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="448" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="472" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
-  <text x="340" y="472" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
-  <text x="436" y="472" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-  <text x="532" y="472" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
-
-  <!-- bmm2 -->
-  <text x="24" y="502" font-size="13" font-weight="bold" fill="#2C3E50">AIC · bmm2</text>
-  <text x="24" y="516" font-size="10" fill="#7F8C8D">P·V</text>
-  <rect x="196" y="486" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="292" y="486" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="388" y="486" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <rect x="484" y="486" width="96" height="38" fill="#FDEBD0" stroke="#E59866"/>
-  <text x="244" y="510" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-3</text>
-  <text x="340" y="510" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
-  <text x="436" y="510" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
-  <text x="532" y="510" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
-
-  <!-- after highlight: trace 块 i diagonally across 4 rounds -->
-  <polyline points="244,391 340,429 436,467 532,505" fill="none" stroke="#229954" stroke-width="1.6" stroke-dasharray="4 3"/>
-  <rect x="196" y="372" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
-  <rect x="292" y="410" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
-  <rect x="388" y="448" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
-  <rect x="484" y="486" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
-  <text x="596" y="452" font-size="11" fill="#229954">绿框：同一份 KV 矩阵（块 i）</text>
-  <text x="596" y="466" font-size="11" fill="#229954">历 4 轮 vec0→load→bmm1→bmm2</text>
-  <text x="596" y="480" font-size="11" fill="#229954">load 比 vec0 晚一轮 → cube 不等</text>
-
-  <text x="16" y="544" font-size="12" fill="#7F8C8D">同时产出、在用的 KV 矩阵 = 4 份；L1 仍只需 3 块缓冲（vec0 阶段的第 4 份还在 GM，未进 L1）。</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 848" font-family="sans-serif">
+  <rect x="0" y="0" width="880" height="848" fill="#ffffff"/>
+  <text x="300" y="21" font-size="12" font-weight="bold" fill="#2C3E50">L1 buffer：</text>
+  <rect x="372" y="10" width="13" height="13" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="389" y="21" font-size="11" fill="#2C3E50">buf0</text>
+  <rect x="455" y="10" width="13" height="13" fill="#ABEBC6" stroke="#229954"/>
+  <text x="472" y="21" font-size="11" fill="#2C3E50">buf1</text>
+  <rect x="538" y="10" width="13" height="13" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="555" y="21" font-size="11" fill="#2C3E50">buf2</text>
+  <text x="16" y="46" font-size="15" font-weight="bold" fill="#2C3E50">修改前（预取深度 2）：取数与产出同一轮 —— cube 等 KV</text>
+  <rect x="196" y="56" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="244" y="73" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i 轮</text>
+  <rect x="292" y="56" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="340" y="73" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+1 轮</text>
+  <rect x="388" y="56" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="436" y="73" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+2 轮</text>
+  <rect x="484" y="56" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="532" y="73" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+3 轮</text>
+  <text x="24" y="107" font-size="12" font-weight="bold" fill="#2C3E50">AIV · vec0</text>
+  <rect x="196" y="84" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="244" y="107" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="292" y="84" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="340" y="107" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="388" y="84" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="436" y="107" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
+  <rect x="484" y="84" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="532" y="107" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
+  <text x="24" y="147" font-size="12" font-weight="bold" fill="#2C3E50">AIC · load</text>
+  <rect x="196" y="124" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="244" y="147" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="292" y="124" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="340" y="147" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="388" y="124" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="436" y="147" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
+  <rect x="484" y="124" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="532" y="147" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
+  <text x="24" y="187" font-size="12" font-weight="bold" fill="#2C3E50">AIC · bmm1</text>
+  <rect x="196" y="164" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="244" y="187" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
+  <rect x="292" y="164" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="340" y="187" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="388" y="164" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="436" y="187" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="484" y="164" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="532" y="187" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
+  <text x="24" y="227" font-size="12" font-weight="bold" fill="#2C3E50">AIC · bmm2</text>
+  <rect x="196" y="204" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="244" y="227" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
+  <rect x="292" y="204" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="340" y="227" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
+  <rect x="388" y="204" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="436" y="227" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="484" y="204" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="532" y="227" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="196" y="84" width="96" height="38" fill="none" stroke="#E74C3C" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <rect x="196" y="124" width="96" height="38" fill="none" stroke="#E74C3C" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <text x="596" y="130" font-size="11" fill="#E74C3C">load 与 vec0 同轮、同一块（均为块 i）</text>
+  <text x="596" y="144" font-size="11" fill="#E74C3C">→ cube 等 AIV 产出 + 跨核同步</text>
+  <line x1="16" y1="286" x2="864" y2="286" stroke="#ECF0F1" stroke-width="1.5"/>
+  <text x="16" y="316" font-size="15" font-weight="bold" fill="#2C3E50">修改后（预取深度 3）：load 比 vec0 晚一轮 —— cube 不等</text>
+  <rect x="196" y="326" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="244" y="343" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i 轮</text>
+  <rect x="292" y="326" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="340" y="343" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+1 轮</text>
+  <rect x="388" y="326" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="436" y="343" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+2 轮</text>
+  <rect x="484" y="326" width="96" height="26" fill="#EAECEE" stroke="#BDC3C7"/>
+  <text x="532" y="343" font-size="12" font-weight="bold" fill="#2C3E50" text-anchor="middle">第 i+3 轮</text>
+  <text x="24" y="377" font-size="12" font-weight="bold" fill="#2C3E50">AIV · vec0</text>
+  <rect x="196" y="354" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="244" y="377" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="292" y="354" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="340" y="377" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="388" y="354" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="436" y="377" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
+  <rect x="484" y="354" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="532" y="377" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+3</text>
+  <text x="24" y="417" font-size="12" font-weight="bold" fill="#2C3E50">AIC · load</text>
+  <rect x="196" y="394" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="244" y="417" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
+  <rect x="292" y="394" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="340" y="417" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="388" y="394" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="436" y="417" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <rect x="484" y="394" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="532" y="417" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+2</text>
+  <text x="24" y="457" font-size="12" font-weight="bold" fill="#2C3E50">AIC · bmm1</text>
+  <rect x="196" y="434" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="244" y="457" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
+  <rect x="292" y="434" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="340" y="457" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
+  <rect x="388" y="434" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="436" y="457" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="484" y="434" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="532" y="457" font-size="13" fill="#2C3E50" text-anchor="middle">块 i+1</text>
+  <text x="24" y="497" font-size="12" font-weight="bold" fill="#2C3E50">AIC · bmm2</text>
+  <rect x="196" y="474" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="244" y="497" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-3</text>
+  <rect x="292" y="474" width="96" height="38" fill="#ABEBC6" stroke="#229954"/>
+  <text x="340" y="497" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-2</text>
+  <rect x="388" y="474" width="96" height="38" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="436" y="497" font-size="13" fill="#2C3E50" text-anchor="middle">块 i-1</text>
+  <rect x="484" y="474" width="96" height="38" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="532" y="497" font-size="13" fill="#2C3E50" text-anchor="middle">块 i</text>
+  <rect x="196" y="354" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
+  <rect x="292" y="394" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
+  <rect x="388" y="434" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
+  <rect x="484" y="474" width="96" height="38" fill="none" stroke="#229954" stroke-width="2.5"/>
+  <polyline points="244,373 340,413 436,453 532,493" fill="none" stroke="#229954" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <text x="596" y="400" font-size="11" fill="#229954">绿框：同一份 KV（块 i）历 4 轮</text>
+  <text x="596" y="414" font-size="11" fill="#229954">vec0→load→bmm1→bmm2（全程同一 buffer）</text>
+  <line x1="16" y1="556" x2="864" y2="556" stroke="#ECF0F1" stroke-width="1.5"/>
+  <text x="16" y="582" font-size="15" font-weight="bold" fill="#2C3E50">空转从何而来：cube 的 bmm 很快算完，却要等下一块 load 就绪；load 与 bmm 同色 = 同一块</text>
+  <text x="170" y="606" font-size="12" font-weight="bold" fill="#E74C3C">修改前：bmm 很快算完，cube 空转等下一块的 load（load 长、且未提前）</text>
+  <text x="16" y="631" font-size="10" font-weight="bold" fill="#2C3E50">AIV · v0/v1/v2</text>
+  <text x="16" y="657" font-size="10" font-weight="bold" fill="#2C3E50">MTE2 · load</text>
+  <text x="16" y="683" font-size="10" font-weight="bold" fill="#2C3E50">cube · bmm</text>
+  <line x1="170" y1="614" x2="170" y2="692" stroke="#E5E8E8" stroke-dasharray="2 2"/>
+  <rect x="170" y="616" width="49" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="194" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="7">3</tspan></text>
+  <rect x="219" y="616" width="49" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="244" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="7">2</tspan></text>
+  <rect x="268" y="616" width="49" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="292" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="7">1</tspan></text>
+  <rect x="219" y="642" width="98" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="268" y="657" font-size="8" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="170" y="668" width="42" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="191" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="212" y="668" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="233" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">1</tspan></text>
+  <rect x="254" y="668" width="63" height="22" fill="#FADBD8" stroke="#E74C3C" stroke-dasharray="3 2"/>
+  <text x="285" y="683" font-size="8" fill="#E74C3C" text-anchor="middle">空转·等 load</text>
+  <line x1="317" y1="614" x2="317" y2="692" stroke="#E5E8E8" stroke-dasharray="2 2"/>
+  <rect x="317" y="616" width="49" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="342" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="7">4</tspan></text>
+  <rect x="366" y="616" width="49" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="390" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="7">3</tspan></text>
+  <rect x="415" y="616" width="49" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="440" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="7">2</tspan></text>
+  <rect x="366" y="642" width="98" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="415" y="657" font-size="8" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="317" y="668" width="42" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="338" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="359" y="668" width="42" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="380" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="401" y="668" width="63" height="22" fill="#FADBD8" stroke="#E74C3C" stroke-dasharray="3 2"/>
+  <text x="432" y="683" font-size="8" fill="#E74C3C" text-anchor="middle">空转·等 load</text>
+  <line x1="464" y1="614" x2="464" y2="692" stroke="#E5E8E8" stroke-dasharray="2 2"/>
+  <rect x="464" y="616" width="49" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="488" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="7">5</tspan></text>
+  <rect x="513" y="616" width="49" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="538" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="7">4</tspan></text>
+  <rect x="562" y="616" width="49" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="586" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="7">3</tspan></text>
+  <rect x="513" y="642" width="98" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="562" y="657" font-size="8" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">5</tspan></text>
+  <rect x="464" y="668" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="485" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="506" y="668" width="42" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="527" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="548" y="668" width="63" height="22" fill="#FADBD8" stroke="#E74C3C" stroke-dasharray="3 2"/>
+  <text x="579" y="683" font-size="8" fill="#E74C3C" text-anchor="middle">空转·等 load</text>
+  <line x1="611" y1="614" x2="611" y2="692" stroke="#E5E8E8" stroke-dasharray="2 2"/>
+  <rect x="611" y="616" width="49" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="636" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="7">6</tspan></text>
+  <rect x="660" y="616" width="49" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="684" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="7">5</tspan></text>
+  <rect x="709" y="616" width="49" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="734" y="631" font-size="9" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="7">4</tspan></text>
+  <rect x="660" y="642" width="98" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="709" y="657" font-size="8" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">6</tspan></text>
+  <rect x="611" y="668" width="42" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="632" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">5</tspan></text>
+  <rect x="653" y="668" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="674" y="683" font-size="8" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="695" y="668" width="63" height="22" fill="#FADBD8" stroke="#E74C3C" stroke-dasharray="3 2"/>
+  <text x="726" y="683" font-size="8" fill="#E74C3C" text-anchor="middle">空转·等 load</text>
+  <line x1="758" y1="614" x2="758" y2="690" stroke="#E74C3C" stroke-width="1.6"/>
+  <text x="763" y="658" font-size="11" fill="#E74C3C">更慢</text>
+  <text x="170" y="720" font-size="12" font-weight="bold" fill="#229954">修改后：load 提前一轮备好，cube 的 bmm 首尾相接、无空转</text>
+  <text x="16" y="741" font-size="10" font-weight="bold" fill="#2C3E50">AIV · v0/v1/v2</text>
+  <text x="16" y="767" font-size="10" font-weight="bold" fill="#2C3E50">MTE2 · load</text>
+  <text x="16" y="793" font-size="10" font-weight="bold" fill="#2C3E50">cube · bmm</text>
+  <rect x="170" y="726" width="28" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="184" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="198" y="726" width="28" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="212" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="6">1</tspan></text>
+  <rect x="226" y="726" width="28" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="240" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="6">0</tspan></text>
+  <rect x="170" y="752" width="84" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="212" y="767" font-size="7" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="170" y="778" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="191" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">1</tspan></text>
+  <rect x="212" y="778" width="42" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="233" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">0</tspan></text>
+  <rect x="254" y="726" width="28" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="268" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="282" y="726" width="28" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="296" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="310" y="726" width="28" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="324" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="6">1</tspan></text>
+  <rect x="254" y="752" width="84" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="296" y="767" font-size="7" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="254" y="778" width="42" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="275" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="296" y="778" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="317" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">1</tspan></text>
+  <rect x="338" y="726" width="28" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="352" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="6">5</tspan></text>
+  <rect x="366" y="726" width="28" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="380" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="394" y="726" width="28" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="408" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="338" y="752" width="84" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="380" y="767" font-size="7" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="338" y="778" width="42" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="359" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="380" y="778" width="42" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="401" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">2</tspan></text>
+  <rect x="422" y="726" width="28" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="436" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v0<tspan baseline-shift="-16%" font-size="6">6</tspan></text>
+  <rect x="450" y="726" width="28" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="464" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v1<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="478" y="726" width="28" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="492" y="741" font-size="7" fill="#2C3E50" text-anchor="middle">v2<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <rect x="422" y="752" width="84" height="22" fill="#FAD7A0" stroke="#CA6F1E"/>
+  <text x="464" y="767" font-size="7" fill="#2C3E50" text-anchor="middle">load<tspan baseline-shift="-16%" font-size="6">5</tspan></text>
+  <rect x="422" y="778" width="42" height="22" fill="#ABEBC6" stroke="#229954"/>
+  <text x="443" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b1<tspan baseline-shift="-16%" font-size="6">4</tspan></text>
+  <rect x="464" y="778" width="42" height="22" fill="#AED6F1" stroke="#2E86C1"/>
+  <text x="485" y="793" font-size="7" fill="#2C3E50" text-anchor="middle">b2<tspan baseline-shift="-16%" font-size="6">3</tspan></text>
+  <line x1="506" y1="724" x2="506" y2="800" stroke="#229954" stroke-width="1.6"/>
+  <text x="511" y="768" font-size="11" fill="#229954">更快</text>
+  <text x="16" y="820" font-size="10.5" fill="#2C3E50">下标为块号；同色 = 复用同一个 L1 buffer 槽（块号相差 3 的两块先后轮流用，如 v0 与 v2）。</text>
 </svg>
