@@ -1124,7 +1124,8 @@ private:
             static_cast<int32_t>(n2),
             static_cast<int32_t>(L1TileShape::N),
             shmem,
-            peermemInfo.offsetD,
+            static_cast<int32_t>(peermemInfo.offsetD),
+            static_cast<int32_t>(peermemInfo.offsetWinOutD),
             static_cast<int32_t>(serverId_)
         };
 
