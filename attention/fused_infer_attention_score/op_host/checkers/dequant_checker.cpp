@@ -1678,8 +1678,9 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
             std::to_string(fiaInfo.kScaleStrides->GetStride(0)) + ", " +
             std::to_string(fiaInfo.kScaleStrides->GetStride(1)) + ", " +
             std::to_string(fiaInfo.kScaleStrides->GetStride(2)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
+        OP_LOGE(fiaInfo.opName,
+                "In FP8 GQA fullquant scenario, key_antiquant_scale (BnNBs) stride %s is incorrect, "
+                "expected %s (continuous interleave cache stride)", actStr.c_str(), expStr.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -1703,8 +1704,9 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
             std::to_string(fiaInfo.keyStrides->GetStride(1)) + ", " +
             std::to_string(fiaInfo.keyStrides->GetStride(2)) + ", " +
             std::to_string(fiaInfo.keyStrides->GetStride(3)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
+        OP_LOGE(fiaInfo.opName,
+                "In FP8 GQA fullquant scenario, key (BNBD) stride %s is incorrect, "
+                "expected %s (continuous interleave cache stride)", actStr.c_str(), expStr.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -1728,8 +1730,9 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
             std::to_string(fiaInfo.valueStrides->GetStride(1)) + ", " +
             std::to_string(fiaInfo.valueStrides->GetStride(2)) + ", " +
             std::to_string(fiaInfo.valueStrides->GetStride(3)) + ")";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-            ("stride is " + actStr + ", should be " + expStr).c_str());
+        OP_LOGE(fiaInfo.opName,
+                "In FP8 GQA fullquant scenario, value (BNBD) stride %s is incorrect, "
+                "expected %s (continuous interleave cache stride)", actStr.c_str(), expStr.c_str());
         return ge::GRAPH_FAILED;
     }
 
