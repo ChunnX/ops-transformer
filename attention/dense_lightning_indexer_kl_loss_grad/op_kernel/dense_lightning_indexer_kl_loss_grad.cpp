@@ -34,7 +34,7 @@ using namespace Dlikg;
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(q, k, w, attnSoftmaxL1, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,       \
+        op.Init(q, k, w, attnSoftmaxL1, softmaxLse, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,       \
             metadata, dq, dk, dw, softmaxOut, user, tiling_data, &tPipe);                                              \
         op.Process();                                                                                                  \
     } while (0)
