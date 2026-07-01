@@ -12,7 +12,7 @@
 
 namespace ops {
 namespace {
-constexpr int64_t DEFAULT_Y_DTYPE = static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN);
+constexpr int64_t DEFAULT_Y_DTYPE = static_cast<int64_t>(ge::DT_UNDEFINED);
 constexpr int64_t DEFAULT_SCALE_ALG = 0;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 } // namespace

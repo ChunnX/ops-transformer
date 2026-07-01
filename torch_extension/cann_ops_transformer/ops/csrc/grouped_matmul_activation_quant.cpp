@@ -163,22 +163,17 @@ int64_t InferNzLogicalN(const at::Tensor &weightScaleTensor)
     return n;
 }
 
-void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name)
+void CheckTensorListIndexable(const std::vector<at::Tensor> &tensorList, const char *name)
 {
-    TORCH_CHECK(tensorList.size() == 1, name, " only supports one tensor in current MXFP8 mode, but got ",
-        tensorList.size(), ".");
-    TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor.");
+    TORCH_CHECK(!tensorList.empty(), name, " must contain at least one tensor for torch output allocation.");
+    TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor for torch output allocation.");
 }
 
-at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, c10::SmallVector<at::Tensor, 1> &weightVec)
+void PrintWeightStorage(const at::Tensor &weight)
 {
-    at::Tensor weightForNz = weight[DIM_0];
-    auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
+    auto storageSizes = at_npu::native::get_npu_storage_sizes(weight);
     std::printf("[GMMAQ torch] weight storage sizes: actual=%s.\n", ShapeToString(storageSizes).c_str());
     std::fflush(stdout);
-    weightVec.clear();
-    weightVec.emplace_back(weightForNz);
-    return at::TensorList(weightVec);
 }
 } // namespace
 
@@ -202,20 +197,17 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     c10::optional<int64_t> weightScaleDtype,
     c10::optional<int64_t> xScaleDtype)
 {
-    CheckTensorList(weight, "weight");
-    CheckTensorList(weightScale, "weight_scale");
+    CheckTensorListIndexable(weight, "weight");
+    CheckTensorListIndexable(weightScale, "weight_scale");
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
-        "x_scale must be provided in current MXFP8 mode.");
+        "x_scale must be provided for torch wrapper tensor conversion.");
 
     const at::Tensor &weightTensor = weight[0];
     const at::Tensor &weightScaleTensor = weightScale[0];
     const at::Tensor &xScale = xScaleOptional.value();
-    TORCH_CHECK(x.dim() == 2, "x must be 2D, but got ", x.dim(), "D.");
-    TORCH_CHECK(xScale.dim() == 3, "x_scale must be 3D, but got ", xScale.dim(), "D.");
-    TORCH_CHECK(groupList.dim() == 1, "group_list must be 1D, but got ", groupList.dim(), "D.");
-    TORCH_CHECK(weightTensor.dim() == 3,
-        "weight must be a 3D logical tensor, but got ", weightTensor.dim(), "D.");
-    TORCH_CHECK(weightScaleTensor.dim() == 4, "weight_scale must be 4D, but got ", weightScaleTensor.dim(), "D.");
+    TORCH_CHECK(x.dim() > DIM_0, "x must have at least one dimension for torch output allocation.");
+    TORCH_CHECK(weightScaleTensor.dim() > DIM_2,
+        "weight_scale must have at least 3 dimensions for torch output allocation.");
 
     int64_t m = x.size(DIM_0);
     int64_t n = InferNzLogicalN(weightScaleTensor);
@@ -226,15 +218,6 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     aclDataType xScaleAclDtype = GetTensorAclDataType(xScaleDtype, xScale);
     c10::string_view quantModeView = quantModeOptional.value_or("");
     std::string quantMode(quantModeView.data(), quantModeView.size());
-    if (quantModeOptional.has_value()) {
-        TORCH_CHECK(quantMode == "MX", "quant_mode 参数当前仅支持为 MX");
-    } else {
-        TORCH_CHECK((xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2) &&
-                        xScaleAclDtype == ACL_FLOAT8_E8M0,
-            "当前数据类型组合无法匹配到该算子支持的任何一种量化模式，x数据类型：",
-            static_cast<int64_t>(xAclDtype), "，x_scale数据类型：", static_cast<int64_t>(xScaleAclDtype));
-        quantMode = "MX";
-    }
     int64_t yDtypeValue = ResolveYGeDtype(yDtype, xAclDtype);
 
     at::Tensor y;
@@ -247,8 +230,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
             x.options().dtype(at::ScalarType::Float8_e8m0fnu));
     }
 
-    c10::SmallVector<at::Tensor, 1> weightVec;
-    at::TensorList weightRef = PrepareWeightList(weight, weightVec);
+    PrintWeightStorage(weightTensor);
+    at::TensorList weightRef = weight;
     at::TensorList weightScaleRef = weightScale;
     const std::vector<at::Tensor> emptyBias;
     const std::vector<at::Tensor> &bias = biasOptional.has_value() ? biasOptional.value() : emptyBias;
