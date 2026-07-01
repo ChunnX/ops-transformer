@@ -1832,9 +1832,10 @@ void GroupedWeightQuantBatchMatmulTiling::PrintTilingResult(const gert::TilingCo
 {
     OP_LOGI(
         context->GetNodeName(),
-        "Tiling result: groupNum: %u, coreNum: %u, kSize: %llu, nSize: %llu, singleX: %u, singleWeight: %u, singleY: %u, " \
-        "groupType: %d, groupListType: %u, hasBias: %u, groupSize: %u, mainBlockSize: %u, mainBlockCount: %llu, " \
-        "firstTailBlockSize: %u, secondTailBlockSize: %u, firstTailBlockCount: %u, secondTailBlockCount: %u",
+        "Tiling result: groupNum: %u, coreNum: %u, kSize: %llu, nSize: %llu, singleX: %u, singleWeight: %u, "
+        "singleY: %u, groupType: %d, groupListType: %u, hasBias: %u, groupSize: %u, mainBlockSize: %u, "
+        "mainBlockCount: %llu, firstTailBlockSize: %u, secondTailBlockSize: %u, firstTailBlockCount: %u, "
+        "secondTailBlockCount: %u",
         tilingData_.gmmWeightQuantParam.groupNum, tilingData_.gmmWeightQuantParam.coreNum,
         tilingData_.gmmWeightQuantParam.kSize, tilingData_.gmmWeightQuantParam.nSize,
         static_cast<uint32_t>(tilingData_.gmmWeightQuantParam.singleX),
