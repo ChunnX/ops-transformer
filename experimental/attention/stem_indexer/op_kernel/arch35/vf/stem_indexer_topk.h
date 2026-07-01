@@ -239,6 +239,7 @@ public:
             AscendC::DataCopy(mrgValueLocal[rowMrgOffset], hisValueLocal, rowTopKAlign);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(hisIndexLocal[0], indicesOutLocal, rowTopKAlign);
+            PipeBarrier<PIPE_V>();
         }
     }
 
