@@ -7,30 +7,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-add_op_to_compiled_list()
 
-if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
-        bsa_select_block_mask_def.cpp
-    )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL)
-    add_ops_compile_options(
-            OP_NAME BSASelectBlockMask
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-    )
-else()
-    add_ops_compile_options(
-            OP_NAME BSASelectBlockMask
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-    )
-    add_modules_sources(
-        OPTYPE bsa_select_block_mask
-        ACLNNTYPE aclnn
-    )
-endif()
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
