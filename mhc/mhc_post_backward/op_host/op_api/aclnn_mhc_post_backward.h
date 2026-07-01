@@ -35,7 +35,8 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
 /**
  * @brief aclnnMhcPostBackward的第二段接口，用于执行计算。
  */
-aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                  const aclrtStream stream);
 
 #ifdef __cplusplus
 }

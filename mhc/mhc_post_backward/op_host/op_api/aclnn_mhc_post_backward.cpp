@@ -502,7 +502,8 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                  const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPostBackward);
     auto ret = CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
