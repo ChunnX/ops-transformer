@@ -486,14 +486,14 @@ public:
         while (totalMask > 0) {
             int64_t offset = kvLength - totalMask;
             Mul(srcTensor[offset], srcTensor[offset], scaleLocal[offset],
-            /*mask*/ totalMask >= NUM_SIXTY_FOUR ? NUM_SIXTY_FOUR : totalMask,
-            /*repeat*/ this->tilingData_->rowsPerBlock, {1, 1, 1,
+                totalMask >= NUM_SIXTY_FOUR ? NUM_SIXTY_FOUR : totalMask,   // mask
+                this->tilingData_->rowsPerBlock, {1, 1, 1,  // repeat
                 static_cast<uint8_t>(kvLength / NUM_EIGHT), static_cast<uint8_t>(kvLength / NUM_EIGHT), 0});
             if (ifAsymmetricQuant) {
                 PipeBarrier<PIPE_V>();
                 Add(srcTensor[offset], srcTensor[offset], offsetLocal[offset],
-                /*mask*/ totalMask >= NUM_SIXTY_FOUR ? NUM_SIXTY_FOUR : totalMask,
-                /*repeat*/ this->tilingData_->rowsPerBlock, {1, 1, 1,
+                    totalMask >= NUM_SIXTY_FOUR ? NUM_SIXTY_FOUR : totalMask,   // mask
+                    this->tilingData_->rowsPerBlock, {1, 1, 1,  // repeat
                     static_cast<uint8_t>(kvLength / NUM_EIGHT), static_cast<uint8_t>(kvLength / NUM_EIGHT), 0});
             }
             totalMask -= NUM_SIXTY_FOUR;
