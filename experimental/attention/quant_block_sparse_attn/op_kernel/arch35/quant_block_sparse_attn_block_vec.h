@@ -712,7 +712,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
         if constexpr (s1BaseSize == 128) {
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             SoftmaxInitBuffer();
-            // 16896 = VEC1 输出 buffer 大小 (s1BaseSize / 2 = 128 / 2 = 64, s2BaseSize = 256, 数据类型float32，为防止硬件copy的冲突，会多开辟512)
+            // 16896 = VEC1 输出 buffer 大小 (s1BaseSize / 2 = 128 / 2 = 64, s2BaseSize = 256, 
+            // 为防止硬件copy的冲突，会多开辟512)
             tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
             tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
             if constexpr (hasAtten) {
