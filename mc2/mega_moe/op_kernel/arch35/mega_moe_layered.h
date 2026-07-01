@@ -697,7 +697,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     PipeBarrier<PIPE_MTE3>();
     DataCopyPad(workspaceDstGlobal[mxQuantTokenScaleAlignBytes_], xOutBytesTensor[mxQuantTokenScaleAlignBytes_],
         {1U, static_cast<uint32_t>(ALIGN_32), 0U, 0U, 0U});
-    PipeBarrier<PIPE_ALL>();
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
 }
 
@@ -728,9 +727,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeT
         if (targetServer != serverId_) {
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServer));
-            PipeBarrier<PIPE_ALL>();
             int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
-            PipeBarrier<PIPE_ALL>();
             uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                 static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
             recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
@@ -760,9 +757,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeK
         DispatchComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
-    PipeBarrier<PIPE_ALL>();
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -900,13 +895,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
     if (relayRank == rankId_) {
         __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
-        PipeBarrier<PIPE_ALL>();
         GmSignalWaitBarrier(readyFlag, int32_t(1));
-        PipeBarrier<PIPE_ALL>();
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
-        PipeBarrier<PIPE_ALL>();
         return;
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
@@ -914,7 +906,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     uint32_t waitLoop = 0;
     do {
-        PipeBarrier<PIPE_ALL>();
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
             remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
@@ -932,13 +923,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
             AscendC::PRINTF("[MegaMoe][L2WaitDone] rank=%u relayRank=%u block=%u buf=%d loop=%u remoteOff=%llu\n",
                 rankId_, relayRank, blockIdx_, bufferIdx, waitLoop,
                 static_cast<unsigned long long>(remoteCopyOffset));
-            PipeBarrier<PIPE_ALL>();
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
-            PipeBarrier<PIPE_ALL>();
             break;
         }
     } while (true);
-    PipeBarrier<PIPE_ALL>();
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
@@ -946,7 +934,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
-    PipeBarrier<PIPE_ALL>();
 }
 
 // ===================================
