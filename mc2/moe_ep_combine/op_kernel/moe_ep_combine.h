@@ -15,9 +15,18 @@
 #ifndef MOE_EP_COMBINE_H
 #define MOE_EP_COMBINE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
-#include "moe_ep_combine_tiling_key.h"
+#endif
+#include "kernel_tiling/kernel_tiling.h"
+#include "adv_api/hccl/hccl.h"
+#include "adv_api/reduce/reduce.h"
+#include "adv_api/reduce/sum.h"
+#include "adv_api/hcomm/hcomm.h"
 
+#include "moe_ep_combine_tiling_key.h"
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"
@@ -177,7 +186,7 @@ private:
     TBuf<> tokenTargetTBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
