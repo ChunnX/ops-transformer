@@ -318,14 +318,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     for g_id in range(G):
                         T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
                     T.tile.exp(bmm1_ub, bmm1_ub)
-                    T.barrier_all()
+                    # barrier removed: exp→div loop, VEC→VEC sequential
                     for g_id in range(G):
                         T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
-                    T.barrier_all()
+                    # barrier removed: div→fill, VEC→VEC (different buffers)
                     T.tile.fill(p_reduced_tmp_ub, 0)
                     for g_id in range(G):
                         T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
-                    T.barrier_all()
+                    # barrier removed: add→mul, VEC→VEC sequential
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
@@ -352,10 +352,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
-                        T.barrier_all()
+                        # barrier removed: reduce_max→mul, VEC→VEC (different buffers)
                         T.tile.mul(max_pair_ub[0, :], rsy_max_ub, 1.0)
                         T.tile.mul(max_pair_ub[1, :], rsy_chunk_max_ub, 1.0)
-                        T.barrier_all()
+                        # barrier removed: mul→reduce_max, VEC→VEC sequential
                         T.reduce_max(max_pair_ub, rsy_max_ub, 0)
                         T.barrier_all()
 
@@ -371,7 +371,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
                         T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
-                        T.barrier_all()
+                        # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
                     T.tile.fill(eps_sum_ub, 1e-8)
@@ -417,7 +417,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     for g_id in range(g_num):
                         T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub2)
                         T.tile.cast(weight_ub2, weight_half_ub2, "CAST_NONE", vector_baseg)
-                        T.barrier_all()
+                        # barrier removed: cast→fill, VEC→VEC (different buffers)
                         T.tile.fill(weight_ub, 0)
 
                         for i in range(vector_baseg):
@@ -429,10 +429,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.exp(mask_ub, mask_ub)
                             T.tile.sub(mask_ub, ones_ub, mask_ub)
                             T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
-                        T.barrier_all()
+                        # barrier removed: inner VEC loop→reduce_sum, VEC→VEC sequential
 
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
-                        T.barrier_all()
+                        # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
 
                         # Write reluGrad for MY K block only
@@ -461,12 +461,12 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
                     T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
-                    T.barrier_all()
+                    # barrier removed: mul→mul loop, VEC→VEC no dependency
 
                     loss_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
                     for i in range(16):
                         T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
-                    T.barrier_all()
+                    # barrier removed: mul loop→reduce_sum, VEC→VEC sequential
                     loss_sum_ub = T.alloc_ub(16, calc_dtype)
                     T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
                     T.barrier_all()
