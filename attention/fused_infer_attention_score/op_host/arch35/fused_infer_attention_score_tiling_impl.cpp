@@ -1062,11 +1062,11 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
             actualSeqLengthsKV -= fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
         }
     } else {
-        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&
-            fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
+        int64_t* seqLengthsKVPtr = fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
+        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 && seqLengthsKVPtr != nullptr) { // kvLengths
             actualSeqLengthsKV = fiaInfo.actualLenKvDims == NUM1 ?
-                                    fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :
-                                    fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
+                                    seqLengthsKVPtr[0] :
+                                    seqLengthsKVPtr[bIdx];
         } else {
             actualSeqLengthsKV = fiaInfo.kvListSeqLens.size() == NUM1 ?
                                     fiaInfo.kvListSeqLens[0] :
