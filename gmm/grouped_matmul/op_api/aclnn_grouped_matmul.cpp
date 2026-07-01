@@ -2082,6 +2082,11 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
     return ACLNN_SUCCESS;
 }
 
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
+}
+
 static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
     if (gmmParams.groupType == gmm::NO_SPLIT) {

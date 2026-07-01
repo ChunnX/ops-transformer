@@ -445,17 +445,17 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
         }
     }
 
-    return CheckDimMatching(idx);
+    return CheckDimMatching(xIdx, yIdx, wIdx);
 }
 
-aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t idx) const
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const
 {
-    size_t xDimNum = (*gmmParams_.x)[idx]->GetViewShape().GetDimNum();
-    size_t xKDim = (*gmmParams_.x)[idx]->GetViewShape().GetDim(xDimNum - 1);
-    auto weightNIdx = (*gmmParams_.weight)[idx]->GetViewShape().GetDimNum() - 1;
-    auto weightKIdx = (*gmmParams_.weight)[idx]->GetViewShape().GetDimNum() - 2;
-    size_t weightKDim = (*gmmParams_.weight)[idx]->GetViewShape().GetDim(weightKIdx);
-    size_t weightNDim = (*gmmParams_.weight)[idx]->GetViewShape().GetDim(weightNIdx);
+    size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
+    size_t xKDim = (*gmmParams_.x)[xIdx]->GetViewShape().GetDim(xDimNum - 1);
+    auto weightNIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 1;
+    auto weightKIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 2;
+    size_t weightKDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightKIdx);
+    size_t weightNDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightNIdx);
     if (unlikely(xKDim != weightKDim)) {
         std::string incorrectValues = "x[" + std::to_string(xIdx) + "] dim k value " + std::to_string(xKDim) +
             ", weight[" + std::to_string(wIdx) + "] dim k value " + std::to_string(weightKDim);
@@ -466,7 +466,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t
             incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    size_t yNDim = (*gmmParams_.y)[idx]->GetViewShape().GetDim(xDimNum - 1);
+    size_t yNDim = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(xDimNum - 1);
     if (unlikely(yNDim != weightNDim)) {
         std::string incorrectValues = "y[" + std::to_string(yIdx) + "] dim n value " + std::to_string(yNDim) +
             ", weight[" + std::to_string(wIdx) + "] dim n value " + std::to_string(weightNDim);

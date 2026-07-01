@@ -42,8 +42,8 @@ private:
     aclnnStatus CheckWeightInnerAxisEven(size_t idx) const;
     aclnnStatus CheckDimNumAndFormat(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckTransposeStatus() const;
-    aclnnStatus CheckDimValue(size_t idx) const;
-    aclnnStatus CheckDimMatching(size_t idx) const;
+    aclnnStatus CheckDimValue(size_t xIdx, size_t yIdx, size_t wIdx) const;
+    aclnnStatus CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckV1GroupList(size_t idx) const;
 
     aclnnStatus CheckAntiQuantDtype(size_t idx) const;
