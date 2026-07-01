@@ -167,6 +167,66 @@ public:
             }
         }
     }
+
+    __aicore__ inline void Batch4Rows(
+        const LocalTensor<uint32_t>& mrgValueLocal,
+        const LocalTensor<uint32_t>& indicesOutLocal,
+        const LocalTensor<uint32_t>& hisValueLocal,
+        const LocalTensor<uint32_t>& reuseMm1ResLocal,
+        const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
+        LocalTensor<uint32_t>& topkNumLocal,
+        uint32_t batchRowNum, uint32_t mBaseIdx, uint32_t mrgRowStride,
+        uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+    {
+        const uint32_t topKAlign = SICommon::Align(topK, (uint32_t)256);
+        for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+            uint32_t mInnerIdx = mBaseIdx + rowIdx;
+            uint32_t rowMrgOffset = mInnerIdx * mrgRowStride;
+            uint32_t rowGlobalIdxOffset = mInnerIdx * topKAlign;
+            uint32_t rowIndicesOutOffset = rowIdx * topKAlign;
+
+            uint32_t rowTopK = topkNumLocal.GetValue(mInnerIdx);
+            rowTopK = (rowTopK > 256U) ? 256U : rowTopK;
+
+            idx0Local = reuseMm1ResLocal;
+            idx1Local = idx0Local[256];
+            idx2Local = idx1Local[256];
+            idx3Local = idx2Local[256];
+            hisIndexLocal[0] = reuseGlobalIndexLocal[rowGlobalIdxOffset];
+            hisIndexLocal[1] = indicesOutLocal[rowIndicesOutOffset];
+
+            if (s2LoopNum == 1) {
+                SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal,
+                    mrgValueLocal[rowMrgOffset], histogramsLocal,
+                    idx0Local, idx1Local, idx2Local, idx3Local,
+                    nkValueLocal, rowTopK, s2SeqLen);
+                PipeBarrier<PIPE_V>();
+                AscendC::DataCopy(indicesOutLocal[rowIndicesOutOffset], tmpIndexLocal,
+                    SICommon::Align(rowTopK, (uint32_t)256));
+            } else {
+                if (loopIdx == 0) {
+                    SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
+                        mrgValueLocal[rowMrgOffset], histogramsLocal,
+                        idx0Local, idx1Local, idx2Local, idx3Local,
+                        nkValueLocal, rowTopK, s2SeqLen);
+                    PipeBarrier<PIPE_V>();
+                    AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal,
+                        SICommon::Align(rowTopK, (uint32_t)256));
+                } else {
+                    SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
+                        mrgValueLocal[rowMrgOffset], histogramsLocal,
+                        idx0Local, idx1Local, idx2Local, idx3Local,
+                        nkValueLocal, rowTopK, s2SeqLen);
+                    PipeBarrier<PIPE_V>();
+                    SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
+                        mrgValueLocal[rowMrgOffset], tmpIndexLocal, hisIndexLocal[0],
+                        rowTopK, loopIdx * trunkLen - SICommon::Align(rowTopK, (uint32_t)256),
+                        s2SeqLen);
+                }
+            }
+        }
+    }
+
 private:
     LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B

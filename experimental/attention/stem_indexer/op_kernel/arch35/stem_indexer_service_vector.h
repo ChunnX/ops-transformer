@@ -183,7 +183,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(initBlockLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
     initBlockLenLocal_ = initBlockLenBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, TOPK_ROW_BATCH * MAX_TOPK_COUNT * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, trunkLen_ * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
@@ -589,22 +589,18 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         }
         LocalTensor<uint32_t> reuseMm1ResLocal =
             resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
-        uint32_t mrgValueOffset = mBaseIdx * (MAX_TOPK_COUNT + trunkLen_);
-        uint32_t globalIndexOffset = mBaseIdx * MAX_TOPK_COUNT;
-        uint32_t topkSelectNum = topkNumLocal_.GetValue(mBaseIdx);
-        topkSelectNum = (topkSelectNum > MAX_TOPK_COUNT) ? MAX_TOPK_COUNT : topkSelectNum;
         PipeBarrier<PIPE_V>();
         if (isFirstS2InnerLoop) {
-            topkOp_(mrgValueLocal_[mrgValueOffset + TOPK_ALIGN_SIZE],
-                    indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
-                    globalIndexLocal_[globalIndexOffset], topkNumLocal_, mBaseIdx,
-                    TRUNK_LEN_256, info.s2Idx, info.s2LoopEnd + 1);
+            topkOp_.Batch4Rows(mrgValueLocal_[TOPK_ALIGN_SIZE], indicesOutLocal_, scoreOutLocal_,
+                               reuseMm1ResLocal, globalIndexLocal_,
+                               topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                               TRUNK_LEN_256, info.s2Idx, info.s2LoopEnd + 1);
         } else {
-            topkOp_(mrgValueLocal_[mrgValueOffset],
-                    indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
-                    globalIndexLocal_[globalIndexOffset], topkNumLocal_, mBaseIdx,
-                    TOPK_ALIGN_SIZE + TRUNK_LEN_256,
-                    info.s2Idx, info.s2LoopEnd + 1);
+            topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
+                               reuseMm1ResLocal, globalIndexLocal_,
+                               topkNumLocal_, batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
+                               TOPK_ALIGN_SIZE + TRUNK_LEN_256,
+                               info.s2Idx, info.s2LoopEnd + 1);
         }
         CopyOutFourRows(info, mBaseIdx, batchRowNum, curAivGS1Idx,
                         isLastS2InnerLoop, copyOutParams, indiceLenCopyParams);
