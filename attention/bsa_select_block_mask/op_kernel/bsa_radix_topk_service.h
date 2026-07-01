@@ -375,6 +375,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
+        PipeBarrier<PIPE_ALL>();
+        SyncAll();
 
         // i. Shift mask
         andMask16_ >>= RADIX_BITS_PER_ROUND;
@@ -1059,6 +1061,7 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 
     CopyInGlobalHist(globalHist);
     MTE2ToVSync();
+    MTE2ToSSync();
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
 
