@@ -88,9 +88,17 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsMxfp4() const
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleCandidate() const
 {
+    auto weightFormat = GetInputTensor(gmmParams_.weight)->GetStorageFormat();
+    auto primaryWeightFormat = static_cast<op::Format>(ge::GetPrimaryFormat(weightFormat));
+    const bool isWeightNzFormat = weightFormat == op::Format::FORMAT_FRACTAL_NZ ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_16 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_32 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
+        weightFormat == op::Format::FORMAT_FRACTAL_NZ_C0_4 ||
+        primaryWeightFormat == op::Format::FORMAT_FRACTAL_NZ;
     return gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 &&
            GetInputTensorSize(gmmParams_.y) == 1 && GetInputTensorSize(gmmParams_.weight) > 1 &&
-           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+           isWeightNzFormat;
 }
 
 template <typename T>
@@ -424,7 +432,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
                 std::to_string(xDimNumber), std::to_string(MIN_FM_DIM)));
         if (gmmParams_.groupType == SPLIT_M) {
             const size_t expectedWeightDim =
-                IsWeightNzSingleMultiSingleLayout() ? MIN_FM_DIM : SPLIT_M_SINGLE_WEIGHT_DIM;
+                IsWeightNzSingleMultiSingleCandidate() ? MIN_FM_DIM : SPLIT_M_SINGLE_WEIGHT_DIM;
             GMM_CHECK_REPORT(weightDimNumber == expectedWeightDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
                     std::to_string(weightDimNumber), std::to_string(expectedWeightDim)));
@@ -437,7 +445,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
             DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetDataType();
             if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
                 const size_t expectedScaleDim =
-                    IsWeightNzSingleMultiSingleLayout() ? MX_SPLIT_K_SCALE_DIM : MX_SPLIT_M_SCALE_DIM;
+                    IsWeightNzSingleMultiSingleCandidate() ? MX_SPLIT_K_SCALE_DIM : MX_SPLIT_M_SCALE_DIM;
                 GMM_CHECK_REPORT(scaleDimNumber == expectedScaleDim,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), scaleName_.c_str(),
                         std::to_string(scaleDimNumber), std::to_string(expectedScaleDim)));
@@ -510,7 +518,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
                                          .GetDim(pertokenScaleDimNum - 1);
     auto weightNDimValue = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(weightNIndex);
     auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(weightNIndex);
-    auto scaleKIndex = IsWeightNzSingleMultiSingleLayout() ? 0UL : 1UL;
+    auto scaleKIndex = IsWeightNzSingleMultiSingleCandidate() ? 0UL : 1UL;
     auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleKIndex);
     auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleDimNum - 1);
     CHECK_RET(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -522,7 +530,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
             ViewShapeToString(GetInputTensor(gmmParams_.weight, tensorIndex.weight)),
             "axis N of weight must be equal to axis N of scale [" + std::to_string(scaleNDimValue) + "]"));
-    if (!IsWeightNzSingleMultiSingleLayout()) {
+    if (!IsWeightNzSingleMultiSingleCandidate()) {
         auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
         GMM_CHECK_REPORT(scaleGDimValue == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
