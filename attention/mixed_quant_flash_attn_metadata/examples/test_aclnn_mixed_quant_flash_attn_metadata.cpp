@@ -129,8 +129,6 @@ int main() {
     auto ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
-        aclrtFree(*deviceAddr); 
-        *deviceAddr = nullptr;
         return ret;
     }
 
