@@ -382,7 +382,6 @@ private:
                 shmem(0, dstEpIdx) + peermemInfo.offsetFlag)
                 + (RuntimeRank(params) * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
 
-
             AscendC::PipeBarrier<PIPE_ALL>();
             gm_store(remoteFlag, FLAG_VALUE_MAGIC);
             gm_dcci((__gm__ uint8_t*)remoteFlag);
@@ -809,7 +808,7 @@ private:
                 layout::RowMajor{ 1, numPerCore},
                 layout::RowMajor{1, numPerCore});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
- 	        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             if (dstEpIdx == static_cast<int32_t>(RuntimeRank(params))) {
                 // ── 路径 A：self-rank，本地搬运，无 flag ──
                 copyUbToGm(dstAddress, tmpBuffer,
@@ -888,7 +887,7 @@ private:
             // 读 tokenPerExpert 原值（不再 -0x800000 还原）
             AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
- 	        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
             AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
