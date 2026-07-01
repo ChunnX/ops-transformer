@@ -160,10 +160,10 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
 
-            Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);  // cast
-            Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
-            Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
-            Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
+            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);  // cast
+            Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
+            Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
+            Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
 
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
                 (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
