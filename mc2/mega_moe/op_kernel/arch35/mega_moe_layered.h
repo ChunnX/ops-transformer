@@ -1825,16 +1825,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     // 预调度 expert 0。
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            PipeBarrier<PIPE_ALL>();
             DispatchTokenToRmtServer(0);
-            PipeBarrier<PIPE_ALL>();
             SendCntCal(0, nextSendCnt);
-            PipeBarrier<PIPE_ALL>();
             if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
                 UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                PipeBarrier<PIPE_ALL>();
                 TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
-                PipeBarrier<PIPE_ALL>();
             }
         }
     }
@@ -1845,16 +1840,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
-                PipeBarrier<PIPE_ALL>();
                 DispatchTokenToRmtServer(localExpertId + 1);
-                PipeBarrier<PIPE_ALL>();
                 SendCntCal(localExpertId + 1, nextSendCnt);
-                PipeBarrier<PIPE_ALL>();
                 if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                    PipeBarrier<PIPE_ALL>();
                     TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-                    PipeBarrier<PIPE_ALL>();
                 }
             }
         }
@@ -1864,9 +1854,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        PipeBarrier<PIPE_ALL>();
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-        PipeBarrier<PIPE_ALL>();
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
