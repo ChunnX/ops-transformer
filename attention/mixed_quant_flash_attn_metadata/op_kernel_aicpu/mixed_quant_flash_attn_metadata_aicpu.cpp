@@ -240,10 +240,15 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     } else if (baseInfo.layoutQuery == Layout::TND) {
         qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
-        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
-        mBaseSize_, s2BaseSize_);
-    mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
+    if (quantMode_ == 1) {
+        s2BaseSize_ = 32U;
+        mBaseSize_ = 512U;
+    } else {
+        optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
+            baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
+            mBaseSize_, s2BaseSize_);
+        mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
+    }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.costFunc = CalcCost;
