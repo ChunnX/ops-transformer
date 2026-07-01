@@ -63,6 +63,7 @@ struct PeermemInfo {
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
         offset += Ops::Base::CeilAlign(
             (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+
         if (tilingData->commMode != COMM_MODE_CROSS_SERVER) {
             quantTokenScalePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
@@ -77,9 +78,11 @@ struct PeermemInfo {
             uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
                 static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
-            uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32)) + ALIGN_32;
+            uint32_t tokenBytes = Ops::Base::CeilAlign(static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + 
+                scaleBytes, static_cast<uint32_t>(ALIGN_32)) + ALIGN_32), static_cast<int64_t>(ALIGN_512));  
             offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t) * serverNum),
                 (int64_t)ALIGN_512);
+            
         }
         combineSendPtr = base + offset;
     }
