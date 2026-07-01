@@ -445,12 +445,17 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
         }
     }
 
+    return CheckDimMatching(xIdx, yIdx, wIdx);
+}
+
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const
+{
+    size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
     size_t xKDim = (*gmmParams_.x)[xIdx]->GetViewShape().GetDim(xDimNum - 1);
     auto weightNIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 1;
     auto weightKIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 2;
     size_t weightKDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightKIdx);
     size_t weightNDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightNIdx);
-
     if (unlikely(xKDim != weightKDim)) {
         std::string incorrectValues = "x[" + std::to_string(xIdx) + "] dim k value " + std::to_string(xKDim) +
             ", weight[" + std::to_string(wIdx) + "] dim k value " + std::to_string(weightKDim);
@@ -472,7 +477,6 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
             incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
-
     if (IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ()) {
         if (unlikely(!((weightNDim % N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT == 0) &&
                        (weightKDim % N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT == 0)))) {
@@ -484,7 +488,6 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-
     return ACLNN_SUCCESS;
 }
 
@@ -755,45 +758,49 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckScaleAndPerTokenSc
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (IsS8S4NZ()) {
-        auto perTokenScaleShape = (*gmmParams_.perTokenScaleOptional)[0]->GetViewShape();
-        auto perTokenScaleShapeDimNum = perTokenScaleShape.GetDimNum();
-        if (unlikely(perTokenScaleShapeDimNum != 1)) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "perTokenScale",
-                std::to_string(perTokenScaleShapeDimNum),
-                "The shape dim of perTokenScale must be 1");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        auto xShape = (*gmmParams_.x)[0]->GetViewShape();
-        auto weightShape = (*gmmParams_.weight)[0]->GetViewShape();
-        auto xShapeMDim = xShape.GetDim(0);
-        auto perTokenScaleShapeMDim = perTokenScaleShape.GetDim(0);
-        if (unlikely(xShapeMDim != perTokenScaleShapeMDim)) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale",
-                std::to_string(perTokenScaleShapeMDim),
-                "The first axis of pertokenscale must be equal to the first dim of x");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        auto scaleShape = (*gmmParams_.scaleOptional)[0]->GetViewShape();
-        // S8S4中scale的shape维度仅支持2
-        if (unlikely(scaleShape.GetDimNum() != 2)) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "scale",
-                std::to_string(scaleShape.GetDimNum()),
-                "The shape dim of scale must be 2");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (unlikely(scaleShape.GetDim(0) != weightShape.GetDim(0))) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "scale",
-                std::to_string(scaleShape.GetDim(0)),
-                "The dim0 of scale must be equal to g");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        // scale的index为1的维度需要为n，即weight的index为2时的数值
-        if (unlikely(scaleShape.GetDim(1) != weightShape.GetDim(2))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "scale",
-                std::to_string(scaleShape.GetDim(1)),
-                "The dim1 of scale must be equal to n");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+        return CheckS8S4NZScaleShape();
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4NZScaleShape() const
+{
+    auto perTokenScaleShape = (*gmmParams_.perTokenScaleOptional)[0]->GetViewShape();
+    auto perTokenScaleShapeDimNum = perTokenScaleShape.GetDimNum();
+    if (unlikely(perTokenScaleShapeDimNum != 1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "perTokenScale",
+            std::to_string(perTokenScaleShapeDimNum),
+            "The shape dim of perTokenScale must be 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto xShape = (*gmmParams_.x)[0]->GetViewShape();
+    auto weightShape = (*gmmParams_.weight)[0]->GetViewShape();
+    auto xShapeMDim = xShape.GetDim(0);
+    auto perTokenScaleShapeMDim = perTokenScaleShape.GetDim(0);
+    if (unlikely(xShapeMDim != perTokenScaleShapeMDim)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "perTokenScale",
+            std::to_string(perTokenScaleShapeMDim),
+            "The first axis of pertokenscale must be equal to the first dim of x");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto scaleShape = (*gmmParams_.scaleOptional)[0]->GetViewShape();
+    if (unlikely(scaleShape.GetDimNum() != 2)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "scale",
+            std::to_string(scaleShape.GetDimNum()),
+            "The shape dim of scale must be 2");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (unlikely(scaleShape.GetDim(0) != weightShape.GetDim(0))) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "scale",
+            std::to_string(scaleShape.GetDim(0)),
+            "The dim0 of scale must be equal to g");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (unlikely(scaleShape.GetDim(1) != weightShape.GetDim(2))) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "scale",
+            std::to_string(scaleShape.GetDim(1)),
+            "The dim1 of scale must be equal to n");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
@@ -999,68 +1006,43 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
+    const aclTensorList *optional, const aclTensorList *reference,
+    const char *optionalName, const char *referenceName, const char *opName)
+{
+    if (optional == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    if (unlikely(optional->Size() != reference->Size())) {
+        std::string incorrectSizes = std::string(optionalName) + " size: " +
+            std::to_string(optional->Size()) + ", " + std::string(referenceName) +
+            " size: " + std::to_string(reference->Size());
+        std::string combinedName = std::string(optionalName) + ", " + std::string(referenceName);
+        std::string reason = std::string(optionalName) + " size must be equal to " +
+            std::string(referenceName) + " size";
+        OP_LOGE_FOR_INVALID_LISTSIZE(opName, combinedName.c_str(), incorrectSizes, reason.c_str());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorListSize() const
 {
-    if (gmmParams_.antiquantScaleOptional != nullptr) {
-        if (unlikely(gmmParams_.antiquantScaleOptional->Size() != gmmParams_.weight->Size())) {
-            std::string incorrectSizes = "antiquantScaleOptional size: " +
-                std::to_string(gmmParams_.antiquantScaleOptional->Size()) +
-                ", weight size: " + std::to_string(gmmParams_.weight->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "antiquantScaleOptional, weight",
-                incorrectSizes,
-                "AntiquantScaleOptional size must be equal to weight size");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    if (gmmParams_.antiquantOffsetOptional != nullptr) {
-        if (unlikely(gmmParams_.antiquantOffsetOptional->Size() != gmmParams_.weight->Size())) {
-            std::string incorrectSizes = "antiquantOffsetOptional size: " +
-                std::to_string(gmmParams_.antiquantOffsetOptional->Size()) +
-                ", weight size: " + std::to_string(gmmParams_.weight->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "antiquantOffsetOptional, weight",
-                incorrectSizes,
-                "AntiquantOffsetOptional size must be equal to weight size");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    if (gmmParams_.biasOptional != nullptr) {
-        if (unlikely(gmmParams_.biasOptional->Size() != gmmParams_.weight->Size())) {
-            std::string incorrectSizes = "biasOptional size: " +
-                std::to_string(gmmParams_.biasOptional->Size()) +
-                ", weight size: " + std::to_string(gmmParams_.weight->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "biasOptional, weight",
-                incorrectSizes,
-                "BiasOptional size must be equal to weight size");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    if (gmmParams_.perTokenScaleOptional != nullptr) {
-        if (unlikely(gmmParams_.perTokenScaleOptional->Size() != gmmParams_.x->Size())) {
-            std::string incorrectSizes = "perTokenScaleOptional size: " +
-                std::to_string(gmmParams_.perTokenScaleOptional->Size()) +
-                ", x size: " + std::to_string(gmmParams_.x->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "perTokenScaleOptional",
-                incorrectSizes,
-                "PerTokenScaleOptional size must be equal to x size");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    if (gmmParams_.scaleOptional != nullptr) {
-        if (unlikely(gmmParams_.scaleOptional->Size() != gmmParams_.weight->Size())) {
-            std::string incorrectSizes = "scaleOptional size: " +
-                std::to_string(gmmParams_.scaleOptional->Size()) +
-                ", weight size: " + std::to_string(gmmParams_.weight->Size());
-            OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "scaleOptional, weight",
-                incorrectSizes,
-                "ScaleOptional size must be equal to weight size");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
+    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantScaleOptional, gmmParams_.weight,
+                                    "antiquantScaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantOffsetOptional, gmmParams_.weight,
+                                    "antiquantOffsetOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOptionalListSize(gmmParams_.biasOptional, gmmParams_.weight,
+                                    "biasOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOptionalListSize(gmmParams_.perTokenScaleOptional, gmmParams_.x,
+                                    "perTokenScaleOptional", "x", GetAclnnName()) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOptionalListSize(gmmParams_.scaleOptional, gmmParams_.weight,
+                                    "scaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
