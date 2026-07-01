@@ -207,7 +207,7 @@ static ge::graphStatus CheckScaleOffsetInput(
     gert::InferShapeContext* context, const int64_t quantMode, const int64_t expertNum,
     const int64_t cols)
 {
-    const gert::Shape* scaleShape = context->GetInputShape(INDEX_INPUT_SCALE);
+    const gert::Shape* scaleShape = context->GetOptionalInputShape(INDEX_INPUT_SCALE);
     if (quantMode == 0) {
         OP_CHECK_NULL_WITH_CONTEXT(context, scaleShape);
         if (CheckScaleOffset(context, scaleShape, "scale") == ge::GRAPH_FAILED) {
@@ -220,7 +220,7 @@ static ge::graphStatus CheckScaleOffsetInput(
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (scaleShape == nullptr) {
+        if (nullptr == scaleShape) {
             return ge::GRAPH_SUCCESS;
         }
         if (scaleShape->GetDimNum() == 1U) {
