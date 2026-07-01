@@ -198,7 +198,7 @@ int main() {
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
         headDim, quantMode, sparseMode, preTokens, nextTokens, 
-         "BSND", "BSND", "BSND",   // layoutQuery, layoutKv, layoutOut
+         "BSND", "PA_BNBD", "BSND",   // layoutQuery, layoutKv, layoutOut
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
