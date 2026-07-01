@@ -208,27 +208,35 @@ copyTmp = [token data padded to mxQuantTokenAlignBytes_][scale]
 因此本地路径需要两段 MTE2:
 
 ```cpp
-GlobalTensor<ActivationType> localDataGlobal;
-GlobalTensor<QuantScaleOutType> localScaleGlobal;
-localDataGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(params_.workspaceInfo.dispatchRevDataPtr));
-localScaleGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(params_.workspaceInfo.dispatchRevScalePtr));
+// GM→UB 本地拷贝: DataCopyPad 不支持 fp8/fp4, reinterpret_cast<uint8_t> 后搬运
+// sizeof(ActivationType)=1, sizeof(QuantScaleOutType)=1 (fp8 路径),同位宽转换
+LocalTensor<uint8_t> bufU8 = copyTmpTensors_[buf].template ReinterpretCast<uint8_t>();
+GlobalTensor<uint8_t> tokenSrcU8 = localDataGlobal.template ReinterpretCast<uint8_t>();
+GlobalTensor<uint8_t> scaleSrcU8 = localScaleGlobal.template ReinterpretCast<uint8_t>();
 
-int32_t srcRow = tripleTensor_[idx * INT32_PER_256B].GetValue(SRC_ROW);
-LocalTensor<ActivationType> tokenScaleBuf = copyTmpTensors_[buf];
-LocalTensor<QuantScaleOutType> scaleBuf =
-    tokenScaleBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+uint32_t tokenBytes = static_cast<uint32_t>(widthA * sizeof(ActivationType));
+DataCopyExtParams tokenParams{1U, tokenBytes, 0U, 0U, 0U};
+DataCopyPadExtParams<uint8_t> tokenPad{true, 0U, 0U, 0U};  // isPad=true 填充 0
+DataCopyPad(bufU8, tokenSrcU8[srcRow * tokenBytes], tokenParams, tokenPad);
 
-DataCopyPad(tokenScaleBuf, localDataGlobal[srcRow * widthA],
-    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
-DataCopyPad(scaleBuf, localScaleGlobal[srcRow * widthAScale],
-    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+uint32_t scaleBytes = static_cast<uint32_t>(widthAScale * sizeof(QuantScaleOutType));
+DataCopyExtParams scaleParams{1U, scaleBytes, 0U, 0U, 0U};
+DataCopyPadExtParams<uint8_t> scalePad{true, 0U, 0U, 0U};
+DataCopyPad(bufU8[mxQuantTokenAlignBytes_], scaleSrcU8[srcRow * scaleBytes], scaleParams, scalePad);
 ```
 
-后续 MTE3 写出保持不变:
+> **为什么用 uint8_t reinterpret?** Ascend 950PR/DT 的 `DataCopyPadExtParams<T>` 支持类型列表不含
+> `fp8_e4m3fn_t`/`fp8_e5m2_t`/`fp4x2_e2m1_t`/`fp8_e8m0_t`。当前量化路径 token 和 scale 都是
+> 1 字节宽度,reinterpret_cast 到 `uint8_t` 是同 bit-width 转换,偏移量计算完全等价。
+> `isPad=true` 让 UB 尾部 padding 填 0,避免随机值污染。
+
+后续 MTE3 写出保持不变(UB→GM 使用 3 参数 DataCopyPad,不涉及 DataCopyPadExtParams,不需要 reinterpret):
 
 ```cpp
-DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf, ...);
-DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale, ...);
+DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
+    {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
+DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
+    {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
 ```
 
 也就是说,无论数据来自远端还是本地,最终都要写入当前 expert 自己的 `dispatchRevData/dispatchRevScale` 行。去重只减少远端读,不改变 GMM1 需要的 per-expert row 布局。
