@@ -55,7 +55,7 @@ public:
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[LICommon::Align(topK, (uint32_t)256)];
+        histogramsLocal = hisIndexLocal2[LICommon::Align(topK, (uint32_t)256)]; // 256: 本地内存对齐基线
         idx0Local = histogramsLocal[256]; // 256: 本地内存对齐基线
         idx1Local = idx0Local[256]; // 256: 同上
         idx2Local = idx1Local[256]; // 256: 同上
@@ -79,15 +79,15 @@ public:
                                                idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
             }
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, LICommon::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, LICommon::Align(topK, (uint32_t)256)); // 256: 本地内存对齐基线
         } else {
             if (loopIdx == 0) {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal,
                                               histogramsLocal, idx0Local, idx1Local, idx2Local,
                                               idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2],
-                                  tmpIndexLocal, LICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], // 2：pingpong
+                                  tmpIndexLocal, LICommon::Align(topK, (uint32_t)256)); // 256: 本地内存对齐基线
             } else {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal,
                                               histogramsLocal, idx0Local, idx1Local, idx2Local,
@@ -96,16 +96,17 @@ public:
                 uint32_t loopBasicIdx = topK < trunkLen ?
                          (loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256)) :
                          ((loopIdx - 1) * trunkLen);
-                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                    tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], // 2：pingpong
+                    hisValueLocal, mrgValueLocal,
+                    tmpIndexLocal, hisIndexLocal[loopIdx % 2], // 2：pingpong
                     topK,
                     loopBasicIdx,
                     s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    if ((loopIdx + 1) % 2 == 1) {
-                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                            LICommon::Align(topK, (uint32_t)256));
+                    if ((loopIdx + 1) % 2 == 1) { // 2：pingpong
+                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2：pingpong
+                            LICommon::Align(topK, (uint32_t)256)); // 256: 本地内存对齐基线
                     }
                 }
             }
