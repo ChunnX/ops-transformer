@@ -606,41 +606,59 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> inputShape = {3, 256};
   std::vector<int64_t> biasShape = {256};
-  std::vector<int64_t> outShape = {3, 8};
-  std::vector<int64_t> expertIdOutShape = {3, 8};
+  std::vector<int64_t> inputIdsShape = {3};
+  std::vector<int64_t> tid2eidShape = {3, 2};
+  std::vector<int64_t> outShape = {3, 2};
+  std::vector<int64_t> expertIdOutShape = {3, 2};
   std::vector<int64_t> normOutShape = {3, 256};
 
   void* inputAddr = nullptr;
   void* biasAddr = nullptr;
+  void* inputIdsAddr = nullptr;
+  void* tid2eidAddr = nullptr;
   void* outAddr = nullptr;
   void* expertIdOutAddr = nullptr;
   void* normOutAddr = nullptr;
   
   aclTensor* input = nullptr;
   aclTensor* bias = nullptr;
+  aclTensor* inputIds = nullptr;
+  aclTensor* tid2eid = nullptr;
   aclTensor* out = nullptr;
   aclTensor* expertIdOut = nullptr;
   aclTensor* normOut = nullptr;
   
   std::vector<float> inputHostData = GenerateRandomFloats(GetShapeSize(inputShape));
   std::vector<float> biasHostData = GenerateRandomFloats(GetShapeSize(biasShape));
+  std::vector<int32_t> inputIdsHostData = {0, 2, 1};
+  std::vector<int32_t> tid2eidHostData = {
+    10, 42,
+    33, 127,
+    5,  88
+  };
   std::vector<float> outHostData(GetShapeSize(outShape));
   std::vector<int32_t> expertIdOutHostData(GetShapeSize(expertIdOutShape));
   std::vector<float> normOutHostData(GetShapeSize(normOutShape));
 
-  // 创建expandedPermutedRows aclTensor
+  // 创建input aclTensor
   ret = CreateAclTensor(inputHostData, inputShape, &inputAddr, aclDataType::ACL_FLOAT, &input);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedPermutedRows aclTensor
+  // 创建bias aclTensor
   ret = CreateAclTensor(biasHostData, biasShape, &biasAddr, aclDataType::ACL_FLOAT, &bias);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expertForSourceRow aclTensor
+  // 创建inputIds aclTensor
+  ret = CreateAclTensor(inputIdsHostData, inputIdsShape, &inputIdsAddr, aclDataType::ACL_INT32, &inputIds);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  // 创建tid2eid aclTensor
+  ret = CreateAclTensor(tid2eidHostData, tid2eidShape, &tid2eidAddr, aclDataType::ACL_INT32, &tid2eid);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  // 创建out aclTensor
   ret = CreateAclTensor(outHostData, outShape, &outAddr, aclDataType::ACL_FLOAT, &out);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedSrcToDstRow aclTensor
+  // 创建expertIdOut aclTensor
   ret = CreateAclTensor(expertIdOutHostData, expertIdOutShape, &expertIdOutAddr, aclDataType::ACL_INT32, &expertIdOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedSrcToDstRow aclTensor
+  // 创建normOut aclTensor
   ret = CreateAclTensor(normOutHostData, normOutShape, &normOutAddr, aclDataType::ACL_FLOAT, &normOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -649,7 +667,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnMoeGatingTopKV2第一段接口
-  ret = aclnnMoeGatingTopKV2GetWorkspaceSize(input, bias, nullptr, nullptr, 8, 4, 8, 1, 0, 1, false, 1.0, 1e-20, out, expertIdOut, normOut, &workspaceSize, &executor);
+  ret = aclnnMoeGatingTopKV2GetWorkspaceSize(input, bias, inputIds, tid2eid, 2, 1, 1, 1, 0, 1, false, 1.0, 1e-20, out, expertIdOut, normOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
@@ -678,6 +696,8 @@ int main() {
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(input);
   aclDestroyTensor(bias);
+  aclDestroyTensor(inputIds);
+  aclDestroyTensor(tid2eid);
   aclDestroyTensor(out);
   aclDestroyTensor(expertIdOut);
   aclDestroyTensor(normOut);
@@ -685,6 +705,8 @@ int main() {
   // 7. 释放device资源，需要根据具体API的接口定义修改
   aclrtFree(inputAddr);
   aclrtFree(biasAddr);
+  aclrtFree(inputIdsAddr);
+  aclrtFree(tid2eidAddr);
   aclrtFree(outAddr);
   aclrtFree(normOutAddr);
   aclrtFree(expertIdOutAddr);
