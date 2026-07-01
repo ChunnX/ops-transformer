@@ -72,7 +72,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV5”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize”接口或者“aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV5”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
@@ -115,6 +115,49 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
 	const aclTensor   *dsinkOut, 
 	uint64_t          *workspaceSize, 
 	aclOpExecutor    **executor);
+```
+
+```c++
+aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
+    const aclTensor *query,
+    const aclTensor *queryRope,
+    const aclTensor *keyIn,
+    const aclTensor *keyInRope,
+    const aclTensor *value,
+    const aclTensor *dy,
+    const aclTensor *pseShiftOptional,
+    const aclTensor *dropMaskOptional,
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional,
+    const aclTensor *softmaxMaxOptional,
+    const aclTensor *softmaxSumOptional,
+    const aclTensor *softmaxInOptional,
+    const aclTensor *attentionInOptional,
+    const aclTensor *sinkInOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional,
+    const aclIntArray *kvStartIdxOptional,
+    double scaleValue,
+    double keepProb, 
+    int64_t preTokens, 
+    int64_t nextTokens, 
+    int64_t headNum,
+    char *inputLayout, 
+    int64_t innerPrecise, 
+    int64_t sparseMode, 
+    int64_t pseType,
+    char *softmaxInLayout, 
+    const aclTensor *dqOut, 
+    const aclTensor *dqRopeOut, 
+    const aclTensor *dkOut, 
+    const aclTensor *dkRopeOut, 
+    const aclTensor *dvOut, 
+    const aclTensor *dpseOut,
+    const aclTensor *dsinkOut, 
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 ```
 
 ```c++

@@ -139,7 +139,7 @@ static uint64_t GetStorageShapeStride0(const gert::Shape &storageShape)
 }
 
 template <typename StrideT>
-static auto GetStride0FromStrideImpl(const StrideT &stride, int)
+static auto GetStride0FromStrideObject(const StrideT &stride, int)
     -> decltype(stride.GetDimNum(), stride.GetStride(0), uint64_t())
 {
     if (stride.GetDimNum() <= 0) {
@@ -150,31 +150,51 @@ static auto GetStride0FromStrideImpl(const StrideT &stride, int)
 }
 
 template <typename StrideT>
-static uint64_t GetStride0FromStrideImpl(const StrideT &, ...)
+static uint64_t GetStride0FromStrideObject(const StrideT &, ...)
 {
     return 0ULL;
 }
 
 template <typename StrideT>
-static uint64_t GetStride0FromStride(const StrideT &stride)
+static auto GetStride0FromStrideScalar(const StrideT &stride, int)
+    -> decltype(stride > 0, static_cast<uint64_t>(stride))
 {
-    return GetStride0FromStrideImpl(stride, 0);
+    return stride > 0 ? static_cast<uint64_t>(stride) : 0ULL;
 }
 
 template <typename StrideT>
-static uint64_t GetStride0FromStride(const StrideT *stride)
+static uint64_t GetStride0FromStrideScalar(const StrideT &, ...)
+{
+    return 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideElement(const StrideT &stride)
+{
+    // CANN stride APIs return a dimension-wise stride array. In newer headers, stride[0] is scalar stride0.
+    // In compatibility headers it may be a stride object. Non-positive stride is treated as unavailable and
+    // falls back to the storage-shape contiguous calculation.
+    uint64_t stride0 = GetStride0FromStrideScalar(stride, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+    return GetStride0FromStrideObject(stride, 0);
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideArray(const StrideT *stride)
 {
     if (stride == nullptr) {
         return 0ULL;
     }
-    return GetStride0FromStride(*stride);
+    return GetStride0FromStrideElement(stride[0]);
 }
 
 template <typename ContextT>
 static auto TryGetOptionalInputStride0(ContextT *context, uint32_t inputIndex, int)
     -> decltype(context->GetOptionalInputStride(inputIndex), uint64_t())
 {
-    return GetStride0FromStride(context->GetOptionalInputStride(inputIndex));
+    return GetStride0FromStrideArray(context->GetOptionalInputStride(inputIndex));
 }
 
 template <typename ContextT>
@@ -183,6 +203,9 @@ static uint64_t TryGetOptionalInputStride0(ContextT *, uint32_t, ...)
     return 0ULL;
 }
 
+// Compatibility path for CANN headers that do not expose GetOptionalInputStride.
+// Some tiling contexts only provide real stride for view inputs through InputIsView/GetInputStride.
+// Returning 0 means the stride is unavailable; the caller then falls back to storage-shape contiguous stride.
 template <typename ContextT>
 static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex, int)
     -> decltype(context->InputIsView(inputIndex), context->GetInputStride(inputIndex), uint64_t())
@@ -190,7 +213,7 @@ static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex, int)
     if (!context->InputIsView(inputIndex)) {
         return 0ULL;
     }
-    return GetStride0FromStride(context->GetInputStride(inputIndex));
+    return GetStride0FromStrideArray(context->GetInputStride(inputIndex));
 }
 
 template <typename ContextT>
@@ -418,7 +441,13 @@ uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
     }
 
     const gert::Shape &storageShape = inputTensor->GetStorageShape();
-    return GetStorageShapeStride0(storageShape);
+    stride0 = GetStorageShapeStride0(storageShape);
+    const char *inputName = inputIndex == ORI_KV_INDEX ? "ori_kv" : "cmp_kv";
+    OP_LOGW(context_->GetNodeName(),
+            "Cannot get %s stride0 from tiling context stride APIs. Use storage shape to infer contiguous "
+            "stride0(%lu). Non-contiguous %s requires GetOptionalInputStride or GetInputStride support.",
+            inputName, stride0, inputName);
+    return stride0;
 }
 ge::graphStatus SMLAInfoParser::GetInOutDataType()
 {
@@ -675,7 +704,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) < 0) {
-        OP_LOGE(opName_, "%s's second dimension(%lld) should be non-negative number.",
+        OP_LOGE(opName_, "%s's second dimension(%ld) should be non-negative number.",
             ORI_BLOCK_TABLE_NAME.c_str(), opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1));
         return ge::GRAPH_FAILED;
     }
@@ -689,13 +718,13 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
         }
         if (qLayout_ == SMLALayout::TND || qLayout_ == SMLALayout::BSND) {
             if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_) {
-                OP_LOGE(opName_, "cmp_block_table's first dimension(%lld) should be equal to query's B(%u).",
+                OP_LOGE(opName_, "cmp_block_table's first dimension(%ld) should be equal to query's B(%u).",
                     opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0), bSize_);
                 return ge::GRAPH_FAILED;
             }
         }
         if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
-            OP_LOGE(opName_, "%s's second dimension(%lld) should be greater than 0",
+            OP_LOGE(opName_, "%s's second dimension(%ld) should be greater than 0",
                 CMP_BLOCK_TABLE_NAME.c_str(), opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1));
             return ge::GRAPH_FAILED;
         }
@@ -855,7 +884,8 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
     } else if (kvLayout_ == SMLALayout::BSND) {
         actualLenDimsKV_ = actualLenDimsOriKV_;
     } else {
-        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %d.", kvLayout_);
+        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %s.",
+            SMLALayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1235,7 +1265,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpSparseIndices() const
     if (smlaInfo_.perfMode == optiling::SMLATemplateMode::SCFA_TEMPLATE_MODE) {
         OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetShapeSize() == 0,
                     OP_LOGE(opName_,
-                        "when cmp_sparse_indices is not nullptr(SCFA), cmp_sparse_indices cannot be empty tensor."),
+                        "when cmp_sparse_indices is not nullptr(CSA), cmp_sparse_indices cannot be empty tensor."),
                     return ge::GRAPH_FAILED);
         const std::vector<size_t> cmpSparseIndicesDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
         if (
@@ -1301,7 +1331,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaSinks() const
                 OP_LOGE(opName_, "sinks cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
     if (opParamInfo_.sinks.tensor->GetStorageShape().GetDimNum() != DIM_NUM_ONE) {
-        OP_LOGE(opName_, "the dim num of %s is %u, it should be %u.", SINKS_NAME.c_str(),
+        OP_LOGE(opName_, "the dim num of %s is %zu, it should be %u.", SINKS_NAME.c_str(),
             opParamInfo_.sinks.tensor->GetStorageShape().GetDimNum(), DIM_NUM_ONE);
         return ge::GRAPH_FAILED;
     }
@@ -1342,14 +1372,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
         }
     } else {
         uint32_t expectedCmpRatio = 1;
+        const char *modeName = "SWA";
+        const char *modeReason = "when cmp_kv is not provided";
         if (smlaInfo_.perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
             expectedCmpRatio = 4;
+            modeName = "CSA";
+            modeReason = "when cmp_sparse_indices is provided";
         } else if (smlaInfo_.perfMode == SMLATemplateMode::CFA_TEMPLATE_MODE) {
             expectedCmpRatio = 128;
+            modeName = "HCA";
+            modeReason = "when cmp_sparse_indices is not provided";
         }
         OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
-                    OP_LOGE(opName_, "cmpRatio should be %u in current template mode on %s, but got %ld.",
-                        expectedCmpRatio, A2_A3_PLATFORM_LOG.c_str(), cmpRatio_),
+                    OP_LOGE(opName_, "cmpRatio should be %u in %s on %s %s, but got %ld.",
+                        expectedCmpRatio, modeName, A2_A3_PLATFORM_LOG.c_str(), modeReason, cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1562,39 +1598,39 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
 
     if (IsA5Arch(npuArch_)) {
         OP_CHECK_IF(*opParamInfo_.oriMaskMode != 0 && *opParamInfo_.oriMaskMode != 3 && *opParamInfo_.oriMaskMode != 4,
-                    OP_LOGE(opName_, "oriMaskMode should be {0, 3, 4} on %s, but got %d",
+                    OP_LOGE(opName_, "oriMaskMode should be {0, 3, 4} on %s, but got %u",
                         A5_PLATFORM_LOG.c_str(), *opParamInfo_.oriMaskMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 0 && *opParamInfo_.cmpMaskMode != 3,
-                    OP_LOGE(opName_, "cmpMaskMode should be {0, 3} on %s, but got %d",
+                    OP_LOGE(opName_, "cmpMaskMode should be {0, 3} on %s, but got %u",
                         A5_PLATFORM_LOG.c_str(), *opParamInfo_.cmpMaskMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(topkValueMode_ != 1,
-                    OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
+                    OP_LOGE(opName_, "topkValueMode should be 1, but got %ld", topkValueMode_),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinLeft_ < -1,
-                    OP_LOGE(opName_, "oriWinLeft_ should be -1(unlimited) or non-negative on %s, but got %lld",
+                    OP_LOGE(opName_, "oriWinLeft_ should be -1(unlimited) or non-negative on %s, but got %ld",
                         A5_PLATFORM_LOG.c_str(), oriWinLeft_),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinRight_ < -1,
-                    OP_LOGE(opName_, "oriWinRight_ should be -1(unlimited) or non-negative on %s, but got %lld",
+                    OP_LOGE(opName_, "oriWinRight_ should be -1(unlimited) or non-negative on %s, but got %ld",
                         A5_PLATFORM_LOG.c_str(), oriWinRight_),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.oriMaskMode != 4,
-                    OP_LOGE(opName_, "oriMaskMode should be 4 on %s, but got %d",
+                    OP_LOGE(opName_, "oriMaskMode should be 4 on %s, but got %u",
                         A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.oriMaskMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
-                    OP_LOGE(opName_, "cmpMaskMode should be 3 on %s, but got %d",
+                    OP_LOGE(opName_, "cmpMaskMode should be 3 on %s, but got %u",
                         A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.cmpMaskMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinLeft_ != 127,
-                    OP_LOGE(opName_, "oriWinLeft_ should be 127 on %s, but got %lld",
+                    OP_LOGE(opName_, "oriWinLeft_ should be 127 on %s, but got %ld",
                         A2_A3_PLATFORM_LOG.c_str(), oriWinLeft_),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(oriWinRight_ != 0,
-                    OP_LOGE(opName_, "oriWinRight_ should be 0 on %s, but got %lld",
+                    OP_LOGE(opName_, "oriWinRight_ should be 0 on %s, but got %ld",
                         A2_A3_PLATFORM_LOG.c_str(), oriWinRight_),
                     return ge::GRAPH_FAILED);
     }
