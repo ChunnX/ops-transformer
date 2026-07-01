@@ -152,7 +152,7 @@ def check_param_valid(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[10, 11, 12, 13, 14, 15, 16, 17, 18],
+    workspace_idx=[10, 11, 12, 13, 14, 15, 16, 17],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
