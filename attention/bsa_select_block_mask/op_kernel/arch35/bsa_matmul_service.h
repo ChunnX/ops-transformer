@@ -307,6 +307,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::InitGM(GlobalTensor<IN_T> &qCmpGm
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::AllocEventID()
 {
+    SetMMLayoutTransform(true);
+
     // MTE1↔MTE2: Q 数据搬运同步
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
 
@@ -326,6 +328,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::AllocEventID()
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::FreeEventID()
 {
+    SetMMLayoutTransform(false);
+
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_K[0]);
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_K[1]);
@@ -392,17 +396,12 @@ __aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmA(LocalTensor<IN_T> &aL
 
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
-    loadData2DParams.repeatTimes = alignK / C0_SIZE;   // 每行分为 K/16 段
-    loadData2DParams.srcStride = alignM / C0_SIZE;      // L1 中行 stride（以 C0 为单位）
+    loadData2DParams.repeatTimes = alignM * alignK / CUBE_MATRIX_SIZE;
+    loadData2DParams.srcStride = 1;
     loadData2DParams.dstGap = 0;
-    loadData2DParams.ifTranspose = false;                // 非转置搬运
+    loadData2DParams.ifTranspose = false;
 
-    // 逐行加载：L1 的每一行 → L0A 的对应位置
-    for (int32_t i = 0; i < static_cast<int32_t>(alignM / C0_SIZE); i++) {
-        LoadData(aL0Tensor[i * alignK * C0_SIZE],
-                 aL1Tensor[i * CUBE_MATRIX_SIZE],
-                 loadData2DParams);
-    }
+    LoadData(aL0Tensor, aL1Tensor, loadData2DParams);
 }
 
 template <typename BSAT>
