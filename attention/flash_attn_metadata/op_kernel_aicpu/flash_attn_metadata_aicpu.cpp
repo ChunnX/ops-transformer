@@ -203,7 +203,7 @@ bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult 
         faMetadata.SetHeadMetadata(HEAD_IS_FD_INDEX, 1U);
     }
 
-    load_balance::SectionStreamKFaResult dummyHead { aicCoreNum_ };       // all zeror dummy head
+    load_balance::SectionStreamKFaResult dummyHead { static_cast<uint32_t>(aicCoreNum_) }; // all zeror dummy head
     for (uint32_t secIdx = 0; secIdx < splitRes.sectionNum; ++secIdx) {
         auto &faRes = splitRes.sectionFaResult[secIdx];
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
