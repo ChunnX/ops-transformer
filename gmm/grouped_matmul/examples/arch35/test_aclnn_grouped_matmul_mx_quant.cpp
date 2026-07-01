@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_grouped_matmul_v4_mx_quant.cpp
+ * \file test_aclnn_grouped_matmul_mx_quant.cpp
  * \brief
  */
 
@@ -17,7 +17,7 @@
 #include <vector>
 #include <memory>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_grouped_matmul_v4.h"
+#include "aclnnop/aclnn_grouped_matmul_v5.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -196,12 +196,13 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<void, aclError (*)(void *)> workspaceAddrPtr(workspaceAddr, aclrtFree);
 
     // 3. 调用CANN算子库API
-    // 调用aclnnGroupedMatmulV4第一段接口
-    ret = aclnnGroupedMatmulV4GetWorkspaceSize(x, weight, bias, scale, offset, antiquantScale, antiquantOffset,
+    // 调用aclnnGroupedMatmulV5第一段接口
+    ret = aclnnGroupedMatmulV5GetWorkspaceSize(x, weight, bias, scale, offset, antiquantScale, antiquantOffset,
                                                perTokenScale, groupedList, activationInput, activationQuantScale,
-                                               activationQuantOffset, splitItem, groupType, groupListType, actType, out,
-                                               activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV4GetWorkspaceSize failed. ERROR: %d\n", ret);
+                                               activationQuantOffset, splitItem, groupType, groupListType, actType,
+                                               nullptr, out, activationFeatureOut, dynQuantScaleOut,
+                                               &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
@@ -209,9 +210,9 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
         workspaceAddrPtr.reset(workspaceAddr);
     }
-    // 调用aclnnGroupedMatmulV4第二段接口
-    ret = aclnnGroupedMatmulV4(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV4 failed. ERROR: %d\n", ret); return ret);
+    // 调用aclnnGroupedMatmulV5第二段接口
+    ret = aclnnGroupedMatmulV5(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5 failed. ERROR: %d\n", ret); return ret);
 
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
