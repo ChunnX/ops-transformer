@@ -143,11 +143,6 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
     std::string quantMode(quantModePtr);
-    OP_LOGD(context_->GetNodeName(),
-            "GMMAQ AnalyzeAttrs: activationType=%s, quantMode=%s, yDtype=%ld, roundMode=%s, scaleAlg=%ld, "
-            "transposeWeight=%d, groupListType=%d.",
-            activationTypePtr, quantMode.c_str(), *yDtypePtr, roundModePtr, *scaleAlgPtr,
-            static_cast<int>(inputParams_.transB), inputParams_.groupListType);
     OP_CHECK_IF(quantMode != "MX",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "quant_mode", quantMode,
                     "quant_mode must be MX"),
@@ -346,27 +341,7 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     const auto &xScaleShape = xScaleStorageShape->GetOriginShape();
     const auto &wScaleShape = wScaleStorageShape->GetOriginShape();
     const auto &weightScaleStorageShape = wScaleStorageShape->GetStorageShape();
-    std::printf("[GMMAQ tiling] AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, "
-                "weightStorage=%s, xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s, transB=%d, "
-                "groupNum=%lu.\n",
-                ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
-                ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
-                ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
-                ShapeToDebugString(weightScaleStorageShape).c_str(), static_cast<int>(inputParams_.transB),
-                inputParams_.groupNum);
-    OP_LOGD(context_->GetNodeName(),
-            "GMMAQ AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, weightStorage=%s, "
-            "xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s, transB=%d, groupNum=%lu.",
-            ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
-            ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
-            ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
-            ShapeToDebugString(weightScaleStorageShape).c_str(), static_cast<int>(inputParams_.transB),
-            inputParams_.groupNum);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    std::printf("[GMMAQ tiling] AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.\n",
-                inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
-    OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
-            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "N",
                     std::to_string(inputParams_.nSize),
@@ -431,13 +406,6 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.scaleKBL1 = scaleKL1;
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
-    std::printf("[GMMAQ tiling] DoLibApiTiling: M=%u, N=%u, K=%u, baseM=%u, baseN=%u, baseK=%u, "
-                "kAL1=%u, kBL1=%u, scaleKAL1=%u, scaleKBL1=%u, dbL0C=%u.\n",
-                tilingData_.mmTilingData.m, tilingData_.mmTilingData.n, tilingData_.mmTilingData.k,
-                tilingData_.mmTilingData.baseM, tilingData_.mmTilingData.baseN, tilingData_.mmTilingData.baseK,
-                tilingData_.mmTilingData.kAL1, tilingData_.mmTilingData.kBL1,
-                tilingData_.mmTilingData.scaleKAL1, tilingData_.mmTilingData.scaleKBL1,
-                static_cast<uint32_t>(tilingData_.mmTilingData.dbL0C));
     return ge::GRAPH_SUCCESS;
 }
 

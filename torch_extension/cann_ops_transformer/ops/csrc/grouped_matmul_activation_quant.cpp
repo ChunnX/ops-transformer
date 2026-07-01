@@ -13,7 +13,6 @@
 #include <c10/core/DeviceGuard.h>
 
 #include <cmath>
-#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -29,52 +28,6 @@ constexpr int64_t ACL_DTYPE_OFFSET = 256;
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t MX_GROUP_SIZE = 64;
-
-template <typename ShapeT>
-std::string ShapeToString(const ShapeT &shape)
-{
-    std::string result = "[";
-    for (size_t i = 0; i < shape.size(); ++i) {
-        if (i > 0) {
-            result += ", ";
-        }
-        result += std::to_string(shape[i]);
-    }
-    result += "]";
-    return result;
-}
-
-void PrintTorchTensorFormats(const at::Tensor &x, const at::Tensor &groupList, const at::Tensor &weightTensor,
-    const at::Tensor &weightScaleTensor, const at::Tensor &xScale, const at::Tensor &y, const at::Tensor &yScale)
-{
-    auto xStorage = at_npu::native::get_npu_storage_sizes(x);
-    auto groupListStorage = at_npu::native::get_npu_storage_sizes(groupList);
-    auto weightStorage = at_npu::native::get_npu_storage_sizes(weightTensor);
-    auto weightScaleStorage = at_npu::native::get_npu_storage_sizes(weightScaleTensor);
-    auto xScaleStorage = at_npu::native::get_npu_storage_sizes(xScale);
-    auto yStorage = at_npu::native::get_npu_storage_sizes(y);
-    auto yScaleStorage = at_npu::native::get_npu_storage_sizes(yScale);
-    std::printf("[GMMAQ torch] tensor shapes/storage: x=%s/%s, groupList=%s/%s, weight=%s/%s, "
-                "weightScale=%s/%s, xScale=%s/%s, y=%s/%s, yScale=%s/%s.\n",
-                ShapeToString(x.sizes()).c_str(), ShapeToString(xStorage).c_str(),
-                ShapeToString(groupList.sizes()).c_str(), ShapeToString(groupListStorage).c_str(),
-                ShapeToString(weightTensor.sizes()).c_str(), ShapeToString(weightStorage).c_str(),
-                ShapeToString(weightScaleTensor.sizes()).c_str(), ShapeToString(weightScaleStorage).c_str(),
-                ShapeToString(xScale.sizes()).c_str(), ShapeToString(xScaleStorage).c_str(),
-                ShapeToString(y.sizes()).c_str(), ShapeToString(yStorage).c_str(),
-                ShapeToString(yScale.sizes()).c_str(), ShapeToString(yScaleStorage).c_str());
-    std::printf("[GMMAQ torch] raw npu formats: x=%ld, groupList=%ld, weight=%ld, weightScale=%ld, "
-                "xScale=%ld, y=%ld, yScale=%ld.\n",
-                static_cast<long>(at_npu::native::get_npu_format(x)),
-                static_cast<long>(at_npu::native::get_npu_format(groupList)),
-                static_cast<long>(at_npu::native::get_npu_format(weightTensor)),
-                static_cast<long>(at_npu::native::get_npu_format(weightScaleTensor)),
-                static_cast<long>(at_npu::native::get_npu_format(xScale)),
-                static_cast<long>(at_npu::native::get_npu_format(y)),
-                static_cast<long>(at_npu::native::get_npu_format(yScale)));
-    std::printf("[GMMAQ torch] using common TensorWrapper/TensorListWrapper conversion.\n");
-    std::fflush(stdout);
-}
 
 bool IsKnownGeDtype(int64_t dtype)
 {
@@ -157,23 +110,13 @@ int64_t InferNzLogicalN(const at::Tensor &weightScaleTensor)
 {
     // Runtime callers normalize MX weight to the non-transposed logical layout before this op.
     // Thus 4D MX weightScale is [E, ceil(K / 64), N, 2], and logical N is dim2.
-    int64_t n = weightScaleTensor.size(DIM_2);
-    std::printf("[GMMAQ torch] infer logical N from non-transposed MX weightScale dim2: n=%ld.\n", n);
-    std::fflush(stdout);
-    return n;
+    return weightScaleTensor.size(DIM_2);
 }
 
 void CheckTensorListIndexable(const std::vector<at::Tensor> &tensorList, const char *name)
 {
     TORCH_CHECK(!tensorList.empty(), name, " must contain at least one tensor for torch output allocation.");
     TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor for torch output allocation.");
-}
-
-void PrintWeightStorage(const at::Tensor &weight)
-{
-    auto storageSizes = at_npu::native::get_npu_storage_sizes(weight);
-    std::printf("[GMMAQ torch] weight storage sizes: actual=%s.\n", ShapeToString(storageSizes).c_str());
-    std::fflush(stdout);
 }
 } // namespace
 
@@ -230,7 +173,6 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
             x.options().dtype(at::ScalarType::Float8_e8m0fnu));
     }
 
-    PrintWeightStorage(weightTensor);
     at::TensorList weightRef = weight;
     at::TensorList weightScaleRef = weightScale;
     const std::vector<at::Tensor> emptyBias;
@@ -247,7 +189,6 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
     TensorWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue)};
     TensorWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0};
-    PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
