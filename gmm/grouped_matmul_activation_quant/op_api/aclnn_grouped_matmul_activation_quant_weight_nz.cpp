@@ -11,7 +11,6 @@
 #include "aclnn_grouped_matmul_activation_quant_weight_nz.h"
 
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -66,15 +65,6 @@ constexpr int64_t SCALE_ALG_CUBLAS = 1L;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
 constexpr float FLOAT_EPS = 1e-6F;
 
-template <typename... Args>
-void GmmaqPrint(const char *format, Args... args)
-{
-    std::printf("[GMMAQ aclnn] ");
-    std::printf(format, args...);
-    std::printf("\n");
-    std::fflush(stdout);
-}
-
 #define GMMAQ_CHECK_WITH_LOG(cond, retCode, logExpr)                                                                  \
     do {                                                                                                              \
         if (!(cond)) {                                                                                                \
@@ -113,8 +103,6 @@ aclnnStatus ResolveEffectiveYDtype(const aclTensor *x, int64_t yDtype, int64_t &
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x", op::ToString(x->GetDataType()).GetString(),
             "when yDtype is unspecified, the dtype of x must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
     effectiveYDtype = static_cast<int64_t>(x->GetDataType());
-    GmmaqPrint("In op [%s], yDtype is unspecified, infer effective yDtype from x dtype: %ld.", OP_NAME,
-               effectiveYDtype);
     return ACLNN_SUCCESS;
 }
 
@@ -171,52 +159,6 @@ bool IsEmptyTensorList(const aclTensorList *tensorList)
     return shape.GetDimNum() == 1 && shape.GetDim(DIM_0) == 0;
 }
 
-void PrintTensorDebugInfo(const char *stage, const char *name, const aclTensor *tensor)
-{
-    if (tensor == nullptr) {
-        GmmaqPrint("%s tensor %s: nullptr.", stage, name);
-        return;
-    }
-    GmmaqPrint("%s tensor %s: dtype=%s, storageFormat=%s(primary=%s), viewShape=%s, storageShape=%s, "
-               "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
-               stage, name, op::ToString(tensor->GetDataType()).GetString(),
-               op::ToString(tensor->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat()))).GetString(),
-               op::ToString(tensor->GetViewShape()).GetString(),
-               op::ToString(tensor->GetStorageShape()).GetString(),
-               tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),
-               static_cast<int>(tensor->IsEmpty()));
-}
-
-void PrintTensorListDebugInfo(const char *stage, const char *name, const aclTensorList *tensorList)
-{
-    if (tensorList == nullptr) {
-        GmmaqPrint("%s tensorList %s: nullptr.", stage, name);
-        return;
-    }
-    GmmaqPrint("%s tensorList %s: size=%zu.", stage, name, tensorList->Size());
-    for (size_t i = 0; i < tensorList->Size(); ++i) {
-        char tensorName[128] = {};
-        std::snprintf(tensorName, sizeof(tensorName), "%s[%zu]", name, i);
-        PrintTensorDebugInfo(stage, tensorName, (*tensorList)[i]);
-    }
-}
-
-void PrintAclnnInputDebugInfo(const char *stage, const aclTensor *x, const aclTensor *groupList,
-    const aclTensorList *weight, const aclTensorList *weightScale, const aclTensorList *bias,
-    const aclTensor *xScaleOptional, const aclTensor *y, const aclTensor *yScale)
-{
-    GmmaqPrint("%s tensor snapshot.", stage);
-    PrintTensorDebugInfo(stage, "x", x);
-    PrintTensorDebugInfo(stage, "groupList", groupList);
-    PrintTensorListDebugInfo(stage, "weight", weight);
-    PrintTensorListDebugInfo(stage, "weightScale", weightScale);
-    PrintTensorListDebugInfo(stage, "bias", bias);
-    PrintTensorDebugInfo(stage, "xScaleOptional", xScaleOptional);
-    PrintTensorDebugInfo(stage, "y", y);
-    PrintTensorDebugInfo(stage, "yScale", yScale);
-}
-
 void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
 {
     if (IsEmptyTensorList(tensorList)) {
@@ -256,7 +198,7 @@ aclnnStatus CheckTensorShapeEqual(const aclTensor *tensor, const char *name, con
 }
 
 aclnnStatus CreateEmptyTensorList(const aclDataType dataType, const aclTensorList *&tensorList,
-                                  aclOpExecutor *executor, const char *name)
+                                  aclOpExecutor *executor)
 {
     if (tensorList != nullptr) {
         return ACLNN_SUCCESS;
@@ -267,11 +209,6 @@ aclnnStatus CreateEmptyTensorList(const aclDataType dataType, const aclTensorLis
     emptyTensors.emplace_back(emptyTensor);
     tensorList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
     CHECK_RET(tensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], create empty tensorList for %s. size=%zu, dtype=%s, format=%s, shape=%s.",
-               OP_NAME, name, tensorList->Size(),
-               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetDataType()).GetString(),
-               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetStorageFormat()).GetString(),
-               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetViewShape()).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -284,7 +221,6 @@ aclnnStatus WrapWeightNzTensorList(const aclTensorList *&weight, aclOpExecutor *
     for (size_t i = 0; i < weight->Size(); ++i) {
         const aclTensor *tensor = (*weight)[i];
         CHECK_RET(tensor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-        PrintTensorDebugInfo("WrapWeightNzTensorList input", "weight", tensor);
         op::Shape viewShape = tensor->GetViewShape();
         op::Shape storageShape = tensor->GetStorageShape();
         auto wrappedTensor = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
@@ -293,12 +229,10 @@ aclnnStatus WrapWeightNzTensorList(const aclTensorList *&weight, aclOpExecutor *
         wrappedTensor->SetOriginalFormat(tensor->GetViewFormat());
         wrappedTensor->SetViewShape(tensor->GetViewShape());
         wrappedTensor->SetStorageShape(storageShape);
-        PrintTensorDebugInfo("WrapWeightNzTensorList output", "weight", wrappedTensor);
         tensors.emplace_back(wrappedTensor);
     }
     weight = executor->AllocTensorList(tensors.data(), tensors.size());
     CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    PrintTensorListDebugInfo("after WrapWeightNzTensorList", "weight", weight);
     return ACLNN_SUCCESS;
 }
 
@@ -371,11 +305,6 @@ bool TryInferTransposeByShape(const aclTensor *x, const aclTensor *groupList, co
                         weightScaleShape.GetDim(DIM_2) == CeilDivInt64(k, MX_GROUP_SIZE) &&
                         weightScaleShape.GetDim(DIM_3) == MX_SCALE_PAIR;
 
-    GmmaqPrint("In op [%s], infer transpose by shape. weight=%s, weightScale=%s, nonTransN=%ld matched=%d, "
-               "transN=%ld matched=%d, inputAttr=%d.",
-               OP_NAME, op::ToString(weightShape).GetString(), op::ToString(weightScaleShape).GetString(),
-               nonTransN, static_cast<int>(nonTransMatched), transN, static_cast<int>(transMatched),
-               static_cast<int>(inputTransposeWeight));
     if (!nonTransMatched && !transMatched) {
         return false;
     }
@@ -406,8 +335,6 @@ aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tenso
         shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_2));
         shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_3));
         shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_1));
-        GmmaqPrint("In op [%s], CreateView for transposed weightScale[%zu], old shape=%s, new shape=%s.",
-                   OP_NAME, idx, op::ToString(viewShape).GetString(), op::ToString(shape).GetString());
         aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
         CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -438,8 +365,6 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
         }
         shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 1));
         shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2));
-        GmmaqPrint("In op [%s], CreateView for transposed weight[%zu], old shape=%s, new shape=%s.",
-                   OP_NAME, idx, op::ToString(viewShape).GetString(), op::ToString(shape).GetString());
         aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
         CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -461,10 +386,6 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, con
     bool transposeWeightByStride = IsTransposeLastTwoDims(w);
     bool transposeX = IsTransposeLastTwoDims(x);
     bool transposeXScale = IsTransposeForMxShape(xScaleOptional);
-    GmmaqPrint("In op [%s], CheckMXTranspose. weight=%d, weightScale=%d, x=%d, xScale=%d, inputAttr=%d.",
-               OP_NAME, static_cast<int>(transposeWeightByStride), static_cast<int>(transposeWeightScale),
-               static_cast<int>(transposeX), static_cast<int>(transposeXScale), static_cast<int>(transposeWeight));
-
     GMMAQ_CHECK_WITH_LOG(transposeWeightScale == transposeWeightByStride, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightScale", transposeWeightScale ? "transposed" :
             "non-transposed", "the transposition of weightScale must be equal to the transposition of weight"));
@@ -479,8 +400,6 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, con
         CHECK_RET(CreateContiguousTensorListForMXTypeMScale(weightScale, weightScale, executor) == ACLNN_SUCCESS,
                   ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-        PrintTensorListDebugInfo("after CheckMXTranspose CreateView", "weight", weight);
-        PrintTensorListDebugInfo("after CheckMXTranspose CreateView", "weightScale", weightScale);
         return ACLNN_SUCCESS;
     }
 
@@ -500,8 +419,6 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     int64_t e = groupList->GetViewShape().GetDim(DIM_0);
     int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(DIM_1) :
                                            weightScale->GetViewShape().GetDim(DIM_2);
-    GmmaqPrint("In op [%s], CheckMxQuantShape start. M=%ld, K=%ld, E=%ld, N=%ld, transposeWeight=%d.",
-               OP_NAME, m, k, e, n, static_cast<int>(transposeWeight));
     GMMAQ_CHECK_WITH_LOG(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupList dim 0", std::to_string(e),
                                              "groupList dim 0 must be in range [1, 1024]"));
@@ -526,9 +443,6 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     op::Shape xScaleExpectShape = {m, CeilDivInt64(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
     op::Shape yExpectShape = {m, n};
     op::Shape yScaleExpectShape = {m, CeilDivInt64(n, MX_GROUP_SIZE), MX_SCALE_PAIR};
-    GmmaqPrint("In op [%s], expected xScale shape %s, y shape %s, yScale shape %s.", OP_NAME,
-               op::ToString(xScaleExpectShape).GetString(), op::ToString(yExpectShape).GetString(),
-               op::ToString(yScaleExpectShape).GetString());
     CHECK_RET(CheckTensorShapeEqual(xScaleOptional, "xScaleOptional", xScaleExpectShape) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorShapeEqual(y, "y", yExpectShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -544,12 +458,8 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
         weightExpectShape = {e, CeilDivInt64(n, NZ_LAST_DIM), CeilDivInt64(k, NZ_C0_DIM), NZ_C0_DIM, NZ_LAST_DIM};
         weightScaleExpectShape = {e, CeilDivInt64(k, MX_GROUP_SIZE), n, MX_SCALE_PAIR};
     }
-    GmmaqPrint("In op [%s], expected weight storage shape %s, weightScale shape %s.", OP_NAME,
-               op::ToString(weightExpectShape).GetString(), op::ToString(weightScaleExpectShape).GetString());
     if (weightViewShape.GetDimNum() == WEIGHT_LOGICAL_DIM_NUM) {
         op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
-        GmmaqPrint("In op [%s], expected weight logical view shape %s.", OP_NAME,
-                   op::ToString(weightViewExpectShape).GetString());
         CHECK_RET(CheckTensorShapeEqual(weight, "weight", weightViewExpectShape) == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
     }
@@ -649,8 +559,6 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
         OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(OP_NAME, "bias",
             FormatString("bias=%zu", bias == nullptr ? 0UL : bias->Size()),
             "when the quantization mode is MX, bias must be nullptr or an empty tensorList"));
-    GmmaqPrint("In op [%s], MX attribute check passed. bias size=%zu.", OP_NAME,
-               bias == nullptr ? 0UL : bias->Size());
     return ACLNN_SUCCESS;
 }
 
@@ -658,12 +566,6 @@ aclnnStatus CheckMxQuantDim(const aclTensor *x, const aclTensor *groupList, cons
                             const aclTensor *weightScale, const aclTensor *xScaleOptional,
                             const aclTensor *y, const aclTensor *yScale)
 {
-    GmmaqPrint("In op [%s], tensor dims: x=%zu, xScale=%zu, weight view=%zu, weight storage=%zu, "
-               "weightScale=%zu, groupList=%zu, y=%zu, yScale=%zu.",
-               OP_NAME, x->GetViewShape().GetDimNum(), xScaleOptional->GetViewShape().GetDimNum(),
-               weight->GetViewShape().GetDimNum(), weight->GetStorageShape().GetDimNum(),
-               weightScale->GetViewShape().GetDimNum(), groupList->GetViewShape().GetDimNum(),
-               y->GetViewShape().GetDimNum(), yScale->GetViewShape().GetDimNum());
     CHECK_RET(CheckTensorDimNum(x, "x", X_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorDimNum(xScaleOptional, "xScaleOptional", SCALE_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
@@ -687,20 +589,6 @@ aclnnStatus CheckMxQuantFormat(const aclTensor *x, const aclTensor *groupList, c
                                const aclTensor *weightScale, const aclTensor *xScaleOptional,
                                const aclTensor *y, const aclTensor *yScale)
 {
-    GmmaqPrint("In op [%s], storage formats: x=%s(primary=%s), xScaleOptional=%s(primary=%s), "
-               "groupList=%s(primary=%s), weightScale=%s(primary=%s), y=%s(primary=%s), yScale=%s(primary=%s).",
-               OP_NAME, op::ToString(x->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(x->GetStorageFormat()))).GetString(),
-               op::ToString(xScaleOptional->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(xScaleOptional->GetStorageFormat()))).GetString(),
-               op::ToString(groupList->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(groupList->GetStorageFormat()))).GetString(),
-               op::ToString(weightScale->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(weightScale->GetStorageFormat()))).GetString(),
-               op::ToString(y->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(y->GetStorageFormat()))).GetString(),
-               op::ToString(yScale->GetStorageFormat()).GetString(),
-               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(yScale->GetStorageFormat()))).GetString());
     GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(OP_NAME, "x", op::ToString(x->GetStorageFormat()).GetString(),
             "when the quantization mode is MX, the format of x must be ND"));
@@ -770,11 +658,6 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                         const aclTensor *yScale, aclOpExecutor *executor, const char *&effectiveQuantMode,
                         const char *&effectiveRoundMode, int64_t &effectiveYDtype)
 {
-    GmmaqPrint("In op [%s], CheckParams start. activationType=%s, quantMode=%s, roundMode=%s, "
-               "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
-               OP_NAME, activationType == nullptr ? "nullptr" : activationType,
-               quantMode == nullptr ? "nullptr" : quantMode, roundMode == nullptr ? "nullptr" : roundMode,
-               static_cast<int>(transposeWeight), groupListType, yDtype, scaleAlg, dstTypeMax);
     aclnnStatus checkRet = CheckRequiredParams(x, groupList, weight, weightScale, activationType, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckActivationType(activationType);
@@ -793,24 +676,20 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "quantMode", effectiveQuantMode, "quantMode must be MX");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    GmmaqPrint("In op [%s], CheckParams success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus PrepareTensorListContiguous(const aclTensorList *&tensorList, aclOpExecutor *executor)
 {
-    GmmaqPrint("In op [%s], PrepareTensorListContiguous start. tensorList size=%zu.", OP_NAME, tensorList->Size());
     std::vector<const aclTensor *> tensorVec;
     tensorVec.reserve(tensorList->Size());
     for (size_t i = 0; i < tensorList->Size(); ++i) {
-        GmmaqPrint("In op [%s], make tensorList[%zu] contiguous.", OP_NAME, i);
         const aclTensor *contiguousTensor = l0op::Contiguous((*tensorList)[i], executor);
         CHECK_RET(contiguousTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensorVec.push_back(contiguousTensor);
     }
     tensorList = executor->AllocTensorList(tensorVec.data(), tensorVec.size());
     CHECK_RET(tensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], PrepareTensorListContiguous success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -831,11 +710,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                    DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional),
                    DFX_OUT(y, yScale));
     bool transposeWeight = false;
-    GmmaqPrint("In op [%s], GetWorkspaceSize start. activationType=%s, quantMode=%s, roundMode=%s, "
-               "groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
-               OP_NAME, activationType == nullptr ? "nullptr" : activationType,
-               quantMode == nullptr ? "nullptr" : quantMode, roundMode == nullptr ? "nullptr" : roundMode,
-               groupListType, yDtype, scaleAlg, dstTypeMax);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -846,52 +720,38 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                           transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax,
                           y, yScale, uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode,
                           effectiveYDtype) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    GmmaqPrint("In op [%s], parameter check passed. transposeWeight=%d, effectiveYDtype=%ld.",
-               OP_NAME, static_cast<int>(transposeWeight), effectiveYDtype);
 
     if (x->IsEmpty() || y->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
-        GmmaqPrint("In op [%s], empty tensor path. xEmpty=%d, yEmpty=%d, yScaleEmpty=%d, workspaceSize=0.",
-                   OP_NAME, static_cast<int>(x->IsEmpty()), static_cast<int>(y->IsEmpty()),
-                   static_cast<int>(yScale->IsEmpty()));
         return ACLNN_SUCCESS;
     }
 
-    GmmaqPrint("In op [%s], make x contiguous.", OP_NAME);
     x = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(x != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], make xScaleOptional contiguous.", OP_NAME);
     xScaleOptional = l0op::Contiguous(xScaleOptional, uniqueExecutor.get());
     CHECK_RET(xScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], make groupList contiguous.", OP_NAME);
     groupList = l0op::Contiguous(groupList, uniqueExecutor.get());
     CHECK_RET(groupList != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     NormalizeEmptyTensorList(bias);
-    CHECK_RET(CreateEmptyTensorList(aclDataType::ACL_FLOAT, bias, uniqueExecutor.get(), "bias") ==
+    CHECK_RET(CreateEmptyTensorList(aclDataType::ACL_FLOAT, bias, uniqueExecutor.get()) ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(WrapWeightNzTensorList(weight, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
-    PrintAclnnInputDebugInfo("before l0op::GroupedMatmulActivationQuant", x, groupList, weight, weightScale, bias,
-                             xScaleOptional, y, yScale);
-    GmmaqPrint("In op [%s], call l0op::GroupedMatmulActivationQuant.", OP_NAME);
     auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, bias, xScaleOptional,
         activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, effectiveYDtype,
         effectiveRoundMode, scaleAlg, dstTypeMax, uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], l0op::GroupedMatmulActivationQuant success, do ViewCopy for y.", OP_NAME);
     auto yResult = l0op::ViewCopy(std::get<0>(result), y, uniqueExecutor.get());
     CHECK_RET(yResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    GmmaqPrint("In op [%s], ViewCopy for y success, do ViewCopy for yScale.", OP_NAME);
     auto yScaleResult = l0op::ViewCopy(std::get<1>(result), yScale, uniqueExecutor.get());
     CHECK_RET(yScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    GmmaqPrint("In op [%s], GetWorkspaceSize success. workspaceSize=%lu.", OP_NAME, *workspaceSize);
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
@@ -900,10 +760,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(void *workspace, uint64_t 
     aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulActivationQuantWeightNz);
-    GmmaqPrint("In op [%s], phase2 launch start. workspaceSize=%lu.", OP_NAME, workspaceSize);
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
                "This is an error in aclnnGroupedMatmulActivationQuantWeightNz launch aicore.");
-    GmmaqPrint("In op [%s], phase2 launch success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 
