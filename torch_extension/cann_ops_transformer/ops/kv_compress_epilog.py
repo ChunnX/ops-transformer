@@ -47,19 +47,18 @@ class KvCompressEpilogOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "kv_compress_epilog(Tensor cache, Tensor x, Tensor slot_mapping, *, " \
+        return "kv_compress_epilog(Tensor(a!) cache, Tensor x, Tensor slot_mapping, *, " \
                "int quant_group_size=64, str quant_mode=\"fp8_e8m0\", bool round_scale=True, " \
-               "float x_scale=1.0) -> Tensor"
+               "float x_scale=1.0) -> ()"
 
     def register_meta(self):
         """
-        Registers the Meta implementation (Shape/Dtype inference).
-        Essential for FakeTensor / graph mode support.
+        Registers the Meta implementation.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def kv_compress_epilog_meta(cache, x, slot_mapping, *, quant_group_size=64,
-                                    quant_mode=DEFAULT_QUANT_MODE, round_scale=True, x_scale=1.0):
-            return torch.empty_like(cache)
+                                    quant_mode=DEFAULT_QUANT_MODE, round_scale=True, x_scale=1.0) -> None:
+            return None
 
 
 # Instantiate the builder
@@ -70,7 +69,7 @@ op_module = kv_compress_epilog_op_builder.load()  # Compiles/loads the .so file
 @impl(AS_LIBRARY, kv_compress_epilog_op_builder.name, "PrivateUse1")
 def kv_compress_epilog(cache: torch.Tensor, x: torch.Tensor, slot_mapping: torch.Tensor, *,
                        quant_group_size: int = 64, quant_mode: str = DEFAULT_QUANT_MODE,
-                       round_scale: bool = True, x_scale: float = 1.0) -> torch.Tensor:
+                       round_scale: bool = True, x_scale: float = 1.0) -> None:
     quant_mode_int = _resolve_quant_mode(quant_mode)
-    return op_module.kv_compress_epilog(cache, x, slot_mapping, quant_group_size,
-                                        quant_mode_int, round_scale, x_scale)
+    op_module.kv_compress_epilog(cache, x, slot_mapping, quant_group_size,
+                                 quant_mode_int, round_scale, x_scale)
