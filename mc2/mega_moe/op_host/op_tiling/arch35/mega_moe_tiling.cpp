@@ -582,6 +582,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
     OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsDim0);
 
     // expertTokenNums 仅报告路由专家的 token 数，不包含共享专家
+    auto attrs = context->GetAttrs();
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t moeExpertPerRank = static_cast<int64_t>(*moeExpertNumPtr) / static_cast<int64_t>(*epWorldSizePtr);
