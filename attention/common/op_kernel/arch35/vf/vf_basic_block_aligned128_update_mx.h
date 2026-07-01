@@ -49,7 +49,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     RegTensor<float> vreg_zero;
     // SUM
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_in_max;
     RegTensor<float> vreg_max;
     RegTensor<float> vreg_max_new;
     // EXP相关
@@ -209,12 +209,12 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
-    LoadAlign(vreg_input_max, inMaxUb);
+    LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_input_max, tmpMaxUb2);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)preLoopMaxUb, vreg_input_max, preg_all);
-    Max(vreg_max_new, vreg_input_max, vreg_input_max, preg_all);
-    ExpSub(vreg_exp_max, vreg_input_max, vreg_max_new, preg_all);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)preLoopMaxUb, vreg_in_max, preg_all);
+    Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
+    ExpSub(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_max_new, preg_all);
 
@@ -401,7 +401,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_pre_loop_max;
     RegTensor<float> vreg_zero;
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_in_max;
     RegTensor<float> vreg_max;
     RegTensor<float> vreg_max_new;
     RegTensor<float> vreg_input_exp_sum;
@@ -564,11 +564,11 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
-    LoadAlign(vreg_input_max, inMaxUb);
+    LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_input_max, tmpMaxUb2);
-    Max(vreg_max_new, vreg_input_max, vreg_input_max, preg_all);
-    ExpSub(vreg_subloop_update, vreg_input_max, vreg_max_new, preg_all);
+    Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
+    ExpSub(vreg_subloop_update, vreg_in_max, vreg_max_new, preg_all);
     LoadAlign(vreg_pre_loop_max, preLoopMaxUb);
     ExpSub(vreg_exp_max, vreg_pre_loop_max, vreg_max_new, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);  // store
