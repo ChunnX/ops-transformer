@@ -248,11 +248,11 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 64U;
-        mBaseSize_ = 256U;
+        mBaseSize_ = 64U;
+        s2BaseSize_ = 256U;
     } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
-        s2BaseSize_ = 32U;
-        mBaseSize_ = 512U;
+        mBaseSize_ = 32U;
+        s2BaseSize_ = 512U;
     } else {
         KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
         return false;
