@@ -965,10 +965,12 @@ __aicore__ inline void SharedExpertGmm2Kernel(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutC = MakeLayoutC{}(m, n);
+    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
 
+    using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, void, void>;
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
     typename BlockMmad::L1Params l1Params{
@@ -986,6 +988,7 @@ __aicore__ inline void SharedExpertGmm2Kernel(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(aScaleAddr)), layoutScaleA);
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(bScaleAddr)), layoutScaleB);
+    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
     BlockScheduler scheduler(
         {m, n, k},
@@ -1030,7 +1033,7 @@ __aicore__ inline void SharedExpertGmm2Kernel(
 
         typename BlockMmad::BlockShape singleShape{
             Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
-        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
+        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
