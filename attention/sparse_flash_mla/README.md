@@ -11,7 +11,15 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。
+- 算子功能：
+
+  `SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。调用时需要使用`SparseFlashMlaMetadata`生成的任务列表`metadata`。
+
+  典型调用流程如下：
+
+  1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、`block table`、`sinks`等输入。
+  2. 调用`SparseFlashMlaMetadata`生成`metadata`。
+  3. 调用`SparseFlashMla`，将上一步得到的`metadata`传入主算子。
 
 - 计算公式：
 
