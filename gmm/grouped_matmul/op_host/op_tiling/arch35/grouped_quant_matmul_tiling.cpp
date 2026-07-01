@@ -402,6 +402,34 @@ actual is %zu",
                         xScaleDimNum),
                 return false);
     const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingleScenario();
+    auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
+    const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
+    auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
+    if (isWeightNzSingleMultiSingle) {
+        auto wScaleFirstDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 3));
+        auto wScaleSecondDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 2));
+        const bool isNKLayout = wScaleFirstDim == logicalNSize && wScaleSecondDim == expectedKDimValue;
+        const bool isKNLayout = wScaleFirstDim == expectedKDimValue && wScaleSecondDim == logicalNSize;
+        const bool isBroadcastLayout = wScaleFirstDim == 1 || wScaleSecondDim == 1;
+        OP_CHECK_IF((!isNKLayout && !isKNLayout && !isBroadcastLayout) || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE_FOR_INVALID_SHAPE(
+                inputParams_.opType, "scale", ShapeToString(wScaleShape),
+                ShapeDimsToString(logicalNSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE) + " or " +
+                    ShapeDimsToString(expectedKDimValue, logicalNSize, MXFP_MULTI_BASE_SIZE)),
+            return false);
+
+        auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
+        auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
+        auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
+        OP_CHECK_IF(
+            xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE_FOR_INVALID_SHAPE(
+                inputParams_.opType, "perTokenScale", ShapeToString(xScaleShape),
+                inputParams_.transA ? ShapeDimsToString(expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE)
+                                    : ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
+            return false);
+        return true;
+    }
     auto wScaleEDim = isWeightNzSingleMultiSingle ? 1UL : static_cast<uint64_t>(wScaleShape.GetDim(0));
     auto wScaleNDim = static_cast<uint64_t>(isWeightNzSingleMultiSingle ?
         (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(0)) :
@@ -411,10 +439,7 @@ actual is %zu",
         (inputParams_.transB ? wScaleShape.GetDim(2) : wScaleShape.GetDim(1)));
     auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
     auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
-    auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
-    auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
-    const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     if (wScaleKDim != 1 && wScaleNDim != 1) {
             OP_CHECK_IF(
                 (!isWeightNzSingleMultiSingle && wScaleEDim != inputParams_.groupNum) ||
