@@ -213,6 +213,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
             std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
             std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
     }
+    
 
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:
