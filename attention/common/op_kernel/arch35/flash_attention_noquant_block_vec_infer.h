@@ -683,8 +683,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
         if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BNSD && !constInfo.isActualLenDimsNull) {
             MlaBnsdWithActqLseCopyOut(lseUb, runInfo, constInfo, intriParams1);
         } else {
-            if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_BSH ||
-                layout == LayOutTypeEnum::LAYOUT_TND)) {
+            if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_TND)) {
                 for (int64_t i = 0; i < runInfo.halfS1RealSize / constInfo.gSize; i++) {
                     int64_t lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
                     int64_t lseUboffset = i * constInfo.gSize * 8; // 8：fp32对齐
