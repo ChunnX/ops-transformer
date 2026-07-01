@@ -288,13 +288,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut,
     __gm__ uint8_t *workspace)
 {
+    cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
     blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
-    if ASCEND_IS_AIV {
-        cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
-        cubeBlockIdx_ = blockIdx_ / cvRatio_;
-    } else {
-        cubeBlockIdx_ = blockIdx_;
-    }
+    cubeBlockIdx_ = ASCEND_IS_AIV ? blockIdx_ / cvRatio_ : blockIdx_;
     curVectorBlockNum_ = static_cast<int64_t>(baseParams_->stepBatchSize);
     vectorCoreNum_ = static_cast<int64_t>(baseParams_->vectorBlockNum); // aivNum 48
     if (cvMode == 1 && cvRatio_ == 2) {                                 // 编译态cv1:1，运行态cv1:2
@@ -1183,14 +1179,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::PreloadQnAndSync(AicOffset &a
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnWeightPreload(int64_t weightUkOffset)
 {
-    if constexpr (MLAPT::enableGroupComputeOpt) {
-        if (blockIdx_ >= QC_CORE_NUM) {
-            return;
-        }
-    } else {
-        if (blockIdx_ >= baseParams_->mm4BlockNum) {
-            return;
-        }
+    uint32_t maxBlockIdx = MLAPT::enableGroupComputeOpt ? QC_CORE_NUM : baseParams_->mm4BlockNum;
+    if (blockIdx_ >= maxBlockIdx) {
+        return;
     }
     if (mmQnParam_.k > mmQnParam_.baseK) {
         return;

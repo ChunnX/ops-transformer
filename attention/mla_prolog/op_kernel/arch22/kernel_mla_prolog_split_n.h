@@ -1189,7 +1189,7 @@ __aicore__ inline void
 MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int64_t weightUkOffset,
                                                              int64_t qnResOffset, int64_t subLoopTimes)
 {
-    uint32_t maxBlockIdx = MLAPT::enableGroupComputeOpt ? QC_CORE_NUM : baseParams_->mm4BlockNum;
+    uint32_t maxBlockIdx = !MLAPT::enableGroupComputeOpt ? baseParams_->mm4BlockNum : QC_CORE_NUM;
     if (blockIdx_ >= maxBlockIdx) {
         return;
     }

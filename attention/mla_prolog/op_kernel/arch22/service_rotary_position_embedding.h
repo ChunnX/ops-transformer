@@ -135,7 +135,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
                                            LocalTensor<float> deQuantScale = LocalTensor<float>())
 {
     // 在 BS = 1 场景可能存在有row为零的情况，提前返回减少运算
-    if (ropeParams.row == 0) {
+    if (ropeParams.row == 0U) {
         return;
     }
 

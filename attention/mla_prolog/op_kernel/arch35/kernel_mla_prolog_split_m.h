@@ -271,11 +271,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
     __gm__ uint8_t *workspace)
 {
     blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
-    if ASCEND_IS_AIV {
-        cubeBlockIdx_ = blockIdx_ / cvRatio_;
-    } else {
-        cubeBlockIdx_ = blockIdx_;
-    }
+    cubeBlockIdx_ = ASCEND_IS_AIV ? blockIdx_ / cvRatio_ : blockIdx_;
     curVectorBlockNum_ = static_cast<int64_t>(baseParams_->stepBatchSize);
     vectorCoreNum_ = static_cast<int64_t>(baseParams_->vectorBlockNum);
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
@@ -1209,6 +1205,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::ComputeBlkScatterOffsets(Global
                                                                           CkvkrParams &ropeAndScatterKrParams)
 {
     int64_t batchTokenIndex = 0;
+    int64_t batchIndexOffset = 0;
     int64_t batchSeqSize = 0;
     int64_t batchIndexOffset = 0;
     int64_t rowsThisStep = 0;
