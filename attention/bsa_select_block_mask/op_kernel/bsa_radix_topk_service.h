@@ -1061,7 +1061,6 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 
     CopyInGlobalHist(globalHist);
     MTE2ToVSync();
-    MTE2ToSSync();
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
 
