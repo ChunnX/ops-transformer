@@ -131,7 +131,7 @@ def dense_lightning_indexer_kl_loss_grad_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    return op_module.sparse_lightning_indexer_kl_loss_grad_metadata(
+    return op_module.dense_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,

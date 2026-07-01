@@ -99,7 +99,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> dense_lightning_index
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
     char *layout_k_ptr = const_cast<char *>(layout_k.c_str());
 
-    ACLNN_CMD(aclnnSparseLightningIndexerKLLossGrad,
+    ACLNN_CMD(aclnnDenseLightningIndexerKLLossGrad,
         q, k, w, attn_softmax_l1_norm, softmax_lse, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
         cmp_residual_k, metadata, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio,
         dq, dk, dw, softmax_out);
