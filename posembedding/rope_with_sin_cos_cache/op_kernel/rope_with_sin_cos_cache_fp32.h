@@ -255,13 +255,9 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Compute(uint64_t index, uint64
     uint64_t offsetCosSin = index * loopN * this->rotary_dim;
 
     uint32_t dstShape_[2] = {static_cast<uint32_t>(this->num_heads_max), static_cast<uint32_t>(this->rotary_dim)};
-#ifndef __CCE_KT_TEST__
+    uint64_t negOneRows = loopN * this->num_heads_max;
     uint32_t dstShape_4Negone_[2] = {
-        static_cast<uint32_t>(loopN * this->num_heads_max), static_cast<uint32_t>(this->rotary_dim)};
-#else
-    uint32_t dstShape_4Negone_[2] = {static_cast<uint32_t>(loopN * (this->num_heads_max - 1)),
-                                     static_cast<uint32_t>(this->rotary_dim)};
-#endif
+        static_cast<uint32_t>(negOneRows - 1), static_cast<uint32_t>(this->rotary_dim)};
     uint32_t srcShape_[2] = {1, static_cast<uint32_t>(this->rotary_dim)};
 
     LocalTensor<T> inLocal = inQQue.AllocTensor<T>();
@@ -321,7 +317,9 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Compute(uint64_t index, uint64
     Duplicate<float>(negOne, None, this->rotary_dim / 2);
     Duplicate<float>(negOne[this->rotary_dim / 2], One, this->rotary_dim / 2);
 
-    Broadcast<float, 2, 0, false>(negOne[this->rotary_dim], negOne, dstShape_4Negone_, srcShape_);
+    if (negOneRows > 1) {
+        Broadcast<float, 2, 0, false>(negOne[this->rotary_dim], negOne, dstShape_4Negone_, srcShape_);
+    }
     uint64_t localStartAddr = 0;
     uint64_t cosSinOffset = 0;
     for (uint32_t i = 0; i < loopN; ++i) {
@@ -473,7 +471,7 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::ComputeAlongHeads(uint64_t ind
     uint64_t offsetk = indexToken * k_size + offsetKHead;
 
     uint32_t dstShape_[2] = {static_cast<uint32_t>(this->num_heads_each_loop), static_cast<uint32_t>(this->rotary_dim)};
-    uint32_t dstShape_4Negone_[2] = {static_cast<uint32_t>(this->num_heads_each_loop),
+    uint32_t dstShape_4Negone_[2] = {static_cast<uint32_t>(this->num_heads_each_loop - 1),
                                      static_cast<uint32_t>(this->rotary_dim)};
     uint32_t srcShape_[2] = {1, static_cast<uint32_t>(this->rotary_dim)};
 
@@ -529,7 +527,9 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::ComputeAlongHeads(uint64_t ind
         Duplicate<float>(negOne, None, this->rotary_dim / 2);
         Duplicate<float>(negOne[this->rotary_dim / 2], One, this->rotary_dim / 2);
 
-        Broadcast<float, 2, 0, false>(negOne[this->rotary_dim], negOne, dstShape_4Negone_, srcShape_);
+        if (this->num_heads_each_loop > 1) {
+            Broadcast<float, 2, 0, false>(negOne[this->rotary_dim], negOne, dstShape_4Negone_, srcShape_);
+        }
 
         uint64_t offsetPos = indexToken;
         uint64_t cosSinOffset = 0;
