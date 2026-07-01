@@ -432,35 +432,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
-    // Tensor用处：QuantProcessInRank函数中用于量化计算中间区域；
-    // Tensor大小：当前申请2K；
-    uint32_t mxTempTensorAddr = resetTensorAddr + resetTensorSize;
-    uint32_t mxTempTensorSize = 2 * 1024;
-    mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
-    // Tensor用处：QuantProcessInRank函数中用于存储量化输出结果；
-    // Tensor大小：token长度Align256字节对齐 + scale存储长度，当前支持mxfp8量化，xOutTensor1_与xOutTensor2_为双buffer；
-    uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
-    uint32_t xOutTokenBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
-        static_cast<uint32_t>(ALIGN_256));
-    uint32_t xOutTensorSize1 = xOutTokenBytes +
-        Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
-    xOutTensor1_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1,
-        xOutTensorSize1 / sizeof(ActivationType));
-    uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize1;
-    uint32_t xOutTensorSize2 = xOutTensorSize1;
-    xOutTensor2_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2,
-        xOutTensorSize2 / sizeof(ActivationType));
-    // Tensor用处：QuantProcessInRank函数中用于存储输入token；
-    // Tensor大小：token长度Align256字节对齐，xInTensor1_与xInTensor2_为双buffer；
-    uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize2;
-    uint32_t xInAlignSize1 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    xInTensor1_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize1 / sizeof(bfloat16_t));
-    uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize1;
-    uint32_t xInAlignSize2 = xInAlignSize1;
-    xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize2 / sizeof(bfloat16_t));
     // Tensor用处：SendMaskCal函数中用于存储mask位；
     // Tensor大小：大小maskSlotSize_与保持一致，DOUBLE_BUFFER为2，开启双buffer；
-    uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize2;
+    uint32_t sendMaskAddr = xInAlignAddr2 + resetTensorSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
             sendMaskAddr + static_cast<uint32_t>(index) * maskSlotSize_, maskSlotSize_);
@@ -949,20 +923,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
             remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-        AscendC::Nop<800>();
         PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
-        // if ((waitLoop & 1023U) == 0U) {
-        //     AscendC::PRINTF("[MegaMoe][L2Wait] rank=%u relayRank=%u block=%u buf=%d ready=%d remoteOff=%llu flagOff=%llu\n",
-        //         rankId_, relayRank, blockIdx_, bufferIdx, readyValue,
-        //         static_cast<unsigned long long>(remoteCopyOffset),
-        //         static_cast<unsigned long long>(flagOffset));
-        // }
-        // ++waitLoop;
         if (readyValue == int32_t(1)) {
-            // AscendC::PRINTF("[MegaMoe][L2WaitDone] rank=%u relayRank=%u block=%u buf=%d loop=%u remoteOff=%llu\n",
-            //     rankId_, relayRank, blockIdx_, bufferIdx, waitLoop,
-            //     static_cast<unsigned long long>(remoteCopyOffset));
             PipeBarrier<PIPE_ALL>();
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
             PipeBarrier<PIPE_ALL>();

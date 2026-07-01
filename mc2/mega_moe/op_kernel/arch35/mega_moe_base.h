@@ -20,6 +20,7 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
+#include "adv_api/hcomm/hcomm.h"
 
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
