@@ -1339,7 +1339,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
     PipeBarrier<PIPE_MTE2>();
     // 批量处理该 rank 在此 group 内的所有 token: 量化 + URMA 发送
-    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
+    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t>(
         currentRow, batchCount, k_, expertIdx, rankId_,
         gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
         offset, ctx.quantRowSizeBytes);
