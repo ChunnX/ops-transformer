@@ -22,6 +22,7 @@ static constexpr uint64_t V_CACHE_INDEX = 6;
 static constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
 static constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 static constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
+static constexpr uint64_t Q_OUT_LAYOUT_ATTR_INDEX = 2;
 
 static constexpr uint64_t Q_OUT_INDEX = 0;
 static constexpr uint64_t Q_SCALE_INDEX = 1;
@@ -36,7 +37,8 @@ static constexpr const char *DEFAULT_OP_NAME = "QkvRmsNormRopeCacheWithKScale";
 
 struct InferAttrs {
     int64_t qHeads = 0;
-    bool isNtd = true;
+    bool isQkvNtd = true;
+    bool isQOutNtd = true;
 };
 
 struct InputShapes {
@@ -117,6 +119,35 @@ static ge::graphStatus ParseQkvLayout(gert::InferShapeContext *context, const ge
     return ge::GRAPH_FAILED;
 }
 
+static ge::graphStatus ParseQOutLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
+                                       bool qkvIsNtd, bool &qOutIsNtd)
+{
+    if (static_cast<uint64_t>(attrs->GetAttrNum()) <= Q_OUT_LAYOUT_ATTR_INDEX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", "missing",
+                                              "q_out_layout must exist");
+        return ge::GRAPH_FAILED;
+    }
+    const char *qOutLayout = attrs->GetStr(Q_OUT_LAYOUT_ATTR_INDEX);
+    if (qOutLayout == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", "nullptr",
+                                              "q_out_layout must exist");
+        return ge::GRAPH_FAILED;
+    }
+    const bool isNtd = std::strcmp(qOutLayout, QKV_LAYOUT_NTD) == 0;
+    const bool isTnd = std::strcmp(qOutLayout, QKV_LAYOUT_TND) == 0;
+    if (!isNtd && !isTnd) {
+        OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "q_out_layout", qOutLayout, "NTD or TND");
+        return ge::GRAPH_FAILED;
+    }
+    if (isNtd != qkvIsNtd) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", qOutLayout,
+                                              "q_out_layout must be the same as qkv_layout");
+        return ge::GRAPH_FAILED;
+    }
+    qOutIsNtd = isNtd;
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus ParseQHeadNum(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, int64_t &qHeads)
 {
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
@@ -150,7 +181,7 @@ static ge::graphStatus ValidateQkvShapeForOutput(gert::InferShapeContext *contex
     if (ValidateMinDimNum(context, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    dims.totalTokens = qkvShape->GetDim(attrs.isNtd ? 1 : 0);
+    dims.totalTokens = qkvShape->GetDim(attrs.isQkvNtd ? 1 : 0);
     dims.headDim = qkvShape->GetDim(2);
     if (dims.totalTokens <= 0 || dims.headDim <= 0) {
         const std::string incorrectShape = ShapeString(qkvShape);
@@ -159,7 +190,7 @@ static ge::graphStatus ValidateQkvShapeForOutput(gert::InferShapeContext *contex
         return ge::GRAPH_FAILED;
     }
 
-    const int64_t qkvHeads = qkvShape->GetDim(attrs.isNtd ? 0 : 1);
+    const int64_t qkvHeads = qkvShape->GetDim(attrs.isQkvNtd ? 0 : 1);
     if (qkvHeads < attrs.qHeads) {
         const std::string incorrectValues = std::to_string(qkvHeads) + ", " + std::to_string(attrs.qHeads);
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
@@ -176,7 +207,10 @@ static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, const g
     if (ParseQHeadNum(context, attrs, inferAttrs.qHeads) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ParseQkvLayout(context, attrs, inferAttrs.isNtd) != ge::GRAPH_SUCCESS) {
+    if (ParseQkvLayout(context, attrs, inferAttrs.isQkvNtd) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ParseQOutLayout(context, attrs, inferAttrs.isQkvNtd, inferAttrs.isQOutNtd) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -234,13 +268,13 @@ static void SetOutputShapes(const InputShapes &input, const OutputShapes &output
                             const QOutputDims &dims)
 {
     output.qOut->SetDimNum(3);
-    output.qOut->SetDim(0, attrs.isNtd ? attrs.qHeads : dims.totalTokens);
-    output.qOut->SetDim(1, attrs.isNtd ? dims.totalTokens : attrs.qHeads);
+    output.qOut->SetDim(0, attrs.isQOutNtd ? attrs.qHeads : dims.totalTokens);
+    output.qOut->SetDim(1, attrs.isQOutNtd ? dims.totalTokens : attrs.qHeads);
     output.qOut->SetDim(2, dims.headDim);
 
     output.qScale->SetDimNum(2);
-    output.qScale->SetDim(0, attrs.isNtd ? attrs.qHeads : dims.totalTokens);
-    output.qScale->SetDim(1, attrs.isNtd ? dims.totalTokens : attrs.qHeads);
+    output.qScale->SetDim(0, attrs.isQOutNtd ? attrs.qHeads : dims.totalTokens);
+    output.qScale->SetDim(1, attrs.isQOutNtd ? dims.totalTokens : attrs.qHeads);
 
     *output.kCache = *input.kCache;
     *output.vCache = *input.vCache;

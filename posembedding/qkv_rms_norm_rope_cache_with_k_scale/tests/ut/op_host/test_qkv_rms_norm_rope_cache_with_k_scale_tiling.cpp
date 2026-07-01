@@ -284,10 +284,12 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     }
 
     std::vector<gert::TilingContextPara::OpAttr> attrs;
-    attrs.reserve(3U);
+    attrs.reserve(4U);
     attrs.push_back(gert::TilingContextPara::OpAttr(
         "head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)));
     attrs.push_back(gert::TilingContextPara::OpAttr("qkv_layout",
+        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
+    attrs.push_back(gert::TilingContextPara::OpAttr("q_out_layout",
         Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
     attrs.push_back(
         gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
@@ -782,7 +784,8 @@ uint64_t ExpectTileFromSpec(const CsvTilingCase &item, const ContractInput &inpu
 
 void ExpectTilingKey(const CsvTilingCase &item, const ContractInput &input, const TilingInfo &tilingInfo)
 {
-    const uint64_t expectedLayout = input.qkvLayout == TEST_LAYOUT_TND ? QKV_RRC_LAYOUT_TND : QKV_RRC_LAYOUT_NTD;
+    const uint64_t expectedLayout =
+        input.qkvLayout == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
     EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), expectedLayout << QKV_LAYOUT_TILING_KEY_SHIFT)
         << "caseName=" << item.caseName;
 }

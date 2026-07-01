@@ -40,8 +40,8 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
                          const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache,
                          aclTensor *kScaleCache, const aclTensor *cuSeqLen, const aclTensor *actualSeqLens,
                          const aclTensor *rotationOptional, const aclTensor *vScaleOptional,
-                         const aclIntArray *headNums, const char *qkvLayout, float epsilon, aclTensor *qOut,
-                         aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
+                         const aclIntArray *headNums, const char *qkvLayout, const char *qOutLayout, float epsilon,
+                         aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     Params params;
     params.qkv = qkv;
@@ -58,6 +58,7 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
     params.vScaleOptional = vScaleOptional;
     params.headNums = headNums;
     params.qkvLayout = qkvLayout;
+    params.qOutLayout = qOutLayout;
     params.epsilon = epsilon;
     params.qOut = qOut;
     params.qScale = qScale;
@@ -129,7 +130,7 @@ static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExe
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping, params.kCache, params.vCache,
         params.kScaleCache, params.cuSeqLen, params.actualSeqLens, params.rotationOptional, params.vScaleOptional,
-        params.headNums, params.qkvLayout, params.epsilon, params.qOut, params.qScale, executor);
+        params.headNums, params.qkvLayout, params.qOutLayout, params.epsilon, params.qOut, params.qScale, executor);
     return CheckL0Outputs(l0Outs);
 }
 
@@ -143,17 +144,18 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma, const aclTensor *cosSin,
     const aclTensor *slotMapping, aclTensor *kCacheRef, aclTensor *vCacheRef, aclTensor *kScaleCacheRef,
     const aclTensor *cuSeqLen, const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
-    const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout, float epsilon, aclTensor *qOut,
-    aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout, const char *qOutLayout,
+    float epsilon, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQkvRmsNormRopeCacheWithKScale,
                    DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, cuSeqLen,
-                          actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayout, epsilon),
+                          actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayout, qOutLayout, epsilon),
                    DFX_OUT(qOut, qScale, kCacheRef, vCacheRef, kScaleCacheRef));
 
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, cuSeqLen, actualSeqLens,
-        rotationOptional, vScaleOptional, headNums, qkvLayout, epsilon, qOut, qScale, workspaceSize, executor);
+        rotationOptional, vScaleOptional, headNums, qkvLayout, qOutLayout, epsilon, qOut, qScale, workspaceSize,
+        executor);
     aclnnStatus checkRet = QkvRmsNormRopeCacheWithKScale::CheckParams(params);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
