@@ -346,8 +346,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
 
-    float descaleQK = 1.0;
-    int64_t deScaleQOffset = 0;
+    constexpr float descaleQK = 1.0;
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
@@ -572,7 +571,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::MlaTransposeDataCopyOut(RunIn
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = (constInfo.t1Size * constInfo.dSizeV - constInfo.dSizeV) * sizeof(OUTPUT_T);
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
-        if (i == blocks - 1 && hasTail) {
+        if (unlikely(i == blocks - 1 && hasTail)) {
             dataCopyParams.blockCount = s1DealSize % constInfo.gSize;
         } else {
             dataCopyParams.blockCount = constInfo.gSize;
@@ -713,9 +712,11 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
         if constexpr (s1BaseSize == 128) {
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             SoftmaxInitBuffer();
+            // 16896 = VEC1 输出 buffer 大小 (s1BaseSize / 2 = 128 / 2 = 64, s2BaseSize = 256, 数据类型float32，为防止硬件copy的冲突，会多开辟512)
             tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
             tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
             if constexpr (hasAtten) {
+                // 16384 = s1BaseSize / 2 * s2BaseSize = 64 * 256
                 tPipe->InitBuffer(attenMaskInQue[0], 1, 16384);
             }
         } else {
@@ -725,6 +726,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
             tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
             tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
             if constexpr (hasAtten) {
+                // 8192 = s1BaseSize=128 * s2BaseSize=64 * 1B(mask), UB buffer 分配
                 tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
                 tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
             }
@@ -943,7 +945,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
-    if (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND) {
         intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;

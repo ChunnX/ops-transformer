@@ -128,6 +128,10 @@ ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ 
 
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
+    // 以下 mask 在循环内不变，提取到循环外避免重复创建
+    constexpr uint32_t maskLen = 128;
+    MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+    MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
     for (uint16_t i = 0; i < m; ++i) {
         // maxUb is [S1, 1], BRC_B32 is reading one fp32 element and broadcast it to all 64 vreg element
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
@@ -148,9 +152,6 @@ ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ 
             RegTensor<fp8_e5m2_t> vreg_exp_merge_tmp_f8e5m2;
             RegTensor<fp8_e5m2_t> vreg_exp_merge_f8e5m2;
             RegTensor<uint8_t> vreg_exp_merge_f8e5m2_indexes;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e5m2, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitRintTwo>(vreg_exp_odd_f8e5m2, vreg_exp_odd, preg_all);
             Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e5m2, (RegTensor<uint8_t> &)vreg_exp_even_f8e5m2,
@@ -165,9 +166,6 @@ ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ 
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3;
             RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitRintTwo>(vreg_exp_odd_f8e4m3, vreg_exp_odd, preg_all);
             Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3,
@@ -182,9 +180,6 @@ ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ 
             RegTensor<hifloat8_t> vreg_exp_merge_tmp_hif8;
             RegTensor<hifloat8_t> vreg_exp_merge_hif8;
             RegTensor<uint8_t> vreg_exp_merge_hif8_indexes;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitZero>(vreg_exp_even_hif8, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitTwo>(vreg_exp_odd_hif8, vreg_exp_odd, preg_all);
             Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_hif8, (RegTensor<uint8_t> &)vreg_exp_even_hif8,

@@ -203,6 +203,11 @@ __aicore__ inline int64_t ComputeOffsetForPrefixRectangle(const int64_t &delta, 
 }
 
 #ifndef __CCE_KT_TEST__
+// 128bit 寄存器每次加载 4 个 uint32_t，偏移量 = 128bit/8 = 16 字节，即 64 个字节时为 4 个 128bit 元素
+constexpr uint32_t VREG_STRIDE_BYTES = 64;
+// XOR 掩码: 对每个字节取反低 8bit，用于 mask 合并
+constexpr uint32_t XOR_MASK = 0x1010101;
+
 __simd_vf__ inline void MergeBandVF(const uint64_t maskPreUb, const uint64_t maskNextUb, const uint16_t loopCount)
 {
     RegTensor<uint32_t> vreg_pre;
@@ -211,14 +216,14 @@ __simd_vf__ inline void MergeBandVF(const uint64_t maskPreUb, const uint64_t mas
     RegTensor<uint32_t> vreg_not;
     RegTensor<uint32_t> vreg_or;
     MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
-    Duplicate(vreg_xor, 0x1010101);
+    Duplicate(vreg_xor, XOR_MASK);
 
     for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
-        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * VREG_STRIDE_BYTES);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * VREG_STRIDE_BYTES);
         Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
         Or(vreg_or, vreg_not, vreg_next, preg_all);
-        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_or, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * VREG_STRIDE_BYTES, vreg_or, preg_all);
     }
 }
 
@@ -251,10 +256,10 @@ __simd_vf__ inline void MergePrefixVF(const uint64_t maskPreUb, const uint64_t m
     MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
-        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * VREG_STRIDE_BYTES);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * VREG_STRIDE_BYTES);
         And(vreg_and, vreg_pre, vreg_next, preg_all);
-        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_and, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * VREG_STRIDE_BYTES, vreg_and, preg_all);
     }
 }
 
@@ -307,7 +312,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
         int64_t deltaN = runInfo.actualS1Size - runInfo.actualS2Size;
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
         int64_t s2Offset = 0;
-        if (first_block) {
+        if (unlikely(first_block)) {
             s2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         } else {
             s2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
