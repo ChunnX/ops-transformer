@@ -16,10 +16,6 @@
 #ifndef MIXED_QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define MIXED_QUANT_FLASH_ATTN_COMMON_DEF_H_
 
-#ifndef __aicore__
-#define __aicore__
-#endif
-
 #define ASCENDC_TPL_4_BW 4
 
 #define ASCENDC_TPL_3_BW 3
