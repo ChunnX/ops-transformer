@@ -67,6 +67,7 @@ protected:
         deterMode = 0;
         opName = nullptr;
         inputLayout = nullptr;
+        maxSeqlenK = 0;
     }
 
     [[nodiscard]] gert::TilingContext *GetContext()
@@ -133,7 +134,7 @@ protected:
     int32_t cmpRatio;
     int32_t deterMode;
     float scaleValue;
-
+    uint32_t maxSeqlenK;
     const char *templateName = "dlikgbase";
 
     // TilingKey

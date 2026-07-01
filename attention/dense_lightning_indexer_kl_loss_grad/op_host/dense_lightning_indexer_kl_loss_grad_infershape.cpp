@@ -24,7 +24,8 @@ enum InputIdx {
     qEnum = 0,
     kEnum,
     wEnum,
-    attnSoftmaxL1NormEnum
+    attnSoftmaxL1NormEnum,
+    softmaxLse
 };
 
 enum OutputIdx {
@@ -49,6 +50,8 @@ ge::graphStatus InferShapeDenseLightningIndexerKLLossGrad(gert::InferShapeContex
     OP_CHECK_NULL_WITH_CONTEXT(context, wShape);
     const gert::Shape *softmaxShape = context->GetInputShape(attnSoftmaxL1NormEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxShape);
+    const gert::Shape *softmaxLseShape = context->GetInputShape(softmaxLse);
+    OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
     gert::Shape *dqShape = context->GetOutputShape(dqEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, dqShape);

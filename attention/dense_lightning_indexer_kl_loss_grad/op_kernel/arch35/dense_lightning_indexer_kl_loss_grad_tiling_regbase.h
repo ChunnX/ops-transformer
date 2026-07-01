@@ -40,8 +40,8 @@ public:
     int32_t sparseMode;
     int32_t rsvd;
     uint32_t cmpRatio;
-
     uint8_t layoutType; // 0: BSND, 1: TND
+    uint32_t maxSeqlenK;
 
     int32_t get_bSize() const
     {
@@ -176,6 +176,15 @@ public:
     void set_cmpRatio(uint32_t cmpRatioParam)
     {
         this->cmpRatio = cmpRatioParam;
+    }
+
+    uint32_t get_maxSeqlenK() const
+    {
+        return maxSeqlenK;
+    }
+    void set_maxSeqlenK(uint32_t maxSeqlenKParam)
+    {
+        this->maxSeqlenK = maxSeqlenKParam;
     }
 };
 
