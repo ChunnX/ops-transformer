@@ -74,10 +74,13 @@ TestResult RunTest(const TestConfig &config)
     // BSA 算子所需的 Tensors
     void *qDev = nullptr, *kDev = nullptr;
     void *maskDev = nullptr;
+    void *qCompOutDev = nullptr, *kCompOutDev = nullptr, *scoreOutDev = nullptr, *softmaxOutDev = nullptr;
 
     // 声明 aclTensors 以便在 catch 中清理
     aclTensor *qTensor = nullptr, *kTensor = nullptr;
     aclTensor *maskTensor = nullptr;
+    aclTensor *qCompOutTensor = nullptr, *kCompOutTensor = nullptr;
+    aclTensor *scoreOutTensor = nullptr, *softmaxOutTensor = nullptr;
 
     aclIntArray *blockShapeArray = nullptr;
     aclIntArray *qSeqLenArray = nullptr;
@@ -99,13 +102,29 @@ TestResult RunTest(const TestConfig &config)
 
         // mask 输出初始化为 0
         size_t maskSize = config.batch * config.numHeads * qBlockNum * kvBlockNum * sizeof(int8_t);
+        size_t qCompOutSize = config.batch * config.numHeads * qBlockNum * config.headDim * sizeof(float);
+        size_t kCompOutSize = config.batch * config.numHeads * kvBlockNum * config.headDim * sizeof(float);
+        size_t scoreOutSize = config.batch * config.numHeads * qBlockNum * kvBlockNum * sizeof(float);
+        size_t softmaxOutSize = config.batch * config.numHeads * qBlockNum * kvBlockNum * sizeof(uint16_t);
         aclrtMalloc(&maskDev, maskSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        aclrtMalloc(&qCompOutDev, qCompOutSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        aclrtMalloc(&kCompOutDev, kCompOutSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        aclrtMalloc(&scoreOutDev, scoreOutSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        aclrtMalloc(&softmaxOutDev, softmaxOutSize, ACL_MEM_MALLOC_HUGE_FIRST);
         aclrtMemset(maskDev, maskSize, 0, maskSize);
+        aclrtMemset(qCompOutDev, qCompOutSize, 0, qCompOutSize);
+        aclrtMemset(kCompOutDev, kCompOutSize, 0, kCompOutSize);
+        aclrtMemset(scoreOutDev, scoreOutSize, 0, scoreOutSize);
+        aclrtMemset(softmaxOutDev, softmaxOutSize, 0, softmaxOutSize);
 
         // 2. 构造 ACL Tensor (使用 BNSD Shape)
         std::vector<int64_t> qShape = {config.batch, config.numHeads, config.qSeqlen, config.headDim};
         std::vector<int64_t> kShape = {config.batch, config.numKvHeads, config.kvSeqlen, config.headDim};
         std::vector<int64_t> maskShape = {config.batch, config.numHeads, qBlockNum, kvBlockNum};
+        std::vector<int64_t> qCompOutShape = {config.batch, config.numHeads, qBlockNum, config.headDim};
+        std::vector<int64_t> kCompOutShape = {config.batch, config.numHeads, kvBlockNum, config.headDim};
+        std::vector<int64_t> scoreOutShape = {config.batch, config.numHeads, qBlockNum, kvBlockNum};
+        std::vector<int64_t> softmaxOutShape = {config.batch, config.numHeads, qBlockNum, kvBlockNum};
 
         qTensor = aclCreateTensor(qShape.data(), qShape.size(), ACL_FLOAT16, nullptr, 0, ACL_FORMAT_ND,
                                    qShape.data(), qShape.size(), qDev);
@@ -113,6 +132,15 @@ TestResult RunTest(const TestConfig &config)
                                    kShape.data(), kShape.size(), kDev);
         maskTensor = aclCreateTensor(maskShape.data(), maskShape.size(), ACL_INT8, nullptr, 0, ACL_FORMAT_ND,
                                       maskShape.data(), maskShape.size(), maskDev);
+        qCompOutTensor = aclCreateTensor(qCompOutShape.data(), qCompOutShape.size(), ACL_FLOAT, nullptr, 0,
+                                         ACL_FORMAT_ND, qCompOutShape.data(), qCompOutShape.size(), qCompOutDev);
+        kCompOutTensor = aclCreateTensor(kCompOutShape.data(), kCompOutShape.size(), ACL_FLOAT, nullptr, 0,
+                                         ACL_FORMAT_ND, kCompOutShape.data(), kCompOutShape.size(), kCompOutDev);
+        scoreOutTensor = aclCreateTensor(scoreOutShape.data(), scoreOutShape.size(), ACL_FLOAT, nullptr, 0,
+                                         ACL_FORMAT_ND, scoreOutShape.data(), scoreOutShape.size(), scoreOutDev);
+        softmaxOutTensor = aclCreateTensor(softmaxOutShape.data(), softmaxOutShape.size(), ACL_FLOAT16, nullptr, 0,
+                                           ACL_FORMAT_ND, softmaxOutShape.data(), softmaxOutShape.size(),
+                                           softmaxOutDev);
 
         // 3. 构造 aclIntArray 属性参数
         int64_t blockShapeData[2] = {config.blockShapeX, config.blockShapeY};
@@ -150,6 +178,10 @@ TestResult RunTest(const TestConfig &config)
             scale,
             sparsity,
             maskTensor,           // blockSparseMaskOut
+            qCompOutTensor,
+            kCompOutTensor,
+            scoreOutTensor,
+            softmaxOutTensor,
             &workspaceSize,
             &executor);
 
@@ -217,6 +249,10 @@ TestResult RunTest(const TestConfig &config)
         aclDestroyTensor(qTensor);
         aclDestroyTensor(kTensor);
         aclDestroyTensor(maskTensor);
+        aclDestroyTensor(qCompOutTensor);
+        aclDestroyTensor(kCompOutTensor);
+        aclDestroyTensor(scoreOutTensor);
+        aclDestroyTensor(softmaxOutTensor);
         aclDestroyIntArray(blockShapeArray);
         aclDestroyIntArray(qSeqLenArray);
         aclDestroyIntArray(kvSeqLenArray);
@@ -224,6 +260,10 @@ TestResult RunTest(const TestConfig &config)
         aclrtFree(qDev);
         aclrtFree(kDev);
         aclrtFree(maskDev);
+        aclrtFree(qCompOutDev);
+        aclrtFree(kCompOutDev);
+        aclrtFree(scoreOutDev);
+        aclrtFree(softmaxOutDev);
 
         return TEST_PASS;
 
@@ -235,6 +275,10 @@ TestResult RunTest(const TestConfig &config)
         if (qTensor) aclDestroyTensor(qTensor);
         if (kTensor) aclDestroyTensor(kTensor);
         if (maskTensor) aclDestroyTensor(maskTensor);
+        if (qCompOutTensor) aclDestroyTensor(qCompOutTensor);
+        if (kCompOutTensor) aclDestroyTensor(kCompOutTensor);
+        if (scoreOutTensor) aclDestroyTensor(scoreOutTensor);
+        if (softmaxOutTensor) aclDestroyTensor(softmaxOutTensor);
         if (blockShapeArray) aclDestroyIntArray(blockShapeArray);
         if (qSeqLenArray) aclDestroyIntArray(qSeqLenArray);
         if (kvSeqLenArray) aclDestroyIntArray(kvSeqLenArray);
@@ -242,6 +286,10 @@ TestResult RunTest(const TestConfig &config)
         if (qDev) aclrtFree(qDev);
         if (kDev) aclrtFree(kDev);
         if (maskDev) aclrtFree(maskDev);
+        if (qCompOutDev) aclrtFree(qCompOutDev);
+        if (kCompOutDev) aclrtFree(kCompOutDev);
+        if (scoreOutDev) aclrtFree(scoreOutDev);
+        if (softmaxOutDev) aclrtFree(softmaxOutDev);
 
         return TEST_FAIL;
     }

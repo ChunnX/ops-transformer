@@ -113,16 +113,20 @@ int main() {
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
-
-    // 块数量计算int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
+    // block count
+    int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
     int32_t ceilK = (kSeqlen + blockShapeY - 1) / blockShapeY;
 
     // 3. 构建张量Shape
     std::vector<int64_t> qShape = {batch, numHeads, qSeqlen, headDim};
     std::vector<int64_t> kShape = {batch, numKHeads, kSeqlen, headDim};
     std::vector<int64_t> maskShape = {batch, numHeads, ceilQ, ceilK};
-
-    // 4. 分配并初始化Host数据int64_t qSize = GetShapeSize(qShape);
+    std::vector<int64_t> qCompOutShape = {batch, numHeads, ceilQ, headDim};
+    std::vector<int64_t> kCompOutShape = {batch, numHeads, ceilK, headDim};
+    std::vector<int64_t> scoreOutShape = {batch, numHeads, ceilQ, ceilK};
+    std::vector<int64_t> softmaxOutShape = {batch, numHeads, ceilQ, ceilK};
+    // host data
+    int64_t qSize = GetShapeSize(qShape);
     int64_t kSize = GetShapeSize(kShape);
 
     std::vector<op::fp16_t> qData(qSize, 0.1f);
@@ -130,24 +134,35 @@ int main() {
     
     // mask输出初始化为0
     std::vector<int8_t> maskOutData(GetShapeSize(maskShape), 0);
+    std::vector<float> qCompOutData(GetShapeSize(qCompOutShape), 0.0f);
+    std::vector<float> kCompOutData(GetShapeSize(kCompOutShape), 0.0f);
+    std::vector<float> scoreOutData(GetShapeSize(scoreOutShape), 0.0f);
+    std::vector<op::fp16_t> softmaxOutData(GetShapeSize(softmaxOutShape), 0.0f);
 
     // 创建所有aclTensor
     void *qAddr = nullptr, *kAddr = nullptr, *maskAddr = nullptr;
+    void *qCompOutAddr = nullptr, *kCompOutAddr = nullptr, *scoreOutAddr = nullptr, *softmaxOutAddr = nullptr;
     aclTensor *qTensor = nullptr, *kTensor = nullptr, *maskTensor = nullptr;
+    aclTensor *qCompOutTensor = nullptr, *kCompOutTensor = nullptr, *scoreOutTensor = nullptr;
+    aclTensor *softmaxOutTensor = nullptr;
 
     CreateAclTensor(qData, qShape, &qAddr, aclDataType::ACL_FLOAT16, &qTensor);
     CreateAclTensor(kData, kShape, &kAddr, aclDataType::ACL_FLOAT16, &kTensor);
     CreateAclTensor(maskOutData, maskShape, &maskAddr, aclDataType::ACL_INT8, &maskTensor);
-
-    // 5. 创建aclIntArray属性参数std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
+    CreateAclTensor(qCompOutData, qCompOutShape, &qCompOutAddr, aclDataType::ACL_FLOAT, &qCompOutTensor);
+    CreateAclTensor(kCompOutData, kCompOutShape, &kCompOutAddr, aclDataType::ACL_FLOAT, &kCompOutTensor);
+    CreateAclTensor(scoreOutData, scoreOutShape, &scoreOutAddr, aclDataType::ACL_FLOAT, &scoreOutTensor);
+    CreateAclTensor(softmaxOutData, softmaxOutShape, &softmaxOutAddr, aclDataType::ACL_FLOAT16, &softmaxOutTensor);
+    // block shape attribute
+    std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
     
     std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> kSeqLenVec(batch, static_cast<int64_t>(kSeqlen));
     aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
     aclIntArray *kSeqLenArr = aclCreateIntArray(kSeqLenVec.data(), batch);
-
-    // 6. 标量与字符串参数配置char queryLayoutBuffer[16] = "BNSD";
+    // scalar and string attributes
+    char queryLayoutBuffer[16] = "BNSD";
     char keyLayoutBuffer[16] = "BNSD";
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
     double sparsity = 0.5;
@@ -161,7 +176,8 @@ int main() {
         qTensor, 
         kTensor, 
         blockShapeArr, 
-        nullptr,                    // postBlockShape必须为空qSeqLenArr, 
+        nullptr,                    // postBlockShape optional
+        qSeqLenArr,
         kSeqLenArr,
         nullptr,                    // actualBlockLenQuery 为空, 完整压缩
         nullptr,                    // actualBlockLenKey 为空, 完整压缩
@@ -170,7 +186,11 @@ int main() {
         static_cast<int64_t>(numKHeads),
         scaleValue, 
         sparsity, 
-        maskTensor, 
+        maskTensor,
+        qCompOutTensor,
+        kCompOutTensor,
+        scoreOutTensor,
+        softmaxOutTensor,
         &workspaceSize, 
         &executor
     );
@@ -185,12 +205,12 @@ int main() {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-
-    // 9. 调用第二段接口: 执行计算LOG_PRINT("Calling aclnnBSASelectBlockMask...\n");
+    // execute op
+    LOG_PRINT("Calling aclnnBSASelectBlockMask...\n");
     ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBSASelectBlockMask failed. ERROR: %d\n", ret); return ret);
-
-    // 10. 同步Stream，等待任务执行结束ret = aclrtSynchronizeStream(stream);
+    // synchronize stream
+    ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret); 
 
     // 11. 将结果拷贝回Host侧打印 (blockSparseMaskOut)
@@ -203,8 +223,8 @@ int main() {
     for (int64_t i = 0; i < displayCount; i++) {
         LOG_PRINT("  mask index %ld: %u\n", i, static_cast<unsigned int>(maskOutData[i]));
     }
-
-    // 12. 释放所有资源LOG_PRINT("Cleaning up resources...\n");
+    // cleanup resources
+    LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) {
       aclrtFree(workspaceAddr);
     }
@@ -212,10 +232,18 @@ int main() {
     aclrtFree(qAddr);
     aclrtFree(kAddr);
     aclrtFree(maskAddr);
+    aclrtFree(qCompOutAddr);
+    aclrtFree(kCompOutAddr);
+    aclrtFree(scoreOutAddr);
+    aclrtFree(softmaxOutAddr);
 
     aclDestroyTensor(qTensor);
     aclDestroyTensor(kTensor);
     aclDestroyTensor(maskTensor);
+    aclDestroyTensor(qCompOutTensor);
+    aclDestroyTensor(kCompOutTensor);
+    aclDestroyTensor(scoreOutTensor);
+    aclDestroyTensor(softmaxOutTensor);
     
     aclDestroyIntArray(blockShapeArr);
     aclDestroyIntArray(qSeqLenArr);
