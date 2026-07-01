@@ -124,7 +124,8 @@ public:
         int32_t expertPerRank;
         uint64_t maxOutputSize;
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
-        uint64_t gmmOutPreRowStride;
+        // single axis must lower than int32, layoutC need int32
+        int gmmOutPreRowStride;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
