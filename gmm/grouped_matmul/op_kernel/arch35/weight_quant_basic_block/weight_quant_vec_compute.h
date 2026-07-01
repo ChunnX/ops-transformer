@@ -1421,7 +1421,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
                                                                         vecEventIdAntiQuantYVToMte2_[1]};
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        for (uint16_t idx = 0; idx < ubTransScaleLoopIdx_ && idx < DOUBLE_BUFFER_NUM; idx++) {
+        for (uint16_t idx = 0; idx < DOUBLE_BUFFER_NUM; idx++) {
             WaitFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
         }
     }

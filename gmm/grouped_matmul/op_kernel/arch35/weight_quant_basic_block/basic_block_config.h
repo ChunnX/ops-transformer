@@ -29,6 +29,11 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 constexpr static uint16_t WEIGHT_F16_UB_NZ_STRIDE = 65;
 constexpr int16_t SHIFT_FOR_BF16 = 1;
 
+// 跨场景复用的UB Buffer大小（单位: KB）
+constexpr static uint64_t UB_HIGH_BIT_NZ_KB = 128;  // NZ场景weight输出高比特buffer
+constexpr static uint64_t UB_HIGH_BIT_ND_KB = 66;   // ND场景weight输出高比特buffer
+constexpr static uint64_t UB_ANTI_QUANT_SCALE_MXFP4_KB = 8;  // MXFP4场景scale buffer
+
 struct WqmmConfig {
     bool aTrans;
     bool bTrans;
@@ -116,15 +121,15 @@ __aicore__ constexpr UbBufferInfo GetNzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
             .weightInputLowbitUbTotalSize = 112 * GetKBUnit<int8_t>(),  // 112KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<half>(),          // 128KB
-            .antiQuantScaleUbTotalSize = 4 * GetKBUnit<half>(),         // 4KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<half>(),
+            .antiQuantScaleUbTotalSize = 4 * GetKBUnit<half>(),  // 4KB
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 4 * GetKBUnit<half>(),  // 4KB
             .weightInputLowBitUbSingleBufferSize = 112 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 4 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
             .antiQuantOffsetUbSingleBufferSize = 4 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -133,16 +138,16 @@ __aicore__ constexpr UbBufferInfo GetS8S4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
             .weightInputLowbitUbTotalSize = 96 * GetKBUnit<int8_t>(),  // 96KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<int8_t>(),       // 128KB
-            .antiQuantScaleUbTotalSize = 12 * GetKBUnit<half>(),       // 12KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>(),
+            .antiQuantScaleUbTotalSize = 12 * GetKBUnit<half>(),  // 12KB
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
-            .weightInputLowBitUbSingleBufferSize = 96 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,  // 32KB
-            .antiQuantScaleUbSingleBufferSize = 12 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,       // 4KB
+            .weightInputLowBitUbSingleBufferSize = 96 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
+            .antiQuantScaleUbSingleBufferSize = 12 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
             .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,  // 32KB
-            .antiQuantScaleMaskBufferSize = 32 / sizeof(uint64_t)};                             // 32B (4个uint64)
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
+            .antiQuantScaleMaskBufferSize = 32 / sizeof(uint64_t)};  // 32B (4个uint64)
 }
 
 template <const VecAntiQuantConfig &vecConfig>
@@ -150,15 +155,15 @@ __aicore__ constexpr UbBufferInfo GetNdBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = DOUBLE_BUFFER_NUM,
             .weightInputLowbitUbTotalSize = 174 * GetKBUnit<int8_t>(),  // 174KB
-            .highBitDataUbTotalSize = 66 * GetKBUnit<half>(),           // 66KB
-            .antiQuantScaleUbTotalSize = 4 * GetKBUnit<half>(),         // 4KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_ND_KB * GetKBUnit<half>(),
+            .antiQuantScaleUbTotalSize = 4 * GetKBUnit<half>(),  // 4KB
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 4 * GetKBUnit<half>(),  // 4KB
             .weightInputLowBitUbSingleBufferSize = 174 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 4 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
             .antiQuantOffsetUbSingleBufferSize = 4 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .highBitDataUbSingleBufferSize = 66 * GetKBUnit<half>() / DOUBLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_ND_KB * GetKBUnit<half>() / DOUBLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -166,16 +171,16 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxFp4NdBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = DOUBLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 128 * GetKBUnit<int8_t>(),     // 128KB
-            .highBitDataUbTotalSize = 66 * GetKBUnit<half>(),              // 66KB
-            .antiQuantScaleUbTotalSize = 8 * GetKBUnit<int8_t>(),          // 8KB
+            .weightInputLowbitUbTotalSize = 128 * GetKBUnit<int8_t>(),  // 128KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_ND_KB * GetKBUnit<half>(),
+            .antiQuantScaleUbTotalSize = UB_ANTI_QUANT_SCALE_MXFP4_KB * GetKBUnit<int8_t>(),
             .antiQuantScaleAfterCastUbTotalSize = 32 * GetKBUnit<half>(),  // 32KB
             .antiQuantOffsetUbTotalSize = 0,
             .weightInputLowBitUbSingleBufferSize = 128 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
-            .antiQuantScaleUbSingleBufferSize = 8 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
+            .antiQuantScaleUbSingleBufferSize = UB_ANTI_QUANT_SCALE_MXFP4_KB * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleAfterCastUbSingleBufferSize = 32 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 66 * GetKBUnit<half>() / DOUBLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_ND_KB * GetKBUnit<half>() / DOUBLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -183,16 +188,16 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxFp4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(),      // 64KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<half>(),             // 128KB
-            .antiQuantScaleUbTotalSize = 8 * GetKBUnit<int8_t>(),          // 8KB
+            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(),  // 64KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<half>(),
+            .antiQuantScaleUbTotalSize = UB_ANTI_QUANT_SCALE_MXFP4_KB * GetKBUnit<int8_t>(),
             .antiQuantScaleAfterCastUbTotalSize = 16 * GetKBUnit<half>(),  // 16KB
             .antiQuantOffsetUbTotalSize = 0,
             .weightInputLowBitUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
-            .antiQuantScaleUbSingleBufferSize = 8 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
+            .antiQuantScaleUbSingleBufferSize = UB_ANTI_QUANT_SCALE_MXFP4_KB * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleAfterCastUbSingleBufferSize = 16 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -200,20 +205,20 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 80 * GetKBUnit<int8_t>(), // 80KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<int8_t>(),      // 128KB
-            .biasUbTotalSize = 2 * GetKBUnit<half>(),                 // 2KB
-            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),          // 2KB
+            .weightInputLowbitUbTotalSize = 80 * GetKBUnit<int8_t>(),  // 80KB
+            .highBitDataUbTotalSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>(),
+            .biasUbTotalSize = 2 * GetKBUnit<half>(),  // 2KB
+            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),  // 2KB
             .antiQuantScaleUbTotalSize = 0,
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
-            .weightInputLowBitUbSingleBufferSize = 80 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum, // 80KB
+            .weightInputLowBitUbSingleBufferSize = 80 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 0,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
             .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .biasReducedSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = UB_HIGH_BIT_NZ_KB * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -258,7 +263,7 @@ __aicore__ constexpr VfConfig GetVfConfig()
         if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
             return {.vfNStandardLen = 256, .vfKStandardLen = 64};
         } else if constexpr (vecConfig.ubMte2InnerSize > 0) {
-            return {.vfNStandardLen = 32 * GetKBUnit<half>() / vecConfig.ubMte2InnerSize,
+            return {.vfNStandardLen = 32 * GetKBUnit<half>() / vecConfig.ubMte2InnerSize,  // 32KB对应的scale元素数
                     .vfKStandardLen = vecConfig.ubMte2InnerSize};
         }
     } else {
