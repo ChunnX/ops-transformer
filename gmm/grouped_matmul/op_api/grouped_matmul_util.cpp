@@ -90,8 +90,8 @@ void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
             continue;
         }
         if (viewShape.GetDimNum() == MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
-            shape.AppendDim(viewShape.GetDim(0));
             shape.AppendDim(viewShape.GetDim(1));
+            shape.AppendDim(viewShape.GetDim(0));
             shape.AppendDim(viewShape.GetDim(2));
         } else {
             shape.AppendDim(viewShape.GetDim(0));
