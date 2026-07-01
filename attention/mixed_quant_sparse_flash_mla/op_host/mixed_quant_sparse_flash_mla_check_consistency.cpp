@@ -436,9 +436,18 @@ ge::graphStatus QSMLATilingCheck::CheckTopkLengthConsistency() const
     if (opParamInfo_.oriTopkLength.tensor != nullptr) {
         const auto &oriTopkShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
         if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(oriTopkShape.GetDim(DIM_0) != bSize_,
+                OP_LOGE(opName_, "When q layout is BSND, oriTopkLength's B(%ld) should be equal to q's B(%u).",
+                    oriTopkShape.GetDim(DIM_0), bSize_),
+                return ge::GRAPH_FAILED);
             OP_CHECK_IF(oriTopkShape.GetDim(DIM_1) != s1Size_,
                 OP_LOGE(opName_, "oriTopkLength's S1(%ld) should be equal to q's S1(%u).",
                     oriTopkShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(oriTopkShape.GetDim(DIM_0) != qTSize_,
+                OP_LOGE(opName_, "When q layout is TND, oriTopkLength's T1(%ld) should be equal to q's T1(%u).",
+                    oriTopkShape.GetDim(DIM_0), qTSize_),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -446,9 +455,18 @@ ge::graphStatus QSMLATilingCheck::CheckTopkLengthConsistency() const
     if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
         const auto &cmpTopkShape = opParamInfo_.cmpTopkLength.tensor->GetStorageShape();
         if (qLayout_ == QSMLALayout::BSND) {
+            OP_CHECK_IF(cmpTopkShape.GetDim(DIM_0) != bSize_,
+                OP_LOGE(opName_, "When q layout is BSND, cmpTopkLength's B(%ld) should be equal to q's B(%u).",
+                    cmpTopkShape.GetDim(DIM_0), bSize_),
+                return ge::GRAPH_FAILED);
             OP_CHECK_IF(cmpTopkShape.GetDim(DIM_1) != s1Size_,
                 OP_LOGE(opName_, "cmpTopkLength's S1(%ld) should be equal to q's S1(%u).",
                     cmpTopkShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(cmpTopkShape.GetDim(DIM_0) != qTSize_,
+                OP_LOGE(opName_, "When q layout is TND, cmpTopkLength's T1(%ld) should be equal to q's T1(%u).",
+                    cmpTopkShape.GetDim(DIM_0), qTSize_),
                 return ge::GRAPH_FAILED);
         }
     }

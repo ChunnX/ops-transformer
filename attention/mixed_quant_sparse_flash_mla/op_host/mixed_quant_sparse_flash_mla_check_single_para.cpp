@@ -610,9 +610,15 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpTopkLength() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaTopkValueMode() const
 {
-    OP_CHECK_IF(topkValueMode_ != 1 && topkValueMode_ != 2,
-        OP_LOGE(opName_, "topkValueMode only support 1 and 2, but got %ld.", topkValueMode_),
-        return ge::GRAPH_FAILED);
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        OP_CHECK_IF(topkValueMode_ != 1,
+            OP_LOGE(opName_, "topkValueMode must be 1 in SWA mode, but got %ld.", topkValueMode_),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(topkValueMode_ != 1 && topkValueMode_ != 2,
+            OP_LOGE(opName_, "topkValueMode only support 1 and 2, but got %ld.", topkValueMode_),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
