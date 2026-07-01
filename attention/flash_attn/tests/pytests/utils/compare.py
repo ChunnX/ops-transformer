@@ -360,9 +360,9 @@ def data_compare_benchmark_new(params, npu_output, cpu_output, cpu_golden, outpu
 
 
 def get_tolerance(output_dtype):
-    # bf16: atol=0.0078125, rtol=0.005;  fp16(默认): atol=0.000025, rtol=0.005
+    # bf16: atol=0.0001, rtol=0.0078125;  fp16(默认): atol=0.000025, rtol=0.005
     if output_dtype == "bf16":
-        return 0.0078125, 0.005
+        return 0.0001, 0.0078125
     return 0.000025, 0.005
 
 
