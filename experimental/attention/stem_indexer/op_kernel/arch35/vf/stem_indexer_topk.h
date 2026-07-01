@@ -176,12 +176,13 @@ public:
         const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
         LocalTensor<uint32_t>& topkNumLocal,
         uint32_t batchRowNum, uint32_t mBaseIdx, uint32_t mrgRowStride,
-        uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+        uint32_t inputOffset, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
         const uint32_t topKAlign = SICommon::Align(topK, (uint32_t)256);
         for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
             uint32_t mInnerIdx = mBaseIdx + rowIdx;
             uint32_t rowMrgOffset = mInnerIdx * mrgRowStride;
+            uint32_t rowInputOffset = rowMrgOffset + inputOffset;
             uint32_t rowGlobalIdxOffset = mInnerIdx * topKAlign;
 
             uint32_t rowTopK = topkNumLocal.GetValue(mInnerIdx);
@@ -199,7 +200,7 @@ public:
 
             if (s2LoopNum == 1) {
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal,
-                    mrgValueLocal[rowMrgOffset], histogramsLocal,
+                    mrgValueLocal[rowInputOffset], histogramsLocal,
                     idx0Local, idx1Local, idx2Local, idx3Local,
                     nkValueLocal, rowTopK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
@@ -207,7 +208,7 @@ public:
             } else {
                 if (loopIdx == 0) {
                     SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
-                        mrgValueLocal[rowMrgOffset], histogramsLocal,
+                        mrgValueLocal[rowInputOffset], histogramsLocal,
                         idx0Local, idx1Local, idx2Local, idx3Local,
                         nkValueLocal, rowTopK, s2SeqLen);
                     PipeBarrier<PIPE_V>();
@@ -215,16 +216,18 @@ public:
                         SICommon::Align(rowTopK, (uint32_t)256));
                 } else {
                     SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal,
-                        mrgValueLocal[rowMrgOffset], histogramsLocal,
+                        mrgValueLocal[rowInputOffset], histogramsLocal,
                         idx0Local, idx1Local, idx2Local, idx3Local,
                         nkValueLocal, rowTopK, s2SeqLen);
                     PipeBarrier<PIPE_V>();
                     SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
-                        mrgValueLocal[rowMrgOffset], tmpIndexLocal, hisIndexLocal[0],
+                        mrgValueLocal[rowInputOffset], tmpIndexLocal, hisIndexLocal[0],
                         rowTopK, loopIdx * trunkLen - SICommon::Align(rowTopK, (uint32_t)256),
                         s2SeqLen);
                 }
             }
+            PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(mrgValueLocal[rowMrgOffset], hisValueLocal, SICommon::Align(rowTopK, (uint32_t)256));
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(hisIndexLocal[0], indicesOutLocal, SICommon::Align(rowTopK, (uint32_t)256));
         }
