@@ -71,6 +71,15 @@ constexpr uint32_t TWO_FLAG = 2U;
 constexpr uint32_t RANK_ID = 0U;
 constexpr uint32_t TOKEN_ID = 1U;
 constexpr uint32_t TOPK_INDEX = 2U;
+// Dispatch 去重: 复用 tripleTensor 空槽 3/4 存储每 token 的读源类型和本地行号
+constexpr uint32_t SRC_KIND = 3U;          // 读源类型: 0=远端拉并发布ready, 1=本地拷贝已有行
+constexpr uint32_t SRC_ROW = 4U;           // SRC_KIND==1 时, 可复用的 dispatchRevData 行号
+constexpr int32_t SRC_REMOTE_AND_PUBLISH = 0;  // 远端读, 完成后把行号写入 readyRow 表
+constexpr int32_t SRC_LOCAL = 1;               // 本地拷贝, 省一次跨卡 HCCS 读
+// readyRow 表编码: 用 int32 最高位(符号位) 表示 ready 状态, 低 31 位存行号
+// row 远小于 2^31, 不会和标志位冲突; row|0x80000000 解释为有符号负数即表示 ready
+constexpr int32_t READY_ROW_FLAG = static_cast<int32_t>(0x80000000U);
+constexpr int32_t READY_ROW_MASK = 0x7fffffff;
 constexpr uint32_t SYNC_EVENT_ID1 = 1;
 constexpr uint32_t SYNC_EVENT_ID2 = 2;
 constexpr uint32_t SYNC_EVENT_ID3 = 3;
@@ -107,6 +116,9 @@ struct WorkspaceInfo {
     GM_ADDR swigluQuantScalePtr;
     GM_ADDR expertRevTokenNumsPtr;
     GM_ADDR tripleInfoPtr;
+    // Dispatch 去重: readyRow[sourceRank][sourceTokenIndex] = 0(无) / <0(就绪,低31位=本地行号)
+    // 当前接收卡本地 AIV 核间共享, 不参与跨 rank 通信, 因此放在 WorkspaceInfo 而非 PeermemInfo
+    GM_ADDR readyRowPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR flagSendCntCalToUpdParamsPtr;
@@ -141,6 +153,11 @@ struct WorkspaceInfo {
 
         tripleInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+
+        // Dispatch 去重表: epWorldSize * bs 个 int32, 每项存 0(未就绪) 或 row|0x80000000(已就绪)
+        readyRowPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->epWorldSize) * tilingData->bs * SIZE_INT_32, ALIGN_512);
 
         flagSwiGluToGmm2Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
