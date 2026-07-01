@@ -100,3 +100,56 @@ def trans_bnsd_to_layout(tensor, layout_type, **kwargs):
         elif layout_type == "PA_BBND" or layout_type == "PA_BNBD" or layout_type == "PA_NZ":
             return rearrange_by_block_table(tensor, block_table, block_size, b, seqused_kv, layout_type, dtype)
         return tensor.clone()
+
+
+def make_noncontiguous(tensor, nc_dims):
+    """返回指定维非连续但底层数据相同的 tensor view.
+
+    Args:
+        tensor: 连续的 torch.Tensor
+        nc_dims: 0 --> 仅 dim0 非连续 (pad dim1 后切片)
+                 1 --> 仅 dim1 非连续 (pad dim2 后切片 + as_strided 恢复 dim0 stride)
+                 (0, 1) --> dim0 和 dim1 都非连续 (pad dim2 后切片)
+
+    Returns:
+        非连续 tensor view (shape 不变, .is_contiguous() == False)
+    """
+    device = tensor.device
+    dtype = tensor.dtype
+    shape = tensor.shape
+
+    if nc_dims == 0:
+        pad_dim = 1
+        shp = list(shape)
+        shp[pad_dim] += 1
+        p = torch.zeros(shp, dtype=dtype, device=device)
+        ws = [slice(None)] * len(shape)
+        ws[pad_dim] = slice(None, shape[pad_dim])
+        p[tuple(ws)] = tensor
+        return p[tuple(ws)]
+    elif nc_dims == 1:
+        # pad dim2 会让 dim0+dim1 同时变大，再用 as_strided 把 dim0 归位
+        pad_dim = 2
+        shp = list(shape)
+        shp[pad_dim] += 1
+        p = torch.zeros(shp, dtype=dtype, device=device)
+        ws = [slice(None)] * len(shape)
+        ws[pad_dim] = slice(None, shape[pad_dim])
+        p[tuple(ws)] = tensor
+        r = p[tuple(ws)]
+        contig_dim0 = 1
+        for i in range(1, len(shape)):
+            contig_dim0 *= shape[i]
+        new_strides = list(r.stride())
+        new_strides[0] = contig_dim0
+        return r.as_strided(r.shape, tuple(new_strides), r.storage_offset())
+    elif nc_dims == (0, 1):
+        pad_dim = 2
+        shp = list(shape)
+        shp[pad_dim] += 1
+        p = torch.zeros(shp, dtype=dtype, device=device)
+        ws = [slice(None)] * len(shape)
+        ws[pad_dim] = slice(None, shape[pad_dim])
+        p[tuple(ws)] = tensor
+        return p[tuple(ws)]
+    return tensor

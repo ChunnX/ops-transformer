@@ -9,7 +9,7 @@ import torch
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
 from utils.compare import check_result
-from utils.data import trans_bnsd_to_layout
+from utils.data import trans_bnsd_to_layout, make_noncontiguous
 
 
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
@@ -120,6 +120,32 @@ def run_case(params: dict,
     del dev_inputs, primary_out_raw
     primary.clear_cache()
 
+    # --- kvcache 非连续 self-consistency check ---
+    nc_kv_dims = params.get("nc_kv_dims")
+    nc_attn_result = None
+    if nc_kv_dims is not None:
+        nc_cpu_inputs = {
+            k: make_noncontiguous(v if isinstance(v, torch.Tensor) else v, nc_kv_dims)
+                if k in ("k", "v") else v
+            for k, v in cpu_inputs.items()
+        }
+        nc_dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
+                         for k, v in nc_cpu_inputs.items()}
+        print(f"  [nc_check] nc_kv_dims={nc_kv_dims} "
+              f"k_contig={nc_cpu_inputs['k'].is_contiguous()} "
+              f"v_contig={nc_cpu_inputs['v'].is_contiguous()}")
+        nc_raw = primary.compute(nc_dev_inputs, params)
+        nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
+        del nc_dev_inputs, nc_raw
+        primary.clear_cache()
+        print(f"  [nc_check] NC vs Contiguous")
+        nc_attn_result = check_result("NC_vs_Contiguous",
+                                      primary_out["out"].float(),
+                                      nc_cpu.float(),
+                                      except_label="Contiguous", comp_label="NC",
+                                      verbose_diff=verbose_diff)
+        del nc_cpu
+
     dev_raw = primary_out["out"]
     dev_out = dev_raw
 
@@ -211,6 +237,8 @@ def run_case(params: dict,
                          except_label=primary.name, comp_label=comp.name)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+    if nc_attn_result is not None:
+        ret["nc_attn"] = _to_stats(nc_attn_result)
 
     if golden_dir and case_name:
         save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
