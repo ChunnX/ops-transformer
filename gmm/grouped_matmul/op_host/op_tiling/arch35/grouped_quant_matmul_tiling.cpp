@@ -401,10 +401,13 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
 actual is %zu",
                         xScaleDimNum),
                 return false);
-    auto wScaleEDim = IsWeightNzSingleMultiSingleScenario() ? 1UL : static_cast<uint64_t>(wScaleShape.GetDim(0));
-    auto wScaleNDim = static_cast<uint64_t>(IsWeightNzSingleMultiSingleScenario() ? wScaleShape.GetDim(0) :
+    const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingleScenario();
+    auto wScaleEDim = isWeightNzSingleMultiSingle ? 1UL : static_cast<uint64_t>(wScaleShape.GetDim(0));
+    auto wScaleNDim = static_cast<uint64_t>(isWeightNzSingleMultiSingle ?
+        (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(0)) :
         (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)));
-    auto wScaleKDim = static_cast<uint64_t>(IsWeightNzSingleMultiSingleScenario() ? wScaleShape.GetDim(1) :
+    auto wScaleKDim = static_cast<uint64_t>(isWeightNzSingleMultiSingle ?
+        (inputParams_.transB ? wScaleShape.GetDim(0) : wScaleShape.GetDim(1)) :
         (inputParams_.transB ? wScaleShape.GetDim(2) : wScaleShape.GetDim(1)));
     auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
     auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
@@ -414,13 +417,14 @@ actual is %zu",
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     if (wScaleKDim != 1 && wScaleNDim != 1) {
             OP_CHECK_IF(
-                (!IsWeightNzSingleMultiSingleScenario() && wScaleEDim != inputParams_.groupNum) ||
+                (!isWeightNzSingleMultiSingle && wScaleEDim != inputParams_.groupNum) ||
                     wScaleKDim != expectedKDimValue ||
                     wScaleNDim != logicalNSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
             OP_LOGE_FOR_INVALID_SHAPE(
                 inputParams_.opType, "scale", ShapeToString(wScaleShape),
-                IsWeightNzSingleMultiSingleScenario() ?
-                    ShapeDimsToString(logicalNSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE) :
+                isWeightNzSingleMultiSingle ?
+                    (inputParams_.transB ? ShapeDimsToString(expectedKDimValue, logicalNSize, MXFP_MULTI_BASE_SIZE) :
+                                           ShapeDimsToString(logicalNSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)) :
                     (inputParams_.transB ? ShapeDimsToString(inputParams_.groupNum, logicalNSize, expectedKDimValue,
                                                              MXFP_MULTI_BASE_SIZE) :
                                            ShapeDimsToString(inputParams_.groupNum, expectedKDimValue, logicalNSize,

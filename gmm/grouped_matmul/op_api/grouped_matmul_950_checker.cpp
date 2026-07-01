@@ -517,9 +517,10 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
                                          ->GetViewShape()
                                          .GetDim(pertokenScaleDimNum - 1);
     auto weightNDimValue = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(weightNIndex);
-    size_t scaleNIndex = IsWeightNzSingleMultiSingleCandidate() ? 1UL : weightNIndex;
+    size_t scaleNIndex = IsWeightNzSingleMultiSingleCandidate() ? (gmmParams_.transposeWeight ? 1UL : 0UL) :
+                                                                  weightNIndex;
     auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleNIndex);
-    auto scaleKIndex = IsWeightNzSingleMultiSingleCandidate() ? 0UL : 1UL;
+    auto scaleKIndex = IsWeightNzSingleMultiSingleCandidate() ? (gmmParams_.transposeWeight ? 0UL : 1UL) : 1UL;
     auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleKIndex);
     auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleDimNum - 1);
     CHECK_RET(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
