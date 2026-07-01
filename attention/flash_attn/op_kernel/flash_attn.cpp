@@ -32,6 +32,70 @@
 
 using namespace AscendC;
 
+template <uint8_t inOutLayoutType>
+__aicore__ inline constexpr FA_LAYOUT GetQueryLayout()
+{
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) ||
+                  (inOutLayoutType == InOutLayoutType_BNSD) ||
+                  (inOutLayoutType == InOutLayoutType_BNSD_BSND) ||
+                  (inOutLayoutType == InOutLayoutType_TND),
+                  "Get Query Layout fail, inOutLayoutType is incorrect");
+    if constexpr (inOutLayoutType == InOutLayoutType_BSND) {
+        return FA_LAYOUT::BSND;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
+        return FA_LAYOUT::BNSD;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_TND) {
+        return FA_LAYOUT::TND;
+    }
+}
+ 
+template <uint8_t inOutLayoutType>
+__aicore__ inline constexpr FA_LAYOUT GetOutLayout()
+{
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) ||
+                  (inOutLayoutType == InOutLayoutType_BNSD) ||
+                  (inOutLayoutType == InOutLayoutType_BNSD_BSND) ||
+                  (inOutLayoutType == InOutLayoutType_TND),
+                  "Get AttnOut Layout fail, inOutLayoutType is incorrect");
+    if constexpr (inOutLayoutType == InOutLayoutType_BSND || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
+        return FA_LAYOUT::BSND;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD) {
+        return FA_LAYOUT::BNSD;
+    } else if constexpr (inOutLayoutType == InOutLayoutType_TND) {
+        return FA_LAYOUT::TND;
+    }
+}
+ 
+template <uint8_t inOutLayoutType, uint8_t KV_STORAGE_MODE>
+__aicore__ inline constexpr FA_LAYOUT GetKvLayout()
+{
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ),
+                  "Get Key/Value Layout fail, KV_STORAGE_MODE is incorrect");
+    if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) {
+        return GetQueryLayout<inOutLayoutType>();
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) {
+        return FA_LAYOUT::BSND; // block内的格式类似于BSND
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) {
+        return FA_LAYOUT::BNSD; // block内的格式类似于BNSD
+    } else if constexpr (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ) {
+        return FA_LAYOUT::NZ; // block内的格式类似于BNSD
+    }
+}
+
+template <uint8_t KV_STORAGE_MODE>
+__aicore__ inline constexpr bool IsPageAttention()
+{
+    static_assert((KV_STORAGE_MODE == KV_STORAGE_MODE_CONTINUE) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BSND) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_BNSD) ||
+                  (KV_STORAGE_MODE == KV_STORAGE_MODE_PA_NZ),
+                  "Get PAGE_ATTENTION flag fail, KV_STORAGE_MODE is incorrect");
+    return (KV_STORAGE_MODE != KV_STORAGE_MODE_CONTINUE);
+}
+
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
 __global__ __aicore__ void
 flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
@@ -58,8 +122,10 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
 #if (ORIG_DTYPE_Q == DT_BF16) || (ORIG_DTYPE_Q == DT_FLOAT16)
     fa_base_matmul::idCounterNum = 0;
 
-    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
-    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
+    constexpr FA_LAYOUT qLayout = GetQueryLayout<inOutLayoutType>();
+    constexpr FA_LAYOUT outLayout = GetOutLayout<inOutLayoutType>();
+    constexpr FA_LAYOUT kvLayout = GetKvLayout<inOutLayoutType, KvLayoutType>();
+    constexpr bool pageAttention = IsPageAttention<KvLayoutType>();
 
     // config (1-bit), D=128 fixed
     //   config=0: sOuter=64, sInner=128 → S1=128, S2=128, D=128, DV=128
@@ -88,25 +154,14 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     InitSocState();
     AscendC::SyncAll();
 
+    using FA_T = BaseApi::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, bmm2Write2Ub, splitD>;
+
     if constexpr (useDn) {
-        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeDn<INPUT_T, float, inputLayoutType, s1TemplateType,
-                                                           s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
-                                                           useDn, bmm2Write2Ub, splitD>;
-        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecDn<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                           s1TemplateType, s2TemplateType, dTemplateType,
-                                                           dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                                           bmm2Write2Ub, splitD>;
-        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                         s1TemplateType, s2TemplateType, dTemplateType,
-                                                         dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
-                                                         bmm2Write2Ub, splitD>;
-        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyDn<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                              s1TemplateType, s2TemplateType, dTemplateType,
-                                                              dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                                              bmm2Write2Ub, splitD>;
-        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyDn<INPUT_T, float, inputLayoutType, s1TemplateType,
-                                                                s2TemplateType, dTemplateType, dVTemplateType,
-                                                                KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeDn<FA_T>;
+        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecDn<FA_T>;
+        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyDn<FA_T>;
+        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyDn<FA_T>;
 #ifdef __DAV_C310_CUBE__
         using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<CubeBlock, VecDummy, VecDummy>;
 #else
@@ -117,24 +172,11 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
                 metadata, sequsedQ, sequsedKv, tilingData);
         op.Process();
     } else {
-        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<INPUT_T, float, inputLayoutType, s1TemplateType,
-                                                           s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
-                                                           useDn, bmm2Write2Ub, splitD>;
-        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                           s1TemplateType, s2TemplateType, dTemplateType,
-                                                           dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                                           bmm2Write2Ub, splitD>;
-        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                         s1TemplateType, s2TemplateType, dTemplateType,
-                                                         dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
-                                                         bmm2Write2Ub, splitD>;
-        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                              s1TemplateType, s2TemplateType, dTemplateType,
-                                                              dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                                              bmm2Write2Ub, splitD>;
-        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<INPUT_T, float, inputLayoutType, s1TemplateType,
-                                                                s2TemplateType, dTemplateType, dVTemplateType,
-                                                                KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
+        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<FA_T>;
+        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
+        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
 #ifdef __DAV_C310_CUBE__
         using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<CubeBlock, VecDummy, VecDummy>;
 #else

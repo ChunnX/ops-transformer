@@ -32,45 +32,132 @@ using namespace fa_base_matmul;
 
 namespace BaseApi {
 
-template <LayOutTypeEnum LAYOUT>
+template <FA_LAYOUT LAYOUT_T>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+    static_assert((LAYOUT_T == FA_LAYOUT::BSND) ||
+                  (LAYOUT_T == FA_LAYOUT::BNSD) ||
+                  (LAYOUT_T == FA_LAYOUT::TND),
+                  "Get Query GmFormat fail, LAYOUT_T is incorrect");
+    if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
         return GmFormat::BSNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+    } else if constexpr(LAYOUT_T == FA_LAYOUT::BNSD) {
         return GmFormat::BNGSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+    } else if constexpr(LAYOUT_T == FA_LAYOUT::TND) {
         return GmFormat::TNGD;
-    } else {
-        return GmFormat::NGTD;
     }
 }
 
-template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
+template <FA_LAYOUT LAYOUT_KV, bool PAGE_ATTENTION>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
-    if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
-        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-            return GmFormat::BSND;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-            return GmFormat::SBND;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-            return GmFormat::BNSD;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-            return GmFormat::TND;
-        } else {
-            return GmFormat::NTD;
+    if constexpr (PAGE_ATTENTION) {
+        static_assert((LAYOUT_KV == FA_LAYOUT::BSND) ||
+                      (LAYOUT_KV == FA_LAYOUT::BNSD) ||
+                      (LAYOUT_KV == FA_LAYOUT::NZ),
+                      "Get Key or Value GmFormat fail, LAYOUT_KV is incorrect when PageAttention");
+        if constexpr (LAYOUT_KV == FA_LAYOUT::BSND) {
+            return GmFormat::PA_BnBsND;
+        } else if constexpr(LAYOUT_KV == FA_LAYOUT::BNSD) {
+            return GmFormat::PA_BnNBsD;
+        } else if constexpr(LAYOUT_KV == FA_LAYOUT::NZ) {
+            return GmFormat::PA_NZ;
         }
-    } else if constexpr (KvLayoutType == 1) { // KvLayoutType_PA_BBH
-        return GmFormat::PA_BnBsND;
-    } else if constexpr (KvLayoutType == 2) { // KvLayoutType_PA_BNBD
-        return GmFormat::PA_BnNBsD;
-    } else { // KvLayoutType_PA_NZ
-        return GmFormat::PA_NZ;
+    } else {
+        static_assert((LAYOUT_KV == FA_LAYOUT::BSND) ||
+                      (LAYOUT_KV == FA_LAYOUT::BNSD) ||
+                      (LAYOUT_KV == FA_LAYOUT::TND),
+                      "Get Key or Value GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
+        if constexpr (LAYOUT_KV == FA_LAYOUT::BSND) {
+            return GmFormat::BSND;
+        } else if constexpr(LAYOUT_KV == FA_LAYOUT::BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr(LAYOUT_KV == FA_LAYOUT::TND) {
+            return GmFormat::TND;
+        }
     }
 }
+
+template <FA_LAYOUT LAYOUT>
+__aicore__ inline constexpr bool IS_TND()
+{
+    return (LAYOUT == FA_LAYOUT::TND);
+}
+
+template <FA_LAYOUT LAYOUT_OUT>
+__aicore__ inline constexpr GmFormat GetAttentionOutGmFormat()
+{
+    static_assert((LAYOUT_OUT == FA_LAYOUT::BSND) ||
+                      (LAYOUT_OUT == FA_LAYOUT::BNSD) ||
+                      (LAYOUT_OUT == FA_LAYOUT::TND),
+                      "Get OUT GmFormat fail, LAYOUT_OUT is incorrect");
+    if constexpr (LAYOUT_OUT == FA_LAYOUT::BSND) {
+        return GmFormat::BSNGD;
+    } else if constexpr(LAYOUT_OUT == FA_LAYOUT::BNSD) {
+        return GmFormat::BNGSD;
+    } else if constexpr(LAYOUT_OUT == FA_LAYOUT::TND) {
+        return GmFormat::TNGD;
+    }
+}
+
+template <FA_LAYOUT LAYOUT_OUT>
+__aicore__ inline constexpr UbFormat GetOutUbFormat()
+{
+    static_assert((LAYOUT_OUT == FA_LAYOUT::BNSD) || (LAYOUT_OUT == FA_LAYOUT::BSND) ||
+                  (LAYOUT_OUT == FA_LAYOUT::TND),
+                  "Get OutAttention UB GmFormat fail, LAYOUT_OUT is incorrect");
+    if constexpr (LAYOUT_OUT == FA_LAYOUT::BSND || LAYOUT_OUT == FA_LAYOUT::TND) {
+        return UbFormat::S1G;
+    } else if constexpr (LAYOUT_OUT == FA_LAYOUT::BNSD) {
+        return UbFormat::GS1;
+    }
+}
+
+template <typename INPUT_T, typename OUTPUT_T, bool PAGE_ATTENTION,
+          FA_LAYOUT LAYOUT_T, FA_LAYOUT LAYOUT_KV, FA_LAYOUT LAYOUT_OUT,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128,
+          bool HAS_MASK = false, bool BMM2_TOUB = true, bool SPLITD = false, typename... Args>
+struct FAType {
+    using inputType = INPUT_T;
+    using outputType = OUTPUT_T;
+    static constexpr bool pageAttention = PAGE_ATTENTION;
+    static constexpr FA_LAYOUT qLayout = LAYOUT_T;
+    static constexpr FA_LAYOUT kvLayout = LAYOUT_KV;
+    static constexpr FA_LAYOUT attnOutLayout = LAYOUT_OUT;
+    static constexpr S1TemplateType mBaseSize = s1TemplateType;
+    static constexpr S2TemplateType s2BaseSize = s2TemplateType;
+    static constexpr DTemplateType dBaseSize = dTemplateType;
+    static constexpr DTemplateType dVBaseSize = dVTemplateType;
+    static constexpr bool hasMask = HAS_MASK;
+    static constexpr bool bmm2Write2Ub = BMM2_TOUB;
+    static constexpr bool splitD = SPLITD;
+};
+
+template <FA_LAYOUT LAYOUT_T, typename SEQLEN_T>
+class SeqLensTool {
+public:
+    ActualSeqLensParser<ActualSeqLensMode::ACCUM, SEQLEN_T, true> cuSeqLensParser;
+    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, SEQLEN_T, false> seqUsedParser;
+ 
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t cuSeqLensDims,
+        __gm__ uint8_t *seqUsedGmAddr, uint32_t seqUsedDims, uint64_t defaultSeqUsedVal)
+    {
+        cuSeqLensParser.Init(cuSeqLensGmAddr, cuSeqLensDims, seqUsedGmAddr, seqUsedDims);
+        seqUsedParser.Init(seqUsedGmAddr, seqUsedDims, defaultSeqUsedVal);
+    }
+ 
+    __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx)
+    {
+        if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
+            return cuSeqLensParser.GetActualSeqLength(bIdx);
+        } else {
+            return seqUsedParser.GetActualSeqLength(bIdx);
+        }
+    }
+};
 
 /* ============确定L0A的类型（仅供matmul使用）============= */
 template <typename INPUT_T>

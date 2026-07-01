@@ -10,9 +10,7 @@
 
 /*!
  * \file flash_attn_block_cube_noquant_gqa_dn.h
- * \brief FANoQuantGqaBlockCubeDn —— 仅 useDn=true 路径的 Cube Block 模板（参考 quant_flash_attn 风格）。
- *        IterateBmm1 仅含 IterateBmm1Dn / IterateBmm1DnSplitK；IterateBmm2 系列仅保留 useDn=true 分支。
- *        Nd 路径（IterateBmm1NdL0Split / IterateBmm1NdL1SplitK / FixpipeMm1）由独立的 _nd.h 提供。
+ * \brief FANoQuantGqaBlockCubeDn
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_DN_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_DN_H_
@@ -21,34 +19,30 @@
 
 namespace BaseApi {
 
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = true,
-          bool bmm2Write2Ub = true, bool splitD = false>
+template <typename FA_T>
 class FANoQuantGqaBlockCubeDn {
 public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    using INPUT_T = typename FA_T::inputType;
+    using OUTPUT_T = typename FA_T::outputType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
+    static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool BMM2_TOUB = FA_T::bmm2Write2Ub;
+    static constexpr bool SPLITD = FA_T::splitD;
+
     static constexpr uint32_t l1BaseD = 128;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool SPLITD = splitD;
-    static constexpr bool HAS_PREFIX = false;
-
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
-    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
-
-    using ROPE_T = INPUT_T;
+    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, BMM2_TOUB};
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<LAYOUT_KV, PAGE_ATTENTION>();
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
-    using MM_T = T;
+    using MM_T = float;
+    using SEQLEN_T = uint32_t;
 
     using L0AType = typename L0ABuffSel<INPUT_T>::Type;
     using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
@@ -65,11 +59,6 @@ public:
     // ====== 核间同步常量 ======
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
-
-    static constexpr bool IS_TND_LAYOUT =
-        (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
-    static constexpr bool Q_NEEDS_WZH = (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND);
-    static constexpr bool KV_NEEDS_WZH = (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND);
 
     // ====== 静态事件ID常量 ======
     static constexpr TEventID l1QBufFreeEventId0 = static_cast<TEventID>(0);
@@ -89,27 +78,14 @@ public:
 
     static constexpr uint32_t FA_L1_CUBE_BASE = 3U * mBaseSize * s2BaseSize * sizeof(Q_T);
 
-    using QSeqParserType =
-        typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true>,
-                                  ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>>::type;
+    using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, SEQLEN_T, IS_TND<LAYOUT_T>()>;
+    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, SEQLEN_T, IS_TND<LAYOUT_KV>()>;
 
-    static constexpr ActualSeqLensMode KV_PARSER_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
-    using KvSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
-                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
-
-    using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
-    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
-
-    /* =====================GM变量(with layout)==================== */
+    /* =====================GM变量(with LAYOUT_T)==================== */
     FaGmTensorQ queryGm;
     FaGmTensorKV keyGm;
     FaGmTensorKV valueGm;
-    FaGmTensorQ queryRopeGm;
-    FaGmTensorKV keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
-
-    QSeqParserType *qSeqParserPtr = nullptr;
-    KvSeqParserType *kvSeqParserPtr = nullptr;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
@@ -141,20 +117,19 @@ public:
     uint32_t vBufId = 0;
     uint32_t cBufId = 0;
 
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-
     const ConstInfoX &constInfo;
 
+    SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool;
+    SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool;
+
     /*============================================================================== */
-    __aicore__ inline FANoQuantGqaBlockCubeDn(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockCubeDn(ConstInfoX &constInfo,
+        SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool, SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool) :
+        constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool) {};
 
     __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable,
-                                         QSeqParserType &qParser, KvSeqParserType &kvParser)
+                                         __gm__ uint8_t *blockTable)
     {
-        this->qSeqParserPtr = &qParser;
-        this->kvSeqParserPtr = &kvParser;
         InitCubeInput(query, key, value, blockTable);
     }
 
@@ -195,8 +170,6 @@ public:
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize, queryGm,
                     query);
 
-        keyPtr = key;
-        valuePtr = value;
         if (constInfo.isKvContinuous) {
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
                          keyGm, key);
@@ -209,10 +182,10 @@ public:
                                        uint32_t headDim, FaGmTensorQ &qGmTensor, __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
-        if constexpr (Q_NEEDS_WZH) {
-            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr);
+        if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
+            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
         } else {
-            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr);
+            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensTool.cuSeqLensParser);
         }
     }
 
@@ -232,9 +205,9 @@ public:
                                              constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
+            kvGmTensor.offsetCalculator.Init(kvSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
+            kvGmTensor.offsetCalculator.Init(n2Size, headDim, kvSeqLensTool.cuSeqLensParser);
         }
     }
 
@@ -373,35 +346,10 @@ public:
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
 
-    __aicore__ inline void UpdateKey(uint32_t bIdx)
-    {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
-        keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
-    }
-
-    __aicore__ inline void UpdateValue(uint32_t bIdx)
-    {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
-    }
-
     // ─── IterateBmm1：Dn 专用 dispatch（dBaseSize>256 的 Nd L1SplitK 路径在此分支不会触发，已移除）──
     template<typename OutTensorT>
     __aicore__ inline void IterateBmm1(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
-
 #ifdef SKIP_C1
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
@@ -417,7 +365,7 @@ public:
         }
     }
 
-    /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
+    /* 针对DN, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     template<typename OutTensorT>
     __aicore__ inline void IterateBmm1DnSplitK(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
@@ -445,10 +393,10 @@ public:
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         {
-            LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
+            LocalTensor<MM_T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         (uint32_t)(constInfo.dSize), false, true);
-            MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+            MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                 mm1ATensor, mm1QTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
 
             if (unlikely(runInfo.isLastS2Loop)) {
@@ -471,7 +419,7 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
     }
 
-    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
@@ -482,7 +430,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<MM_T, MM_T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     template<typename OutTensorT>
@@ -510,10 +458,10 @@ public:
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         {
-            LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
+            LocalTensor<MM_T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         (uint32_t)(constInfo.dSize), false, true);
-            MatmulBase<KV_T, Q_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+            MatmulBase<KV_T, Q_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                 mm1ATensor, mm1QTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
 
             if (unlikely(runInfo.isLastS2Loop)) {
@@ -540,16 +488,10 @@ public:
     __aicore__ inline void IterateBmm2(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
                                         LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
 #ifdef SKIP_C2
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-        if constexpr (bmm2Write2Ub) {
+        if constexpr (BMM2_TOUB) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
         }
@@ -558,7 +500,7 @@ public:
         return;
 #endif
 
-        if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
+        if constexpr (dVBaseSize > 256 || dBaseSize > 256) {
             IterateBmm2L1SplitN(outputTensor, outCcId0, outCcId1, l1PTensor, l1PCcId, runInfo);
         } else {
             IterateBmm2l0Split(outputTensor, outCcId0, outCcId1, l1PTensor, l1PCcId, runInfo);
@@ -572,7 +514,7 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
 
-        if constexpr (bmm2Write2Ub) {
+        if constexpr (BMM2_TOUB) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
         }
@@ -593,12 +535,11 @@ public:
 
             WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
             {
-                LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
-                // useDn=true 分支：useDn 直接传 true，且不设 param.realM
+                LocalTensor<MM_T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<MM_T>();
                 MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN,
                                             (uint32_t)(runInfo.actSingleLoopS2Size), true, false);
                 WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-                MatmulFull<Q_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
+                MatmulFull<Q_T, KV_T, MM_T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
                     l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
 
                 SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
@@ -616,22 +557,21 @@ public:
     }
 
     template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
+    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<MM_T> &l0C, uint32_t realN,
                                               RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        if constexpr (bmm2Write2Ub) {
+        if constexpr (BMM2_TOUB) {
             fixpipeParams.nSize = (realN + 7) >> 3 << 3;
         } else {
             fixpipeParams.nSize = realN;
         }
 
-        // useDn=true 分支
         fixpipeParams.mSize = mBaseSize;
         fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
 
-        if constexpr (bmm2Write2Ub || splitD) {
-            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        if constexpr (BMM2_TOUB || SPLITD) {
+            fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
         } else {
             fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
         }
@@ -639,7 +579,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<MM_T, MM_T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
     template<typename OutTensorT>
@@ -659,25 +599,24 @@ public:
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
         {
-            LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
-            // useDn=true 分支：isLeftTranspose=true，且不设 param.realM
+            LocalTensor<MM_T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = {
                 (uint32_t)mBaseSize,                   // singleM 128
                 (uint32_t)constInfo.dSizeV,            // singleN 128
                 (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-                true,                                  // isLeftTranspose（useDn=true）
+                true,                                  // isLeftTranspose
                 false                                  // isRightTranspose
             };
 
-            if constexpr ((uint32_t)dVTemplateType > 128) {
-                MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+            if constexpr (dVBaseSize > 128) {
+                MatmulN<Q_T, KV_T, MM_T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
                     l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
             } else {
                 if constexpr (s2BaseSize == 128) {
-                    MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                    MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
                         l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
                 } else {
-                    MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                    MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
                         l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
                 }
             }
@@ -687,7 +626,7 @@ public:
             SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
             WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
 
-            if constexpr (bmm2Write2Ub) {
+            if constexpr (BMM2_TOUB) {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
             }
@@ -703,29 +642,29 @@ public:
 }; // FANoQuantGqaBlockCubeDn
 
 // AIC/AIV 分编译占位（Mix kernel 在 AIV 侧重编译时使用）
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = true,
-          bool bmm2Write2Ub = true, bool splitD = false>
+template <typename FA_T>
 class FANoQuantGqaBlockCubeDummyDn {
 public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool HAS_PREFIX = false;
+    using INPUT_T = typename FA_T::inputType;
+    using OUTPUT_T = typename FA_T::outputType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
+    static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool BMM2_TOUB = FA_T::bmm2Write2Ub;
+    static constexpr bool SPLITD = FA_T::splitD;
 
     using Q_T = INPUT_T;
-    using MM_T = T;
+    using MM_T = float;
+    using SEQLEN_T = uint32_t;
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    __aicore__ inline FANoQuantGqaBlockCubeDummyDn(ConstInfoX &constInfo){};
+    __aicore__ inline FANoQuantGqaBlockCubeDummyDn(ConstInfoX &constInfo,
+        SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool, SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool) {};
 };
 
 } // namespace BaseApi
