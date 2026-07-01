@@ -255,7 +255,6 @@ aclError RunDemo(int32_t deviceId)
     const char *activationType = "gelu_tanh";
     const int64_t groupListType = 0;
     const char *quantMode = "MX";
-    const int64_t yDtype = 36;
     const char *roundMode = "rint";
     const int64_t scaleAlg = 0;
     const float dstTypeMax = 0.0F;
@@ -265,7 +264,7 @@ aclError RunDemo(int32_t deviceId)
     LOG_PRINT("call aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize\n");
     CHECK_ACL_RET(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
         x, groupList, weight, weightScale, biasOptional, xScale, activationType, groupListType,
-        tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor));
+        tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor));
     LOG_PRINT("workspaceSize=%lu, executor=%p\n", workspaceSize, executor);
 
     if (workspaceSize > 0) {

@@ -50,7 +50,7 @@
 
       - **输出**：
 
-        * $Y$：激活并量化后的输出矩阵，数据类型由yDtype指定。
+        * $Y$：激活并量化后的输出矩阵，数据类型由输出Tensor y指定。
         * $YScale$：输出量化因子。
 
       - **计算过程**
@@ -67,7 +67,7 @@
 
           注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`。
 
-        - 4. 对激活结果进行MX量化，目标数据类型DType由yDtype指定：
+        - 4. 对激活结果进行MX量化，目标数据类型DType由输出Tensor y的数据类型指定：
 
           - 场景1，当scaleAlg为0时，表示OCP实现，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
 
@@ -150,7 +150,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     int64_t              groupListType,
     const aclIntArray   *tuningConfig,
     const char          *quantMode,
-    int64_t              yDtype,
     const char          *roundMode,
     int64_t              scaleAlg,
     float                dstTypeMax,
@@ -289,16 +288,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>可选输入</td>
         <td>表示量化模式。</td>
         <td>可选属性。当前仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"。若显式传入非"MX"，则报错。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>yDtype</td>
-        <td>可选输入</td>
-        <td>表示输出y的数据类型。</td>
-        <td>可选属性，默认值为36，表示FLOAT8_E4M3FN；支持FLOAT8_E4M3FN、FLOAT8_E5M2。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -555,7 +544,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         - quantMode为可选属性，显式传入时当前仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"；否则报错。
         - N必须为64整数倍。
         - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
-        - yDtype支持FLOAT8_E4M3FN、FLOAT8_E5M2。
+        - y支持FLOAT8_E4M3FN、FLOAT8_E5M2。
         - scaleAlg支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
 
 ## 调用示例
@@ -789,7 +778,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         const char *activationType = "gelu_tanh";
         int64_t groupListType = 1;
         const char *quantMode = "MX";
-        int64_t yDtype = 36;
         const char *roundMode = "rint";
         int64_t scaleAlg = 0;
         float dstTypeMax = 0.0F;
@@ -800,7 +788,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
         ret = aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
             x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-            groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax,
+            groupListType, tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax,
             y, yScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);

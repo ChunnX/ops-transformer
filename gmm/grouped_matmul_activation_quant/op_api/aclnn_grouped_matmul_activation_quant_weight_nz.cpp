@@ -57,7 +57,6 @@ constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr int64_t NZ_C0_DIM = 16L;
 constexpr int64_t NZ_LAST_DIM = 32L;
 constexpr int64_t MAX_GROUP_NUM = 1024L;
-constexpr int64_t Y_DTYPE_UNSPECIFIED = static_cast<int64_t>(DataType::DT_UNDEFINED);
 constexpr int64_t FLOAT8_E5M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E5M2);
 constexpr int64_t FLOAT8_E4M3FN_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E4M3FN);
 constexpr int64_t SCALE_ALG_OCP = 0L;
@@ -93,19 +92,6 @@ bool IsEmptyQuantMode(const char *quantMode)
     return quantMode == nullptr || quantMode[0] == '\0';
 }
 
-aclnnStatus ResolveEffectiveYDtype(const aclTensor *x, int64_t yDtype, int64_t &effectiveYDtype)
-{
-    if (yDtype != Y_DTYPE_UNSPECIFIED) {
-        effectiveYDtype = yDtype;
-        return ACLNN_SUCCESS;
-    }
-    GMMAQ_CHECK_WITH_LOG(IsFp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x", op::ToString(x->GetDataType()).GetString(),
-            "when yDtype is unspecified, the dtype of x must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
-    effectiveYDtype = static_cast<int64_t>(x->GetDataType());
-    return ACLNN_SUCCESS;
-}
-
 aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const aclTensor *xScaleOptional,
                               const aclTensor *weightScale, const aclTensor *y, const aclTensor *yScale,
                               int64_t effectiveYDtype)
@@ -127,14 +113,6 @@ aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const
     GMMAQ_CHECK_WITH_LOG(IsFp8(y->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "y", op::ToString(y->GetDataType()).GetString(),
             "when the quantization mode is MX, the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
-    if (y->GetDataType() != static_cast<DataType>(effectiveYDtype)) {
-        const std::string actual = op::ToString(y->GetDataType()).GetString();
-        const std::string expected = std::to_string(effectiveYDtype);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "y, yDtype",
-            FormatString("{%s, %s}", actual.c_str(), expected.c_str()).c_str(),
-            "when the quantization mode is MX, the dtype of y must be the same as yDtype");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(yScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "yScale", op::ToString(yScale->GetDataType()).GetString(),
             "when the quantization mode is MX, the dtype of yScale must be FLOAT8_E8M0"));
@@ -544,8 +522,8 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
 {
     CHECK_RET(ResolveAndCheckRoundMode(roundMode, effectiveRoundMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     GMMAQ_CHECK_WITH_LOG(IsFp8DtypeValue(effectiveYDtype), ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "yDtype", std::to_string(effectiveYDtype),
-                                             "yDtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "y", std::to_string(effectiveYDtype),
+                                             "the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
     GMMAQ_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType),
                                              "groupListType must be 0 or 1"));
@@ -653,7 +631,7 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
 aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const aclTensorList *&weight,
                         const aclTensorList *&weightScale, const aclTensorList *bias,
                         const aclTensor *xScaleOptional, const char *activationType,
-                        bool &transposeWeight, int64_t groupListType, const char *quantMode, int64_t yDtype,
+                        bool &transposeWeight, int64_t groupListType, const char *quantMode,
                         const char *roundMode, int64_t scaleAlg, float dstTypeMax, const aclTensor *y,
                         const aclTensor *yScale, aclOpExecutor *executor, const char *&effectiveQuantMode,
                         const char *&effectiveRoundMode, int64_t &effectiveYDtype)
@@ -665,8 +643,7 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
 
     checkRet = ResolveAndCheckQuantMode(x, xScaleOptional, quantMode, effectiveQuantMode);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    checkRet = ResolveEffectiveYDtype(x, yDtype, effectiveYDtype);
-    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    effectiveYDtype = static_cast<int64_t>(y->GetDataType());
     if (std::strcmp(effectiveQuantMode, QUANT_MODE_MX) == 0) {
         checkRet = CheckMxQuantParams(x, groupList, weight, weightScale, bias, xScaleOptional, transposeWeight,
                                       groupListType, effectiveYDtype, roundMode, effectiveRoundMode, scaleAlg,
@@ -701,7 +678,7 @@ extern "C" {
 aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
-    int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
+    int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode,
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -715,9 +692,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     const char *effectiveQuantMode = nullptr;
     const char *effectiveRoundMode = nullptr;
-    int64_t effectiveYDtype = yDtype;
+    int64_t effectiveYDtype = 0L;
     CHECK_RET(CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-                          transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax,
+                          transposeWeight, groupListType, quantMode, roundMode, scaleAlg, dstTypeMax,
                           y, yScale, uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode,
                           effectiveYDtype) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 

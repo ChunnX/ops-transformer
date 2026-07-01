@@ -195,7 +195,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
         xWrapper, groupList, weightWrapper, weightScaleWrapper, biasRef, xScaleWrapper,
-        activationTypePtr, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
+        activationTypePtr, groupListType, tuningConfigRef, quantModePtr,
         roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
 }
