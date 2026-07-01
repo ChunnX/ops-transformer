@@ -97,9 +97,15 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     if (attentionOut != nullptr) {
         attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
     }
+    auto softmaxLseFormat = ge::FORMAT_ND;
+    if (softmaxLseOptional != nullptr) {
+        softmaxLseFormat =
+            static_cast<ge::Format>(ge::GetPrimaryFormat(softmaxLseOptional->GetStorageFormat()));
+    }
     if (!IsSupportedFormat(queryFormat) || !IsSupportedFormat(keyFormat) || !IsSupportedFormat(valueFormat) ||
         !IsSupportedFormat(blockSparseMaskFormat) || !IsSupportedFormat(attenMaskFormat) ||
-        !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat)) {
+        !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat) ||
+        !IsSupportedFormat(softmaxLseFormat)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
