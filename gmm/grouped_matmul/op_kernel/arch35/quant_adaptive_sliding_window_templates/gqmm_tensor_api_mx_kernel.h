@@ -44,20 +44,21 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
-    using ProblemShape = Blaze::Gemm::MatmulShape;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
     using QgmmBlockMmad =
         Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
                                       LayoutC>;
     using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
-    using QgmmKernel = Blaze::Gemm::Kernel::KernelGroupedMatmulMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using QgmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QgmmKernel::Params;
     using GMMTiling = typename QgmmKernel::GMMTiling;
 
     GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParamsIn->groupNum),
-                        static_cast<uint32_t>(mmTilingDataIn->m),
-                        static_cast<uint32_t>(mmTilingDataIn->n),
-                        static_cast<uint32_t>(mmTilingDataIn->k),
+                        static_cast<int64_t>(mmTilingDataIn->m),
+                        static_cast<int64_t>(mmTilingDataIn->n),
+                        static_cast<int64_t>(mmTilingDataIn->k),
                         static_cast<uint32_t>(mmTilingDataIn->baseM),
                         static_cast<uint32_t>(mmTilingDataIn->baseN),
                         static_cast<uint32_t>(mmTilingDataIn->baseK),
@@ -84,8 +85,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {
-        {static_cast<int64_t>(gmmParams.m), static_cast<int64_t>(gmmParams.n), static_cast<int64_t>(gmmParams.k),
-         static_cast<int64_t>(1)},
+        {gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
         {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
         {},
         groupListDataAddr,
