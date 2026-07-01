@@ -29,9 +29,9 @@ static constexpr size_t INDEX_HRES = 2;
 static constexpr size_t INDEX_HOUT = 3;
 static constexpr size_t INDEX_HPOST = 4;
 static constexpr size_t INDEX_GRADX = 0;
-static constexpr size_t INDEX_GRADHRES = 1;
-static constexpr size_t INDEX_GRADHOUT = 2;
-static constexpr size_t INDEX_GRADHPOST = 3;
+static constexpr size_t INDEX_GRAD_H_RES = 1;
+static constexpr size_t INDEX_GRAD_H_OUT = 2;
+static constexpr size_t INDEX_GRAD_H_POST = 3;
 static constexpr size_t DIMS_THREE = 3;
 static constexpr size_t DIMS_FOUR = 4;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
@@ -88,15 +88,15 @@ static void ShowInputShapeInfo(gert::InferShapeContext *context, const gert::Sha
     OP_LOGD(context, "hPostShape is: %s.", Ops::Base::ToString(*hPostShape).c_str());
 }
 
-// ShowOutputShapeInfo(context, gradXShape, gradHresShape, gradHoutShape, gradHpostShape)
+// ShowOutputShapeInfo(context, gradXShape, gradHResShape, gradHOutShape, gradHPostShape)
 static void ShowOutputShapeInfo(gert::InferShapeContext *context, const gert::Shape *gradXShape,
-                                const gert::Shape *gradHresShape, const gert::Shape *gradHoutShape,
-                                const gert::Shape *gradHpostShape)
+                                const gert::Shape *gradHResShape, const gert::Shape *gradHOutShape,
+                                const gert::Shape *gradHPostShape)
 {
     OP_LOGD(context, "gradXShape is: %s.", Ops::Base::ToString(*gradXShape).c_str());
-    OP_LOGD(context, "gradHresShape is: %s.", Ops::Base::ToString(*gradHresShape).c_str());
-    OP_LOGD(context, "gradHoutShape is: %s.", Ops::Base::ToString(*gradHoutShape).c_str());
-    OP_LOGD(context, "gradHpostShape is: %s.", Ops::Base::ToString(*gradHpostShape).c_str());
+    OP_LOGD(context, "gradHResShape is: %s.", Ops::Base::ToString(*gradHResShape).c_str());
+    OP_LOGD(context, "gradHOutShape is: %s.", Ops::Base::ToString(*gradHOutShape).c_str());
+    OP_LOGD(context, "gradHPostShape is: %s.", Ops::Base::ToString(*gradHPostShape).c_str());
 }
 
 static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *context)
@@ -114,20 +114,20 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, hPostShape);
     gert::Shape *gradXShape = context->GetOutputShape(INDEX_GRADX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradXShape);
-    gert::Shape *gradHresShape = context->GetOutputShape(INDEX_GRADHRES);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gradHresShape);
-    gert::Shape *gradHoutShape = context->GetOutputShape(INDEX_GRADHOUT);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gradHoutShape);
-    gert::Shape *gradHpostShape = context->GetOutputShape(INDEX_GRADHPOST);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gradHpostShape);
+    gert::Shape *gradHResShape = context->GetOutputShape(INDEX_GRAD_H_RES);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHResShape);
+    gert::Shape *gradHOutShape = context->GetOutputShape(INDEX_GRAD_H_OUT);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHOutShape);
+    gert::Shape *gradHPostShape = context->GetOutputShape(INDEX_GRAD_H_POST);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHPostShape);
   
     if (IsUnknownRank(*gradYShape) || IsUnknownRank(*xShape) ||
         IsUnknownRank(*hResShape) || IsUnknownRank(*hOutShape) ||
         IsUnknownRank(*hPostShape)) {
         SetUnknownRank(*gradXShape);
-        SetUnknownRank(*gradHresShape);
-        SetUnknownRank(*gradHoutShape);
-        SetUnknownRank(*gradHpostShape);
+        SetUnknownRank(*gradHResShape);
+        SetUnknownRank(*gradHOutShape);
+        SetUnknownRank(*gradHPostShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown rank.");
         return ge::GRAPH_SUCCESS;
     }
@@ -139,21 +139,21 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
         IsUnknownShape(*hResShape) || IsUnknownShape(*hOutShape) ||
         IsUnknownShape(*hPostShape)) {
         SetAllUnknownDim(xDimNum, gradXShape);
-        SetAllUnknownDim(hResDimNum, gradHresShape);
-        SetAllUnknownDim(hOutDimNum, gradHoutShape);
-        SetAllUnknownDim(hPostDimNum, gradHpostShape);
+        SetAllUnknownDim(hResDimNum, gradHResShape);
+        SetAllUnknownDim(hOutDimNum, gradHOutShape);
+        SetAllUnknownDim(hPostDimNum, gradHPostShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown shape.");
         return ge::GRAPH_SUCCESS;
     }
 
     CopyShape(xShape, gradXShape);
-    CopyShape(hResShape, gradHresShape);
-    CopyShape(hOutShape, gradHoutShape);
-    CopyShape(hPostShape, gradHpostShape);
+    CopyShape(hResShape, gradHResShape);
+    CopyShape(hOutShape, gradHOutShape);
+    CopyShape(hPostShape, gradHPostShape);
 
     // Output shape is same as input x
     ShowInputShapeInfo(context, gradYShape, xShape, hResShape, hOutShape, hPostShape);
-    ShowOutputShapeInfo(context, gradXShape, gradHresShape, gradHoutShape, gradHpostShape);
+    ShowOutputShapeInfo(context, gradXShape, gradHResShape, gradHOutShape, gradHPostShape);
 
     OP_LOGD(context, "End to do MhcPostBackwardInfershape.");
 
@@ -172,9 +172,9 @@ static ge::graphStatus InferDataTypeForMhcPostBackward(gert::InferDataTypeContex
     const ge::DataType hOutDtype = context->GetInputDataType(INDEX_HOUT);
     const ge::DataType hPostDtype = context->GetInputDataType(INDEX_HPOST);
     context->SetOutputDataType(INDEX_GRADX, xDtype);
-    context->SetOutputDataType(INDEX_GRADHRES, hResDtype);
-    context->SetOutputDataType(INDEX_GRADHOUT, hOutDtype);
-    context->SetOutputDataType(INDEX_GRADHPOST, hPostDtype);
+    context->SetOutputDataType(INDEX_GRAD_H_RES, hResDtype);
+    context->SetOutputDataType(INDEX_GRAD_H_OUT, hOutDtype);
+    context->SetOutputDataType(INDEX_GRAD_H_POST, hPostDtype);
     OP_LOGD(context->GetNodeName(), "End to do MhcPostInferDataType.");
     return ge::GRAPH_SUCCESS;
 }
