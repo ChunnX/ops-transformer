@@ -47,11 +47,7 @@ constexpr size_t TENSOR_FIELD_COUNT = 4U;
 constexpr size_t SCALAR_FIELD_COUNT = 19U;
 constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
                                                            TENSOR_FIELD_COUNT;
-<<<<<<< HEAD
 constexpr uint32_t DEFAULT_L1_SIZE = 512288U;
-=======
-constexpr uint32_t DEFAULT_L1_SIZE = 1048576U;
->>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
 constexpr uint32_t DEFAULT_L2_SIZE = 134217728U;
 constexpr uint32_t DEFAULT_L0C_SIZE = 262144U;
 constexpr uint32_t DEFAULT_L0A_SIZE = 65536U;

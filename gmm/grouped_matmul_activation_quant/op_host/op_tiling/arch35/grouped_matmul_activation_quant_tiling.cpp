@@ -12,9 +12,12 @@
 
 #include <algorithm>
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 #include <cstdio>
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+>>>>>>> 333b4b93d (remove cmake)
 #include <string>
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -69,9 +72,12 @@ constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 constexpr uint32_t FP8_E5M2_PROTO_VALUE = 34;
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+>>>>>>> 333b4b93d (remove cmake)
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
@@ -120,6 +126,7 @@ bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 namespace {
 bool IsFp8OutputDtype(ge::DataType dtype)
@@ -132,6 +139,8 @@ bool IsFp8OutputDtype(ge::DataType dtype)
 } // namespace
 
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+>>>>>>> 333b4b93d (remove cmake)
 bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
@@ -253,12 +262,15 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
 =======
                     "when the quantization mode is MX, the dtype of x_scale and weight_scale must be FLOAT8_E8M0"),
                 return false);
+<<<<<<< HEAD
     OP_CHECK_IF(!IsFp8OutputDtype(inputParams_.outDataDtype),
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y",
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
                     "when the quantization mode is MX, the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
                 return false);
+=======
+>>>>>>> 333b4b93d (remove cmake)
     OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y_scale",
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
