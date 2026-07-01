@@ -14,7 +14,7 @@
  */
 
 #include "lightning_indexer_kl_loss.h"
-
+using namespace NsLightningIndexerKlLoss;
 enum class LightningIndexerKlLossTilingKey : uint32_t {
     TILING_KEY_EXAMPLE_FLOAT = 0,
     TILING_KEY_EXAMPLE_INT32 = 1,

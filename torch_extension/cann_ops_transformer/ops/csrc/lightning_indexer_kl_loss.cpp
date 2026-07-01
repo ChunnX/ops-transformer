@@ -34,7 +34,7 @@ at::Tensor lightning_indexer_kl_loss(
         loss = at::empty({}, target_score.options());
     }
 
-    ACLNN_CMD(aclnnLightningIndexerKLLoss, target_score, index_probs, eps, loss);
+    ACLNN_CMD(aclnnLightningIndexerKlLoss, target_score, index_probs, eps, loss);
 
     return loss;
 }

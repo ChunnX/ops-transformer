@@ -144,11 +144,11 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
 
-  // 4. 调用 aclnnLightningIndexerKLLoss 第一段接口
-  ret = aclnnLightningIndexerKLLossGetWorkspaceSize(
+  // 4. 调用 aclnnLightningIndexerKlLoss 第一段接口
+  ret = aclnnLightningIndexerKlLossGetWorkspaceSize(
       targetScore, indexProbs, eps, loss, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnLightningIndexerKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
+            LOG_PRINT("aclnnLightningIndexerKlLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
 
   // 根据 workspaceSize 申请 device 内存
@@ -158,9 +158,9 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
 
-  // 5. 调用 aclnnLightningIndexerKLLoss 第二段接口
-  ret = aclnnLightningIndexerKLLoss(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnLightningIndexerKLLoss failed. ERROR: %d\n", ret); return ret);
+  // 5. 调用 aclnnLightningIndexerKlLoss 第二段接口
+  ret = aclnnLightningIndexerKlLoss(workspaceAddr, workspaceSize, executor, stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnLightningIndexerKlLoss failed. ERROR: %d\n", ret); return ret);
 
   // 6. 同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
