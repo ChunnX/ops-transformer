@@ -943,7 +943,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
-    uint32_t waitLoop = 0;
+    // uint32_t waitLoop = 0;
     do {
         PipeBarrier<PIPE_ALL>();
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
@@ -952,17 +952,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
         AscendC::Nop<800>();
         PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
-        if ((waitLoop & 1023U) == 0U) {
-            AscendC::PRINTF("[MegaMoe][L2Wait] rank=%u relayRank=%u block=%u buf=%d ready=%d remoteOff=%llu flagOff=%llu\n",
-                rankId_, relayRank, blockIdx_, bufferIdx, readyValue,
-                static_cast<unsigned long long>(remoteCopyOffset),
-                static_cast<unsigned long long>(flagOffset));
-        }
-        ++waitLoop;
+        // if ((waitLoop & 1023U) == 0U) {
+        //     AscendC::PRINTF("[MegaMoe][L2Wait] rank=%u relayRank=%u block=%u buf=%d ready=%d remoteOff=%llu flagOff=%llu\n",
+        //         rankId_, relayRank, blockIdx_, bufferIdx, readyValue,
+        //         static_cast<unsigned long long>(remoteCopyOffset),
+        //         static_cast<unsigned long long>(flagOffset));
+        // }
+        // ++waitLoop;
         if (readyValue == int32_t(1)) {
-            AscendC::PRINTF("[MegaMoe][L2WaitDone] rank=%u relayRank=%u block=%u buf=%d loop=%u remoteOff=%llu\n",
-                rankId_, relayRank, blockIdx_, bufferIdx, waitLoop,
-                static_cast<unsigned long long>(remoteCopyOffset));
+            // AscendC::PRINTF("[MegaMoe][L2WaitDone] rank=%u relayRank=%u block=%u buf=%d loop=%u remoteOff=%llu\n",
+            //     rankId_, relayRank, blockIdx_, bufferIdx, waitLoop,
+            //     static_cast<unsigned long long>(remoteCopyOffset));
             PipeBarrier<PIPE_ALL>();
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
             PipeBarrier<PIPE_ALL>();
