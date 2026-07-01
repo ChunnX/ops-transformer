@@ -46,7 +46,7 @@ struct MegaMoeA2A3TilingData {
 
     uint32_t moeExpertNum;
     uint32_t epWorldSize;
-    uint32_t cclBufferSize;
+    int64_t cclBufferSize;
     uint64_t maxRecvTokenNum;
     uint32_t dispatchQuantMode;
     int32_t dispatchQuantOutDtype;
