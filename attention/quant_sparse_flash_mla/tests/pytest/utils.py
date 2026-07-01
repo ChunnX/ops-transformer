@@ -13,10 +13,10 @@
 import pytest
 import random
 import pandas as pd
-from pathlib import Path
 import numpy as np
 import os
 import math
+import logging
 
 def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mode, block_size1, block_size2, block_num2):
     """
@@ -479,15 +479,15 @@ def save_result(params, result, fulfill_percent, result_path):
         try:
             df = pd.read_excel(result_path)
             if set(df.columns) != set(row_data.keys()):
-                print("警告：变量名与Excel列名不匹配！")
-                print(f"Excel列名: {list(df.columns)}")
-                print(f"变量名: {list(row_data.keys())}")
-                print("请检查变量名或Excel文件")
+                logging.warning("警告：变量名与Excel列名不匹配！")
+                logging.warning(f"Excel列名: {list(df.columns)}")
+                logging.warning(f"变量名: {list(row_data.keys())}")
+                logging.warning("请检查变量名或Excel文件")
                 return False
             new_df = pd.DataFrame([row_data])
             df = pd.concat([df, new_df], ignore_index=True)
         except Exception:
-            print(f"警告: {result_path} 文件损坏，将重建")
+            logging.warning(f"警告: {result_path} 文件损坏，将重建")
             df = pd.DataFrame([row_data])
     else:
         # 文件不存在，创建新的DataFrame

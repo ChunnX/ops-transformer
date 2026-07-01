@@ -103,6 +103,9 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             q,
             ori_kv=None,
             cmp_kv=None,
+            q_descale=None,
+            ori_kv_descale=None,
+            cmp_kv_descale=None,
             ori_sparse_indices=None,
             cmp_sparse_indices=None,
             ori_block_table=None,
@@ -128,13 +131,11 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             layout_q="BSND",
             layout_kv="BSND",
             topk_value_mode=1,
-            return_softmax_lse=False,
-            key_dtype=None,
-            value_dtype=None,
+            return_softmax_lse=False
         ):
             if layout_q == "BSND":
                 ## 添加softmax_lse
-                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device="meta")
                 if return_softmax_lse:
                     softmax_lse = torch.empty(
                         [
@@ -150,7 +151,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
                     # 给一个空的合法张量，不能是 nullptr
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             else:
-                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device="meta")
                 if return_softmax_lse:
                     softmax_lse = torch.empty(
                         [ori_kv.shape[1], q.shape[0], q.shape[2] / ori_kv.shape[2]],

@@ -25,32 +25,46 @@ import result_compare_method
 import check_valid_param
 from batch import quant_sparse_flash_mla_process
 import utils
+import logging
 
 testcase_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
+is_run_graph = os.environ.get("RUN_GRAPH", "0") == "1"
 result_path = Path('result.xlsx')
 device_id=0
+
+# 日志配置
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-5s] %(filename)s:%(lineno)d %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    force=True
+)
 
 testcase_files = []
 if os.path.isdir(testcase_path):
     pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
     if not pt_files:
-        print(f"错误: 目录中没有找到.pt文件: {testcase_path}")
+        logging.warning(f"错误: 目录中没有找到.pt文件: {testcase_path}")
     else:
-        print(f"找到 {len(pt_files)} 个测试用例文件")
+        logging.info(f"找到 {len(pt_files)} 个测试用例文件")
         for pt_file in pt_files:
             filepath = os.path.join(testcase_path, pt_file)
             testcase_files.append(filepath)
 else:
-    print(f"错误: 输出目录不存在: {testcase_path}")
+    logging.warning(f"错误: 输出目录不存在: {testcase_path}")
 
 def qsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
-        npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+        if is_run_graph:
+            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+                test_data, device_id=device_id)
+        else:
+            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
-        print("NPU ERROR：", e)
+        logging.exception(e)
         result = "NPU ERROR"
         fulfill_percent = 0
 
@@ -64,12 +78,4 @@ testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in testcase_files
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", testcase_files, ids=testcase_ids)
 def test_quant_sparse_flash_mla(testcase_files):
-    # 线程池
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(qsmla, testcase_files)
-        # 等待并获取结果
-        for future in concurrent.futures.as_completed([futures]):
-            try:
-                result = future.result()
-            except Exception as e:
-                pytest.fail(f"当前用例线程执行失败")
+    qsmla(testcase_files)

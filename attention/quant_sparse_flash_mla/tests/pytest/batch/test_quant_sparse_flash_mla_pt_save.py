@@ -15,15 +15,10 @@ import torch
 import check_valid_param
 import quant_sparse_flash_mla_golden
 import pytest
-import random
-import pandas as pd
-from pathlib import Path
-import numpy as np
-import math
 import os
 import utils
-import argparse
 import concurrent.futures
+import logging
 
 # 读取表格（支持通过环境变量传入）
 save_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
@@ -111,7 +106,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     for combo in itertools.product(*param_values):
         param_dict = dict(zip(param_names, combo))
         param_combinations.append(param_dict)
-    print(param_combinations)
+    logging.info(param_combinations)
 
 case_id = 0
 def qsmla(param_combinations):
@@ -125,7 +120,7 @@ def qsmla(param_combinations):
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
         Testcase_Name = f"quantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
-    print("input_params:", params)
+    logging.info("input_params:", params)
 
     # 输入参数的合法性校验
     try:
