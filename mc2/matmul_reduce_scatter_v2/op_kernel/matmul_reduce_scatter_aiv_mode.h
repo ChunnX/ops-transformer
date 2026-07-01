@@ -21,8 +21,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "kernel_tiling/kernel_tiling.h"
-#include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
 #else
