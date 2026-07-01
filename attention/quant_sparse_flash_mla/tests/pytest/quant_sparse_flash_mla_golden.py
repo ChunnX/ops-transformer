@@ -906,25 +906,26 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_k_bnsd = None
         cmp_kv_descale = None
 
-    if layout_kv == "PA_BNBD" and (
+    if layout_kv == "PA_BBND" and (
         template_run_mode == "CFA" or template_run_mode == "SCFA"
     ):
-        fusionBlock = torch.zeros(
-            (block_num, block_size1 + block_size2, N2, D), dtype=ori_kv_type
-        )
-        fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * D] = (
-            ori_k_in_pa_shape.view(block_num, -1)
-        )
-        fusionBlock.view(block_num, -1)[:, block_size1 * N2 * D :] = (
-            cmp_k_in_pa_shape.view(block_num, -1)
-        )
-        fusionBlock.npu()
-        ori_k_in_pa_shape = fusionBlock.view(block_num, -1)[
-            :, : block_size1 * N2 * D
-        ].view(block_num, block_size1, N2, D)
-        cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[
-            :, block_size1 * N2 * D :
-        ].view(block_num, block_size2, N2, D)
+        total_block = block_size1 + block_size2
+        fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
+        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        stride_n = total_block * N2 * D
+        stride_bs = N2 * D
+        stride_n2 = D
+        stride_d = 1
+        ori_k_in_pa_shape = torch.as_strided(
+                fusion_base,
+                size=[block_num, block_size1, N2, D],
+                stride=[stride_n, stride_bs, stride_n2, stride_d])
+        cmp_k_in_pa_shape = torch.as_strided(
+                fusion_base,
+                size=[block_num, block_size2, N2, D],
+                stride=[stride_n, stride_bs, stride_n2, stride_d],
+                storage_offset=block_size1 * N2 * D)
 
     test_qsmla = GeneralizedSFAQuant(
         layout_q,
