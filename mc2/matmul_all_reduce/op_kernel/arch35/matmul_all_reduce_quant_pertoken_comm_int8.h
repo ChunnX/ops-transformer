@@ -34,7 +34,7 @@ constexpr uint32_t MAX_HANDLE_ID_NUM = 16;
 constexpr uint32_t NUM_TWO_PERTOKEN = 2;
 
 using namespace AscendC;
-using namespace MatmulAllReduceReduceSumImpl;
+using namespace Mc2Kernel;
 using namespace MatmulAllReduceQuantPerchannelImpl;
 using namespace MatmulAllReduceDequantPerchannelImpl;
 template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
