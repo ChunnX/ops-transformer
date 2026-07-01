@@ -346,14 +346,15 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimMultiXMultiWeightMultiY(
             auto offsetShapePtr = context->GetDynamicInputShape(ANTIQUANT_OFFSET_IDX, idx);
             uint32_t offsetDimNum = static_cast<uint32_t>(offsetShapePtr->GetStorageShape().GetDimNum());
             OP_CHECK_IF(offsetDimNum != A16W4_MULTI_PER_CHANNEL_DIM && offsetDimNum != A16W4_MULTI_PER_GROUP_DIM,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "antiquantOffset",
-                            std::to_string(offsetDimNum),
-                            "When x-weight is bf16/fp16-int4/int32 and groupType is -1, the dimension of antiquantOffset "
-                            "must be 1 (perchannel) or 2 (pergroup)"),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "antiquantOffset",
+                        std::to_string(offsetDimNum),
+                        "When x-weight is bf16/fp16-int4/int32 and groupType is -1, the dimension of antiquantOffset " \
+                        "must be 1 (perchannel) or 2 (pergroup)"),
                         return false);
         } else {
             OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, idx, 1, "antiquantOffset"),
-                        OP_LOGE(context->GetNodeName(), "Invalid antiquantOffset dimension. "), return false);
+                        OP_LOGE(context->GetNodeName(),
+                        "Invalid antiquantOffset dimension. "), return false);
         }
     }
     return true;
@@ -1814,25 +1815,25 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckResplitTilingResult(const gert::T
 void GroupedWeightQuantBatchMatmulTiling::PrintInputParam(const gert::TilingContext *context) const
 {
     OP_LOGI(context->GetNodeName(),
-              "Input params: coreNum: %u, gmm groupNum: %u, groupType: %d, groupListType: %lld, splitItem: %lld, "
-              "antiquant-groupSize: %u, mSize: %llu, kSize: %llu, nSize: %llu, nSizeOri: %llu, transA: %s, transB: %s, "
-              "isSingleX: %s, isSingleWeight: %s, isSingleY: %s, hasBias: %s, weightNzFlag: %s, hasAntiquantOffset: "
-              "%s, xDtype: %s, weightDtype: %s",
-              coreNum_, groupNum_, static_cast<int32_t>(groupType_), groupListType_,
-              splitItem_, groupSize_, mSize_, kSize_, nSize_, nSizeOri_,
-              transA_ ? "true" : "false", transB_ ? "true" : "false",
-              isSingleX_ ? "true" : "false", isSingleWeight_ ? "true" : "false", isSingleY_ ? "true" : "false",
-              hasBias_ ? "true" : "false", weightNzFlag_ ? "true" : "false", hasAntiquantOffset_ ? "true" : "false",
-              ge::TypeUtils::DataTypeToSerialString(xDType_).c_str(),
-              ge::TypeUtils::DataTypeToSerialString(weightDtype_).c_str());
+        "Input params: coreNum: %u, gmm groupNum: %u, groupType: %d, groupListType: %lld, splitItem: %lld, " \
+        "antiquant-groupSize: %u, mSize: %llu, kSize: %llu, nSize: %llu, nSizeOri: %llu, transA: %s, transB: %s, " \
+        "isSingleX: %s, isSingleWeight: %s, isSingleY: %s, hasBias: %s, weightNzFlag: %s, hasAntiquantOffset: " \
+        "%s, xDtype: %s, weightDtype: %s",
+        coreNum_, groupNum_, static_cast<int32_t>(groupType_), groupListType_,
+        splitItem_, groupSize_, mSize_, kSize_, nSize_, nSizeOri_,
+        transA_ ? "true" : "false", transB_ ? "true" : "false",
+        isSingleX_ ? "true" : "false", isSingleWeight_ ? "true" : "false", isSingleY_ ? "true" : "false",
+        hasBias_ ? "true" : "false", weightNzFlag_ ? "true" : "false", hasAntiquantOffset_ ? "true" : "false",
+        ge::TypeUtils::DataTypeToSerialString(xDType_).c_str(),
+        ge::TypeUtils::DataTypeToSerialString(weightDtype_).c_str());
 }
 
 void GroupedWeightQuantBatchMatmulTiling::PrintTilingResult(const gert::TilingContext *context)
 {
     OP_LOGI(
         context->GetNodeName(),
-        "Tiling result: groupNum: %u, coreNum: %u, kSize: %llu, nSize: %llu, singleX: %u, singleWeight: %u, singleY: %u, "
-        "groupType: %d, groupListType: %u, hasBias: %u, groupSize: %u, mainBlockSize: %u, mainBlockCount: %llu, "
+        "Tiling result: groupNum: %u, coreNum: %u, kSize: %llu, nSize: %llu, singleX: %u, singleWeight: %u, singleY: %u, " \
+        "groupType: %d, groupListType: %u, hasBias: %u, groupSize: %u, mainBlockSize: %u, mainBlockCount: %llu, " \
         "firstTailBlockSize: %u, secondTailBlockSize: %u, firstTailBlockCount: %u, secondTailBlockCount: %u",
         tilingData_.gmmWeightQuantParam.groupNum, tilingData_.gmmWeightQuantParam.coreNum,
         tilingData_.gmmWeightQuantParam.kSize, tilingData_.gmmWeightQuantParam.nSize,
