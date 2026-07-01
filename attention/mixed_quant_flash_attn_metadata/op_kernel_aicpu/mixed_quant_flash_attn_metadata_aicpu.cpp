@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <cmath>
 #include "mixed_quant_flash_attn_metadata_aicpu.h"
-#include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
@@ -143,6 +142,19 @@ inline int64_t MixedQuantFlashAttnMetadataCpuKernel::CalcCost(uint32_t basicM, u
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
+ValidSocVersion MixedQuantFlashAttnMetadataCpuKernel::ProcessSocVersion()
+{
+    const std::string ascend950 = "Ascend950";
+    const std::string ascend91096 = "Ascend910_96";
+    if (socVersion_.find(ascend950) != std::string::npos) {
+        return ValidSocVersion::ASCEND950;
+    }
+    if (socVersion_.find(ascend91096) != std::string::npos) {
+        return ValidSocVersion::ASCEND910_96;
+    }
+    return ValidSocVersion::ASCEND910;
+}
+
 bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
 {
     // Device info
@@ -234,20 +246,16 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
-    if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
-    } else if (baseInfo.layoutQuery == Layout::TND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
-    }
-    if (quantMode_ == 1) {
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
+        s2BaseSize_ = 64U;
+        mBaseSize_ = 256U;
+    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
         s2BaseSize_ = 32U;
         mBaseSize_ = 512U;
     } else {
-        optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
-            baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
-            mBaseSize_, s2BaseSize_);
-        mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
+        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        return false;
     }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
