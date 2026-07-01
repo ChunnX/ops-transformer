@@ -1287,7 +1287,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGMM2(
     GM_ADDR resultAddr, __gm__ int32_t* swigluToGmm2Flag, uint32_t sharedIdx)
 {
     if constexpr (g_coreType == AIC) {
-        MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, Weight1Type, bfloat16_t,
+        MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, m_, k_, hiddenDim_ / SWIGLU_N_HALF,
             swigluDataAddr, swigluScaleAddr,
