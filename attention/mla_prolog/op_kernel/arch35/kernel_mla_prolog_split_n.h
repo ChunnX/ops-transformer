@@ -290,7 +290,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
 {
     cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
     blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
-    cubeBlockIdx_ = ASCEND_IS_AIV ? blockIdx_ / cvRatio_ : blockIdx_;
+    if ASCEND_IS_AIC {
+        cubeBlockIdx_ = blockIdx_;
+    } else {
+        cubeBlockIdx_ = blockIdx_ / cvRatio_;
+    }
     curVectorBlockNum_ = static_cast<int64_t>(baseParams_->stepBatchSize);
     vectorCoreNum_ = static_cast<int64_t>(baseParams_->vectorBlockNum); // aivNum 48
     if (cvMode == 1 && cvRatio_ == 2) {                                 // 编译态cv1:1，运行态cv1:2
