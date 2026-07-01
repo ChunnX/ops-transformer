@@ -87,7 +87,28 @@ ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
         OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        if (Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        const auto streamInfos = context->GetAttachedStreamInfos();
+        if (streamInfos.empty()) {
+            OPS_LOG_E(context->GetNodeName(), "No attached stream info found for CCU sync.");
+            return ge::GRAPH_FAILED;
+        }
+        const int64_t attachStreamId = streamInfos[0].stream_id;
+        const int64_t streamId = context->GetStreamId();
+
+        ge::KernelLaunchInfo waitTask = ge::KernelLaunchInfo::CreateHcomWaitTask(context, "group");
+        waitTask.SetStreamId(attachStreamId);
+        tasks.insert(tasks.begin(), waitTask.Serialize());
+
+        ge::KernelLaunchInfo recordTask = ge::KernelLaunchInfo::CreateHcomRecordTask(context, "group");
+        recordTask.SetStreamId(streamId);
+        tasks.push_back(recordTask.Serialize());
+
+        OPS_LOG_I(context->GetNodeName(), "Add wait/record stream sync for CCU fusion task, attachStream=%ld, mainStream=%ld.",
+                  attachStreamId, streamId);
+        return ge::GRAPH_SUCCESS;
     }
 }
 
