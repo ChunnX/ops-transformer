@@ -617,7 +617,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr =
-            reinterpret_cast<const DenseLightningIndexerGradCompileInfo *>(context_->GetCompileInfo());
+            reinterpret_cast<const DenseLightningIndexerKLLossGradCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
