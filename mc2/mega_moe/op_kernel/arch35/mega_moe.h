@@ -1399,13 +1399,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    // 共享专家场景：AIC 执行了 ProcessSharedExpert，需要与 AIV 同步后再进入 Phase 2
+    // 共享专家场景：AIC 执行了 ProcessSharedExpert，需要与 AIV 一起同步
+    // 无共享专家场景：仅 AIV 同步（AIC 未参与 Phase 1，跳过）
     if (sharedExpertNum_ > 0) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
-    }
-
-    if constexpr(g_coreType == AIV) {
+    } else if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
