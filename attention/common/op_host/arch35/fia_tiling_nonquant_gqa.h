@@ -91,16 +91,10 @@ private:
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
-    void GetPreNextTokensLeftUp(int64_t actualSeqLengthQ, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(int64_t &actualSeqLengthQ, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
     void InitImplParam();
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
-    bool CheckEnableDN();
-    bool CheckQKVActualSeqLengthsRight();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
@@ -116,7 +110,6 @@ private:
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
     bool flashDecodeFlag_ = false;
-    bool dnFlag_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;
