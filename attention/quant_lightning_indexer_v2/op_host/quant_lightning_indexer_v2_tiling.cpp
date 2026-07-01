@@ -102,11 +102,6 @@ ge::graphStatus QLIV2InfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = NpuArch::DAV_3510;
-    if ((npuArch_ != NpuArch::DAV_2201) &&
-        (npuArch_ != NpuArch::DAV_3510)) {
-        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
-        return GRAPH_FAILED;
-    }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
@@ -166,7 +161,6 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    static const int64_t key_stride0 = -1;
 
     opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
     opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
@@ -176,32 +170,32 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
-    opParamInfo_.keyStride0 = key_stride0;
-    opParamInfo_.keyDequantScaleStride0 = key_stride0;
+    opParamInfo_.keyStride0 = -1;
+    opParamInfo_.keyDequantScaleStride0 = -1;
 
     if (opParamInfo_.layOutQuery != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
+        OP_LOGI(context_->GetNodeName(), "layout_query is: %s", opParamInfo_.layOutQuery);
     }
     if (opParamInfo_.layOutKey != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "layout_key is:%s", opParamInfo_.layOutKey);
+        OP_LOGI(context_->GetNodeName(), "layout_key is: %s", opParamInfo_.layOutKey);
     }
     if (opParamInfo_.sparseCount != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "selscted count is:%d", *opParamInfo_.sparseCount);
+        OP_LOGI(context_->GetNodeName(), "selected count is: %d", *opParamInfo_.sparseCount);
     }
     if (opParamInfo_.sparseMode != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "sparse mode is:%d", *opParamInfo_.sparseMode);
+        OP_LOGI(context_->GetNodeName(), "sparse mode is: %d", *opParamInfo_.sparseMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is: %d", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "returnValue is:%s", *opParamInfo_.returnValue ? "true" : "false");
+        OP_LOGI(context_->GetNodeName(), "returnValue is: %s", *opParamInfo_.returnValue ? "true" : "false");
     }
     if (opParamInfo_.maxSeqlenQ != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "maxSeqlenQ  is:%d", *opParamInfo_.maxSeqlenQ);
+        OP_LOGI(context_->GetNodeName(), "maxSeqlenQ is: %d", *opParamInfo_.maxSeqlenQ);
     }
     if (opParamInfo_.quantMode != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "query_quant_mode mode is:%d", *opParamInfo_.quantMode);
+        OP_LOGI(context_->GetNodeName(), "query_quant_mode is: %d", *opParamInfo_.quantMode);
     }
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
 
@@ -213,62 +207,34 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     std::string layout_key(opParamInfo_.layOutKey);
     std::string layout_query(opParamInfo_.layOutQuery);
 
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(
-            (std::string(opParamInfo_.layOutKey) != "PA_BBND"),
-            OP_LOGE(opName_, "input attr layout_key only supported PA_BBND,"
-                "but now layout_key is %s.", layout_key.c_str()),
-            return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(
-            ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
-            (std::string(opParamInfo_.layOutKey) != "BSND") &&
-            (std::string(opParamInfo_.layOutKey) != "TND")), OP_LOGE(opName_,
-            "input attr layout_key only supported PA_BBND, BSND or TND"), return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(
+        ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
+        (std::string(opParamInfo_.layOutKey) != "BSND") &&
+        (std::string(opParamInfo_.layOutKey) != "TND")), OP_LOGE(opName_,
+        "input attr layout_key only supported PA_BBND, BSND or TND"), return ge::GRAPH_FAILED);
 
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
-                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
-                       SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
-        OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
-                    ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2,"
-                    " but now cmpRatio is %ld.",
-                *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
-                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
-                       SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
-        OP_CHECK_IF((*opParamInfo_.cmpRatio != 1) && (*opParamInfo_.cmpRatio != 4) && (*opParamInfo_.cmpRatio != 128),
-                OP_LOGE(opName_, "input attr cmpRatio must be 1、4 or 128, but now cmpRatio is %ld.",
-                *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
+            OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
+                   SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((*opParamInfo_.cmpRatio != 1) && (*opParamInfo_.cmpRatio != 4) && (*opParamInfo_.cmpRatio != 128),
+            OP_LOGE(opName_, "input attr cmpRatio must be 1, 4 or 128, but now cmpRatio is %d.",
+            *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") && (std::string(opParamInfo_.layOutQuery) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
-        (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
-        OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
-                  "but now layout_key is %s, layout_query is %s.",
-         layout_key.c_str(),  layout_query.c_str()), return ge::GRAPH_FAILED);
+    const bool isPaBbnd = (std::string(opParamInfo_.layOutKey) == "PA_BBND");
+    const bool layoutsDiffer = (std::string(opParamInfo_.layOutKey) != std::string(opParamInfo_.layOutQuery));
+    OP_CHECK_IF((!isPaBbnd) && layoutsDiffer,
+        OP_LOGE(opName_,
+            "outside of PA, layout_query (%s) and layout_key (%s) must be the same.",
+            layout_query.c_str(), layout_key.c_str()),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
                 OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3, but now sparseMode is %d.",
                        *opParamInfo_.sparseMode), return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_2201) {
-            OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
-               return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(*opParamInfo_.quantMode != 3,
-               OP_LOGE(opName_, "input attr quant_mode only supported 3."),
-               return ge::GRAPH_FAILED);
-    }
-    
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(*opParamInfo_.quantMode != 3,
+           OP_LOGE(opName_, "input attr quant_mode only supported 3."),
+           return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -304,39 +270,27 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         !(inputQueryScaleType_ == inputKeyScaleType_),
         OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
         return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(inputQType_ != ge::DT_INT8,
-               OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
+           OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
+           return ge::GRAPH_FAILED);
+    if (*opParamInfo_.quantMode == 3) {
+        // MXFP8: scale 类型必须是 fp8_e8m0
         OP_CHECK_IF(
-            inputQueryScaleType_ != ge::DT_FLOAT16,
-            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
+            inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
+            OP_LOGE(opName_,
+                "MXFP8 (quant_mode=3): query_dequant_scale and key_dequant_scale must be float8_e8m0."),
             return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
-               OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
-               return ge::GRAPH_FAILED);
-        if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
-            // MXFP8: scale 类型必须是 fp8_e8m0
-            OP_CHECK_IF(
-                inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(opName_, "MXFP8 (quant_mode=3): The data types of the input query_dequant_scale and key_dequant_scale must be float8_e8m0."),
-                return ge::GRAPH_FAILED);
-        } else {
-            // 非 MXFP8: scale 类型必须是 float
-            OP_CHECK_IF(
-                inputQueryScaleType_ != ge::DT_FLOAT,
-                OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),
-                return ge::GRAPH_FAILED);
-        }
+    } else {
+        // 非 MXFP8: scale 类型必须是 float
+        OP_CHECK_IF(
+            inputQueryScaleType_ != ge::DT_FLOAT,
+            OP_LOGE(opName_,
+                "The data types of the query_dequant_scale and key_dequant_scale must be float."),
+            return ge::GRAPH_FAILED);
     }
 
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-                OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-            OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
-                OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
+            OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
@@ -527,18 +481,20 @@ ge::graphStatus QLIV2InfoParser::GetN1Size()
         // TND
         n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
     }
-    OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
+    OP_LOGI(context_->GetNodeName(), "n1Size is %u", n1Size_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QLIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
                                                      const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize());
-    if (size <= 0) {
-        OP_LOGE(opName_, "%s's shape size is %u, it should be greater than 0.", actualSeqLenName.c_str(), size);
+    int64_t rawSize = tensor->GetShapeSize();
+    if (rawSize <= 0) {
+        OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 0.",
+                actualSeqLenName.c_str(), rawSize);
         return ge::GRAPH_FAILED;
     }
+    size = static_cast<uint32_t>(rawSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -550,7 +506,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckN2Size()
     } else {
         n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
     }
-    OP_LOGI(context_->GetNodeName(), "N2 is %d", n2Size_);
+    OP_LOGI(context_->GetNodeName(), "N2 is %u", n2Size_);
     OP_CHECK_IF(n2Size_ != 1, OP_LOGE(opName_, "N2 only support 1."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -577,11 +533,10 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
     // 2、TND时, 以cu_seqlens_q的shape[0]-1为B轴大小
     if (qLayout_ == DataLayout::BSND) {
         bSize_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
-        OP_LOGI(context_->GetNodeName(), "b: %d, s: %d, n: %d,d :%d",
-            opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO),
-            opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE),
-            opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO),
-            opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_THREE));
+        const auto qShape = opParamInfo_.query.shape->GetStorageShape();
+        OP_LOGI(context_->GetNodeName(), "b: %lld, s: %lld, n: %lld, d: %lld",
+            qShape.GetDim(DIM_IDX_ZERO), qShape.GetDim(DIM_IDX_ONE),
+            qShape.GetDim(DIM_IDX_TWO), qShape.GetDim(DIM_IDX_THREE));
         return ge::GRAPH_SUCCESS;
     } else {  // TND
         // cu_seqlens_q shape is [B+1], batch_size = shape[0] - 1
@@ -649,11 +604,11 @@ ge::graphStatus QLIV2InfoParser::GetS1Size()
 ge::graphStatus QLIV2InfoParser::GetAndCheckBlockSize()
 {
     blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(1));
-    OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
+    OP_LOGI(context_->GetNodeName(), "blockSize_ is %u", blockSize_);
 
     OP_CHECK_IF(
         ((blockSize_ % BLOCK_SIZE_FACTOR != 0) || (blockSize_ == 0) || (blockSize_ > BLOCK_SIZE_LIMIT)),
-        OP_LOGE(opName_, "input key's block_size must be a multiple of 16 and belong to (0, 1024], but now is %d.",
+        OP_LOGE(opName_, "input key's block_size must be a multiple of 16 in (0, 1024], but now is %u.",
             blockSize_),
         return ge::GRAPH_FAILED);
 
@@ -671,7 +626,7 @@ ge::graphStatus QLIV2InfoParser::GetS2SizeForPageAttention()
 
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
-    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %d, blockSize_ is %d, s2Size_ is %d",
+    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %u, blockSize_ is %u, s2Size_ is %lld",
             maxBlockNumPerBatch_, blockSize_, s2Size_);
     return ge::GRAPH_SUCCESS;
 }
@@ -867,7 +822,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
             uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
             OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
-                       OP_LOGE(opName_, "MXFP8: query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same",
+                       OP_LOGE(opName_, "MXFP8: qScale shape[%u]=%u, query shape[%u]=%u, mismatch",
                                  i, dimValueQueryScale, i, dimValueQuery),
                        return ge::GRAPH_FAILED);
         }
@@ -876,7 +831,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
         uint32_t qScaleLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim);
         uint32_t expectedQSecondLastDim = headDim_ / 64;
         OP_CHECK_IF(qScaleSecondLastDim != expectedQSecondLastDim || qScaleLastDim != 2,
-                   OP_LOGE(opName_, "MXFP8: query_dequant_scale's last two dims should be [%u, 2] (headDim/64, 2), but now is [%u, %u]",
+                   OP_LOGE(opName_, "MXFP8: qScale last two dims should be [%u,2], got [%u,%u]",
                              expectedQSecondLastDim, qScaleSecondLastDim, qScaleLastDim),
                    return ge::GRAPH_FAILED);
         // 检查 kScale
@@ -892,7 +847,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
         uint32_t kScaleLastDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim);
         uint32_t expectedKSecondLastDim = headDim_ / 64;
         OP_CHECK_IF(kScaleSecondLastDim != expectedKSecondLastDim || kScaleLastDim != 2,
-                   OP_LOGE(opName_, "MXFP8: key_dequant_scale's last two dims should be [%u, 2] (headDim/64, 2), but now is [%u, %u]",
+                   OP_LOGE(opName_, "MXFP8: kScale last two dims should be [%u,2], got [%u,%u]",
                              expectedKSecondLastDim, kScaleSecondLastDim, kScaleLastDim),
                    return ge::GRAPH_FAILED);
     } else {
@@ -902,8 +857,8 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                              qShapeDim - 1, qDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
-                   OP_LOGE(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
-                             kDequantScaleShapeDim),
+                   OP_LOGE(opName_, "num of key_dequant_scale's shape dims: expect %u, got %u",
+                             kShapeDim - 1, kDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
         // check q scale
         for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
@@ -957,20 +912,13 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.returnValue = *opParamInfo_.returnValue;
     QLIV2Info.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
 
-    if (opParamInfo_.keyStride0 != -1) {
-        QLIV2Info.keyStride0 = opParamInfo_.keyStride0;
-    } else {
-        QLIV2Info.keyStride0 = blockSize_ * n2Size_ * headDim_;
-    }
-    if (opParamInfo_.keyDequantScaleStride0 != -1) {
-        QLIV2Info.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
-    } else {
-        // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/64, 2]，stride = BlockSize * (D/64) * 2 = BlockSize * D/32
-        if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
-            QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32); // 32:32个key对应1个scale
-        } else {
-            QLIV2Info.keyDequantScaleStride0 = blockSize_;
-        }
+    // keyStride0 默认由 blockSize, n2Size, headDim 计算得到
+    QLIV2Info.keyStride0 = blockSize_ * n2Size_ * headDim_;
+    {
+        const bool isMxFp8 = (*opParamInfo_.quantMode == 3);
+        // MXFP8: kScale stride = BlockSize * D / 32 (32 keys share 1 scale)
+        const uint32_t mxfp8DequantScaleStride = blockSize_ * (headDim_ / 32);
+        QLIV2Info.keyDequantScaleStride0 = isMxFp8 ? mxfp8DequantScaleStride : static_cast<uint32_t>(blockSize_);
     }
 
     QLIV2Info.inputQLayout = qLayout_;

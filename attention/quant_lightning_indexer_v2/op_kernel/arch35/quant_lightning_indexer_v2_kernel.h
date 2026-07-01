@@ -395,7 +395,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         }
     }
     uint32_t ldFirstWorkSpaceIndex =
-        GetAttrAbsIndex(cubeCoreIdx, QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
+        GetAttrAbsIndex(cubeCoreIdx, QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX, false);
     ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
     if ASCEND_IS_AIV {
         uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_CORE_ENABLE_INDEX, true);
@@ -671,10 +671,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
         outputIdxCoreOffset =
             (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
-        // MXFP8: qScale offset, shape [B, S1, N1, D/32]
         if constexpr (IS_MXFP8) {
-            uint64_t qScalePrefixSum = actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / MXFP8_BLOCK_SIZE);
-            qScaleCoreOffset_ = qScalePrefixSum + runInfo.gS1Idx * constInfo.mBaseSize * (constInfo.headDim / MXFP8_BLOCK_SIZE);
+            uint32_t qScaleStrideD = constInfo.headDim / MXFP8_BLOCK_SIZE;
+            uint64_t qScalePrefixSum = actualSeqQPrefixSum * constInfo.qHeadNum * qScaleStrideD;
+            qScaleCoreOffset_ = qScalePrefixSum + runInfo.gS1Idx * constInfo.mBaseSize * qScaleStrideD;
         }
     }
     uint64_t actualSeqKPrefixSum;
