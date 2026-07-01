@@ -4,8 +4,8 @@
 
 | 产品                                        | 是否支持 |
 | :------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    ×     |
+| <term>Ascend 950DT</term>                |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                   |    ×     |
 | <term>Atlas 推理系列产品</term>                           |    ×     |
@@ -272,7 +272,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>epWorldSize</td>
         <td>输入</td>
         <td>ep通信域大小。</td>
-        <td><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
+        <td><term>Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -522,7 +522,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-注意：由于量化接口仅支持<term>Ascend 950PR/Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
+注意：由于量化接口仅支持<term>Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
 
 ```cpp
 #include <thread>
@@ -779,7 +779,7 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
 
 int main(int argc, char *argv[])
 {
-    // 本样例基于Ascend 950PR/Ascend 950DT实现
+    // 本样例基于Ascend 950DT实现
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     

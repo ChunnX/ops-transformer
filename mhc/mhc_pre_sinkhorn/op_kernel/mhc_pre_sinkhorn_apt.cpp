@@ -44,8 +44,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
     TPipe pipe;
 
     if (TILING_KEY_IS(1000)) {
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornRegbaseTilingData, tiling_data_in, tiling);
+        const MhcPreSinkhornRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornNs::MhcPreSinkhornMKSplitCorePart1<DTYPE_X> op;
         op.Init(x, phi, userWs, tilingData, &pipe);
         op.Process();
@@ -57,15 +57,15 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
         op2.Process();
         pipeStage2.Destroy();
     } else if (TILING_KEY_IS(1001)) {
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornRegbaseTilingData, tiling_data_in, tiling);
+        const MhcPreSinkhornRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornNs::MhcPreSinkhornMSplitCorePart1<DTYPE_X> op;
         op.Init(x, phi, alpha, bias, hin, hPost, hRes, tilingData, &pipe);
         op.Process();
 
     } else if (TILING_KEY_IS(2000)) {  // K分核，Gradout
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornRegbaseTilingData, tiling_data_in, tiling);
+        const MhcPreSinkhornRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornNs::MhcPreSinkhornMKSplitCorePart1Gradout<DTYPE_X> op;
         op.Init(x, phi, userWs, tilingData, &pipe);
         op.Process();
@@ -79,8 +79,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
         pipeStage2.Destroy();
 
     } else if (TILING_KEY_IS(2001)) { // M分核，Gradout
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornRegbaseTilingData, tiling_data_in, tiling);
+        const MhcPreSinkhornRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornNs::MhcPreSinkhornMSplitCorePart1Gradout<DTYPE_X> op;
         op.Init(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
               tilingData, &pipe);

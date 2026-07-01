@@ -306,11 +306,7 @@ ge::graphStatus FaInfoParser::GetQkHeadDim()
 ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
-        OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_q",
-                "max_seqlen_q cannot be empty when layout_q is TND"),
-            return ge::GRAPH_FAILED);
-        s1Size_ = *opParamInfo_.maxSeqlenQ;
+        s1Size_ = queryTSize_;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -322,7 +318,10 @@ ge::graphStatus FaInfoParser::GetS1Size()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    if (opParamInfo_.blockTable.tensor != nullptr) {
+    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
+                       layoutKV_ == FaLayout::PA_NZ);
+
+    if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
@@ -332,11 +331,7 @@ void FaInfoParser::GetKvStorageMode()
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
-        OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_kv",
-                "max_seqlen_kv cannot be empty when layout_kv is TND"),
-            return ge::GRAPH_FAILED);
-        s2Size_ = *opParamInfo_.maxSeqlenKV;
+        s2Size_ = keyTSize_;
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -366,6 +361,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
+    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+            "When layout_kv is PA, block_table must be provided but got nullptr."),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

@@ -33,11 +33,13 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
 {
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y",
+            Ops::Base::ToString(args_.geCType).c_str(),
+            "FLOAT16, BF16, FLOAT or INT8"),
         return ge::GRAPH_FAILED);
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return ge::GRAPH_FAILED);
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
     uint8_t commMode = 0;
@@ -376,9 +378,9 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
 ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
 {
     MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
-    OP_TILING_CHECK(
-        CheckX1X2() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "Check input_X failed."), return ge::GRAPH_FAILED);
+    if (CheckX1X2() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto outputDimNum = mmrCtxInfo_.y_shape->GetStorageShape().GetDimNum();
     if (mmrCtxInfo_.x3_shape != nullptr) {
         auto x3DimNum = mmrCtxInfo_.x3_shape->GetStorageShape().GetDimNum();

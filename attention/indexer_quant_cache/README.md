@@ -44,7 +44,7 @@
 
 ## 约束说明
 
-- `x`的最后一维`d`必须大于32且能被32整除。
+- `x`的最后一维`d`须能被32整除且 `d ≤ 8192`。
 - `slot_mapping`的维度应等于`x`的维度减1，即`slot_mapping`为`x`除最后一维外的所有维度展平。
 - 数据类型组合需匹配量化模式：Normal/HiFloat8模式cache为FP8/UINT8且cache_scale为FLOAT；MX-FP8模式cache为FP8且cache_scale为FLOAT8_E8M0；MX-FP4模式cache为FP4且cache_scale为FLOAT8_E8M0。
 - `slot_mapping`中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。

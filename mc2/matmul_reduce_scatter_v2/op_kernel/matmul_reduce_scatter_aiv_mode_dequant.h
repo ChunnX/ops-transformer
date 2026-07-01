@@ -168,22 +168,24 @@ public:
                 layoutDst = layoutOutput;
                 gmDst = gmOutput + layoutOutput.GetOffset(offsetC);
             }
-            // 根据反量化类型调用BlockEpilogue的不同重载
+            __gm__ BiasType *gmBiasOffset = (gmbias != nullptr) ? (gmbias + blockLocCoord.n()) : nullptr;
             if (needPerChannel && needPerToken) {
                 // Per-Channel + Per-Token组合反量化
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale, gmbias,
-                              layoutBias, workspace + dataBlockOffset, layoutBlock,
+                              perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
+                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerChannel) {
-                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, gmbias, layoutBias,
+                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
+                              gmBiasOffset, layoutBias,
                               workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerToken) {
-                blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale, gmbias,
-                              layoutBias, gmPeerMem + dataBlockOffset, layoutBlock,
+                blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
+                              gmBiasOffset, layoutBias,
+                              gmPeerMem + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             }

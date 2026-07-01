@@ -6,8 +6,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
@@ -35,7 +35,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  - <term>Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 
 ## 函数原型
 
@@ -182,7 +182,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         <td>epWorldSize（int64_t）</td>
         <td>输入</td>
         <td>ep通信域的大小。</td>
-        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</td>
+        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950DT</term>支持2、4、8、16、32、64。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -365,8 +365,8 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 ## 约束说明
 
 - 通信引擎约束：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AICPU通信。
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
+  - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 确定性计算：
   - aclnnAlltoAllvGroupedMatMulV2默认确定性实现。
@@ -394,7 +394,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 - 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 - 本示例代码以8卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
 
     ```cpp
     #include <thread>

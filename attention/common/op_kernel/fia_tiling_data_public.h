@@ -20,13 +20,8 @@ namespace optiling {
 
 // 数组长度
 // TODO，host和device宏定义不一样，如何通过编译宏隔离？
-// #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr uint32_t NPU_AIC_CORE_NUM = 36;
 constexpr uint32_t NPU_AIV_CORE_NUM = 72;
-// #else
-// constexpr uint32_t NPU_AIC_CORE_NUM = 24;
-// constexpr uint32_t NPU_AIV_CORE_NUM = 48;
-// #endif
 
 constexpr uint32_t FA_METADATA_SIZE = 8;
 constexpr uint32_t FD_METADATA_SIZE = 8;
@@ -54,6 +49,11 @@ constexpr uint32_t FD_M_NUM_INDEX = 6;
 struct stridesParams {
     uint64_t bnStride = 0;
     uint64_t n2Stride = 0;
+
+    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
+    uint64_t get_bnStride() const {return bnStride;}
+    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
+    uint64_t get_n2Stride() const {return n2Stride;}
 };
 
 struct FiaBaseParams {

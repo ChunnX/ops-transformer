@@ -308,18 +308,18 @@ private:
 
     bool IsFlashDecode(uint32_t coreNum);
 
-    void FillTilingBaseParamsMla();
     void FillTilingSplitKVMla();
+    void FillTilingBaseParamsMla();
 
+    void FillTiling();
     void FillTilingSingleCoreParamsMla();
     void FillTilingSingleCoreTensorSizeMla();
-    void FillTiling();
 
     void CalcUbBmm();
     void CheckUbSpace();
+    void GetWorkspaceSize();
     void NormalCalcFDWorkSpace(const uint32_t actCoreNum);
     void CalcFDWorkSpace(const uint32_t actCoreNum);
-    void GetWorkspaceSize();
 
     uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
 
@@ -551,6 +551,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     void GenerateInfo(SFATilingInfo &sfaInfo);
+    void FillTilingInfoAttrsAndLayouts(SFATilingInfo &sfaInfo);
     ge::graphStatus Parse(SFATilingInfo &sfaInfo);
 
     const gert::TilingContext *context_ = nullptr;

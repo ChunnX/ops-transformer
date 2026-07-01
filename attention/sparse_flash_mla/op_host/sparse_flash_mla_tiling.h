@@ -58,8 +58,8 @@ enum class SMLAAxis : uint32_t {
 
 enum class SMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
-    CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2
+    HCA_TEMPLATE_MODE = 1,
+    CSA_TEMPLATE_MODE = 2
 };
 
 enum class KvStorageMode : uint32_t {
@@ -101,9 +101,7 @@ constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 8;   // A2/A3
-constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 9;     // A2/A3
-constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 10;    // A2/A3
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -168,6 +166,8 @@ TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
 TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
+TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
+TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0)      // A5
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
@@ -179,6 +179,7 @@ TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
 TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)          // A2/A3
 TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)  // A5
 TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)           // A5
+TILING_DATA_FIELD_DEF(uint32_t, cmpKeyStride0)          // A5
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaCmpParamsOp, SparseFlashMlaCmpParams)
 
@@ -214,8 +215,6 @@ struct SMLAParaInfo {
     const uint32_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    const uint32_t *oriKvStride0 = nullptr; // A2/A3
-    const uint32_t *cmpKvStride0 = nullptr; // A2/A3
     const uint32_t *oriWinLeft = nullptr;
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
@@ -259,6 +258,9 @@ public:
     uint32_t actualLenDimsCmpKV = 0;
     uint32_t cmpResidualKVSize = 0;
 
+    uint32_t oriKeyStride0 = 0; // A5
+    uint32_t cmpKeyStride0 = 0; // A5
+
     float softmaxScale = 0;
     int64_t cmpRatio = 1;
     uint64_t oriMaskMode = 0;
@@ -278,7 +280,7 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     bool returnSoftmaxLse = false;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -339,6 +341,7 @@ private:
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
+    ge::graphStatus CheckSingleParaTopkLength() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaOriSparseIndices() const;
@@ -490,8 +493,10 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetSinks();
+    uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
+    ge::graphStatus CheckContiguous() const; // A5
 
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
@@ -533,6 +538,9 @@ public:
     uint32_t actualLenDimsOriKV_ = 0;
     uint32_t actualLenDimsCmpKV_ = 0;
     uint32_t cmpResidualKVSize_ = 0;
+
+    std::vector<uint32_t> oriKeyStridesVec_; // A5
+    std::vector<uint32_t> cmpKeyStridesVec_; // A5
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
@@ -595,7 +603,7 @@ private:
     uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
     uint32_t usedCoreNum_ = 0;
-    
+
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 64;
 };

@@ -32,7 +32,7 @@
     - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
 
         $$
-        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
+        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2) + bias_{optional})
         $$
 
     - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时， x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
@@ -279,7 +279,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - x1、x2：commMode为aiv时，数据类型支持FLOAT16、BFLOAT16、INT8，x1数据格式仅支持ND，x2数据格式支持ND、FRACTAL_NZ。
-        - bias：在commMode为aiv时，当x1和x2数据类型为INT8时，bias数据类型必须为FLOAT；当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16。
+        - bias：在commMode为aiv时，当x1和x2数据类型为INT8时，bias数据类型可以是FLOAT16、BFLOAT16、FLOAT；当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16、FLOAT；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16、FLOAT。
         - x1Scale：在commMode为aiv时，数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
         - x2Scale：在commMode为aiv时，数据类型支持FLOAT、INT64，数据格式支持ND。INT64数据类型仅在output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
@@ -297,7 +297,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
             groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
             $$
             - 如果满足重新设置条件，一般情况下，当x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
-        - commMode：当前版本仅支持输入“ccu”。
+        - commMode：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
 
             $$
@@ -381,8 +381,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - 通信引擎约束：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：仅支持commMode为"aiv"。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持commMode为"ccu"。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"。
+  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。
@@ -399,7 +399,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8时，不支持空tensor。
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2的数据类型需要保持一致。
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2的数据可以为其中一种。
-    - 支持2、4、8、16、32、64卡。
+    - 支持2、4、8、16、32、64卡；支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
     - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -525,7 +525,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
         std::vector<int8_t> x1HostData(x1ShapeSize, 0);
         std::vector<int8_t> x2HostData(x2ShapeSize, 0);
-        std::vector<float> biasHostData(biasShapeSize, 0);
+        std::vector<int32_t> biasHostData(biasShapeSize, 0);
         std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 0);
         std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 0);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);

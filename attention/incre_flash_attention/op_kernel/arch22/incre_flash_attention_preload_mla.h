@@ -117,7 +117,8 @@ public:
     static constexpr LAYOUT KV_LAYOUT_T = IFAT::kvLayout;
     static constexpr AMLAMODE AMLA = IFAT::isAMla;
     static constexpr bool BALANCE = IFAT::isBalance;
-
+    static constexpr bool ENABLE_TREE = IFAT::enableTree;
+    
     static constexpr bool QUANT = (IsSameType<Q_T, KV_T>::value && IsSameType<KV_T, int8_t>::value);
     static constexpr uint8_t PER_CHANNEL_MODE = 0; // 伪量化: K V per-channel
     static constexpr uint8_t ANTIQUANT_MODE = IFAT::antiquantMode;
@@ -747,12 +748,12 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::InitOutputSingl
         uint32_t initOutputEventId = 0U;
         SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         // TND 场景：sparse9 有 s2=0 的 batch，其 Q token 不会被计算路径写入，必须清零
-        if constexpr (LAYOUT_T == LAYOUT::TND) {
-            if (sparseMode == 9U && actualLenDims > 1U) {
+        if constexpr (LAYOUT_T == LAYOUT::TND && ENABLE_TREE) {
+            if (actualLenDims > 1U) {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 // 按 batch 轮询分配，跳过 s2≠0 的 batch
                 for (uint64_t bIdx = (uint64_t)tmpBlockIdx; bIdx < batchSize;
-                     bIdx += (uint64_t)usedCoreNum) {
+                    bIdx += (uint64_t)usedCoreNum) {
                     uint64_t s2 = actualSeqLengthsGm.GetValue(bIdx);
                     if (s2 != 0) {
                         continue;
@@ -948,8 +949,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::Init(
     InitActualSeqLen(actualSeqLengthsQ, actualSeqLengths);
 
     // sparse9 TND padding 场景初始化 output 为 0
-    if ASCEND_IS_AIV {
-        InitOutputSingleCore();
+    if constexpr (ENABLE_TREE) {
+        if ASCEND_IS_AIV {
+            InitOutputSingleCore();
+        }
     }
 
     if constexpr (PAGE_ATTENTION) {
@@ -2059,16 +2062,16 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::AttenMaskCopyFo
     uint32_t tailGSize = reminRowCount % info.gSize;
     for (uint32_t midIdx = 0; midIdx < midS1Count; midIdx++) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset],
-                             AscendC::MASK_PLACEHOLDER, info.gSize,
-                             {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
+                            AscendC::MASK_PLACEHOLDER, info.gSize,
+                            {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
         dstMaskOffset += info.gSize * attenMaskSizeAlign / 2;
         srcMaskBaseOffset += attenMaskSizeAlign / 2;
     }
     // tail
     if (tailGSize > 0) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset],
-                             AscendC::MASK_PLACEHOLDER, tailGSize,
-                             {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
+                            AscendC::MASK_PLACEHOLDER, tailGSize,
+                            {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
     }
     SetMaskNorm();
     ResetMask();
@@ -2086,14 +2089,14 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::IsSkipAttenMask(const ExtraInfoMla &in
 
     uint32_t s2EndPos = info.s2Idx * singleProcessSInnerSize + info.actualSingleProcessSInnerSize;
     // 新增sparse9的处理，sparse9和sparse3类似，但是sparse9是用户自己传入的mask矩阵，算子无法感知具体数值，所以涉及到基本块都要参与计算
-    if (sparseMode == 9U) {
+    if constexpr (ENABLE_TREE) {
         if (s2EndPos > (info.s2Size - actualSeqQ)) {
             return false;
         } else {
             return true;
         }
     }
-    
+
     // s2<s1时，必然走mask
     if (info.s2Size < actualSeqQ) {
         return false;
@@ -2170,7 +2173,7 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::ElewiseCompute(const ExtraInfoMla &inf
                 }
                 attenMaskUb = attenMaskUbDst;
             } else { // BSH/BSND/TND
-                if (sparseMode == 9U) {
+                if constexpr (ENABLE_TREE) {
                     AttenMaskCopyForTree(info, attenMaskUb, startRow, dealRowCount);
                 } else {
                     AttenMaskCopyForSplitG(info, attenMaskUb, startRow, dealRowCount);

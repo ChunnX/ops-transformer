@@ -61,22 +61,21 @@ ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum,
 {
     // 根据kv kvscale krope算出连续场景的strides，如果存在某一维不相等则表示不连续
     if (Strides == nullptr || Strides->GetDimNum() == 0){
-            return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_SUCCESS;
+    }
+    // 维度为1的tensor始终连续
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
     }
     uint64_t preStride = 1; // 连续场景最后一维的stride默认为1
     for (index = tensorDimNum - 1; index >= 0; index--) {
-        if (index == tensorDimNum - 1) {
-            if (Strides->GetStride(index) != preStride) {
-                return ge::GRAPH_FAILED;
-            } else {
-                continue;
-            }
+        if (inputShape.GetDim(index) == 1) { // dim=1时步长不影响连续性
+            continue;
         }
-        uint64_t tensorStride = inputShape.GetDim(index+1) * preStride;
-        if (Strides->GetStride(index) != tensorStride) {
+        if (preStride != Strides->GetStride(index)) {
             return ge::GRAPH_FAILED;
         }
-        preStride = tensorStride;
+        preStride *= inputShape.GetDim(index);
     }
     return ge::GRAPH_SUCCESS;
 }

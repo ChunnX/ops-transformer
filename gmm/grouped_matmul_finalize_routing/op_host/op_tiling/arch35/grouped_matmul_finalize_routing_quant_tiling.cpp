@@ -187,9 +187,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
             rowIndexType_ = 1;
         }
         OP_CHECK_IF(!(rowIndexDtype == ge::DT_INT64 || rowIndexDtype == ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "row_index",
-                                              ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
-                                              "DT_INT64/DT_INT32"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "row_index", ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
+                        "when inputs are DT_INT8, the dtype of row_index must be within the range DT_INT64/DT_INT32"),
                     return false);
     }
 
@@ -240,31 +240,32 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
                 ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
                              ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                 "in mx quant mode, the dtypes of x and weight must be within the range "
-                "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E1M2/DT_FLOAT4_E2M1"),
+                "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E2M1"),
             return false);
     } else {
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_INT8 ||
                       inputParams_.aDtype == ge::DT_HIFLOAT8),
-                    OP_LOGE(context_->GetNodeName(),
-                            "In K-C/T-C quant mode, the expected dtype of x and weight should be \
-DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8, but actual dtype is %s, %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight",
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                        "in K-C/T-C quant mode, the dtypes of x and weight must be within the range "
+                        "DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8"),
                     return false);
 
         OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16),
-                    OP_LOGE(context_->GetNodeName(),
-                            "In K-C/T-C quant mode, the expected dtype of scale should be \
-DT_FLOAT/DT_BF16, but actual dtype is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "scale",
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
+                        "in K-C/T-C quant mode, the dtype of scale must be within the range DT_FLOAT/DT_BF16"),
                     return false);
 
         if (context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX) != nullptr) {
             OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE(context_->GetNodeName(),
-                                "In K-C quant mode, the expected dtype of perTokenScaleDtype should be \
-DT_FLOAT, but actual dtype is %s.",
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            inputParams_.opType, "perTokenScale",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
+                            "in K-C quant mode, the dtype of perTokenScale must be DT_FLOAT"),
                         return false);
         }
     }
@@ -344,8 +345,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape &x
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "2",
-                                                      "when the dtype of x is FLOAT4, k size cannot be 2"),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opType, "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                    "when the dtype of x is FLOAT4, k size cannot be 2"),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
@@ -460,9 +463,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
 
     if (!IsMicroScaling()) {
         OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opType, "weight",
-                                               ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                                               "FRACTAL_NZ"),
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "in K-C/T-C quant mode, the format of weight must be FRACTAL_NZ"),
                     return false);
     }
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
@@ -526,8 +529,24 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     OP_CHECK_IF(DeterministicTilingProcess() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "DeterministicTilingProcess failed."),
                 return ge::GRAPH_FAILED);
-    PrintQuantParams();
+    OP_LOGD(context_->GetNodeName(), "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
+}
+
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogQuantParams() const
+{
+    std::ostringstream oss;
+    oss << "GMMQuantParams: groupNum = " << tilingData_.gmmFinalizeRoutingDataParams.groupNum
+        << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.groupListType)
+        << ", batch = " << tilingData_.gmmFinalizeRoutingDataParams.batch
+        << ", sharedInputOffset = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset
+        << ", sharedInputLen = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen
+        << ", residualScale = " << tilingData_.gmmFinalizeRoutingDataParams.residualScale
+        << ", aQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.aQuantMode
+        << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
+        << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
+    OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+    return 0;
 }
 
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
@@ -575,7 +594,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
-    PrintMatmulParams();
+    OP_LOGD(context_->GetNodeName(), "%ld", LogMatmulParams());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -599,38 +618,15 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedMatmulFinalizeRoutingQuantTiling::PrintMatmulParams()
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogMatmulParams() const
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     std::ostringstream oss;
     oss << "GMM matmul tiling: M = " << tilingData_.matmulTiling.M << ", N = " << tilingData_.matmulTiling.N
         << ", Ka = " << tilingData_.matmulTiling.Ka << ", Kb = " << tilingData_.matmulTiling.Kb
         << ", usedCoreNum = " << tilingData_.matmulTiling.usedCoreNum << ", baseM = " << tilingData_.matmulTiling.baseM
         << ", baseN = " << tilingData_.matmulTiling.baseN << ", baseK = " << tilingData_.matmulTiling.baseK;
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
-}
-
-void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
-{
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
-
-    std::ostringstream oss;
-    oss << "GMMQuantParams: groupNum = " << tilingData_.gmmFinalizeRoutingDataParams.groupNum
-        << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.groupListType)
-        << ", batch = " << tilingData_.gmmFinalizeRoutingDataParams.batch
-        << ", sharedInputOffset = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset
-        << ", sharedInputLen = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen
-        << ", residualScale = " << tilingData_.gmmFinalizeRoutingDataParams.residualScale
-        << ", aQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.aQuantMode
-        << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
-        << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
-    OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()

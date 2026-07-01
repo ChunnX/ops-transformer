@@ -41,9 +41,6 @@ constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
 constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
-constexpr uint32_t ATTR_GROUP_TP_INDEX = 4;
-constexpr uint32_t ATTR_TP_WORLD_SIZE_INDEX = 5;
-constexpr uint32_t ATTR_TP_RANK_ID_INDEX = 6;
 constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
 constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 8;
 constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
@@ -52,7 +49,6 @@ constexpr uint32_t ATTR_COMM_QUANT_MODE_INDEX = 12;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
-const int64_t MAX_TP_WORLD_SIZE = 2;
 
 enum class CommQuantMode : int32_t {
     NON_QUANT = 0,
@@ -66,9 +62,7 @@ namespace optiling {
 static void PrintA2TilingDataInfo(MoeDistributeCombineA2Info &info)
 {
     OP_LOGD(K_INNER_DEBUG, "epWorldSize is %u.", info.epWorldSize);
-    OP_LOGD(K_INNER_DEBUG, "tpWorldSize is %u.", info.tpWorldSize);
     OP_LOGD(K_INNER_DEBUG, "epRankId is %u.", info.epRankId);
-    OP_LOGD(K_INNER_DEBUG, "tpRankId is %u.", info.tpRankId);
     OP_LOGD(K_INNER_DEBUG, "expertSharedType is %u.", info.expertSharedType);
     OP_LOGD(K_INNER_DEBUG, "sharedExpertRankNum is %u.", info.sharedExpertRankNum);
     OP_LOGD(K_INNER_DEBUG, "moeExpertNum is %u.", info.moeExpertNum);
@@ -98,7 +92,6 @@ static uint64_t MoeDistributeCombineA2CalcTilingKey(gert::TilingContext *context
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 calc tiling func.");
 
-    bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;  // A2 & A3
     uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
 
@@ -109,7 +102,7 @@ static uint64_t MoeDistributeCombineA2CalcTilingKey(gert::TilingContext *context
         }
     }
 
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A2);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, layeredMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
 
     return tilingKey;
@@ -157,8 +150,6 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
-    auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_WORLD_SIZE_INDEX);
-    auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_RANK_ID_INDEX);
     auto expertSharedTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
@@ -171,10 +162,6 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 ||
         *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 || *moeExpertNumPtr % *epWorldSizePtr != 0,
         OP_LOGE_FOR_INVALID_VALUE(K_INNER_DEBUG, "moeExpertNum", "invalid", "valid moeExpertNum"), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpRankIdPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"), return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"), return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr,
@@ -192,9 +179,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "xShape"), return GRAPH_FAILED);
     int32_t globalBs = *epWorldSizePtr * expertIdStorageShape->GetStorageShape().GetDim(0);
     info.epWorldSize = *epWorldSizePtr;
-    info.tpWorldSize = static_cast<uint32_t>(0);
     info.epRankId = *epRankIdPtr;
-    info.tpRankId = static_cast<uint32_t>(0);
     info.expertSharedType = static_cast<uint32_t>(0);
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
@@ -339,6 +324,7 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingChec
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
     std::string groupEp = "";
     std::string groupTp = "";
+    uint32_t tpWorldSize = 1;
     bool isShared = true;
     uint32_t localMoeExpertNum = 1;
     commQuantMode = 0U;
@@ -375,7 +361,6 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingChec
         OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
 
@@ -399,18 +384,13 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingFunc
     OP_TILING_CHECK(MoeDistributeCombineA3TilingCheckAttr(context, commQuantMode) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "CombineA3Tiling attr check failed."), return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
-    bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
     uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
-    }
     if (commQuantMode == INT8_COMM_QUANT) {
         quantMode = TILINGKEY_INT8_QUANT;
     }
     uint32_t archTag = (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) ? TILINGKEY_TPL_A5 : TILINGKEY_TPL_A3;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, archTag);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, layeredMode, archTag);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t numBlocks = 1U;

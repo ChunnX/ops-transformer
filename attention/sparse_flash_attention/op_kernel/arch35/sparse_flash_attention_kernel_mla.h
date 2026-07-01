@@ -26,6 +26,11 @@
 #include "sparse_flash_attention_common_arch35.h"
 #include "sparse_flash_attention_kvcache.h"
 
+#if __has_include("../../common/op_kernel/CopyInL1.h")
+#include "../../common/op_kernel/CopyInL1.h"
+#else
+#include "../common/CopyInL1.h"
+#endif
 #if __has_include("../../common/op_kernel/matmul.h")
 #include "../../common/op_kernel/matmul.h"
 #else
@@ -35,11 +40,6 @@
 #include "../../common/op_kernel/FixpipeOut.h"
 #else
 #include "../common/FixpipeOut.h"
-#endif
-#if __has_include("../../common/op_kernel/CopyInL1.h")
-#include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
 #endif
 
 using matmul::MatmulType;
@@ -426,26 +426,17 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.sparseBlockCount = sharedParams.sparseBlockCount;
     constInfo.sparseBlockSize = 1;
     constInfo.sparseMode = sharedParams.maskMode;
-    constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
-    constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
-    constInfo.gD = constInfo.gSize * constInfo.dSize;
-    constInfo.n2GD = constInfo.n2Size * constInfo.gD;
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
     constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
-    constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
     constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
     constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
     constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
-    constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
-
-    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
-    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
 
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // (BS)ND
