@@ -251,17 +251,15 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
 {
     auto weightStorage = weightTensor->GetStorageShape();
     auto weightStorageShapeDim = weightStorage.GetDimNum();
-    constexpr size_t weightNzMultiTensorStorageDim = 4;
+    constexpr size_t WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM = 4;
     const bool isWeightNzMultiTensor =
         gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && GetInputTensorSize(gmmParams_.weight) > 1;
-    size_t expectedStorageDim =
-        isWeightNzMultiTensor ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
     const bool validWeightNzStorageDim = weightStorageShapeDim == QUANT_WEIGHTNZ_STORAGE_DIM ||
-        (gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz &&
-         weightStorageShapeDim == weightNzMultiTensorStorageDim);
+        (isWeightNzMultiTensor && weightStorageShapeDim == WEIGHTNZ_MULTI_TENSOR_STORAGE_DIM);
     GMM_CHECK_REPORT(validWeightNzStorageDim,
         OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
-            std::to_string(weightStorageShapeDim), std::to_string(expectedStorageDim)));
+            std::to_string(weightStorageShapeDim),
+            isWeightNzMultiTensor ? "4 or 5" : std::to_string(QUANT_WEIGHTNZ_STORAGE_DIM)));
 
     auto weightStorageLastFourthDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FOURTH_DIM_INDEX);
     auto weightStorageLastThirdDim = weightStorage.GetDim(weightStorageShapeDim - LAST_THIRD_DIM_INDEX);
