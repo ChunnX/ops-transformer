@@ -208,6 +208,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Par
     constInfo.gSize = quantSparseFlashMlaBaseParams.nNumOfQInOneGroup;
     constInfo.s1Size = quantSparseFlashMlaBaseParams.qSeqSize;
     constInfo.s2Size = quantSparseFlashMlaBaseParams.kvSeqSize;
+    constInfo.cmpS2Size = quantSparseFlashMlaBaseParams.cmpKvSeqSize;
     constInfo.sparseBlockCount = quantSparseFlashMlaBaseParams.sparseBlockCount;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpRatio = quantSparseFlashMlaBaseParams.cmpRatio;
