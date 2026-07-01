@@ -94,29 +94,6 @@ def _get_effective_x_ge_dtype(x, x_dtype):
     return _TORCH_DTYPE_TO_GE_DTYPE.get(x.dtype)
 
 
-def _get_effective_tensor_ge_dtype(tensor, dtype):
-    if dtype is not None:
-        return _normalize_attr_dtype(dtype)
-    if tensor is None:
-        return None
-    return _TORCH_DTYPE_TO_GE_DTYPE.get(tensor.dtype)
-
-
-def _resolve_quant_mode(quant_mode, x, x_scale, x_dtype, x_scale_dtype):
-    x_ge_dtype = _get_effective_x_ge_dtype(x, x_dtype)
-    x_scale_ge_dtype = _get_effective_tensor_ge_dtype(x_scale, x_scale_dtype)
-    if quant_mode is not None:
-        if quant_mode != "MX":
-            raise ValueError("quant_mode 参数当前仅支持为 MX")
-        return quant_mode
-    if x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2) and x_scale_ge_dtype == GE_DTYPE_FLOAT8_E8M0:
-        return "MX"
-    raise ValueError(
-        "当前数据类型组合无法匹配到该算子支持的任何一种量化模式，"
-        f"x数据类型：{x_ge_dtype}，x_scale数据类型：{x_scale_ge_dtype}"
-    )
-
-
 def _resolve_y_dtype(y_dtype, x, x_dtype):
     if y_dtype is None:
         x_ge_dtype = _get_effective_x_ge_dtype(x, x_dtype)
@@ -158,19 +135,14 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                                                  dst_type_max=0.0, x_dtype=None,
                                                  weight_dtype=None, weight_scale_dtype=None,
                                                  x_scale_dtype=None):
-            quant_mode = _resolve_quant_mode(quant_mode, x, x_scale, x_dtype, x_scale_dtype)
-            torch._check(len(weight) == 1 and weight[0] is not None,
-                         lambda: "weight only supports one non-null tensor in current MXFP8 mode.")
-            torch._check(len(weight_scale) == 1 and weight_scale[0] is not None,
-                         lambda: "weight_scale only supports one non-null tensor in current MXFP8 mode.")
-            torch._check(x_scale is not None, lambda: "x_scale must be provided in current MXFP8 mode.")
-            torch._check(x.dim() == 2, lambda: f"x must be 2D, but got {x.dim()}D.")
-            torch._check(weight[0].dim() == 3,
-                         lambda: f"weight must be a 3D logical tensor, but got {weight[0].dim()}D.")
-            torch._check(weight_scale[0].dim() == 4,
-                         lambda: f"weight_scale must be 4D, but got {weight_scale[0].dim()}D.")
-            torch._check(x_scale.dim() == 3, lambda: f"x_scale must be 3D, but got {x_scale.dim()}D.")
-            torch._check(group_list.dim() == 1, lambda: f"group_list must be 1D, but got {group_list.dim()}D.")
+            torch._check(len(weight) > 0 and weight[0] is not None,
+                         lambda: "weight must contain at least one non-null tensor for meta output inference.")
+            torch._check(len(weight_scale) > 0 and weight_scale[0] is not None,
+                         lambda: "weight_scale must contain at least one non-null tensor for meta output inference.")
+            torch._check(x_scale is not None, lambda: "x_scale must be provided for meta output inference.")
+            torch._check(x.dim() > 0, lambda: "x must have at least one dimension for meta output inference.")
+            torch._check(weight_scale[0].dim() > 2,
+                         lambda: "weight_scale must have at least 3 dimensions for meta output inference.")
 
             m = x.shape[0]
             n = _infer_nz_logical_n(weight_scale[0])
@@ -239,8 +211,7 @@ def grouped_matmul_activation_quant(
             ``(M, ceil(K / 64), 2)``。
         group_list_type (int): group_list语义类型，当前支持0或1。
         tuning_config (List[int], optional): 预留调优参数。
-        quant_mode (str, optional): 量化模式。显式传值时当前仅支持 ``"MX"``；为None时，
-            若x数据类型为FP8且x_scale数据类型为FLOAT8_E8M0，则自动推导为 ``"MX"``。
+        quant_mode (str, optional): 量化模式，torch层不做解析，直接透传到aclnn层处理。
         y_dtype (torch.dtype, optional): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
             ``torch.float8_e5m2``；为None时默认推导为x的数据类型。
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。

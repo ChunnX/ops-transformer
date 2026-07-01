@@ -83,7 +83,11 @@ static graphStatus InferDataType4GroupedMatmulActivationQuant(gert::InferDataTyp
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *yDtype = attrs->GetInt(ATTR_INDEX_Y_DTYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, yDtype);
-    context->SetOutputDataType(OUT_Y_INDEX, static_cast<ge::DataType>(*yDtype));
+    ge::DataType outputDtype = static_cast<ge::DataType>(*yDtype);
+    if (outputDtype == ge::DT_UNDEFINED) {
+        outputDtype = context->GetInputDataType(X_INDEX);
+    }
+    context->SetOutputDataType(OUT_Y_INDEX, outputDtype);
     context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
     return GRAPH_SUCCESS;
 }

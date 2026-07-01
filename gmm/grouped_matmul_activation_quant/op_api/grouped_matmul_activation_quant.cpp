@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <string>
 
+#include "gmm/common/op_host/log_format_util.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -22,6 +23,7 @@
 #include "util/math_util.h"
 
 using namespace op;
+using Ops::Transformer::Gmm::FormatString;
 
 namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulActivationQuant);
@@ -105,8 +107,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
                yDtype, scaleAlg, dstTypeMax);
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0 || (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("GroupedMatmulActivationQuant", "x and weightScale",
-            std::string("x=" + std::string(x == nullptr ? "nullptr" : "not nullptr") +
-                        ", weightScale=" + (weightScale == nullptr ? "nullptr" : "invalid tensorList")),
+            FormatString("x=%s, weightScale=%s", x == nullptr ? "nullptr" : "not nullptr",
+                         weightScale == nullptr ? "nullptr" : "invalid tensorList"),
             "x and weightScale can not be nullptr, and weightScale can not be empty");
         return std::tuple(nullptr, nullptr);
     }
