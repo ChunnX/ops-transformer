@@ -349,16 +349,16 @@ def tilelang_grad_kl_loss_single_kernel(
             # Reads ReduceSumY from GM (all K blocks, each written by its owner core).
             # GlobalSoftmaxI is still computed by all cores (reads GM, no redundancy).
             # dWeight/reluGrad/Loss are per-core (MY K block only).
+            # NOTE: all buffer names are suffixed with _1b to avoid collision with V1a.
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(21)
 
-                bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
-                weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                bmm2_1b_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                weight_1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                p_reduced_tmp_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_tmp_1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                rsy_chunk_1b_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub(16, calc_dtype)
                 rsy_sum_ub = T.alloc_ub(16, calc_dtype)
@@ -366,15 +366,15 @@ def tilelang_grad_kl_loss_single_kernel(
                 rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
                 max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
                 eps_sum_ub = T.alloc_ub(16, calc_dtype)
-                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                softmax_i_chunk_1b_ub = T.alloc_ub(n_block, calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     # Global SoftmaxI: read ReduceSumY from GM for all K blocks
                     T.tile.fill(rsy_max_ub, -1e30)
                     for n_idx_iter in T.serial(n_num):
-                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
+                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_1b_ub)
                         for i in range(16):
-                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
+                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_1b_ub, 1.0)
                         T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
@@ -387,13 +387,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(rsy_sum_ub, 0)
                     T.barrier_all()
                     for n_idx_iter in T.serial(n_num):
-                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
-                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_1b_ub)
+                        T.tile.sub(rsy_chunk_1b_ub, rsy_chunk_1b_ub, rsy_max_ub[0])
+                        T.tile.exp(rsy_chunk_1b_ub, rsy_chunk_1b_ub)
                         T.barrier_all()
-                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
+                        T.copy(rsy_chunk_1b_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
                         for i in range(16):
-                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
+                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_1b_ub, 1.0)
                         T.barrier_all()
                         T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
                         T.barrier_all()
@@ -404,91 +404,91 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.barrier_all()
 
                     for n_idx_iter in T.serial(n_num):
-                        T.copy(SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
-                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
+                        T.copy(SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_1b_ub)
+                        T.tile.div(rsy_chunk_1b_ub, rsy_chunk_1b_ub, rsy_sum_ub[0])
+                        T.copy(rsy_chunk_1b_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
 
                     # dWeight, reluGrad for MY K block
-                    diff_ub = T.alloc_ub(n_block, calc_dtype)
-                    dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
-                    dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                    mask_ub = T.alloc_ub(n_block, calc_dtype)
-                    ones_ub = T.alloc_ub(n_block, calc_dtype)
-                    weight_ub2 = T.alloc_ub(vector_baseg, calc_dtype)
-                    weight_half_ub2 = T.alloc_ub(vector_baseg, input_dtype)
-                    eps_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_val_ub = T.alloc_ub(n_block, calc_dtype)
+                    diff_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    dw_chunk_1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                    dw_reduce_1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                    rg_half_1b_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
+                    dw_half_1b_ub = T.alloc_ub(vector_baseg, input_dtype)
+                    mask_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    ones_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    weight2_1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                    weight_half2_1b_ub = T.alloc_ub(vector_baseg, input_dtype)
+                    eps_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_chunk_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_log_p_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_log_si_1b_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_val_1b_ub = T.alloc_ub(n_block, calc_dtype)
 
-                    T.tile.fill(ones_ub, 1.0)
-                    T.tile.fill(eps_ub, 1e-8)
+                    T.tile.fill(ones_1b_ub, 1.0)
+                    T.tile.fill(eps_1b_ub, 1e-8)
 
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
-                    T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
+                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_1b_ub)
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_1b_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_1b_ub)
+                    T.tile.sub(diff_1b_ub, softmax_i_chunk_1b_ub, p_reduced_tmp_1b_ub)
 
                     for g_id in range(g_num):
-                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub2)
-                        T.tile.cast(weight_ub2, weight_half_ub2, "CAST_NONE", vector_baseg)
+                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half2_1b_ub)
+                        T.tile.cast(weight2_1b_ub, weight_half2_1b_ub, "CAST_NONE", vector_baseg)
                         T.barrier_all()
-                        T.tile.fill(weight_ub, 0)
+                        T.tile.fill(weight_1b_ub, 0)
 
                         for i in range(vector_baseg):
                             g_row = g_id * vector_baseg + i
-                            T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_ub2[i])
-                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
-                            T.tile.mul(mask_ub, mask_ub, -1.0)
-                            T.tile.exp(mask_ub, mask_ub)
-                            T.tile.sub(mask_ub, ones_ub, mask_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
+                            T.tile.mul(dw_chunk_1b_ub[i, :], bmm2_1b_ub[g_row, :], diff_1b_ub)
+                            T.tile.mul(rsy_tmp_1b_ub[i, :], diff_1b_ub, weight2_1b_ub[i])
+                            T.tile.mul(mask_1b_ub, bmm2_1b_ub[g_row, :], 10000.0)
+                            T.tile.mul(mask_1b_ub, mask_1b_ub, -1.0)
+                            T.tile.exp(mask_1b_ub, mask_1b_ub)
+                            T.tile.sub(mask_1b_ub, ones_1b_ub, mask_1b_ub)
+                            T.tile.mul(rsy_tmp_1b_ub[i, :], rsy_tmp_1b_ub[i, :], mask_1b_ub)
                         T.barrier_all()
 
-                        T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                        T.reduce_sum(dw_chunk_1b_ub, dw_reduce_1b_ub, 1)
                         T.barrier_all()
-                        T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
+                        T.tile.add(weight_1b_ub, weight_1b_ub, dw_reduce_1b_ub)
 
                         # Write reluGrad for MY K block only
-                        T.tile.cast(rg_half_ub, rsy_tmp_ub, "CAST_ROUND", vector_baseg * n_block)
+                        T.tile.cast(rg_half_1b_ub, rsy_tmp_1b_ub, "CAST_ROUND", vector_baseg * n_block)
                         T.barrier_all()
                         for i in range(vector_baseg):
                             g_row = g_id * vector_baseg + i
-                            T.copy(rg_half_ub[i, :], reluGradRes[bz, s1_id, g_row, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                            T.copy(rg_half_1b_ub[i, :], reluGradRes[bz, s1_id, g_row, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                        T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
+                        T.tile.cast(dw_half_1b_ub, weight_1b_ub, "CAST_ROUND", vector_baseg)
                         T.barrier_all()
-                        T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_id * vector_baseg:(g_id + 1) * vector_baseg])
+                        T.copy(dw_half_1b_ub, dWeight_partial[bz, s1_id, n_idx_k, g_id * vector_baseg:(g_id + 1) * vector_baseg])
 
                     # Compute partial Loss for MY K block only
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.tile.ln(loss_log_p_ub, loss_chunk_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_1b_ub)
+                    T.tile.max(loss_chunk_1b_ub, loss_chunk_1b_ub, eps_1b_ub)
+                    T.tile.ln(loss_log_p_1b_ub, loss_chunk_1b_ub)
                     T.barrier_all()
 
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.tile.ln(loss_log_si_ub, loss_chunk_ub)
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_1b_ub)
+                    T.tile.max(loss_chunk_1b_ub, loss_chunk_1b_ub, eps_1b_ub)
+                    T.tile.ln(loss_log_si_1b_ub, loss_chunk_1b_ub)
                     T.barrier_all()
 
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
-                    T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
+                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_1b_ub)
+                    T.tile.sub(loss_val_1b_ub, loss_log_p_1b_ub, loss_log_si_1b_ub)
+                    T.tile.mul(loss_val_1b_ub, loss_chunk_1b_ub, loss_val_1b_ub)
                     T.barrier_all()
 
-                    loss_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
+                    loss_2d_1b_ub = T.alloc_ub((16, n_block), calc_dtype)
                     for i in range(16):
-                        T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
+                        T.tile.mul(loss_2d_1b_ub[i, :], loss_val_1b_ub, 1.0)
                     T.barrier_all()
-                    loss_sum_ub = T.alloc_ub(16, calc_dtype)
-                    T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
+                    loss_sum_1b_ub = T.alloc_ub(16, calc_dtype)
+                    T.reduce_sum(loss_2d_1b_ub, loss_sum_1b_ub, 1)
                     T.barrier_all()
 
-                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
+                    T.copy(loss_sum_1b_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
 
                 T.set_cross_flag("V", 12)
 
