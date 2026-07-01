@@ -15,8 +15,6 @@
 #include "aclnn_grouped_matmul_weight_nz.h"
 
 #include <dlfcn.h>
-#include <cstdarg>
-#include <cstdio>
 #include <new>
 
 #include "aclnn_kernels/transdata.h"
@@ -91,66 +89,6 @@ static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
 
 static constexpr int64_t MULTI_WEIGHT_DIM = 2L;
-
-void GmmAclnnPrint(const char *format, ...)
-{
-    std::printf("[GMM aclnn] ");
-    va_list args;
-    va_start(args, format);
-    std::vprintf(format, args);
-    va_end(args);
-    std::printf("\n");
-    std::fflush(stdout);
-}
-
-void PrintTensorDebugInfo(const char *stage, const char *name, const aclTensor *tensor)
-{
-    if (tensor == nullptr) {
-        GmmAclnnPrint("%s tensor %s: nullptr.", stage, name);
-        return;
-    }
-    GmmAclnnPrint("%s tensor %s: dtype=%s, storageFormat=%s(primary=%s), viewShape=%s, storageShape=%s, "
-                  "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
-                  stage, name, op::ToString(tensor->GetDataType()).GetString(),
-                  op::ToString(tensor->GetStorageFormat()).GetString(),
-                  op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat()))).GetString(),
-                  op::ToString(tensor->GetViewShape()).GetString(),
-                  op::ToString(tensor->GetStorageShape()).GetString(),
-                  tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),
-                  static_cast<int>(tensor->IsEmpty()));
-}
-
-void PrintTensorListDebugInfo(const char *stage, const char *name, const aclTensorList *tensorList)
-{
-    if (tensorList == nullptr) {
-        GmmAclnnPrint("%s tensorList %s: nullptr.", stage, name);
-        return;
-    }
-    GmmAclnnPrint("%s tensorList %s: size=%zu.", stage, name, tensorList->Size());
-    for (size_t i = 0; i < tensorList->Size(); ++i) {
-        char tensorName[128] = {};
-        std::snprintf(tensorName, sizeof(tensorName), "%s[%zu]", name, i);
-        PrintTensorDebugInfo(stage, tensorName, (*tensorList)[i]);
-    }
-}
-
-void PrintGroupedMatmulParamsDebugInfo(const char *stage, const gmm::GroupedMatmulParams &params)
-{
-    GmmAclnnPrint("%s params snapshot. apiVersion=%ld, transposeWeight=%d, transposeX=%d, groupType=%ld, "
-                  "groupListType=%ld, splitItem=%ld.",
-                  stage, static_cast<int64_t>(params.apiVersion), static_cast<int>(params.transposeWeight),
-                  static_cast<int>(params.transposeX), params.groupType, params.groupListType, params.splitItem);
-    PrintTensorListDebugInfo(stage, "x", params.x);
-    PrintTensorListDebugInfo(stage, "weight", params.weight);
-    PrintTensorListDebugInfo(stage, "biasOptional", params.biasOptional);
-    PrintTensorListDebugInfo(stage, "scaleOptional", params.scaleOptional);
-    PrintTensorListDebugInfo(stage, "offsetOptional", params.offsetOptional);
-    PrintTensorListDebugInfo(stage, "antiquantScaleOptional", params.antiquantScaleOptional);
-    PrintTensorListDebugInfo(stage, "antiquantOffsetOptional", params.antiquantOffsetOptional);
-    PrintTensorDebugInfo(stage, "groupTensorOptional", params.groupTensorOptional);
-    PrintTensorListDebugInfo(stage, "perTokenScaleOptional", params.perTokenScaleOptional);
-    PrintTensorListDebugInfo(stage, "y", params.y);
-}
 
 static bool IsFormatNZWithC0(const aclTensor *tensor)
 {
@@ -2819,14 +2757,10 @@ static aclnnStatus ParamsWeightNzDtype(gmm::GroupedMatmulParams &params, const c
 }
 
 static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &shape, aclOpExecutor *executor) {
-    PrintTensorDebugInfo("SetTensorToNZFormat input", "weight", input);
-    GmmAclnnPrint("SetTensorToNZFormat requested shape=%s, viewOffset=%ld.", op::ToString(shape).GetString(),
-                  input == nullptr ? 0L : static_cast<int64_t>(input->GetViewOffset()));
     auto formatTensor = executor->CreateView(input, shape, input->GetViewOffset());
     formatTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
     formatTensor->SetOriginalFormat(input->GetViewFormat());
     formatTensor->SetViewShape(input->GetViewShape());
-    PrintTensorDebugInfo("SetTensorToNZFormat output", "weight", formatTensor);
     return formatTensor;
 }
 
@@ -2875,9 +2809,10 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
         }
     }
 
-    PrintGroupedMatmulParamsDebugInfo("before WeightNz format normalization", params);
-    op::Shape nzShape = (*params.weight)[0]->GetStorageShape();
-    GmmAclnnPrint("saved original NZ storage shape from params.weight[0]=%s.", op::ToString(nzShape).GetString());
+    std::vector<op::Shape> nzShapes;
+    for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+        nzShapes.push_back((*params.weight)[idx]->GetStorageShape());
+    }
     if (params.apiVersion == gmm::GMMApiVersion::WeightNz ||
         (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
         CHECK_COND(ParamsWeightNzDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
@@ -2890,12 +2825,10 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
             tensorsVec.push_back(tensor);
         }
         params.weight = executorPtr->AllocTensorList(tensorsVec.data(), tensorsVec.size());
-        SetStorageShape(params, nzShape);
-        PrintGroupedMatmulParamsDebugInfo("after SetTensorToNZFormat and SetStorageShape", params);
+        SetStorageShape(params, nzShapes);
     }
     CHECK_COND(TransWeightToNz(params, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "TransWeightToNz failed.");
-    PrintGroupedMatmulParamsDebugInfo("after TransWeightToNz", params);
     if (params.groupListOptional != nullptr) {
         params.groupTensorOptional =
             uniqueExecutor->ConvertToTensor(params.groupListOptional, op::ToOpDataType(ACL_INT64));
@@ -2903,8 +2836,6 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
     auto perTokenScaleOptional =
         (*params.perTokenScaleOptional)[0]->IsEmpty() ? nullptr : (*params.perTokenScaleOptional)[0];
     // Invoke l0 operator GroupedMatmul for calculation.
-    PrintGroupedMatmulParamsDebugInfo("before l0op::GroupedMatmul", params);
-    PrintTensorDebugInfo("before l0op::GroupedMatmul", "perTokenScaleOptional effective", perTokenScaleOptional);
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,
                             params.antiquantScaleOptional, params.antiquantOffsetOptional, params.groupTensorOptional,
