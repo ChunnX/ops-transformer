@@ -72,6 +72,7 @@ public:
         int32_t rank;
         HcclShmem<IS_A2> shmem;
         int64_t offsetD;
+        int64_t offsetWinOutD;
         Layout3D tokenPerExpertLayout;
 
         CATLASS_DEVICE
@@ -262,7 +263,7 @@ public:
                 if (isCrossServer) {
                     AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
                     gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
-                        params.shmem.windowsOutAddr() + params.offsetD));
+                        params.shmem.windowsOutAddr() + params.offsetWinOutD));
                     MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
                     int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                     auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
