@@ -19,12 +19,12 @@
 
 - 语义说明：
 
-    底层aclnn接口对cacheRef为原地实现；本Python接口为函数式语义，对输入cache做拷贝后在副本上更新并返回，未被slot_mapping命中的行保留原值。调用方需使用返回的cache。
+    底层aclnn接口对cacheRef为原地实现；本Python接口同为原地语义：直接在输入cache上更新，未被slot_mapping命中的行保留原值。schema中cache标注为`Tensor(a!)`，**本接口无返回值**，调用后直接使用入参cache。
 
 ## 函数原型
 
 ```
-cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0) -> Tensor
+cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0) -> None
 ```
 
 ## 参数说明
@@ -113,37 +113,9 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
 </tbody>
 </table>
 
-## 输出说明
+## 返回值说明
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 132px">
-<col style="width: 480px">
-<col style="width: 330px">
-<col style="width: 280px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>维度(shape)</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>cache</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>更新后的KV Cache，shape与dtype与输入cache相同。数据格式为$ND$。</td>
-        <td>UINT8</td>
-        <td>(blockNum, blockSize, 1, headDim)</td>
-    </tr>
-</tbody>
-</table>
+该接口无返回值。计算结果直接原地写回输入张量`cache`，`cache`在计算后shape和dtype保持不变；未被`slot_mapping`命中的行保留原值。
 
 ## 约束说明
 
@@ -185,7 +157,7 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
     x = torch.randn(bs, d, dtype=torch.bfloat16).npu()
     slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
 
-    cache = kv_compress_epilog(
+    kv_compress_epilog(
         cache, x, slot_mapping, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
     print(cache.shape, cache.dtype)
     ```
@@ -198,11 +170,11 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
     import torchair
 
     def fn(cache, x, slot_mapping):
-        return torch.ops.cann_ops_transformer.kv_compress_epilog(
+        torch.ops.cann_ops_transformer.kv_compress_epilog(
             cache, x, slot_mapping, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
 
     npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
     compiled = torch.compile(fn, backend=npu_backend, dynamic=False)
-    cache = compiled(cache, x, slot_mapping)
+    compiled(cache, x, slot_mapping)
     print(cache.shape, cache.dtype)
     ```
