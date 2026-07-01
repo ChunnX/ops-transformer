@@ -96,10 +96,11 @@ if _TORCHAIR_AVAILABLE:
             meta_outputs: TensorSpec = None):
         # 对外 str quant_mode → 算子侧 int（与 eager 路径共用同一映射）
         from cann_ops_transformer.ops.indexer_quant_cache import _resolve_quant_mode
-        return IndexerQuantCache(cache=cache,
-                                 cache_scale=cache_scale,
-                                 x=x,
-                                 slot_mapping=slot_mapping,
-                                 quant_mode=_resolve_quant_mode(quant_mode),
-                                 round_scale=round_scale,
-                                 x_scale=x_scale)
+        out = IndexerQuantCache(cache=cache,
+                                cache_scale=cache_scale,
+                                x=x,
+                                slot_mapping=slot_mapping,
+                                quant_mode=_resolve_quant_mode(quant_mode),
+                                round_scale=round_scale,
+                                x_scale=x_scale)
+        return out[0]
