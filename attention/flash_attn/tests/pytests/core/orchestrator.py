@@ -185,7 +185,7 @@ def run_case(params: dict,
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in primary_out and "lse" in golden_out:
+    if params.get("return_softmax_lse", False) and "lse" in primary_out and "lse" in golden_out:
         dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
             dev_lse = dev_lse.cpu().float()
@@ -278,7 +278,7 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in golden_data and "lse" in npu_out:
+    if params.get("return_softmax_lse", False) and "lse" in golden_data and "lse" in npu_out:
         dev_lse = npu_out["lse"]
         cpu_lse = golden_data["lse"]
         if isinstance(dev_lse, torch.Tensor) and isinstance(cpu_lse, torch.Tensor):
