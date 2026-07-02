@@ -361,9 +361,10 @@ private:
                                                   "q_out_layout must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (std::strcmp(params_.qOutLayout, params_.qkvLayout) != 0) {
+        const bool qkvIsNtd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_NTD) == 0;
+        if (qkvIsNtd && isTnd) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", params_.qOutLayout,
-                                                  "q_out_layout must be the same as qkv_layout");
+                                                  "qkv_layout=NTD with q_out_layout=TND is not supported");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;

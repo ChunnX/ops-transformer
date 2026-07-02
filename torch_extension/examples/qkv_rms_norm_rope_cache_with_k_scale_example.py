@@ -10,10 +10,11 @@
 # -----------------------------------------------------------------------------------------------------------
 """Run and compare cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale.
 
-The default run covers generated inplace cases across NTD/TND layouts, Nq/Nk/Nv
+The default run covers generated inplace cases across NTD/TND input layouts,
+TND input to NTD output layout conversion with varied T axes, Nq/Nk/Nv
 combinations, multi-batch prefix sums, non-contiguous slots, actual_seq_lens
-history offsets, T axes greater than 5k, and strided cache views. Each case runs
-the torch NPU interface and prints match rates against a CPU golden
+history offsets, T axes greater than 5k, and strided cache views. Each case
+runs the torch NPU interface and prints match rates against a CPU golden
 implementation.
 
 Example:
@@ -23,7 +24,7 @@ Example:
 """
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import sys
 from typing import Dict, Iterable, List, Tuple
@@ -49,6 +50,7 @@ class Case:
     n_k: int
     n_v: int
     qkv_layout: str
+    q_out_layout: str = ""
     slot_pattern: str = "linear"
     seed: int = 0
     block_size: int = 16
@@ -77,6 +79,79 @@ class MatchResult:
     max_actual: float
     max_expected: float
     diff_samples: Tuple[DiffSample, ...]
+
+
+def with_tnd_to_ntd_cases(cases: List[Case]) -> Tuple[Case, ...]:
+    extended = list(cases)
+    for index, case in enumerate(cases):
+        if case.qkv_layout != "TND" or case.q_out_layout:
+            continue
+        if not case.name.endswith("_tnd"):
+            raise ValueError(f"{case.name}: TND base case name must end with _tnd")
+
+        varied_seq_lens = make_varied_tnd_to_ntd_seq_lens(case, index)
+        history_offsets = tuple(actual - current for current, actual in zip(case.batch_seq_lens, case.actual_seq_lens))
+        varied_actual_seq_lens = tuple(current + offset for current, offset in zip(varied_seq_lens, history_offsets))
+        extended.append(
+            replace(
+                case,
+                name=f"{case.name[:-4]}_tnd_to_ntd",
+                batch_seq_lens=varied_seq_lens,
+                actual_seq_lens=varied_actual_seq_lens,
+                q_out_layout="NTD",
+                seed=case.seed + 100000,
+            )
+        )
+    return tuple(extended)
+
+
+def max_slot_tokens(case: Case) -> int:
+    capacity = case.block_num * case.block_size
+    if case.slot_pattern == "stride3":
+        return (capacity - 2) // 3 + 1
+    return capacity
+
+
+def make_varied_tnd_to_ntd_seq_lens(case: Case, index: int) -> Tuple[int, ...]:
+    old_total = sum(case.batch_seq_lens)
+    min_total = len(case.batch_seq_lens)
+    max_total = max_slot_tokens(case)
+    if min_total > max_total:
+        raise ValueError(f"{case.name}: minimum token count exceeds slot capacity")
+
+    if old_total >= 1024:
+        deltas = (17, -29, 53, -97, 127, -191, 257, -389)
+    elif old_total >= 96:
+        deltas = (5, -7, 11, -13, 17, -19)
+    else:
+        deltas = (1, 3, 5, 7, -1, -3, 9, -5)
+
+    new_total = old_total
+    for offset in range(len(deltas)):
+        delta = deltas[(index + offset) % len(deltas)]
+        candidate = min(max(old_total + delta, min_total), max_total)
+        if candidate != old_total:
+            new_total = candidate
+            break
+    if new_total == old_total and old_total < max_total:
+        new_total = old_total + 1
+    elif new_total == old_total and old_total > min_total:
+        new_total = old_total - 1
+
+    varied = list(case.batch_seq_lens)
+    delta = new_total - old_total
+    cursor = index % len(varied)
+    while delta > 0:
+        varied[cursor % len(varied)] += 1
+        cursor += 1
+        delta -= 1
+    while delta < 0:
+        position = cursor % len(varied)
+        if varied[position] > 1:
+            varied[position] -= 1
+            delta += 1
+        cursor += 1
+    return tuple(varied)
 
 
 def build_cases() -> Tuple[Case, ...]:
@@ -256,7 +331,7 @@ def build_cases() -> Tuple[Case, ...]:
                 )
             )
             seed += 1
-    return tuple(cases)
+    return with_tnd_to_ntd_cases(cases)
 
 
 CASES = build_cases()
@@ -294,6 +369,11 @@ def make_slot_mapping(case: Case, total_tokens: int, generator: torch.Generator)
 def validate_case(case: Case) -> None:
     if case.qkv_layout not in ("NTD", "TND"):
         raise ValueError(f"{case.name}: qkv_layout must be NTD or TND")
+    q_out_layout = case.q_out_layout or case.qkv_layout
+    if q_out_layout not in ("NTD", "TND"):
+        raise ValueError(f"{case.name}: q_out_layout must be NTD or TND")
+    if case.qkv_layout == "NTD" and q_out_layout == "TND":
+        raise ValueError(f"{case.name}: qkv_layout=NTD with q_out_layout=TND is not supported")
     if case.n_k != case.n_v:
         raise ValueError(f"{case.name}: Nk and Nv must match")
     if len(case.actual_seq_lens) != len(case.batch_seq_lens):
@@ -376,6 +456,7 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
         "actual_seq_lens": actual_seq_lens,
         "head_nums": [case.n_q, case.n_k, case.n_v],
         "qkv_layout": case.qkv_layout,
+        "q_out_layout": case.q_out_layout or case.qkv_layout,
         "rotation": rotation,
         "v_scale": v_scale,
         "epsilon": DEFAULT_EPSILON,
@@ -457,6 +538,7 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     v_scale = cpu_inputs["v_scale"].to(torch.float32)
     n_q, n_k, n_v = cpu_inputs["head_nums"]
     qkv_layout = cpu_inputs["qkv_layout"]
+    q_out_layout = cpu_inputs["q_out_layout"]
     epsilon = cpu_inputs["epsilon"]
 
     if qkv_layout == "TND":
@@ -481,7 +563,7 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     qk_quant, scale = dynamic_quant_fp8(qk_after_cube)
 
     v_out = (v * v_scale[None, :, None]).to(torch.float8_e4m3fn)
-    if qkv_layout == "TND":
+    if q_out_layout == "TND":
         q_out = qk_quant[:, :n_q, :].contiguous()
         q_scale = scale[:, :n_q].contiguous()
     else:
@@ -523,7 +605,7 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
             npu_inputs["actual_seq_lens"],
             npu_inputs["head_nums"],
             npu_inputs["qkv_layout"],
-            npu_inputs["qkv_layout"],
+            npu_inputs["q_out_layout"],
             rotation=npu_inputs["rotation"],
             v_scale=npu_inputs["v_scale"],
             epsilon=npu_inputs["epsilon"],
@@ -630,7 +712,8 @@ def compare_outputs(actual: Dict[str, torch.Tensor], expected: Dict[str, torch.T
 
 def expected_shapes(case: Case):
     total_tokens = sum(case.batch_seq_lens)
-    if case.qkv_layout == "TND":
+    q_out_layout = case.q_out_layout or case.qkv_layout
+    if q_out_layout == "TND":
         return (total_tokens, case.n_q, HEAD_SIZE), (total_tokens, case.n_q)
     return (case.n_q, total_tokens, HEAD_SIZE), (case.n_q, total_tokens)
 
@@ -647,7 +730,8 @@ def assert_shapes(case: Case, outputs: Dict[str, torch.Tensor]):
 
 def print_case_results(case: Case, results: List[MatchResult]) -> None:
     print(
-        f"[CASE] {case.name} layout={case.qkv_layout} heads=({case.n_q},{case.n_k},{case.n_v}) "
+        f"[CASE] {case.name} qkv_layout={case.qkv_layout} "
+        f"q_out_layout={case.q_out_layout or case.qkv_layout} heads=({case.n_q},{case.n_k},{case.n_v}) "
         f"seq={case.batch_seq_lens} actual_seq={case.actual_seq_lens} slot={case.slot_pattern} "
         f"cache_stride={case.cache_stride} cache_pad={case.cache_pad}"
     )

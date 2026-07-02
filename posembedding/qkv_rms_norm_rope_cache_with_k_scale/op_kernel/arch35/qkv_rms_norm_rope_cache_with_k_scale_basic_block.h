@@ -23,7 +23,7 @@ constexpr uint64_t SYNC_C_READY = 1U;
 constexpr uint64_t SYNC_C_CONSUMED = 2U;
 constexpr uint64_t SYNC_A_CONSUMED = 3U;
 
-template <uint32_t QKV_LAYOUT>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
@@ -236,7 +236,7 @@ private:
     LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<float> outputDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
-    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT> vec_;
+    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT, Q_OUT_LAYOUT> vec_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

@@ -21,7 +21,7 @@ using QkvRmsNormRopeCacheWithKScale::GlobalTensors;
 using QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleController;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
-template <uint32_t HEAD_DIM, uint32_t QKV_LAYOUT>
+template <uint32_t HEAD_DIM, uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 __global__ __aicore__ void
 qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gamma, GM_ADDR cos_sin,
                                      GM_ADDR slot_mapping, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR k_scale_cache,
@@ -45,7 +45,7 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
         q_out,   q_scale,       k_cache_out, v_cache_out,     k_scale_cache_out, workspace,
     };
 
-    QkvRmsNormRopeCacheWithKScaleController<QKV_LAYOUT> controller;
+    QkvRmsNormRopeCacheWithKScaleController<QKV_LAYOUT, Q_OUT_LAYOUT> controller;
     controller.Process(tensors, tilingData);
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

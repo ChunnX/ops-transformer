@@ -143,7 +143,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 | actual_seq_lens | Tensor | 必选 | 每个batch追加本次token后的实际序列长度，对应公式中的`actual_seq_lens`。 | torch.int32 | `[Batch]` |
 | head_nums | List[int] | 必选 | Q/K/V头数数组，依次映射为公式中的`Nq`、`Nk`、`Nv`。必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
 | qkv_layout | str | 必选 | `qkv`的N/T轴布局标识，对应公式中`T`、`Nq`、`Nk`、`Nv`所在轴。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
-| q_out_layout | str | 必选 | `q_out`和`q_scale`的N/T轴布局标识。大小写敏感，仅支持`"TND"`和`"NTD"`；当前实现要求与`qkv_layout`一致。 | str | - |
+| q_out_layout | str | 必选 | `q_out`和`q_scale`的N/T轴布局标识。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | rotation | Tensor | 可选 | Q/K共享矩阵乘权重，对应公式中的`rotation`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.bfloat16 | `[D,D]` |
 | v_scale | Tensor | 可选 | V分支量化缩放因子，对应公式中的`v_scale`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.float32 | `[Nv]` |
 | epsilon | float | 可选 | RMSNorm防除零参数，对应公式中的`epsilon`，默认值为`1e-6`。 | float | - |
@@ -154,15 +154,15 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
-| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`qkv_layout="TND"`时shape为`[T,Nq,D]`，`qkv_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
-| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`qkv_layout="TND"`时shape为`[T,Nq]`，`qkv_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
+| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`q_out_layout="TND"`时shape为`[T,Nq,D]`，`q_out_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
+| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`q_out_layout="TND"`时shape为`[T,Nq]`，`q_out_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
 
 ### qkv_rms_norm_rope_cache_with_k_scale_functional
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
-| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`qkv_layout="TND"`时shape为`[T,Nq,D]`，`qkv_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
-| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`qkv_layout="TND"`时shape为`[T,Nq]`，`qkv_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
+| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`q_out_layout="TND"`时shape为`[T,Nq,D]`，`q_out_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
+| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`q_out_layout="TND"`时shape为`[T,Nq]`，`q_out_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
 | k_cache_out | Tensor | 必选 | 更新后的K Cache，shape和dtype与输入`k_cache`一致。 | torch.float8_e4m3fn | `[BlockNum,Nk,BlockSize,D]` |
 | v_cache_out | Tensor | 必选 | 更新后的V Cache，shape和dtype与输入`v_cache`一致。 | torch.float8_e4m3fn | `[BlockNum,Nv,BlockSize,D]` |
 | k_scale_cache_out | Tensor | 必选 | 更新后的K动态量化scale cache，shape和dtype与输入`k_scale_cache`一致。 | torch.float32 | `[BlockNum,Nk,BlockSize,1]` |
@@ -174,9 +174,11 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 - `qkv_rms_norm_rope_cache_with_k_scale`为原地接口，会修改调用方传入的`k_cache`、`v_cache`和`k_scale_cache`。
 - `qkv_rms_norm_rope_cache_with_k_scale_functional`会克隆输入cache，并返回更新后的cache副本。
 - 当前实现仅支持`D=128`，且`Nv`必须等于`Nk`。
-- `qkv_layout`和`q_out_layout`必须相同；`qkv`、`q_out`和`q_scale`必须保持相同N/T布局：
-  - `qkv_layout="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[T,Nq,D]`，`q_scale=[T,Nq]`。
-  - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
+- `qkv_layout`控制`qkv`的N/T轴布局，`q_out_layout`控制`q_out`和`q_scale`的N/T轴布局：
+  - `qkv_layout="TND"`，`q_out_layout="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[T,Nq,D]`，`q_scale=[T,Nq]`。
+  - `qkv_layout="TND"`，`q_out_layout="NTD"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
+  - `qkv_layout="NTD"`，`q_out_layout="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
+- 当前不支持`qkv_layout="NTD"`、`q_out_layout="TND"`。
 - `k_cache`、`v_cache`和`k_scale_cache`的`BlockNum`和`BlockSize`必须一致。
 - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1；`k_cache`和`v_cache`前三维stride必须一致。
 - `cu_seq_len[0]`应为0，`cu_seq_len[-1]`应等于`T`。`actual_seq_lens`长度应等于`cu_seq_len.shape[0]-1`。
