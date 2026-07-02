@@ -58,6 +58,12 @@ private:
     __aicore__ inline void CountHits();
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyFromWindowByCachedMeta();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 5102)
+    // AtomicAdd 行号抢占路径(仅 ascend950/mc62): 用每专家原子计数器替代 CountHits+跨核前缀和,
+    // 单趟 flatten 拷出, 段内行序非确定(按专家分段仍正确, 4元组自描述可回散)。
+    __aicore__ inline void InitAtomicCounters();
+    __aicore__ inline void CopyFromWindowByAtomic();
+#endif
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
                                        uint32_t &endId, uint32_t &sendNum);
@@ -283,6 +289,15 @@ template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWe
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
     if constexpr (!IsCached) {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 5102)
+        // ascend950/mc62: AtomicAdd 行号抢占路径, 省掉 CountHits 扫描与跨核前缀回读。
+        ComputePrefixSums();
+        if (expertSum_ != 0) {
+            InitAtomicCounters();
+            SyncAll<true>();
+            CopyFromWindowByAtomic();
+        }
+#else
         ComputePrefixSums();
         CountHits();
         SyncAll<true>();
@@ -295,6 +310,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         if (totalHits != 0) {
             CopyFromWindowByExpert();
         }
+#endif
     } else {
         CopyFromWindowByCachedMeta();
     }
@@ -563,6 +579,112 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyExtParams metaOutParams{1U, static_cast<uint32_t>(cnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(recvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
 }
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 5102)
+// aiv0 用专家段基址初始化每专家原子计数器(复用 hitCountGm_ 即 workspace 前 E 个 int32)。
+// 计数器初值 = expertSegmentBase[e] = ComputePrefixSums 后的 ubExpertPfx_[e]。
+// 全核 SyncAll 后, 各核 AtomicAdd(counter[e], 1) 抢占的行号恰落在 [base[e], base[e]+numRecvPerExpert[e])。
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::InitAtomicCounters()
+{
+    if (aivId_ != 0) { return; }
+    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
+        int32_t base = static_cast<int32_t>(ubExpertPfx_.GetValue(e));
+        hitCountGm_.SetValue(e, base);
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+}
+
+// AtomicAdd 行号抢占路径: flatten 单趟(rank × slot × topk), 无 targetExpert 外层。
+// 每个 (token, topk) 命中后, 原子地从其所属专家段的计数器取一个行号, token 即时写、
+// 权重/4元组元数据用标量 GM 写(S pipe, 无额外同步点)。省掉 CountHits+SyncAll扫描+跨核前缀回读。
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByAtomic()
+{
+    __gm__ int32_t* counterBase = hitCountGm_.GetPhyAddr(0);
+
+    for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
+        int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
+        if (slotCnt == 0) { continue; }
+
+        uint32_t slotStart, slotEnd, slotCntPerAiv;
+        SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
+        if (slotStart >= slotEnd) { continue; }
+
+        GM_ADDR srcRankBase = localWinAddr_
+                              + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
+        GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
+
+        GlobalTensor<int32_t> srcMetaGm;
+        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
+            perSlotBytes_ - metaBytes_, 0, 0};
+        DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
+        DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
+            uint32_t metaBase = localSlot * paddedMetaElems_;
+
+            for (uint32_t topkIdx = 0; topkIdx < axisK_; ++topkIdx) {
+                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
+                if (expertId < 0) { continue; }
+                uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
+                if (dstRank != epRankId_) { continue; }
+                uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
+
+                // 原子抢占该专家段内的行号(返回旧值即写入行)。
+                int32_t row = AscendC::AtomicAdd<int32_t>(counterBase + localExpertId, 1);
+                uint32_t globalRow = static_cast<uint32_t>(row);
+
+                uint32_t slotIdx = slotStart + localSlot;
+                GM_ADDR slotAddr = srcRankBase + (int64_t)slotIdx * perSlotBytes_;
+                GlobalTensor<XType> srcTokenTensor;
+                srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
+                DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+                DataCopyPadParams tokenPadParams{false, 0, 0, 0};
+                DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
+                if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                    GlobalTensor<ScalesType> srcScalesTensor;
+                    srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_),
+                        scalesElems_);
+                    DataCopyParams scalesCopyParams{1U,
+                        static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                    DataCopyPadParams scalesPadParams{false, 0, 0, 0};
+                    DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
+                }
+                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+                DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+
+                if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                    DataCopyParams scalesCopyParams{1U,
+                        static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                    DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
+                }
+
+                // 权重 + 4元组元数据: 标量 GM 写(S pipe), 行号离散故无法段内突发, 改为 per-hit 直写。
+                if constexpr (HasTopkWeights) {
+                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                    recvTopkWeightsGm_.SetValue(globalRow, weights);
+                }
+                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0,
+                    ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
+                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1,
+                    ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
+                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2,
+                    static_cast<int32_t>(topkIdx));
+                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 3,
+                    static_cast<int32_t>(slotIdx));
+
+                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+    // 确保标量 GM 写(权重/元组)在 kernel 结束前全部落地。
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+}
+#endif
 
 }  // namespace MoeEpDispatchEpilogueImpl
 
