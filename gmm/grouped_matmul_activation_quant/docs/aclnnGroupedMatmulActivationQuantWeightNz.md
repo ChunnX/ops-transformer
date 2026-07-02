@@ -237,7 +237,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>bias</td>
-        <td rowspan="1">输入</td>
+        <td rowspan="1">可选输入</td>
         <td>表示偏置。</td>
         <td>MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。</td>
         <td>-</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>xScaleOptional</td>
         <td rowspan="1">输入</td>
         <td>表示左矩阵的量化因子，对应公式中的xScale。</td>
-        <td>参数名保留Optional命名。当前MX量化场景下必须传入有效Tensor，不能传nullptr。</td>
+        <td>当前MXFP8量化场景下必选，不能传nullptr。</td>
         <td>FLOAT8_E8M0</td>
         <td>ND</td>
         <td>3</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>tuningConfig</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示调优参数，预留参数。</td>
         <td>支持传入nullptr，当前暂不使用。</td>
         <td>-</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>quantMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示量化模式。</td>
         <td>支持传入nullptr或空字符串。当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"mx"。若显式传入非"mx"，则报错。</td>
         <td>-</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>roundMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示量化舍入模式。</td>
         <td>支持传入nullptr或空字符串，默认设置为"rint"，当前仅支持"rint"。</td>
         <td>-</td>
@@ -372,6 +372,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - <strong>调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数。</strong>
       - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
       - weightScale转置属性需要与weight保持一致。
+      - xScaleOptional当前MXFP8量化场景下必选，不能传nullptr。
       - 空Tensor处理规则：
         - weight和weightScale作为必选输入，tensorList长度当前仅支持1，不支持空tensorlist，tensorlist中的元素不能为nullptr。
         - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；当M或N为0时允许K为0，该场景下第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
