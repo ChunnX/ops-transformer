@@ -338,6 +338,7 @@ private:
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaOriKv() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
+    ge::graphStatus CheckSingleParaCuSeqLensQ() const;
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
@@ -357,6 +358,7 @@ private:
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;
     ge::graphStatus CheckSingleParaCmpBlockTable() const;
+    int64_t GetBatchDimFromLayout(const gert::StorageShape &shape, const SMLALayout &layout) const;
 
     ge::graphStatus CheckParaExistence() const;
     ge::graphStatus CheckExists(const void *pointer, const std::string &name) const;
