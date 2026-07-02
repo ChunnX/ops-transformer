@@ -45,7 +45,7 @@
         * $groupList$：分组索引列表，按groupListType解释为cumsum或count。
         * $weight$：分组weight矩阵。
         * $weightScale$：weight矩阵量化因子。
-        * $bias$：MXFP8场景下必须为空，支持nullptr或空tensorlist。
+        * $bias$：MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。
         * $xScaleOptional$：左矩阵量化因子，对应公式中的$xScale$。
 
       - **输出**：
@@ -217,17 +217,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>weight</td>
         <td rowspan="1">输入</td>
         <td>表示weight矩阵，对应公式中的weight。</td>
-        <td>tensorList长度支持[1, 1024]。接口会将该参数按昇腾亲和数据排布格式（FRACTAL_NZ）解析。</td>
+        <td>tensorList长度当前仅支持1。接口会将该参数按昇腾亲和数据排布格式（FRACTAL_NZ）解析，viewShape为3维，storageShape为5维。</td>
         <td>FLOAT8_E4M3FN</td>
         <td>FRACTAL_NZ</td>
-        <td>5</td>
+        <td>3（storageShape为5）</td>
         <td>×</td>
       </tr>
       <tr>
         <td>weightScale</td>
         <td rowspan="1">输入</td>
         <td>表示weight矩阵的量化因子，对应公式中的weightScale。</td>
-        <td>tensorList长度支持[1, 1024]。</td>
+        <td>tensorList长度当前仅支持1。</td>
         <td>FLOAT8_E8M0</td>
         <td>ND</td>
         <td>4</td>
@@ -237,7 +237,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>bias</td>
         <td rowspan="1">输入</td>
         <td>表示偏置。</td>
-        <td>tensorList长度支持[1, 1024]。MXFP8场景下必须为空，支持nullptr或空tensorlist。</td>
+        <td>MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -317,7 +317,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>dstTypeMax</td>
         <td>可选输入</td>
         <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
-        <td>可选属性，默认值为0.0。支持取值0.0和6.0-12.0，取值为0.0代表Amax(DType)为量化结果数据类型的最大值；取值为6.0-12.0代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值。</td>
+        <td>可选属性，默认值为0.0。当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -371,44 +371,56 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
       - weightScale转置属性需要与weight保持一致。
       - 空Tensor处理规则：
-        - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
+        - weight和weightScale作为必选输入，tensorList长度当前仅支持1，不支持空tensorlist，tensorlist中的元素不能为nullptr。
         - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；当M或N为0时允许K为0，该场景下第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
         - 支持groupList为空的空Tensor场景：当groupList为空，且输出y或yScale为空时，第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
         - 当M和N均不为0时，不支持K为0。
       - roundMode仅支持"rint"。
       - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
-      - MXFP8场景下bias必须为空，支持nullptr或空tensorlist。
+      - MXFP8场景下bias必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。
       - tuningConfig为预留参数，当前暂不使用。
-      - dstTypeMax表示maxType的取值，对应公式中的Amax(DType)。支持取值0.0和6.0-12.0，取值为0.0代表Amax(DType)为量化结果数据类型的最大值；取值为6.0-12.0代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值，当前MXFP8场景使用默认值0.0。
+      - dstTypeMax表示maxType的取值，对应公式中的Amax(DType)。当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。
 
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错。参数校验日志中上报的Error code如下：
 
-  <table style="undefined;table-layout: fixed;width: 1170px"><colgroup>
-  <col style="width: 268px">
-  <col style="width: 140px">
+  <table style="undefined;table-layout: fixed;width: 942px"><colgroup>
+  <col style="width: 180px">
   <col style="width: 762px">
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
-      <th>错误码</th>
+      <th>Error code</th>
       <th>描述</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、roundMode、y、yScale、workspaceSize或executor为空。</td>
+      <td>EZ0026</td>
+      <td>必选参数为空指针，例如x、groupList、weight、weightScale、activationType、y或yScale为空；MX量化场景下xScaleOptional为空；weight或weightScale的tensorList元素为空。workspaceSize或executor为空时返回ACLNN_ERR_PARAM_NULLPTR。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>参数不满足约束，例如activationType不是"gelu_tanh"，bias非空，输入数据类型或数据格式不支持，shape维度不匹配，或属性值不在支持范围内。</td>
+      <td>EZ0026、EZ0027</td>
+      <td>参数取值不满足约束，例如activationType不是"gelu_tanh"，quantMode显式传入非"MX"，roundMode不是"rint"，groupListType、scaleAlg、dstTypeMax、K或N等取值不在支持范围内，或x/weightScale转置关系不支持。</td>
+    </tr>
+    <tr>
+      <td>EZ0020、EZ0021</td>
+      <td>输入或输出数据类型不满足约束，例如x、weight、xScaleOptional、weightScale、groupList、y或yScale的数据类型不支持，或quantMode为空时无法根据x和xScaleOptional的数据类型组合推导出MX量化模式。</td>
+    </tr>
+    <tr>
+      <td>EZ0035</td>
+      <td>输入或输出数据格式不满足约束，例如x、xScaleOptional、groupList、weightScale、y、yScale不是ND格式，或weight不是FRACTAL_NZ格式。</td>
+    </tr>
+    <tr>
+      <td>EZ0009、EZ0012</td>
+      <td>shape或shape维度不满足约束，例如x、groupList、weight、weightScale、xScaleOptional、y或yScale维度不匹配，weight的storageShape不是5维，或实际shape与期望shape不一致。</td>
+    </tr>
+    <tr>
+      <td>EZ0022、EZ0023</td>
+      <td>tensorList数量不满足约束，例如weight或weightScale的tensorList长度不是1，或MXFP8场景下bias不是nullptr、空tensorlist或单个空tensor。</td>
     </tr>
   </tbody>
   </table>
@@ -517,7 +529,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
               <th>MX量化场景</th>
               <th>激活函数</th>
               <th>x</th>
-              <th>weight</th>
+              <th>weight（storageShape）</th>
               <th>weightScale</th>
               <th>xScale</th>
               <th>output</th>

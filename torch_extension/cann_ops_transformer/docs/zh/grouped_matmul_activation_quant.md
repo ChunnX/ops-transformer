@@ -47,9 +47,9 @@ grouped_matmul_activation_quant(
 | --- | --- |
 | `x` | 必选输入，Tensor，shape为`(M, K)`，dtype支持`torch.float8_e4m3fn`、`torch.float8_e5m2`。 |
 | `group_list` | 必选输入，Tensor，1D，dtype为`torch.int64`，第一维表示group数E，E范围为`[1, 1024]`。 |
-| `weight` | dynamic input，TensorList，当前MXFP8仅支持长度为1。元素为3D逻辑Tensor，支持`(E, K, N)`或`(E, N, K)`，实际格式必须为FRACTAL_NZ，dtype仅支持`torch.float8_e4m3fn`。 |
-| `weight_scale` | dynamic input，TensorList，当前MXFP8仅支持长度为1。非转置weight对应shape为`(E, ceil(K / 64), N, 2)`，转置weight对应shape为`(E, N, ceil(K / 64), 2)`。 |
-| `bias` | 可选dynamic input，TensorList，默认`None`。当前MXFP8不支持非空bias，支持`None`或空TensorList。 |
+| `weight` | dynamic input，TensorList，当前MXFP8仅支持长度为1。元素为3D逻辑Tensor，当前torch接口按非转置逻辑布局`(E, K, N)`推导输出shape；实际格式必须为FRACTAL_NZ，dtype仅支持`torch.float8_e4m3fn`。 |
+| `weight_scale` | dynamic input，TensorList，当前MXFP8仅支持长度为1。当前torch接口按非转置逻辑布局解析，shape为`(E, ceil(K / 64), N, 2)`。 |
+| `bias` | 可选dynamic input，TensorList，默认`None`。当前MXFP8不支持非空bias，支持`None`、空TensorList或单个空Tensor。 |
 | `activation_type` | required attr，当前仅支持`"gelu_tanh"`。 |
 | `x_scale` | optional input，当前MXFP8必须传入，shape为`(M, ceil(K / 64), 2)`。 |
 | `group_list_type` | 可选属性，支持`0`或`1`，默认`0`。 |
@@ -58,7 +58,7 @@ grouped_matmul_activation_quant(
 | `y_dtype` | 可选属性，输出`y`的数据类型，支持`torch.float8_e4m3fn`和`torch.float8_e5m2`，默认`None`；为`None`时自动推导为与`x`相同的数据类型。 |
 | `round_mode` | 可选属性，当前仅支持`"rint"`。 |
 | `scale_alg` | 可选属性，支持`0`或`1`，默认`0`。 |
-| `dst_type_max` | 可选属性，表示maxType的取值，对应公式中的Amax(DType)，默认`0.0`。支持取值`0.0`和`6.0-12.0`，取值为`0.0`代表Amax(DType)为量化结果数据类型的最大值；取值为`6.0-12.0`代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值，当前MXFP8场景使用默认值`0.0`。 |
+| `dst_type_max` | 可选属性，表示maxType的取值，对应公式中的Amax(DType)，默认`0.0`。当前MXFP8场景仅支持`0.0`，表示Amax(DType)为量化结果数据类型的最大值。`6.0-12.0`为后续FP4E2M1且blocksize取32场景预留。 |
 | `x_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`x`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
 | `weight_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`weight`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
 | `weight_scale_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`weight_scale`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
@@ -68,16 +68,16 @@ grouped_matmul_activation_quant(
 
 | 返回值 | shape | dtype |
 | --- | --- | --- |
-| `y` | `(M, N)` | 由`y_dtype`指定 |
+| `y` | `(M, N)` | 由`y_dtype`指定；`y_dtype=None`时推导为与`x`相同的数据类型 |
 | `y_scale` | `(M, ceil(N / 64), 2)` | FLOAT8_E8M0 |
 
 ## 约束说明
 
 - 当前仅支持`activation_type="gelu_tanh"`。
 - 当前仅支持MXFP8量化模式。
-- `weight`需要以3D逻辑shape传入，并通过`torch_npu.npu_format_cast(weight, 29)`转换为FRACTAL_NZ格式。
+- `weight`需要以3D逻辑shape传入，并通过`torch_npu.npu_format_cast(weight, 29)`转换为FRACTAL_NZ格式；当前torch接口按非转置逻辑布局`(E, K, N)`和`weight_scale`的第2维推导输出N。
 - `N`必须为64的整数倍。
-- 当前MXFP8场景下`bias`必须为空，支持`None`或空TensorList。
+- 当前MXFP8场景下`bias`必须为空，支持`None`、空TensorList或单个空Tensor。
 
 ## 调用示例
 

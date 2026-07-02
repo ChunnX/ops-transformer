@@ -206,7 +206,7 @@ def grouped_matmul_activation_quant(
         weight_scale (List[Tensor]): weight的MX量化scale，当前MXFP8仅支持长度为1。
             shape为 ``(E, ceil(K / 64), N, 2)``，torch层根据第2维推导逻辑N。
         activation_type (str): 激活函数类型，当前仅支持 ``"gelu_tanh"``。
-        bias (List[Tensor], optional): bias dynamic input。当前MXFP8仅支持传None或空TensorList。
+        bias (List[Tensor], optional): bias dynamic input。当前MXFP8仅支持传None、空TensorList或单个空Tensor。
         x_scale (Tensor, optional): x的MX量化scale。当前MXFP8必须传入，shape为
             ``(M, ceil(K / 64), 2)``。
         group_list_type (int): group_list语义类型，当前支持0或1。
