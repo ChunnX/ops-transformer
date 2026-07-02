@@ -46,8 +46,10 @@ def test_qliv2_process(filepath, device_id=0):
     key_dequant_scale = test_data['key_dequant_scale'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    if output_idx_offset is not None:
+    if test_data['output_idx_offset'] is not None:
         output_idx_offset = test_data['output_idx_offset'].npu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_query'] is not None:
         cu_seqlens_query = test_data['cu_seqlens_query'].npu()
     else:
@@ -92,5 +94,5 @@ def test_qliv2_process(filepath, device_id=0):
     
     torch.npu.synchronize()
 
-    return cpu_result, npu_result, topk_value, params
+    return cpu_result, npu_result, topk_value, output_idx_offset, params
 

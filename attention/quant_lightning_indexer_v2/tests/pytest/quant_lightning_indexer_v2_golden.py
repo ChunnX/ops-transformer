@@ -804,7 +804,12 @@ def qliv2_output_single(params, is_batch = False):
         if isinstance(seqused_k, str):
             seqused_k = ast.literal_eval(seqused_k)
         if isinstance(output_idx_offset, str):
-            output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = ast.literal_eval(output_idx_offset)        
+            if layout_query == "TND":
+                output_idx_offset_size = q_t_size * 1
+            else:
+                output_idx_offset_size = batch_size * q_seq
+            output_idx_offset = [[random.randint(output_idx_offset[0], output_idx_offset[1]) for _ in range(output_idx_offset_size)] for _ in range(1)]
         if isinstance(cmp_residual_k, str):
             cmp_residual_k = ast.literal_eval(cmp_residual_k)
         if isinstance(query_datarange, str):
