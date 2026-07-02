@@ -56,14 +56,6 @@
     dx' = cat((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1)
     $$
 
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
-
-    $$
-    dsin = sum(dy' * cat((-x2', x1'), dim=-1), dims)
-    $$
-
     dx'的结果inplace写回dy的[start, end)区间。
 
     （2）interleave模式（rotary_mode等于1）：
@@ -86,14 +78,6 @@
 
     $$
     dx' = stack((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1).reshape(dy'.shape)
-    $$
-
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
-
-    $$
-    dsin = sum(dy' * stack((-x2', x1'), dim=-1).reshape(dy'.shape), dims)
     $$
 
     dx'的结果inplace写回dy的[start, end)区间。
@@ -120,14 +104,6 @@
     dx' = cat((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1', cos3' * dy3' + sin4' * dy4', cos4' * dy4' - sin3' * dy3'), dim=-1)
     $$
 
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
-
-    $$
-    dsin = sum(dy' * cat((-x2', x1', -x4', x3'), dim=-1), dims)
-    $$
-
     dx'的结果inplace写回dy的[start, end)区间。
 
     （4）interleave-half模式（rotary_mode等于3）：
@@ -152,14 +128,6 @@
     dx' = stack((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1).reshape(dy'.shape)
     $$
 
-    $$
-    dcos = sum(dy' * cat((x1', x2'), dim=-1), dims)
-    $$
-
-    $$
-    dsin = sum(dy' * cat((-x2', x1'), dim=-1), dims)
-    $$
-
     dx'的结果inplace写回dy的[start, end)区间。
 
 ## 函数原型
@@ -168,14 +136,11 @@
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
-    const aclTensor  *dyRef,
+    aclTensor  *dyRef,
     const aclTensor  *cos,
     const aclTensor  *sin,
-    const aclTensor  *xOptional,
     int64_t           rotaryMode,
     const aclIntArray *partialSlice,
-    aclTensor        *dcosOut,
-    aclTensor        *dsinOut,
     uint64_t         *workspaceSize,
     aclOpExecutor    **executor)
 ```
@@ -246,16 +211,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>xOptional</td>
-      <td>可选输入</td>
-      <td>正向计算输入x。<b>当前版本暂不支持，请传入空指针。</b>空指针时不计算dcosOut和dsinOut。</td>
-      <td>与dyRef数据类型一致。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>4</td>
-      <td>×</td>
-    </tr>
-    <tr>
       <td>rotaryMode</td>
       <td>输入</td>
       <td>旋转模式，0=half，1=interleave，2=quarter，3=interleave-half。</td>
@@ -274,26 +229,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>-</td>
       <td>-</td>
       <td>-</td>
-    </tr>
-    <tr>
-      <td>dcosOut</td>
-      <td>输出</td>
-      <td>正向计算输入cos的导数。<b>当前版本暂不支持，输出无意义。</b></td>
-      <td>与cos数据类型一致。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>4</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>dsinOut</td>
-      <td>输出</td>
-      <td>正向计算输入sin的导数。<b>当前版本暂不支持，输出无意义。</b></td>
-      <td>与sin数据类型一致。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>4</td>
-      <td>×</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -340,12 +275,12 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的必选输入dyRef、cos、sin和输出dcosOut、dsinOut是空指针。</td>
+      <td>传入的必选输入dyRef、cos、sin是空指针。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>传入的输入dyRef、cos、sin、xOptional和输出dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
+      <td>传入的输入dyRef、cos、sin的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -412,17 +347,12 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 
 - 输入张量dyRef支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dyRef和xOptional的最后一维大小D必须相同，且D ≤ 1024。
-  - 输入张量cos、sin及输出张量dcosOut、dsinOut的最后一维大小必须等于切片长度(end - start)。
+  - 输入张量cos、sin的最后一维大小必须等于切片长度(end - start)。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
-  - 输入张量xOptional与dyRef的数据类型必须相同。
-  - 输出张量dcosOut与cos的数据类型必须相同。
-  - 输出张量dsinOut与sin的数据类型必须相同。
-  - 当xOptional为空指针时，不计算dcosOut和dsinOut，此时dcosOut和dsinOut无意义。
-  - **注意**：当前版本暂不支持xOptional（即dcos/dsin）的梯度计算。xOptional输入及dcosOut/dsinOut输出参数保留用于后续版本兼容，现阶段请传入空指针。
 
 
 ## 调用示例
@@ -507,8 +437,6 @@ int main()
     aclTensor* dyRef = nullptr;
     aclTensor* cos = nullptr;
     aclTensor* sin = nullptr;
-    aclTensor* dcosOut = nullptr;
-    aclTensor* dsinOut = nullptr;
 
     std::vector<float> dyHostData = {
         74,  54, 84, 125, 23,  78,  37,  72,  27, 98,  34,  107, 29,  23,  54,  60, 70,  49,  119, 54,  29,  54,
@@ -543,21 +471,11 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建partialSlice aclIntArray
     aclIntArray* partialSlice = aclCreateIntArray(partialSliceData.data(), partialSliceData.size());
-    // 创建dcosOut和dsinOut（xOptional为空时无效，此处创建空shape tensor）
-    std::vector<int64_t> emptyTensorOutShape = {1, 1, 1, 0};
-    std::vector<int64_t> emptyTensorStride(emptyTensorOutShape.size(), 0);
-    dcosOut = aclCreateTensor(emptyTensorOutShape.data(), emptyTensorOutShape.size(), aclDataType::ACL_FLOAT,
-                              emptyTensorStride.data(), 0, aclFormat::ACL_FORMAT_ND, emptyTensorOutShape.data(),
-                              emptyTensorOutShape.size(), nullptr);
-    dsinOut = aclCreateTensor(emptyTensorOutShape.data(), emptyTensorOutShape.size(), aclDataType::ACL_FLOAT,
-                              emptyTensorStride.data(), 0, aclFormat::ACL_FORMAT_ND, emptyTensorOutShape.data(),
-                              emptyTensorOutShape.size(), nullptr);
 
     // 调用aclnnInplacePartialRotaryMulGrad第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, nullptr, rotaryMode, partialSlice,
-                                                            dcosOut, dsinOut, &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, rotaryMode,partialSlice,&workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
@@ -591,8 +509,6 @@ int main()
     aclDestroyTensor(dyRef);
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
-    aclDestroyTensor(dcosOut);
-    aclDestroyTensor(dsinOut);
 
     aclrtFree(dyRefDeviceAddr);
     aclrtFree(cosDeviceAddr);
