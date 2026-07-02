@@ -226,14 +226,13 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         int64_t myEndRow = Min(myStartRow + perCoreRows, this->outputRows_);
 
         if constexpr (IsSameType<T, hifloat8_t>::value) {
-            LocalTensor<uint8_t> zeroLocal =
-                this->sortedBuffer_.template Get<uint8_t>(0);
+            int64_t rowBytes = Align(this->cols_, sizeof(uint8_t));
+            LocalTensor<uint8_t> zeroLocal = this->tempBuffer_.template Get<uint8_t>(0);
             Duplicate(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
-                      static_cast<int32_t>(Align(this->cols_, sizeof(uint8_t)) / sizeof(int32_t)));
+                      static_cast<int32_t>(rowBytes / sizeof(int32_t)));
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-            LocalTensor<uint8_t> tempRow =
-                this->sortedBuffer_.template Get<uint8_t>(Align(this->cols_, sizeof(uint8_t)));
+            LocalTensor<uint8_t> tempRow = this->tempBuffer_.template Get<uint8_t>(rowBytes);
             DataCopyExtParams hif8CopyParams{static_cast<uint16_t>(1),
                                              static_cast<uint32_t>(this->cols_ * sizeof(uint8_t)), 0, 0, 0};
             DataCopyPadExtParams<uint8_t> padParams{false, 0, 0, 0};
@@ -250,14 +249,13 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
                 }
             }
         } else {
-            LocalTensor<T> zeroLocal =
-                this->sortedBuffer_.template Get<T>(0);
+            int64_t rowBytes = Align(this->cols_, sizeof(T));
+            LocalTensor<T> zeroLocal = this->tempBuffer_.template Get<T>(0);
             Duplicate(zeroLocal, static_cast<T>(0),
-                      static_cast<int32_t>(Align(this->cols_, sizeof(T)) / sizeof(T)));
+                      static_cast<int32_t>(rowBytes / sizeof(T)));
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-            LocalTensor<T> tempRow =
-                this->sortedBuffer_.template Get<T>(Align(this->cols_, sizeof(T)));
+            LocalTensor<T> tempRow = this->tempBuffer_.template Get<T>(rowBytes);
             DataCopyExtParams singleCopyParams{static_cast<uint16_t>(1),
                                                static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
             DataCopyPadExtParams<T> xPadParams{false, 0, 0, 0};
@@ -367,7 +365,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
         int64_t myStartRow = this->blockIdx_ * perCoreRows;
         int64_t myEndRow = Min(myStartRow + perCoreRows, this->outputRows_);
 
-        LocalTensor<float> zeroLocal = this->sortedBuffer_.template Get<float>(AlignBytes(1, sizeof(float)));
+        LocalTensor<float> zeroLocal = this->tempBuffer_.template Get<float>(0);
         Duplicate(zeroLocal, 0.0f, static_cast<int32_t>(1));
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
