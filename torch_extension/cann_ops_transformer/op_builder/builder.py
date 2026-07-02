@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import shutil
 import threading
 from abc import ABC, abstractmethod
 from typing import List, Union
@@ -17,6 +18,15 @@ from torch.utils.cpp_extension import load
 from torch.library import Library
 import torch_npu
 import cann_ops_transformer
+
+
+def _setup_ccache():
+    if shutil.which("ccache") is not None:
+        os.environ.setdefault("CC", "ccache gcc")
+        os.environ.setdefault("CXX", "ccache g++")
+
+
+_setup_ccache()
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 AS_LIBRARY = Library("cann_ops_transformer", "DEF")
