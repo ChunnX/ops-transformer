@@ -874,6 +874,11 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::InitComm
     remain_ub_space = (totalUbSize_ - statusBufCntAlign * UB_ALIGN - sqInfoSize - 
                     cqInfoSize - 6 * UB_ALIGN - UB_ALIGN * CQ_DEPTH_256 - WRITE_SQE_SIZE - WRITE_SQE_SIZE * moeExpertNumPerRank_ * 2) / 2;
     tpipe_->InitBuffer(tmpTokenQueue_, 2, remain_ub_space); // double buffer
+
+    // Urma
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 }
 
 template <TemplateMC2TypeClass>
@@ -1122,6 +1127,19 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
     for (uint32_t sendRankId = startRankId; sendRankId < endRankId; ++sendRankId) {
         if (sendRankId < sharedExpertRankNum_) {
+            //// 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
+            //uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
+            //GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
+            //GM_ADDR statusDst =
+            //    GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
+            //    dataState_ * WIN_STATE_OFFSET +
+            //    statusIndex * stateOffset_;
+            //hcomm_.WriteNbi<false>(
+            //    mc2Context_->hcommHandle_[currRankId],
+            //    statusDst,
+            //    statusSrc,
+            //    UB_ALIGN);
+            //hasWrite = true;
             continue;
         }
         // 本卡通信：仅搬运数据
@@ -1176,7 +1194,20 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 }
             }
 
-            hasWrite = hasWrite || (curTokenNum > 0U);
+            // 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
+            uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
+            GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
+            GM_ADDR statusDst =
+                GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
+                dataState_ * WIN_STATE_OFFSET +
+                statusIndex * stateOffset_;
+
+            hcomm_.WriteNbi<false>(
+                mc2Context_->hcommHandle_[currRankId],
+                statusDst,
+                statusSrc,
+                UB_ALIGN);
+            hasWrite = true;
             moeStartToken += curTokenNum;
         }
         for (uint32_t sendExpertId = 0; sendExpertId < tmpRankId; ++sendExpertId) {
@@ -1221,7 +1252,20 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 }
             }
 
-            hasWrite = hasWrite || (curTokenNum > 0U);
+            // 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
+            uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
+            GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
+            GM_ADDR statusDst =
+                GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
+                dataState_ * WIN_STATE_OFFSET +
+                statusIndex * stateOffset_;
+
+            hcomm_.WriteNbi<false>(
+                mc2Context_->hcommHandle_[currRankId],
+                statusDst,
+                statusSrc,
+                UB_ALIGN);
+            hasWrite = true;
             moeStartToken += curTokenNum;
         }
 
@@ -1231,7 +1275,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             int64_t g0 = AscendC::GetSystemCycle();                 // 2.记录起始时间
 #endif
             hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-            //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+            //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);  // 等待接收cq
 #ifdef DETECTION_TIME
             AscendC::PipeBarrier<PIPE_ALL>();
             int64_t g1 = AscendC::GetSystemCycle();
