@@ -15,10 +15,10 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../common/mc2_kernel_utils.h"
 #else
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 #include "kernel_operator.h"
@@ -28,7 +28,7 @@
 #if __has_include("../../moe_distribute_combine_setup/moe_distribute_base.h")
 #include "../../moe_distribute_combine_setup/moe_distribute_base.h"
 #else
-#include "../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
 #endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 

@@ -66,7 +66,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
             static_cast<uint32_t>(rmsNormParams.col) // columnStride
         };
         Dequant(xFp32Local, xFp32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else if constexpr (std::is_same<T, int32_t>::value) {
         LocalTensor<T> xInt32Local = shareTmpUb.ReinterpretCast<T>();
         DataCopyPad(xInt32Local, inputGm, copyParams, padParams);
@@ -77,7 +77,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
             static_cast<uint32_t>(rmsNormParams.col) // columnStride
         };
         Dequant(xFp32Local, xInt32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else {
         LocalTensor<T> inputLocal = xFp32Local[rmsNormParams.col].template ReinterpretCast<T>();
         DataCopyPad(inputLocal, inputGm, copyParams, padParams);
@@ -86,20 +86,20 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // Cast input to fp32 [1, col]
         Cast(xFp32Local, inputLocal, RoundMode::CAST_NONE, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
     SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
         RmsNormVF<C, GammaType, C, C>(outputLocal, xFp32Local, gammaLocal, rmsNormParams);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else {
         RmsNormVF<C, GammaType, C, C>(xFp32Local, xFp32Local, gammaLocal, rmsNormParams);
         // Cast xFp32 to outputLocal
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         Cast(outputLocal, xFp32Local, RoundMode::CAST_RINT, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 }
 
@@ -133,24 +133,24 @@ RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &out
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
     RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal,
                                          shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     if constexpr (std::is_same<O, fp8_e4m3fn_t>::value && std::is_same<U, fp8_e8m0_t>::value) {
         LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
         Cast(xBf16Local, xFp32Local, RoundMode::CAST_ROUND, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         LocalTensor<uint16_t> outputScalesLocal = outputScales.template ReinterpretCast<uint16_t>();
         LocalTensor<int8_t> outLocal = outputLocal.template ReinterpretCast<int8_t>();
         LocalTensor<uint8_t> tmpLocal = xBf16Local[cnt].template ReinterpretCast<uint8_t>();
         DynamicQuantPerBlockMxfp8Vf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal,
                                                               rmsNormParams.row, rmsNormParams.col);
         LocalTensor<uint8_t> scale = outputScalesLocal.template ReinterpretCast<uint8_t>();
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else {
         if (enableSmoothScalesCq) {
             Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
         }
         DynamicQuantPerTokenVf(outputLocal, outputScales, xFp32Local, rmsNormParams.row, rmsNormParams.col);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 }
 

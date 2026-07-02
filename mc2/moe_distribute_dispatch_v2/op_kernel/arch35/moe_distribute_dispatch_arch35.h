@@ -26,8 +26,8 @@
 #endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_dispatch_v2_tiling.h"
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../common/mc2_kernel_utils.h"
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif

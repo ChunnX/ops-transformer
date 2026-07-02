@@ -47,7 +47,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             block_size2 = block_size1 if block_size2 is None else block_size2
             block_num2 = 0 if block_num2 is None else block_num2
         else:
-            template_run_mode = "CFA"
+            template_run_mode = "HCA"
             cmp_ratio = int(cmp_ratio)
             cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
             K = 0
@@ -55,7 +55,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             cmp_mask_mode = int(cmp_mask_mode) if cmp_mask_mode is not None else 3
             block_num2 = block_num2  # 后续计算
     else:
-        template_run_mode = "SCFA"
+        template_run_mode = "CSA"
         K = int(K)
         cmp_ratio = int(cmp_ratio)
         cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
@@ -362,7 +362,7 @@ def fill_none_params(params_dict):
         'cmp_mask_mode': cmp_mask_mode,
         'ori_win_left': params_dict['ori_win_left'],
         'ori_win_right': params_dict['ori_win_right'],
-        'kv_quant_mode': params_dict['kv_quant_mode'],
+        'quant_mode': params_dict['quant_mode'],
         'tile_size': params_dict['tile_size'],
         'rope_head_dim': params_dict['rope_head_dim'],
         'template_run_mode': template_run_mode,
@@ -401,7 +401,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         required_columns = [
             "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
             "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size",
+            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
             "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
             "topk_value_mode", "return_softmax_lse",
         ]
@@ -473,7 +473,7 @@ def save_result(params, result, fulfill_percent, result_path):
         'S1EQS2': params.get('S1EQS2'),
         'tc_prefix': params.get('tc_prefix', ' '),
         "ori_win_right": params.get('ori_win_right'),
-        "kv_quant_mode": params.get('kv_quant_mode'),
+        "quant_mode": params.get('quant_mode'),
         "tile_size": params.get('tile_size'),
         "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),

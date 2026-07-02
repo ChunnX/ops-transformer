@@ -34,7 +34,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     c10::optional<float> activation_clamp,
     c10::optional<int64_t> dispatch_quant_out_dtype,
     c10::optional<int64_t> weight1_type,
-    c10::optional<int64_t> weight2_type)
+    c10::optional<int64_t> weight2_type,
+    c10::optional<int64_t> topo_type)
 {
     TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topk_ids.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -117,6 +118,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
     float activation_clamp_value = activation_clamp.value_or(std::numeric_limits<float>::max());
+    int64_t topo_type_value = topo_type.value_or(0);
 
     int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
          ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
@@ -136,7 +138,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
         x_active_mask, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
-        comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp_value,
+        comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp_value, topo_type_value,
         y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);

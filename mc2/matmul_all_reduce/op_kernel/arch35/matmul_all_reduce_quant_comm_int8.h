@@ -24,7 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "../common.h"
 
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
 #include "matmul_all_reduce_quant_mul_cast.h"

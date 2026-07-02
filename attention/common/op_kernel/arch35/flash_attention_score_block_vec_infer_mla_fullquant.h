@@ -263,9 +263,11 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitGlobalBuf
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, learnableSink, workspace, constInfo);
+    BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV,
+        pScale, postQuantScale, prefix, attenMask, learnableSink, workspace, constInfo);
     if constexpr (isFd) {
-        workspace -= singleCoreOffset * preloadTimes * (aicIdx + 1);             // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3
+        // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3
+        workspace -= singleCoreOffset * preloadTimes * (aicIdx + 1);
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
         int32_t actualCoreNums = inputParamsRegbase.bSize * constInfo.n2Size * constInfo.splitKVNum;
         workspace += actualCoreNums * singleCoreOffset * preloadTimes;     // 针对所有核跳过其前面的所有workspace
@@ -285,7 +287,9 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitGlobalBuf
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
+__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ uint8_t *postQuantScale,
+    __gm__ uint8_t *postQuantOffset)
 {
     if constexpr (POST_QUANT) {
         constInfo.isPostQuantOffsetExist = false;
@@ -684,14 +688,14 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopySinkFDIn(uint32_t splitSize, uint64_t sinkOffset)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
-    DataCopyExtParams sinkCopyParams;
-    sinkCopyParams.blockCount = 1; // 进行一次连续拷贝
-    sinkCopyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
-    sinkCopyParams.srcStride = 0; // 源地址连续
-    sinkCopyParams.dstStride = 0; // 目的地址连续
+    DataCopyExtParams CopyParams;
+    CopyParams.blockCount = 1; // 进行一次连续拷贝
+    CopyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
+    CopyParams.srcStride = 0; // 源地址连续
+    CopyParams.dstStride = 0; // 目的地址连续
 
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
+    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], CopyParams, sinkCopyPadParams);
     sinkQue.EnQue(sinkUbBf16);
 }
 
@@ -700,20 +704,22 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loc
     RunInfo<isInfer> &runInfo,  ConstInfo<isInfer, hasRope> &constInfo, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<T> attenOut;
-    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+    int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD){
-        dSizeAligned64 = constInfo.dBasicBlock;
+        dvSizeAligned64 = constInfo.dBasicBlock;
     }
     SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
     WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
     attenOut = vec2ResUb;
 
+    // 拷贝参数赋值
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-    dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (dvSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;
 
+    // 地址偏移计算
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
     uint64_t base = (runInfo.boIdx * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV +
                    runInfo.n2oIdx * constInfo.gSize * constInfo.dSizeV) *
@@ -731,21 +737,23 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyLseIn(Con
     LocalTensor<T> softmaxMaxLocal = softmaxMaxInputQue.AllocTensor<T>();
     LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.AllocTensor<T>();
 
+    // 地址偏移计算
+    uint64_t combineLseOffset =
+        ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum + n2Idx * constInfo.splitKVNum) *
+            constInfo.gSize * fp32BaseSize + startRow * fp32BaseSize;
+
+    // 拷贝参数赋值
     DataCopyExtParams copyInParams;
-    DataCopyPadExtParams<T> copyInPadParams;
     copyInParams.blockCount = constInfo.splitKVNum;
     copyInParams.blockLen = dealRowCount * fp32BaseSize * sizeof(T);
     copyInParams.srcStride = (constInfo.gSize - dealRowCount) * fp32BaseSize * sizeof(T);
     copyInParams.dstStride = 0;
 
+    DataCopyPadExtParams<T> copyInPadParams;
     copyInPadParams.isPad = false;
     copyInPadParams.leftPadding = 0;
     copyInPadParams.rightPadding = 0;
     copyInPadParams.paddingValue = 0;
-
-    uint64_t combineLseOffset =
-        ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum + n2Idx * constInfo.splitKVNum) *
-            constInfo.gSize * fp32BaseSize + startRow * fp32BaseSize;
 
     DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], copyInParams, copyInPadParams);
     DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], copyInParams, copyInPadParams);
@@ -758,21 +766,22 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyFinalResO
     LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount, uint64_t perChannelQuantOffset)
 {
     LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = FDResOutputQue.AllocTensor<OUTPUT_T>();
-    uint32_t dSizeAligned64 = (uint32_t)dVTemplateType;
+    uint32_t dvSizeAligned64 = (uint32_t)dVTemplateType;
     if constexpr (BaseClass::splitD){
-        dSizeAligned64 = constInfo.dBasicBlock;
+        dvSizeAligned64 = constInfo.dBasicBlock;
     }
-    uint32_t shapeArray[] = {(uint32_t)dealRowCount, dSizeAligned64};
+    uint32_t shapeArray[] = {(uint32_t)dealRowCount, dvSizeAligned64};
     tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND)); // 2 for shape
     if constexpr (!POST_QUANT) {
-        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * dSizeAligned64);
+        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * dvSizeAligned64);
     } else {
-        FDPostQuant(constInfo, tmpBmm2ResCastTensor, accumOutLocal, perChannelQuantOffset + startRow * constInfo.dSizeV, dealRowCount, dSizeAligned64);
+        FDPostQuant(constInfo, tmpBmm2ResCastTensor, accumOutLocal,
+            perChannelQuantOffset + startRow * constInfo.dSizeV, dealRowCount, dvSizeAligned64);
     }
 
     FDResOutputQue.EnQue(tmpBmm2ResCastTensor);
     FDResOutputQue.DeQue<OUTPUT_T>();
-    ReduceFDDataCopyOut(constInfo, attenOutOffset, tmpBmm2ResCastTensor, startRow, dealRowCount, dSizeAligned64,
+    ReduceFDDataCopyOut(constInfo, attenOutOffset, tmpBmm2ResCastTensor, startRow, dealRowCount, dvSizeAligned64,
                         constInfo.dSizeV);
     FDResOutputQue.FreeTensor(tmpBmm2ResCastTensor);
 }
@@ -781,15 +790,15 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ReduceFinalRes(ConstInfo<isInfer, hasRope> &constInfo, 
     uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst, LocalTensor<T> &lseLocal, uint32_t startRow, uint32_t dealRowCount)
 {
-    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+    int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD){
-        dSizeAligned64 = constInfo.dBasicBlock;
+        dvSizeAligned64 = constInfo.dBasicBlock;
     }
     for (uint32_t j = 0; j < constInfo.actualCombineLoopSize; ++j) {
         // 第一次，mul结果直接放到dst里
         CopyAccumOutIn(constInfo, bIdx, n2Idx, j, startRow, dealRowCount);
         LocalTensor<T> accumOutLocal = accumOutInputQue.DeQue<T>();
-        ReduceFinalRes_VF<T>(dst, lseLocal, accumOutLocal, dealRowCount, dSizeAligned64, j);
+        ReduceFinalRes_VF<T>(dst, lseLocal, accumOutLocal, dealRowCount, dvSizeAligned64, j);
         accumOutInputQue.FreeTensor(accumOutLocal);
     }
 }
@@ -799,22 +808,22 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyAccumOutI
     uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex, uint32_t startRow, uint32_t dealRowCount)
 {
     LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>();
-    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+    int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD){
-        dSizeAligned64 = constInfo.dBasicBlock;
+        dvSizeAligned64 = constInfo.dBasicBlock;
     }
     DataCopyExtParams copyInParams;
-    DataCopyPadExtParams<T> copyInPadParams;
     copyInParams.blockCount = dealRowCount;
     copyInParams.blockLen = constInfo.dSizeV * sizeof(T);
     copyInParams.srcStride = 0;
-    copyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
+    copyInParams.dstStride = (dvSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
 
+    DataCopyPadExtParams<T> copyInPadParams;
     copyInPadParams.isPad = true;
     copyInPadParams.leftPadding = 0;
-    copyInPadParams.rightPadding = (dSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
+    copyInPadParams.rightPadding = (dvSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
     copyInPadParams.paddingValue = 0;
-
+    // 地址偏移计算
     uint64_t combineAccumOutOffset = ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum +
                                       n2Idx * constInfo.splitKVNum + splitKVIndex) *
                                          constInfo.gSize * constInfo.dSizeV +
@@ -831,26 +840,14 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(RunInfo<
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
     }
-    int64_t bOffset;
-    int64_t n2Offset;
-    int64_t gOffset;
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        bOffset = constInfo.n2G * runInfo.s1SizeAcc;
-        n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size;
-        gOffset = runInfo.goIdx * runInfo.actualS1Size;
-    } else {
-        bOffset = runInfo.boIdx * constInfo.n2Size * constInfo.gS1;
-        n2Offset = runInfo.n2oIdx * constInfo.gS1;
-        gOffset = runInfo.goIdx * constInfo.s1Size;
-    }
-    int64_t s1Offset = runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
+
     int64_t calculateSize = runInfo.halfS1RealSize * fp32BaseSize;
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
     size_t gmOffset =
         runInfo.boIdx * constInfo.n2Size * constInfo.splitKVNum * constInfo.gSize * fp32BaseSize +
         runInfo.n2oIdx * constInfo.splitKVNum * constInfo.gSize * fp32BaseSize +
         runInfo.flashDecodeS2Idx * constInfo.gSize * fp32BaseSize + mStart * fp32BaseSize;
-    // Copy sum to gm
+    // 拷贝 FDSum 到 Gm
     this->BroadCastAndCopyOut(runInfo, softmaxFDSumGm, softmaxFDMaxGm, gmOffset, calculateSize);
 }
 
@@ -859,12 +856,12 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ReduceFDDataC
     uint64_t attenOutOffset, LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
     uint32_t columnCount, uint32_t actualColumnCount)
 {
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = dealRowCount;
-    dataCopyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
-    dataCopyParams.dstStride = 0;
-    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, dataCopyParams);
+    DataCopyExtParams CopyParams;
+    CopyParams.blockCount = dealRowCount;
+    CopyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
+    CopyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
+    CopyParams.dstStride = 0;
+    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, CopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -874,22 +871,22 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuantPerC
     uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset, int64_t dSizeAligned64,
     GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm, GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm)
 {
-    DataCopyExtParams copyInParams;
-    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyInPadParams;
-    copyInParams.blockCount = gSplitSize;
-    copyInParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
-    copyInParams.srcStride = 0;
-    copyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));  // 32: datablock size
+    DataCopyExtParams copyExtParams;
+    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyPadParams;
+    copyExtParams.blockCount = gSplitSize;
+    copyExtParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
+    copyExtParams.srcStride = 0;
+    copyExtParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));
 
     LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
         this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyInParams, copyInPadParams);
+    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyExtParams, copyPadParams);
     this->postQuantScaleQue.template EnQue(postQuantScaleUb);
     this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
     if (constInfo.isPostQuantOffsetExist) {
         LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
             this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyInParams, copyInPadParams);
+        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyExtParams, copyPadParams);
         this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
         this->postQuantOffsetQue.template DeQue<POSTQUANT_PARAMS_T>();
         PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(
@@ -910,58 +907,58 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuant(Con
                                                                       LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                       int64_t vec2S1Idx, int64_t dSizeAligned64)
 {
-    uint32_t s1RowCount = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
-    uint32_t gRowCount = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
+    uint32_t s1RowCnts = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
+    uint32_t gRowCnt = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
     if (constInfo.isPostQuantPerChnl) {
         uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV +
                                             runInfo.sOuterOffset * constInfo.dSizeV;
         uint64_t perChannelQuantOffset = constInfo.isGqa ?
                                                 perChannelQuantGQAOffset :
                                                 runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
-        uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
+        uint32_t gSplitNum = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
                                                             (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
-        gSplitSize = gSplitSize > gRowCount ? gRowCount : gSplitSize;
-        uint32_t loopCount = (gRowCount + gSplitSize - 1) / gSplitSize;
-        uint32_t tailSplitSize = gRowCount - (loopCount - 1) * gSplitSize;
+        gSplitNum = gSplitNum > gRowCnt ? gRowCnt : gSplitNum;
+        uint32_t loopCount = (gRowCnt + gSplitNum - 1) / gSplitNum;
+        uint32_t tailSplitSize = gRowCnt - (loopCount - 1) * gSplitNum;
         for (uint32_t i = 0; i < loopCount; i++) {
-            uint32_t startRow = i * gSplitSize;
+            uint32_t startRow = i * gSplitNum;
             if (i + 1 == loopCount) {
-                gSplitSize = tailSplitSize;
+                gSplitNum = tailSplitSize;
             }
             uint32_t splitOffset = startRow * dSizeAligned64;
             if (constInfo.isPostQuantBF16) {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                    gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+                    gSplitNum, s1RowCnts, splitOffset, dSizeAligned64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
             } else {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                    gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleGm, postQuantOffsetGm);
+                    gSplitNum, s1RowCnts, splitOffset, dSizeAligned64, postQuantScaleGm, postQuantOffsetGm);
             }
         }
     } else {
-        PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, 
-                                                 runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
+        PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, vec2ResUb, constInfo.postQuantScaleValue,
+        constInfo.postQuantOffsetValue, runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::FDPostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                   LocalTensor<OUTPUT_T> &attenOut,
-                                                                   LocalTensor<T> &accumOutLocal,
-                                                                   uint64_t perChannelQuantOffset,
-                                                                   uint32_t dealRowCount, uint32_t dSizeAligned64)
+    LocalTensor<OUTPUT_T> &attenOut,
+    LocalTensor<T> &accumOutLocal,
+    uint64_t perChannelQuantOffset,
+    uint32_t dealRowCnt, uint32_t dSizeAlign64)
 {
     if (constInfo.isPostQuantPerChnl) {
         if (constInfo.isPostQuantBF16) {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAligned64,
-                             postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCnt,
+                1U, 0U, dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
         } else {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAligned64,
-                             postQuantScaleGm, postQuantOffsetGm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCnt,
+                1U, 0U, dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
         }
     } else {
         PostQuantPerTensorImpl<T, OUTPUT_T, true>(
-            attenOut, accumOutLocal, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, dealRowCount,
-            constInfo.dSizeV, dSizeAligned64);
+            attenOut, accumOutLocal, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, dealRowCnt,
+            constInfo.dSizeV, dSizeAlign64);
     }
 }
 }

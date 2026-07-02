@@ -16,14 +16,13 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 #define MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 
-#if __has_include("../moe_distribute_dispatch_v2/check_winsize.h")
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #endif
-
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if __has_include("../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../moe_distribute_dispatch_v2/quantize_functions.h"

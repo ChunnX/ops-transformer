@@ -47,8 +47,8 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistence()
 {
     if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() ||
         ge::GRAPH_SUCCESS != CheckSWAExistence() ||
-        ge::GRAPH_SUCCESS != CheckCFAExistence() ||
-        ge::GRAPH_SUCCESS != CheckSCFAExistence() ||
+        ge::GRAPH_SUCCESS != CheckHCAExistence() ||
+        ge::GRAPH_SUCCESS != CheckCSAExistence() ||
         ge::GRAPH_SUCCESS != CheckCmpRatioExistence() ||
         ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence() ||
         ge::GRAPH_SUCCESS != CheckParaExistenceAntiquant()) {
@@ -109,9 +109,9 @@ ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckCFAExistence()
+ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::CFA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
@@ -137,9 +137,9 @@ ge::graphStatus QSMLATilingCheck::CheckCFAExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckSCFAExistence()
+ge::graphStatus QSMLATilingCheck::CheckCSAExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::SCFA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr
@@ -166,13 +166,13 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1 && *opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
             OP_LOGE(opName_, "when SWA mode, cmpRatio must be 1 or 4 or 128, but got %u", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
-    } else if (perfMode_ == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
+    } else if (perfMode_ == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when CFA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+            OP_LOGE(opName_, "when HCA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when SCFA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+            OP_LOGE(opName_, "when CSA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
     }
 

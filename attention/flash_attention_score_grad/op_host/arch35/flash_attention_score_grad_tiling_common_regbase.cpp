@@ -1173,7 +1173,7 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad",
                         "dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional", dScaleShapesMsg.c_str(),
                         "When the dType of input is not HIFLOAT8, "
-                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional must be empty tensor"),
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional should be nullptr now"),
                     return ge::GRAPH_FAILED);
     }
 

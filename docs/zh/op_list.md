@@ -212,7 +212,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。</td>
   </tr>
@@ -484,7 +484,7 @@
     <td>✗</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>支持Sliding Window Attention（SWA）、Compressed Flash Attention（CFA）和Sparse Compressed Flash Attention（SCFA）。</td>
+    <td>支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）和HCA（Heavily Compressed Attention）。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -515,6 +515,26 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>SparselightningIndexerKlLossGrad算子是LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。<td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/scatter_pa_kv_cache_with_k_scale/README.md">scatter_pa_kv_cache_with_k_scale</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>训练场景下，更新KvCache中指定位置的key和value，同时更新key的scale值。</td>
   </tr>
   <tr>
     <td>ffn</td>

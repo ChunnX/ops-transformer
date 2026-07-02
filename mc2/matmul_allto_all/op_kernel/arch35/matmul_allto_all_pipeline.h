@@ -16,7 +16,7 @@
 #ifndef MATMUL_ALLTO_ALL_PIPELINE_H
 #define MATMUL_ALLTO_ALL_PIPELINE_H
 
-#include "../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
+#include "../../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
 
 // 流水线模板
 namespace Mc2Kernel {

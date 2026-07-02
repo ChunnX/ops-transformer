@@ -98,6 +98,8 @@ protected:
     bool EnableMTE2BmmPipe(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm,
                            TCubeTiling &bmmTilingData);
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
+    void SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo);
+    void SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckPfaMergeLayout(const FiaTilingInfo &fiaInfo) const;
@@ -151,6 +153,7 @@ protected:
     ge::graphStatus SetDequantMMTilingData(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const;
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
+    void PrintInputParams(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingDataV2 pfaTilingData_;
     IncreFlashAttentionTilingDataRegbase ifaTilingData_;

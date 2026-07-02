@@ -211,11 +211,7 @@ def CausalConv1d(
                           padding=0,
                           groups=seq_x.shape[-1]).squeeze(0).T
 
-        # Step 5: zero first W-1 outputs when no prior history
-        if not has_init:
-            result[:W - 1] = 0
-
-        # Step 6: activation
+        # Step 5: activation
         if activation:
             result = _silu(result)
 

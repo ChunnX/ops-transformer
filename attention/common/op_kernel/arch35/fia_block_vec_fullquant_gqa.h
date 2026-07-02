@@ -76,8 +76,8 @@ public:
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
-    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
-        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+    static constexpr MaskFormat MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? MaskFormat::SG : MaskFormat::GS;
 
     static constexpr bool USE_DN = useDn;
     static constexpr uint8_t KV_LAYOUT = 4; // 4: K与K_Scale在同一物理内存中交叉排列
@@ -586,18 +586,16 @@ public:
         } else {
             LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
-            uint32_t deScalePreVOffset = (deScaleVOffset < 1) ? 0 : deScaleVOffset - 1;
-            float deScalePreVValue = this->deScaleVGm.GetValue(deScalePreVOffset);
 
             if (!runInfo.isLastS2Loop) {
                 if (unlikely(runInfo.s2Idx == s2BaseSize)) { // s2方向第二轮循环更新第一轮循环的deScaleV
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
-                        deScaleVValue, deScalePreVValue);
+                        deScaleVValue, deScaleVValue);
                 } else {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
-                        deScaleVValue, deScalePreVValue);
+                        deScaleVValue, deScaleVValue);
                 }
             } else {
                 if (unlikely(runInfo.s2Idx == s2BaseSize)) { // s2方向第二轮循环更新第一轮循环的deScaleV
@@ -605,13 +603,13 @@ public:
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
-                        deScaleVValue, deScalePreVValue);
+                        deScaleVValue, deScaleVValue);
                 } else {
                     LocalTensor<float> sumUb =
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
-                        deScaleVValue, deScalePreVValue);
+                        deScaleVValue, deScaleVValue);
                 }
             }
         }
@@ -977,7 +975,7 @@ public:
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        maskInfo.layout = MASK_LAYOUT;
+        maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
@@ -1026,7 +1024,7 @@ public:
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        maskInfo.layout = MASK_LAYOUT;
+        maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);

@@ -5,7 +5,7 @@
 
 | 产品                                                     | 是否支持 |
 | :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    x    |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
@@ -88,7 +88,7 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     int64_t          numIters,
     double           hcEps,
     double           normEps,
-    bool             outFlag,
+    bool             needBackward,
     aclTensor       *hin,
     aclTensor       *hPost,
     aclTensor       *hRes,
@@ -216,7 +216,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>-</td>
       </tr>
       <tr>
-        <td>needGrad（bool）</td>
+        <td>needBackward（bool）</td>
         <td>输入</td>
         <td>是否需要输出额外属性。</td>
         <td>建议值为true。</td>
@@ -259,7 +259,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>hPre（aclTensor*）</td>
         <td>可选输出</td>
         <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。</td>
-        <td>根据needGrad决定是否输出。</td>
+        <td>根据needBackward决定是否输出。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(bs, seq_len, n)</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>hcBeforeNorm（aclTensor*）</td>
         <td>可选输出</td>
         <td>需要反向时输出，x与phi矩阵乘的结果。</td>
-        <td>根据needGrad决定是否输出。</td>
+        <td>根据needBackward决定是否输出。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(bs, seq_len, n*n + 2*n)</td>
@@ -279,7 +279,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>invRms（aclTensor*）</td>
         <td>可选输出</td>
         <td>需要反向时输出，RmsNorm计算得到的1/r。</td>
-        <td>根据needGrad决定是否输出。</td>
+        <td>根据needBackward决定是否输出。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(bs, seq_len, 1)</td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>sumOut（aclTensor*）</td>
         <td>可选输出</td>
         <td>需要反向时输出，每一次迭代的colSum/rowSum结果。</td>
-        <td>根据needGrad决定是否输出。</td>
+        <td>根据needBackward决定是否输出。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(sk_iter_count * 2, bs, seq_len, n)</td>
@@ -299,7 +299,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>normOut（aclTensor*）</td>
         <td>可选输出</td>
         <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。</td>
-        <td>根据needGrad决定是否输出。</td>
+        <td>根据needBackward决定是否输出。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(sk_iter_count * 2, bs, seq_len, n, n)</td>
@@ -421,11 +421,12 @@ aclnnStatus aclnnMhcPreSinkhorn(
 
 - 规格约束
 
-  | 规格项   | 规格               | 规格说明                                |
-  | :------- | :----------------- | :------------------------------------- |
-  | numIters | 20                 | 迭代次数超出该范围会返回参数无效错误。    |
-  | n        | 4                  | 目前只支持4。                          |
-  | c        | 范围1到100000       | 128的倍数                             |
+  | 规格项        | 规格                | 规格说明                                                                 |
+  | :------------ | :------------------ | :----------------------------------------------------------------------- |
+  | numIters      | 20                  | 迭代次数超出该范围会返回参数无效错误。                                    |
+  | n             | 4                   | 目前只支持4。                                                            |
+  | c（A5）       | 4096、7168          | <term>Ascend 950PR/Ascend 950DT</term>尾轴c仅支持4096、7168。 |
+  | c（A2/A3）    | 128对齐，[1, 100000] | <term>Atlas A2/A3</term>尾轴c需为128的倍数且取值范围为[1, 100000]。       |
 
 ## 调用示例
 

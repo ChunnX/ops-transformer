@@ -26,7 +26,7 @@
 #if __has_include("../common/op_kernel/mc2_kernel_utils.h")
 #include "../common/op_kernel/mc2_kernel_utils.h"
 #else
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 #include "../moe_distribute_base.h"

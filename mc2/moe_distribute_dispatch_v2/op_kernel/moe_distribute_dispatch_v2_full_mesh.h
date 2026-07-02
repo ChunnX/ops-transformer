@@ -25,12 +25,16 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_quant.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#if __has_include("../common/mc2_moe_context.h")
+#include "../common/mc2_moe_context.h"
+#else
+#include "../../common/op_kernel/mc2_moe_context.h"
+#endif
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
-#if __has_include( "../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -1190,6 +1194,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(selfRankWinInGMTensor_[(CUMSUM_CAL_OFFSET + newAivId * aivUsedCumSum_ * UB_ALIGN) / sizeof(float)], sumCoreFP32Tensor, sumIntriParams);
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
 }
 
 template <TemplateMC2TypeFullmeshClass>
