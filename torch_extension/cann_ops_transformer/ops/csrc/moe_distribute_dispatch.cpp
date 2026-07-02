@@ -114,12 +114,6 @@ bool IsAscend950()
     return soc_name != nullptr && std::strstr(soc_name, "Ascend950") != nullptr;
 }
 
-bool IsAscend910B()
-{
-    static const char *soc_name = aclrtGetSocName();
-    return soc_name != nullptr && std::strstr(soc_name, "Ascend910B") != nullptr;
-}
-
 /**
  * @brief Warpper for moe_distribute_dispatch
  */
@@ -235,7 +229,7 @@ tensor_list NpuMoeDistributeDispatch(
         }
 
         expertTokenNums = at::empty({localMoeExpertNum}, x.options().dtype(at::kLong));
-        if (hasExpertScales) {
+        if (hasExpertScales && !IsAscend950()) {
             epRecvCntNum = epWorldSize * localMoeExpertNum +
                 SEND_COUNT_MEMORY_SIZE * globalBsReal * k * (epWorldSize / RANK_NUM_PER_NODE);
         }
