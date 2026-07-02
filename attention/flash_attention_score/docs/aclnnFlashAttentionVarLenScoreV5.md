@@ -396,7 +396,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>输出</td>
         <td>计算公式的最终输出。</td>
         <td>数据类型和shape类型与query保持一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>[T,N,D]</td>
         <td>√</td>
