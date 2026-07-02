@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul、activation和quant，详细解释见计算公式。此接口为WeightNz特化版本，weight参数在该场景下强制视为FRACTAL_NZ格式。当前版本仅支持MX量化场景，激活函数仅支持gelu_tanh。
+- 接口功能：融合GroupedMatmul、activation和quant，详细解释见计算公式。此接口为WeightNz特化版本，调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数。当前版本仅支持MX量化场景，激活函数仅支持gelu_tanh。
 
 - 计算公式：
   - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -219,7 +219,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>weight</td>
         <td rowspan="1">输入</td>
         <td>表示weight矩阵，对应公式中的weight。</td>
-        <td>tensorList长度当前仅支持1。接口会将该参数按昇腾亲和数据排布格式（FRACTAL_NZ）解析，viewShape为3维，storageShape为5维。</td>
+        <td>tensorList长度当前仅支持1。调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数；viewShape要求为3维，storageShape要求为5维。</td>
         <td>FLOAT8_E4M3FN</td>
         <td>FRACTAL_NZ</td>
         <td>3（storageShape为5）</td>
@@ -369,7 +369,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     </table>
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
-      - <strong>weight强制视为FRACTAL_NZ格式。</strong>
+      - <strong>调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数。</strong>
       - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
       - weightScale转置属性需要与weight保持一致。
       - 空Tensor处理规则：
