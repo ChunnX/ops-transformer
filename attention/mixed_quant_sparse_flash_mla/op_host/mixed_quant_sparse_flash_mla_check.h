@@ -483,7 +483,7 @@ private:
     ge::graphStatus CheckSingleParaSequsedKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
- 	ge::graphStatus CheckSingleParaSequsedQ() const;
+    ge::graphStatus CheckSingleParaSequsedQ() const;
     ge::graphStatus CheckSingleParaSequsedCmpKv() const;
     ge::graphStatus CheckSingleParaOriTopkLength() const;
  	ge::graphStatus CheckSingleParaCmpTopkLength() const;
