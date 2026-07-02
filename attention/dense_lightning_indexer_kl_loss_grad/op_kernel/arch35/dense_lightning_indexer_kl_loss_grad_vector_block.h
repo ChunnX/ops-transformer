@@ -32,7 +32,7 @@ public:
     __aicore__ inline DlikgBlockVec(){};
     __aicore__ inline void InitParams(const DLIKGradConstInfo &vecConstInfo,
         const optiling::DenseLightningIndexerGradRegBaseTilingData *tiling);
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR softmaxLse, GM_ADDR attnSoftmaxL1,
         GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
         GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong,
         GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
@@ -147,7 +147,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitParams(const DLIKGradCo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR softmaxLse,
     GM_ADDR attnSoftmaxL1, GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes,
     GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
     GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
@@ -203,16 +203,16 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, DLIKGradRunInfo &runInfo,
     DLIKGradKRunInfo &kRunInfo)
 {
-    CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[kRunInfo.kTaskIdMod2]);
-    this->mm1AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-    this->kvMergUb_ = gatherKeyIndexUb;
+    // CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[kRunInfo.kTaskIdMod2]);
+    // this->mm1AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+    // this->kvMergUb_ = gatherKeyIndexUb;
 
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0 + 1);
-    MergeKv<EVENT_ID0, true>(outputBuf, runInfo, kRunInfo, keyIndexGm);
-    CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[kRunInfo.kTaskIdMod2]);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0 + 1);
+    // SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    // SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0 + 1);
+    // MergeKv<EVENT_ID0, true>(outputBuf, runInfo, kRunInfo, keyIndexGm);
+    // CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[kRunInfo.kTaskIdMod2]);
+    // WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    // WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0 + 1);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1017,7 +1017,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector8()
 TEMPLATES_DEF
 class DlikgBlockVecDummy {
 public:
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR softmaxLse, GM_ADDR attnSoftmaxL1,
         GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
         GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong,
         GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,

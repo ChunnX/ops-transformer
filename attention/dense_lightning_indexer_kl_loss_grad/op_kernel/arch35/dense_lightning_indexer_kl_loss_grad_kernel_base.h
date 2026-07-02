@@ -132,35 +132,35 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling, TPipe *tPipe)
 {
     pipe = tPipe;
-    // tilingData = tiling;
-    // metadataGm = metadata;
-    // SetConstInfo();
-    // actualSeqQlenAddr = cuSeqlensQ;
-    // actualSeqKvlenAddr = cuSeqlensK;
-    // usedSeqQlenAddr = sequsedQ;
-    // usedSeqKvlenAddr = sequsedK;
-    // cmpResidualKAddr = cmpResidualK;
-    // softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
-    // dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
-    // dqGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
+    tilingData = tiling;
+    metadataGm = metadata;
+    SetConstInfo();
+    actualSeqQlenAddr = cuSeqlensQ;
+    actualSeqKvlenAddr = cuSeqlensK;
+    usedSeqQlenAddr = sequsedQ;
+    usedSeqKvlenAddr = sequsedK;
+    cmpResidualKAddr = cmpResidualK;
+    softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
+    dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
+    dqGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
 
-    // InitMMResBuf();
-    // InitWorkspace(workspace);
+    InitMMResBuf();
+    InitWorkspace(workspace);
 
-    // // init vec block
-    // if ASCEND_IS_AIV {
-    //     // InitVecOP
-    //     vecBlock.InitParams(constInfo, tilingData);
-    //     vecBlock.InitGlobalBuffer(key, weight, sparseIndices, attnSoftmaxL1, dKey, dWeight, softmaxOut, gatherSYRes,
-    //         reluRes, reduceSumRes, scatterAddResGm, scatterAddResPong, bmm3Res, cuSeqlensQ, cuSeqlensK, sequsedQ,
-    //         sequsedK, cmpResidualK);
-    //     vecBlock.InitBuffers(pipe);
-    // } else if ASCEND_IS_AIC {
-    //     // initCubeOP
-    //     cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
-    //     cubeBlock.InitCubeBuffers();
-    //     cubeBlock.InitGlobalBuffer(query, dQuery, reluRes, gatherSYRes, bmm3Res);
-    // }
+    // init vec block
+    if ASCEND_IS_AIV {
+        // InitVecOP
+        vecBlock.InitParams(constInfo, tilingData);
+        vecBlock.InitGlobalBuffer(key, weight, softmaxLse, attnSoftmaxL1, dKey, dWeight, softmaxOut, gatherSYRes,
+            reluRes, reduceSumRes, scatterAddResGm, scatterAddResPong, bmm3Res, cuSeqlensQ, cuSeqlensK, sequsedQ,
+            sequsedK, cmpResidualK);
+        vecBlock.InitBuffers(pipe);
+    } else if ASCEND_IS_AIC {
+        // initCubeOP
+        cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
+        cubeBlock.InitCubeBuffers();
+        cubeBlock.InitGlobalBuffer(query, key, dQuery, reluRes, gatherSYRes, bmm3Res);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -326,8 +326,11 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
-    printf("process !!! \n");
-}
+    if constexpr (Deterministic) {
+        ProcessDeter();
+    } else {
+        ProcessNormal();
+    }}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessNormal()
@@ -343,14 +346,8 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
             continue;
         }
         ProcessSY(runInfo, taskId, bIndex, s1Index);
-        if ASCEND_IS_AIV {
-            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_RELU_TO_V6_FLAG);
-            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_ST_TO_P_FLAG);
-        } else {
-            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_RELU_TO_V6_FLAG);
-            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_ST_TO_P_FLAG);
-        }
-        SetRunInfoP(runInfo);
+
+        // SetRunInfoP(runInfo);
         ProcessP(runInfo, taskId, bIndex, s1Index);
         taskId++;
     }
@@ -466,11 +463,10 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     runInfo.kBaseSize = 2048;
     runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, runInfo.cmpResidualK,
         constInfo.cmpRatio, constInfo.sparseMode);
-    runInfo.s2RealSize = Min(constInfo.kSize, runInfo.s2SparseLen);
+    runInfo.s2RealSize = runInfo.s2SparseLen;
     runInfo.kRealSize = runInfo.s2RealSize;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
     runInfo.s2LoopTimes = CeilDiv(runInfo.s2RealSize, constInfo.syKBaseSize);
-    int64_t tt = (runInfo.s2RealSize + constInfo.syKBaseSize - 1) / constInfo.syKBaseSize;
     runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.syKBaseSize == 0) ?
         constInfo.syKBaseSize :
         (runInfo.s2RealSize % constInfo.syKBaseSize);
@@ -481,6 +477,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         (runInfo.kRealSize % runInfo.kBaseSize == 0) ? runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
 
     runInfo.queryIndexTensorOffset = runInfo.t1Index * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+    runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2size * constInfo.dSizeQueryIndex;
     runInfo.firstNIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
     if (constInfo.subBlockIdx == 0) {
         runInfo.nIndexSize = runInfo.firstNIndexSize;
@@ -587,8 +584,8 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     constInfo.gSizeQueryIndex = baseInfo.gSizeQueryIndex;
     constInfo.s1Size = baseInfo.s1Size;
     constInfo.s2Size = baseInfo.s2Size;
-    constInfo.kSize = baseInfo.kSize;
-    constInfo.kSizeAlign128 = (constInfo.kSize + 127) >> 7 << 7;
+    constInfo.kSize = baseInfo.kSize; //todo
+    constInfo.kSizeAlign128 = (constInfo.kSize + 127) >> 7 << 7; //todo
     constInfo.dSizeQuery = 512;
     constInfo.dSizeQueryIndex = baseInfo.dSizeQueryIndex;
     constInfo.dSizeRope = 64;
@@ -631,7 +628,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    sYL1Buf.Init(l1BufferManager, 128 * 256 * sizeof(INPUT_T));
+    sYL1Buf.Init(l1BufferManager, 128 * 128 * sizeof(INPUT_T));
     reluGradResL1Buf.Init(l1BufferManager, 64 * 256 * sizeof(INPUT_T));
     ubBufferManager.Init(pipe, UB_MAX_SIZE);
     bmm1Buffers.Init(ubBufferManager, 32 * 256 * sizeof(T));

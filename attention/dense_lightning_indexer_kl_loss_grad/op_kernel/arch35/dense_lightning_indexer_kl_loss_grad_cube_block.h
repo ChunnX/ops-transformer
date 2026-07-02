@@ -45,6 +45,7 @@ public:
     GlobalTensor<INPUT_T> queryGm;
     GlobalTensor<INPUT_T> qRopeGm;
     GlobalTensor<INPUT_T> queryIndexGm;
+    GlobalTensor<INPUT_T> keyIndexGm;
     GlobalTensor<T> mm2ResGm;
     GlobalTensor<INPUT_T> gatherSYResGm;
     GlobalTensor<OUT_T> mm4ResGm;
@@ -69,7 +70,7 @@ public:
     __aicore__ inline DlikgBlockCube(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitCubeBuffers();
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res);
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
@@ -88,6 +89,8 @@ private:
     __aicore__ inline void CopyInMm1ARopeToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
         DLIKGradConstInfo &constInfo);
     __aicore__ inline void CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
+        DLIKGradConstInfo &constInfo);
+    __aicore__ inline void CopyInMm2BToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
         DLIKGradConstInfo &constInfo);
     __aicore__ inline void CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor, uint64_t gatherOffset, uint32_t mSizeAct,
         uint32_t realDSize, uint32_t headOffset);
@@ -121,10 +124,11 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery,
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR key, GM_ADDR dQuery,
     GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res)
 {
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
+    keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     mm4ResGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
     this->mm2ResGm = bmm2Res;
     this->gatherSYResGm = gatherSYResGm;
@@ -156,6 +160,14 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm2AToL1(LocalTensor
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm2BToL1(LocalTensor<INPUT_T> &l1Tensor,
+    const DLIKGradRunInfo &info, DLIKGradConstInfo &constInfo)
+{
+    auto srcGm = keyIndexGm[info.keyIndexTensorOffset];
+    CopyGmToL1(l1Tensor, srcGm, constInfo.gSizeQueryIndex, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor,
     uint64_t gatherOffset, uint32_t mSizeAct, uint32_t realDSize, uint32_t headOffset)
 {
@@ -174,8 +186,16 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_SY_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
     uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_SY_BASESIZE; // 尾块大小
     LocalTensor<T> outTensor = bmm2ResBuf.template GetTensor<T>();
-    MMParam mmParam = { constInfo.gSizeQueryIndex, VEC_SY_BASESIZE, constInfo.dSizeQueryIndex, false, true, true, true,
-        UNITFLAG_DISABLE };
+    MMParam mmParam = {
+        constInfo.gSizeQueryIndex,
+        VEC_SY_BASESIZE,
+        constInfo.dSizeQueryIndex,
+        false,
+        true,
+        true,
+        true,
+        UNITFLAG_DISABLE
+    };
     if (syRunInfo.kTaskId == 0) { // 首次搬运query_index
         sYQL1Buffer = sYQueryL1Buf.Get();
         sYQL1Buffer.Wait<HardEvent::MTE1_MTE2>();
@@ -184,19 +204,24 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
         sYQL1Buffer.Set<HardEvent::MTE2_MTE1>();
         sYQL1Buffer.Wait<HardEvent::MTE2_MTE1>();
     }
+
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> kIndexL1Buf = sYL1Buf.Get();
+    LocalTensor<INPUT_T> syKL1Tensor = kIndexL1Buf.GetTensor<INPUT_T>();
+
+    kIndexL1Buf.Wait<HardEvent::MTE1_MTE2>();
+    CopyInMm2BToL1(syKL1Tensor, runInfo, constInfo);
+    kIndexL1Buf.Set<HardEvent::MTE2_MTE1>();
+    kIndexL1Buf.Wait<HardEvent::MTE2_MTE1>();
     Buffer<BufferType::L0C> mm2L0CBuffer = commonL0CBuf.Get();
     LocalTensor<T> mm2L0CTensor = mm2L0CBuffer.GetTensor<T>();
+
     uint64_t gmOffset = syRunInfo.kTaskId * constInfo.syKBaseSize;
     mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> gatherResL1Buf = sYL1Buf.Get();
         // 右矩阵
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);
-        LocalTensor<INPUT_T> gatherL1Tensor = gatherResL1Buf.GetTensor<INPUT_T>();
         uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
             sYQL1Tensor, gatherL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);
     }
     mm2L0CBuffer.Set<HardEvent::M_FIX>();
     mm2L0CBuffer.Wait<HardEvent::M_FIX>();
@@ -369,7 +394,7 @@ public:
     __aicore__ inline DlikgBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitCubeBuffers(){};
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GlobalTensor<T> &bmm2Res,
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res){};
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
