@@ -326,11 +326,11 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_zero;
     RegTensor<float> vreg_exp;
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_src_max;
-    RegTensor<float> vreg_max;
     RegTensor<float> vreg_src_exp_sum;
     RegTensor<float> vreg_exp_sum_brc;
     RegTensor<float> vreg_pre_sum;
+    RegTensor<float> vreg_src_max;
+    RegTensor<float> vreg_max;
     RegTensor<float> vreg_pse;
     RegTensor<float> vreg_alibi;
     RegTensor<float> vreg_sel_drop;
@@ -364,6 +364,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
+
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
 
