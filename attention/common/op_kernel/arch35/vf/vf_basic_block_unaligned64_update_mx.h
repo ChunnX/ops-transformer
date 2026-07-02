@@ -313,21 +313,21 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
     const float posShift, const T scale, const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f,
     const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
+    RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
     RegTensor<float> vreg_src_x;
     RegTensor<float> vreg_src_x_unroll;
     RegTensor<float> vreg_max_tmp;
     RegTensor<float> vreg_input_max;
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_min;
     RegTensor<float> vreg_subloop_update;
     RegTensor<float> vreg_pre_loop_max;
     RegTensor<float> vreg_new_max;
     RegTensor<float> vreg_zero;
     RegTensor<float> vreg_exp;
+    RegTensor<float> vreg_exp_sum;
     RegTensor<float> vreg_src_max;
     RegTensor<float> vreg_max;
-    RegTensor<float> vreg_exp_sum;
     RegTensor<float> vreg_src_exp_sum;
     RegTensor<float> vreg_exp_sum_brc;
     RegTensor<float> vreg_pre_sum;
@@ -335,8 +335,8 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_alibi;
     RegTensor<float> vreg_sel_drop;
     RegTensor<float> vreg_rowmax_p;
-    RegTensor<float> vreg_input_sink;
     RegTensor<float> vreg_scale_qk;
+    RegTensor<float> vreg_input_sink;
 
     // bfloat16_t
     RegTensor<bfloat16_t> vreg_exp_even_bf16;
@@ -364,7 +364,6 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
-    
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
 
