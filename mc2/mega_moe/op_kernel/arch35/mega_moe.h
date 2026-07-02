@@ -1236,11 +1236,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
         GM_ADDR cAddr = params_.workspaceInfo.sharedExpertGmm1OutPtr +
             sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
 
+        uint32_t localStartBlockIdx = startBlockIdx_;
         MegaMoeImpl::SharedExpertGmm1Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             m_, hiddenDim_, k_,
             params_.peermemInfo.quantTokenScalePtr, params_.peermemInfo.quantTokenScalePtr,
-            bAddr, bScaleAddr, cAddr, startBlockIdx_);
+            bAddr, bScaleAddr, cAddr, localStartBlockIdx);
     }
 }
 
@@ -1333,12 +1334,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
         GM_ADDR resultAddr = params_.workspaceInfo.sharedExpertResultPtr +
             sharedIdx * m_ * k_ * sizeof(bfloat16_t);
 
+        uint32_t localStartBlockIdx = startBlockIdx_;
         MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, m_, k_, hiddenDim_ / SWIGLU_N_HALF,
             params_.workspaceInfo.sharedExpertSwigluDataPtr,
             params_.workspaceInfo.sharedExpertSwigluScalePtr,
-            b2Addr, b2ScaleAddr, resultAddr, nullptr, startBlockIdx_);
+            b2Addr, b2ScaleAddr, resultAddr, nullptr, localStartBlockIdx);
     }
 
     // 通知 AIV GMM2 完成（全局计数器累加）
@@ -1514,13 +1516,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // Shared expert SwiGLU: AIV 处理共享专家 GMM1 输出（GMM1 在 Phase 1 已完成，数据就绪）
     if (sharedExpertNum_ > 0) {
         if constexpr(g_coreType == AIV) {
-            PipeBarrier<PIPE_ALL>();
-            SyncAll<true>();  // V-only sync，确保所有 AIV 完成 ExpertTokenNumCopyOut
             SharedExpertSwiglu();
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();  // V sync
         }
-        // 同步所有核，确保 SwiGLU 完成后进入 MoE GMM2
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<false>();  // MIXCore sync
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
