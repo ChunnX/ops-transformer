@@ -38,7 +38,7 @@ using ops::ut::ParseDimsList;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-constexpr size_t kCsvColumnCount = 47U;
+constexpr size_t kCsvColumnCount = 47UL;
 constexpr int64_t kDefaultGroupListType = 0L;
 constexpr int64_t kDefaultScaleAlg = 0L;
 constexpr float kDefaultDstTypeMax = 0.0F;
