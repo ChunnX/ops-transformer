@@ -110,6 +110,7 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
     GM_ADDR sharedExpertResultPtr;
+    GM_ADDR sharedExpertGmm1OutPtr;
     GM_ADDR sharedExpertSwigluDataPtr;
     GM_ADDR sharedExpertSwigluScalePtr;
     GM_ADDR quantDoneFlagPtr;
@@ -191,6 +192,7 @@ struct WorkspaceInfo {
 
         // Shared expert workspace buffers
         sharedExpertResultPtr = nullptr;
+        sharedExpertGmm1OutPtr = nullptr;
         sharedExpertSwigluDataPtr = nullptr;
         sharedExpertSwigluScalePtr = nullptr;
         quantDoneFlagPtr = nullptr;
@@ -198,6 +200,9 @@ struct WorkspaceInfo {
             // sharedExpertResult: GMM2 output for shared experts [bs × sharedExpertNum × h]
             sharedExpertResultPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h;
+            // sharedExpertGmm1Out: GMM1 output for shared experts [bs × sharedExpertNum × hiddenDim] (gate+up)
+            sharedExpertGmm1OutPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim;
             // sharedExpertSwigluData: SwiGLU output [bs × hiddenDim/2] bf16
             sharedExpertSwigluDataPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->hiddenDim / SWIGLU_N_HALF;

@@ -1219,7 +1219,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 
 // ===============================================================
 // SharedExpertGmm1：共享专家 GMM1，纯 AIC 执行，仅矩阵乘无 SwiGLU
-//   输出 gate+up 到 gmm1MmadResPtr，与 AIV 的 SendMaskCal 流水并行
+//   输出 gate+up 到 sharedExpertGmm1OutPtr，与 AIV 的 SendMaskCal 流水并行
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
@@ -1233,7 +1233,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
         GM_ADDR bAddr = params_.bGmAddr + sharedIdx * bStridePerExpert * sizeof(ActivationType);
         GM_ADDR bScaleAddr = params_.bScaleGmAddr + sharedIdx * bScaleStridePerExpert * sizeof(QuantScaleOutType);
-        GM_ADDR cAddr = params_.workspaceInfo.gmm1MmadResPtr +
+        GM_ADDR cAddr = params_.workspaceInfo.sharedExpertGmm1OutPtr +
             sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
 
         MegaMoeImpl::SharedExpertGmm1Kernel<QuantOutType, QuantOutType, bfloat16_t,
@@ -1265,7 +1265,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertSwiglu()
         epilogueOp_.UpdateNextProblem({static_cast<int64_t>(m_), static_cast<int64_t>(outputN),
             static_cast<int64_t>(k_), 0});
 
-        GM_ADDR gmm1OutAddr = params_.workspaceInfo.gmm1MmadResPtr +
+        GM_ADDR gmm1OutAddr = params_.workspaceInfo.sharedExpertGmm1OutPtr +
             sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
 
         // Process tile by tile
