@@ -121,12 +121,11 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
 
 
 moe_token_permute_op_builder = MoeTokenPermuteOpBuilder()
-op_module = moe_token_permute_op_builder.load()
 
 
 @impl(AS_LIBRARY, moe_token_permute_op_builder.name, "PrivateUse1")
 def _moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
-    return op_module.moe_token_permute(tokens, indices, num_out_tokens, padded_mode, quant_mode)
+    return moe_token_permute_op_builder.load().moe_token_permute(tokens, indices, num_out_tokens, padded_mode, quant_mode)
 
 
 def moe_token_permute(

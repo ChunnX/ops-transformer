@@ -59,7 +59,10 @@ class ElasticBufferOpBuilder(OpBuilder):
 
 
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
-_elastic_buffer_ops = _elastic_buffer_op_builder.load()
+
+
+def _get_elastic_buffer_ops():
+    return _elastic_buffer_op_builder.load()
 
 
 @dataclass
@@ -183,7 +186,7 @@ class ElasticBuffer:
                      lambda: f"hidden_size must be 128-aligned, got {hidden_size}")
         torch._check(dtype in (torch.bfloat16, torch.float16, torch.float32),
                      lambda: f"dtype must be bfloat16/float16/float32, got {dtype}")
-        return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(num_entries, hidden_size, dtype)
+        return _get_elastic_buffer_ops().ElasticBuffer.get_engram_storage_size_hint(num_entries, hidden_size, dtype)
 
     @staticmethod
     def get_moe_ep_ccl_buffer_size(world_size: int, num_max_tokens_per_rank: int, hidden: int,
@@ -285,7 +288,7 @@ class ElasticBuffer:
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
 
         num_recv_per_rank, num_recv_per_expert, dst_slot = \
-            _elastic_buffer_ops.ElasticBuffer.moe_ep_dispatch(
+            _get_elastic_buffer_ops().ElasticBuffer.moe_ep_dispatch(
                 context, args.x, args.topk_idx, topk_weights, args.scales, args.cached_dst_slot,
                 self.ep_world_size, self.rank_id, args.num_experts, args.num_max_tokens_per_rank, ccl_buffer_size,
                 args.expert_alignment, args.do_cpu_sync, hp_addr
@@ -296,7 +299,7 @@ class ElasticBuffer:
             self._allocate_dispatch_outputs(args, actual_a, topk_weights)
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = \
-            _elastic_buffer_ops.ElasticBuffer.moe_ep_dispatch_epilogue(
+            _get_elastic_buffer_ops().ElasticBuffer.moe_ep_dispatch_epilogue(
                 context, dst_slot, num_recv_per_rank, num_recv_per_expert, args.cached_recv_src_metadata,
                 self.ep_world_size, self.rank_id, args.num_experts, args.num_max_tokens_per_rank,
                 ccl_buffer_size, args.expert_alignment, recv_x, recv_src_meta,
@@ -319,7 +322,7 @@ class ElasticBuffer:
         bias_0, bias_1 = self._unpack_bias(bias)
         torch._check(((bias_0 is None) and (bias_1 is None)), lambda: (f"bias are not supported."))
 
-        combined_x, combined_topk_weights = _elastic_buffer_ops.ElasticBuffer.moe_ep_combine(
+        combined_x, combined_topk_weights = _get_elastic_buffer_ops().ElasticBuffer.moe_ep_combine(
             context, x, handle.topk_idx, handle.recv_src_metadata,
             handle.num_recv_tokens_per_expert, topk_weights, bias_0, bias_1,
             self.ep_world_size, self.rank_id, handle.num_experts,
@@ -350,7 +353,7 @@ class ElasticBuffer:
         if self.runtime is None:
             rank_id = dist.get_rank(self.group)
             self.group_name = self.group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=True)
-            self.runtime = _elastic_buffer_ops.ElasticBuffer(self.group_name, self.num_cpu_bytes)
+            self.runtime = _get_elastic_buffer_ops().ElasticBuffer(self.group_name, self.num_cpu_bytes)
         return self.runtime
 
     def _ensure_moe_config(self):
@@ -427,7 +430,7 @@ class ElasticBuffer:
         if not do_cpu_sync:
             return 0
         if self._host_pinned_counter is None:
-            self._host_pinned_counter = _elastic_buffer_ops.HostPinnedCounter()
+            self._host_pinned_counter = _get_elastic_buffer_ops().HostPinnedCounter()
         self._host_pinned_counter.reset()
         return self._host_pinned_counter.device_ptr()
 

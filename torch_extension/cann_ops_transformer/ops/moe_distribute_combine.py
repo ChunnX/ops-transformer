@@ -57,24 +57,21 @@ class MoeDistributeCombineOpBuilder(OpBuilder):
 
 # Instantiate the builder
 moe_distribute_combine_op_builder = MoeDistributeCombineOpBuilder()
-op_module = moe_distribute_combine_op_builder.load()  # Compiles/loads the .so file
-
-
 @impl(AS_LIBRARY, moe_distribute_combine_op_builder.name, "PrivateUse1")
-def npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts, 
-                                  expert_scales, ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size,
-                                  tp_send_counts=None, x_active_mask=None, expand_scales=None, 
-                                  shared_expert_x=None, elastic_info=None, ori_x=None, 
-                                  const_expert_alpha_1=None, const_expert_alpha_2=None,
-                                  const_expert_v=None, performance_info=None,
-                                  tp_world_size=0, tp_rank_id=0, expert_shard_type=0, shared_expert_num=1,
-                                  shared_expert_rank_num=0, global_bs=0, comm_quant_mode=0, comm_alg="",
-                                  zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
+def npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
+                                   moe_expert_num, ccl_buffer_size,
+                                   tp_send_counts=None, x_active_mask=None, expand_scales=None, 
+                                   shared_expert_x=None, elastic_info=None, ori_x=None, 
+                                   const_expert_alpha_1=None, const_expert_alpha_2=None,
+                                   const_expert_v=None, performance_info=None, tp_world_size=0, 
+                                   tp_rank_id=0, expert_shard_type=0, shared_expert_num=1,
+                                   shared_expert_rank_num=0, global_bs=0, comm_quant_mode=0, comm_alg="",
+                                   zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine,
+    return moe_distribute_combine_op_builder.load().npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine,
                                                   ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
                                                   moe_expert_num, ccl_buffer_size,
                                                   tp_send_counts, x_active_mask, expand_scales, 

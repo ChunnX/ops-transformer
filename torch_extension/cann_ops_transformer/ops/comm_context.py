@@ -26,6 +26,7 @@ class CommContextOpBuilder(OpBuilder):
         pass
 
 comm_context_op_builder = CommContextOpBuilder()
-op_module = comm_context_op_builder.load()
 
-CommContextManager = op_module.CommContextManager
+
+def CommContextManager(*args, **kwargs):
+    return comm_context_op_builder.load().CommContextManager(*args, **kwargs)

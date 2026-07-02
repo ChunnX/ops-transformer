@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
@@ -29,6 +30,7 @@ class OpBuilder(ABC):
     _torch_npu_path = None
     _cann_version = None
     _loaded_ops = {}
+    _load_lock = threading.Lock()
 
     def __init__(self, name):
         self.name = name
@@ -95,13 +97,14 @@ class OpBuilder(ABC):
     def load(self, verbose=True):
         if self.name in __class__._loaded_ops:
             return __class__._loaded_ops[self.name]
-
-        op_module = load(name=self.name,
-                         sources=self.get_absolute_paths(self.sources()),
-                         extra_include_paths=self.get_absolute_paths(self.include_paths()),
-                         extra_cflags=self.cxx_args(),
-                         extra_ldflags=self.extra_ldflags(),
-                         verbose=verbose)
-        __class__._loaded_ops[self.name] = op_module
-
-        return op_module
+        with __class__._load_lock:
+            if self.name in __class__._loaded_ops:
+                return __class__._loaded_ops[self.name]
+            op_module = load(name=self.name,
+                             sources=self.get_absolute_paths(self.sources()),
+                             extra_include_paths=self.get_absolute_paths(self.include_paths()),
+                             extra_cflags=self.cxx_args(),
+                             extra_ldflags=self.extra_ldflags(),
+                             verbose=verbose)
+            __class__._loaded_ops[self.name] = op_module
+            return op_module
