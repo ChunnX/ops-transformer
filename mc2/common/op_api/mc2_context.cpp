@@ -283,7 +283,7 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
 }
 
 aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                           const CommProtocol &protocol, const CommEngine &engine,
+                                           Mc2MoeContext *mc2ContextStruct,const CommProtocol &protocol, const CommEngine &engine,
                                            std::vector<ChannelHandle> &channels)
 {
     OP_LOGD("Start to get HCCL communication channel");
@@ -309,7 +309,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         return ret;
     }
 
-    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
@@ -341,7 +341,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, mc2ContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
         }
 
         if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {

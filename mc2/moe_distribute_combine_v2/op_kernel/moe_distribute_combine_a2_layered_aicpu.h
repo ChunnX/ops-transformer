@@ -524,7 +524,7 @@ __aicore__ inline void MoeDistributeCombineA2LayeredAicpu<TemplateMC2TypeA2layer
                                           (rankId_ / SERVER_RANK_SIZE) * rankSizeOnWin_ * SERVER_RANK_SIZE);
         uint64_t srcrdmaAddr = (uint64_t)(hccl_.GetWindowsOutAddr(rankId_) + halfWinSize_ * bufferId_ +
                                           coreIdx_ * rankSizeOnWin_ * SERVER_RANK_SIZE);
-
+        
         // countReL
         batchWriteItemLocalB64(0) = srcrdmaAddr;
         batchWriteItemLocalB64(0 + 1) = dstrdmaAddr;
