@@ -1065,7 +1065,7 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
             needInit_ = true;
         }
     } else {
-        int64_t* seqLengthsKVPtr = fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
+        const int64_t* seqLengthsKVPtr = fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
         if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 && seqLengthsKVPtr != nullptr) { // kvLengths
             actualSeqLengthsKV = fiaInfo.actualLenKvDims == NUM1 ?
                                     seqLengthsKVPtr[0] :
