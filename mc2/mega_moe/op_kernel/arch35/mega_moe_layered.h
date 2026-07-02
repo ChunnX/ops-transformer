@@ -566,8 +566,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
-            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * 
-                static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) * static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
+                static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
+                static_cast<uint64_t>(maskSlotSize_);
             dstGlobalTensor.SetGlobalBuffer(
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
