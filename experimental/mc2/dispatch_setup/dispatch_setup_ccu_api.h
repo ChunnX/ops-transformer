@@ -36,6 +36,10 @@
     } while (0)
 #endif
 
+// ★ 共享守护：dispatch/combine 两个 api.h 声明的是【同一个】hcomm::Mc2CcuKernelBase（逐字一致）。单算子编译
+//   只 include 一个 api.h 无碍；但链驱动（chain_e2e）同时 include 两个 → 第二份必须跳过，否则 class 重定义。
+#ifndef MC2_CCU_KERNEL_BASE_DECLARED
+#define MC2_CCU_KERNEL_BASE_DECLARED
 namespace hcomm {
 
 // 0.5RTT 上层接口占位基类：继承 CcuKernel，仅【声明】4 个数据面 API（impl 待 SE 链接期补全）。
@@ -63,6 +67,7 @@ protected:
 };
 
 } // namespace hcomm
+#endif // MC2_CCU_KERNEL_BASE_DECLARED
 
 // 本算子 0.5RTT 资源组 tag（= 驱动 HcclChannelDesc.ccuUbAttr.resGroupTag，必须一字一致）。
 //   ★ 复用参考已验证的 key 字符串——它只是 CCU 资源组键、非语义名；与 dispatch_min_driver.cpp 的
