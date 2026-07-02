@@ -136,6 +136,8 @@ def run_case(params: dict,
         print(f"  [nc_check] nc_kv_dims={nc_kv_dims} "
               f"k_contig={nc_cpu_inputs['k'].is_contiguous()} "
               f"v_contig={nc_cpu_inputs['v'].is_contiguous()}")
+        assert torch.equal(nc_cpu_inputs["k"], cpu_inputs["k"]), "k NC后数据与连续时不一致"
+        assert torch.equal(nc_cpu_inputs["v"], cpu_inputs["v"]), "v NC后数据与连续时不一致"
         nc_raw = primary.compute(nc_dev_inputs, params)
         nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
         del nc_dev_inputs, nc_raw
