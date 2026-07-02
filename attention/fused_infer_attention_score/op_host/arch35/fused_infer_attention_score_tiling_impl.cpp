@@ -1767,8 +1767,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaT
     uint64_t maskS2Size =
         static_cast<uint64_t>(std::max(shape.GetDim(maskDimNum - 1), static_cast<int64_t>(0)));
     inputParams.set_attenMaskShapeType(maskBatch > 1 ? 1 : 2);
-    singleCoreParams.set_attenMaskBatch(static_cast<uint32_t>(maskBatch));
-    inputParams.set_attenMaskS1Size(static_cast<int32_t>(maskS1Size));
+    singleCoreParams.set_attenMaskBatch(maskBatch);
+    inputParams.set_attenMaskS1Size(maskS1Size);
     inputParams.set_attenMaskS2Size(static_cast<uint32_t>(maskS2Size));
     baseParams.set_maskQsSize(static_cast<uint32_t>(maskS1Size));
     baseParams.set_maskKVsSize(static_cast<uint32_t>(maskS2Size));
