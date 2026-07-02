@@ -299,8 +299,6 @@ private:
             gmA1I4_I8.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(workspaceInfo.ptrA1Int4));
             gmA2I4.SetGlobalBuffer(reinterpret_cast<__gm__ int4b_t *>(workspaceInfo.ptrA2Int4));
             gmA2I4_I8.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(workspaceInfo.ptrA2Int4));
-            gmCGMM1.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspaceInfo.ptrCGMM1));
-            gmCGMM2.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspaceInfo.ptrCGMM2));
             gmS2.SetGlobalBuffer(params.ptrScale2);
         } else {
             gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementABefore *>(workspaceInfo.ptrA));
@@ -1309,8 +1307,8 @@ private:
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
-                                   params.EP, gmCGMM1[gmOffsetC], runtimeRank, params.listLen, resource,
-                                   params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                                   params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
+                                   params.swigluLimit, params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1539,9 +1537,9 @@ private:
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                        blockEpilogue(gmCGMM2, gmC2, gmPerTokenScale2,
-                                      reinterpret_cast<__gm__ float *>(params.ptrBias2), realTileCoord, realTileShape,
-                                      groupIdx, preSrcExpertSum, preSumBeforeRank, params.listLen);
+                        blockEpilogue(gmC2, gmPerTokenScale2, reinterpret_cast<__gm__ float *>(params.ptrBias2),
+                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank,
+                                      params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
                                       preSumBeforeRank);
@@ -1579,8 +1577,6 @@ private:
         GM_ADDR ptrTokenPerExpert;
         GM_ADDR ptrA1Int4;
         GM_ADDR ptrA2Int4;
-        GM_ADDR ptrCGMM1;
-        GM_ADDR ptrCGMM2;
         GM_ADDR ptrSumBeforeRank;
         __gm__ float *ptrSoftFlagBase;
 
@@ -1595,7 +1591,6 @@ private:
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
-            expandedRowIdx = params.ptrWorkspace;
 
             expandedRowIdx = params.ptrWorkspace;
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
@@ -1604,13 +1599,14 @@ private:
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
 
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
-            workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>) {
+                workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
+            }
 
             ptrPerTokenScale2 = params.ptrWorkspace + workspaceOffset;
-            workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
-
-            ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>) {
+                workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
+            }
 
             // gmm out resues workspace
             ptrC = params.ptrWorkspace + workspaceOffset;
@@ -1629,9 +1625,6 @@ private:
                 // sizeof(ElementA) is 1
                 workspaceOffset += params.maxOutputSize *
                     (params.problemShape.k() > k2 ? params.problemShape.k() : k2);
-
-                ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
-                ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
@@ -1640,11 +1633,12 @@ private:
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
-            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
-            } else {
-                workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
+            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
+
+            // W4A8 not use
+            if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                 ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
+                workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
             }
         }
     };
@@ -1702,8 +1696,6 @@ private:
     AscendC::GlobalTensor<int8_t> gmA1I4_I8;
     AscendC::GlobalTensor<int4b_t> gmA2I4;
     AscendC::GlobalTensor<int8_t> gmA2I4_I8;
-    AscendC::GlobalTensor<float> gmCGMM1;
-    AscendC::GlobalTensor<float> gmCGMM2;
 
     AscendC::GlobalTensor<ElementABefore> gmA;
     AscendC::GlobalTensor<ElementD1> gmPermutedToken;
