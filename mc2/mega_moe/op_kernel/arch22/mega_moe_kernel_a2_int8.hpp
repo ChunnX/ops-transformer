@@ -465,8 +465,8 @@ private:
         //   slotIdx = srcEpIdx * expertPerRank + groupIdx
         //   每槽 16 个 int32（= 64B = 一个 cache line）
         __gm__ int32_t* flagAddr = reinterpret_cast<__gm__ int32_t*>(
-            shmem() + peermemInfo.offsetFlag + (srcEpIdx * params.expertPerRank + groupIdx) * sizeof(uint32_t));
-        gm_signal_wait_until_ne(flagAddr, 0);
+ 	             shmem() + peermemInfo.offsetFlag)
+ 	             + (srcEpIdx * params.expertPerRank + groupIdx) * PeermemInfo::kFlagSlotI32;
         // 该 flag 由对端核（同 server gm_store / 跨 server RDMA）写入本 rank GM，属"数据被其他核修改"场景
         // Scalar 访问 GM 经过本核 D-Cache，存在与 GM 的一致性问题：
         // 故每轮先 gm_dcci 失效本核 D-Cache，再 scalar 读单个 4B int32，确保取到 GM 最新值。
