@@ -185,7 +185,7 @@ private:
     TBuf<> tokenTargetTBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
-    TQue<QuePosition::VECIN, 1> moeSumQueue_;// 数据队列
+    TQue<QuePosition::VECIN, 1> moeSumQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
@@ -360,7 +360,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     
     for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
         DataCopyPad(expandIdxLocal, recvSrcMetadataGm_[tokenIndex * RECV_META_FIELDS], bskParams, copyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();	 
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         int32_t src_rank = expandIdxLocal.GetValue(0);
         int32_t src_token_idx = expandIdxLocal.GetValue(1);
         int32_t src_topK_idx = expandIdxLocal.GetValue(2);
