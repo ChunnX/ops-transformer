@@ -61,7 +61,9 @@ public:
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    // hasAtten 仅用于 HAS_MASK，供 kernel 侧 sparse S2 调度；Vec 不读 attenMask GM、不做 mask 施加。
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool APPLY_ATTEN_MASK_IN_VF = false;
 
     // =============================================================================
     // 静态 event ID 常量 —— 全部按守护的 buff 命名（不再以通路 MTE3/V/MTE2 命名）
@@ -185,6 +187,7 @@ public:
                                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                         __gm__ uint8_t *workspace)
     {
+        (void)attenMask;
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
 
         if (constInfo.isSoftmaxLseEnable) {
@@ -446,7 +449,7 @@ public:
     {
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
-        LocalTensor<uint8_t> attenMaskUb;
+        LocalTensor<uint8_t> unusedMaskUb; // VF 占位，mask 施加已关闭
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -469,31 +472,31 @@ public:
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf[stage1Offset];
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128, false,
-                              PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
                 FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_0_AND_LTE_64,
-                              false, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
                 FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_64_AND_LTE_128,
-                              false, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else {
                 if constexpr (s2BaseSize == 256) {
                     FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize,
-                                  GT_128_AND_LTE_256, false, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
-                        stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                                  GT_128_AND_LTE_256, APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
+                        stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                         nonePseUb, dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                         0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                         descaleQK, negativeFloatScalar, 0.0F);
@@ -501,31 +504,31 @@ public:
             }
         } else {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128, false,
-                              PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
                 FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64,
-                              false, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
                 FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128,
-                              false, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                              APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                     nonePseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else {
                 if constexpr (s2BaseSize == 256) {
                     FaVectorApi::ProcessVec1VfStatic<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256,
-                                  false, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
-                        stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                                  APPLY_ATTEN_MASK_IN_VF, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
+                        stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, unusedMaskUb,
                         nonePseUb, dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                         0 /*pseStride*/, 0.0f /*slopes*/, 0.0f /*posShift*/, static_cast<T>(constInfo.scaleValue),
                         descaleQK, negativeFloatScalar, 0.0F);
@@ -995,7 +998,7 @@ public:
         constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
         constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
 
-        // reserved 16K hole (formerly attenMask ping/pong)
+        // FA/FD 共享 UB 布局：保留 16K 空洞（原 attenMask ping/pong），仅作地址对齐与 FD 复用，不做 mask 搬运。
         // stage2 输出（32768 bytes）
         stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U).template ReinterpretCast<T>();
         // stage1 输出 ping/pong（各 33024 bytes）
@@ -1079,6 +1082,7 @@ class FANoQuantGqaBlockVecDummyNd {
 public:
     static constexpr uint32_t stage2OutBufFreeEventId = 0U;
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool APPLY_ATTEN_MASK_IN_VF = false;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 

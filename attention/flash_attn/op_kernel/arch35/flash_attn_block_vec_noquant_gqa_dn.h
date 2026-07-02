@@ -61,7 +61,9 @@ public:
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    // hasAtten 仅用于 HAS_MASK，供 kernel 侧 sparse S2 调度；Vec 不读 attenMask GM、不做 mask 施加。
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool APPLY_ATTEN_MASK_IN_VF = false;
 
     // =============================================================================
     // 静态 event ID 常量 —— 全部按守护的 buff 命名（不再以通路 MTE3/V/MTE2 命名）
@@ -185,6 +187,7 @@ public:
                                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                         __gm__ uint8_t *workspace)
     {
+        (void)attenMask;
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
 
         if (constInfo.isSoftmaxLseEnable) {
@@ -342,7 +345,7 @@ public:
                                           LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
                                           RunInfoX runInfo)
     {
-        LocalTensor<uint8_t> attenMaskUb;
+        LocalTensor<uint8_t> unusedMaskUb; // VF 占位，mask 施加已关闭
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)][0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)][0];
@@ -357,13 +360,13 @@ public:
         LocalTensor<T> mmRes = bmm1UbTensor;
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf[stage1Offset];
         if (unlikely(runInfo.isFirstS2Loop)) {
-            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, false, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, false, APPLY_ATTEN_MASK_IN_VF, s2BaseSize>(
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, unusedMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
                 static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
         } else {
-            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, true, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+            FaVectorApi::ProcessVec1VfDnStatic<T, INPUT_T, true, APPLY_ATTEN_MASK_IN_VF, s2BaseSize>(
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, unusedMaskUb,
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
                 static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
         }
@@ -916,7 +919,7 @@ public:
         constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
         constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
 
-        // reserved 16K hole (formerly attenMask ping/pong)
+        // FA/FD 共享 UB 布局：保留 16K 空洞（原 attenMask ping/pong），仅作地址对齐与 FD 复用，不做 mask 搬运。
         // stage2 输出（32768 bytes）
         stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U).template ReinterpretCast<T>();
         // stage1 输出 ping/pong（各 33024 bytes）
@@ -1000,6 +1003,7 @@ class FANoQuantGqaBlockVecDummyDn {
 public:
     static constexpr uint32_t stage2OutBufFreeEventId = 0U;
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool APPLY_ATTEN_MASK_IN_VF = false;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
