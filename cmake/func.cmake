@@ -223,11 +223,7 @@ function(add_ops_info_target)
     cmake_parse_arguments(OPINFO "" "COMPUTE_UNIT" "" ${ARGN})
 
     set(OPS_INFO_TARGET generate_ops_info_${OPINFO_COMPUTE_UNIT})
-    if (ENABLE_BUILT_IN)
-        set(OPS_INFO_JSON ${ASCEND_AUTOGEN_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info-transformer.json)
-    else()
-        set(OPS_INFO_JSON ${ASCEND_AUTOGEN_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)
-    endif()
+    set(OPS_INFO_JSON ${ASCEND_AUTOGEN_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)
     set(CUSTOM_OPS_INFO_DIR ${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT})
 
     set(OPS_INFO_INI          ${base_aclnn_binary_dir}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.ini)
@@ -253,7 +249,9 @@ function(add_ops_info_target)
 
     if (ENABLE_BUILT_IN)
         install(FILES ${OPS_INFO_JSON}
-                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
+                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT}
+                RENAME aic-${OPINFO_COMPUTE_UNIT}-ops-info-transformer.json
+                OPTIONAL
         )
     else()
         install(FILES ${OPS_INFO_JSON}
