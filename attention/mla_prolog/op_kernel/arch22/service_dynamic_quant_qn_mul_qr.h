@@ -174,7 +174,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     const GlobalTensor<T> &inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
     uint32_t cvRatio)
 {
-    if (row == 0 || col == 0) {
+    if (col == 0 || row == 0) {
         return;
     }
     // 常量
@@ -186,28 +186,28 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY =
         EVENT_ID3; // dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
 
-    constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
+    constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr float maxInt8 = 127.0;
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 8 * cvRatio; // 单次处理最大行数, cv1:1场景，改为8行进行计算，降低UB使用
 
     uint64_t subRow = row < rowStepSize ? row : rowStepSize;
-    uint32_t computeSize = subRow * col;
     uint32_t brcbCnt = Align(subRow, computeBlockAlign);
+    uint32_t computeSize = subRow * col;
 
     // Rope Post Process 局部变量
     uint64_t rowStepSizeRope = 64; // 单次处理最大行数
+    uint32_t loadRopeGmSize = row * colRope;
     uint64_t subRowRope = row < rowStepSizeRope ? row : rowStepSizeRope;
     uint32_t computeSizeRope = subRowRope * colRope;
-    uint32_t loadRopeGmSize = row * colRope;
 
     // Dynamic Quant & Rope Post Process UB Buffer分配
     LocalTensor<T> inputHalf = shareTmpUb.ReinterpretCast<T>();
     LocalTensor<T> qrInputLocal = inputHalf[computeSize];
-    LocalTensor<T> outputLocalRope = qrInputLocal[loadRopeGmSize + inputBlockAlign];
+    LocalTensor<T> outputLocalRope = qrInputLocal[inputBlockAlign + loadRopeGmSize];
 
-    LocalTensor<C> inputLocal = outputLocalRope[computeSizeRope + inputBlockAlign].template ReinterpretCast<C>();
+    LocalTensor<C> inputLocal = outputLocalRope[inputBlockAlign + computeSizeRope].template ReinterpretCast<C>();
     LocalTensor<C> outputLocal = inputLocal[computeSize];
     LocalTensor<C> maxInt8Tensor = outputLocal[computeSize];
     LocalTensor<C> dynamicQuantUb = maxInt8Tensor[brcbCnt];
@@ -217,7 +217,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Rope Post Process流程在Dynamic Quant流程结束，两者UB Buffer不会同时使用，故可以从起始位置开始重新计算，减少UB
     // Buffer使用
     LocalTensor<C> qrFp32Local = inputLocal;
-    LocalTensor<C> reciprocalLocal = qrFp32Local[computeSizeRope + computeBlockAlign];
+    LocalTensor<C> reciprocalLocal = qrFp32Local[computeBlockAlign + computeSizeRope];
 
     // Dynamic Quant
     Duplicate(maxInt8Tensor, static_cast<C>(maxInt8), brcbCnt);
