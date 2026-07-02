@@ -72,7 +72,7 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
-    if (this->epFullload_) {
+    if (this->epFullload_ && this->dropPadMode_ != DROP_PAD_MODE) {
         if constexpr (IsSameType<T, hifloat8_t>::value) {
             this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
         } else {
