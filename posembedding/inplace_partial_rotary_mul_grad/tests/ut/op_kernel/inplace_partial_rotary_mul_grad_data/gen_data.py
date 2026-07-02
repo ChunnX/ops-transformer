@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """
 Generate test data for InplacePartialRotaryMulGrad kernel UT.
 
@@ -37,7 +46,11 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                 for si in range(s):
                     # After reshape: flat index
                     base = (bi * n * s + ni * s + si) * d
-                    cos_base = ci * s * cosD + si * cosD if layout == "NO_BROADCAST" else si * cosD
+                    cos_base = (
+                        ci * s * cosD + si * cosD
+                        if layout == "NO_BROADCAST"
+                        else si * cosD
+                    )
                     for di in range(d):
                         dx[base + di] = dy[base + di]
                     for k in range(cosD // 2):
@@ -114,8 +127,17 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
 
-def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout="NO_BROADCAST",
-                  slice_start=0, slice_end=None):
+def generate_data(
+    b,
+    s,
+    n,
+    d,
+    dy_dtype,
+    cos_dtype,
+    layout="NO_BROADCAST",
+    slice_start=0,
+    slice_end=None,
+):
     """Generate random test data for InplacePartialRotaryMulGrad."""
     dtype_map = {
         "float16": np.float16,
@@ -123,7 +145,7 @@ def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout="NO_BROADCAST",
         "float32": np.float32,
     }
     if dy_dtype not in dtype_map or cos_dtype not in dtype_map:
-        print(f"Error: unsupported dtype", file=sys.stderr)
+        print("Error: unsupported dtype", file=sys.stderr)
         sys.exit(1)
 
     np_dy = dtype_map[dy_dtype]
@@ -168,8 +190,9 @@ def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout="NO_BROADCAST",
     cos_flat = cos.flatten().astype(np.float64)
     sin_flat = sin.flatten().astype(np.float64)
 
-    interleave_grad_ref(dy_flat, cos_flat, sin_flat, dx_ref, layout,
-                        slice_start, slice_end, b, s, n, d)
+    interleave_grad_ref(
+        dy_flat, cos_flat, sin_flat, dx_ref, layout, slice_start, slice_end, b, s, n, d
+    )
 
     # Write binaries
     dy.astype(np_dy).tofile("dy.bin")
@@ -183,20 +206,27 @@ def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout="NO_BROADCAST",
         f.write(f"dy_dtype={dy_dtype} cos_dtype={cos_dtype}\n")
         f.write(f"layout={layout}\n")
         f.write(f"slice=[{slice_start},{slice_end}]\n")
-        f.write(f"dy_shape={"x".join(str(x) for x in dy_shape)}\n")
-        f.write(f"cos_shape={"x".join(str(x) for x in cos_shape)}\n")
+        f.write(f"dy_shape={'x'.join(str(x) for x in dy_shape)}\n")
+        f.write(f"cos_shape={'x'.join(str(x) for x in cos_shape)}\n")
 
-    print(f"Generated: dy{dy.shape} cos{cos.shape} sin{sin.shape} "
-          f"dy_dtype={dy_dtype} cos_dtype={cos_dtype} layout={layout} "
-          f"slice=[{slice_start},{slice_end}]")
+    print(
+        f"Generated: dy{dy.shape} cos{cos.shape} sin{sin.shape} "
+        f"dy_dtype={dy_dtype} cos_dtype={cos_dtype} layout={layout} "
+        f"slice=[{slice_start},{slice_end}]"
+    )
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 7:
-        print("Usage: python3 gen_data.py <B> <S> <N> <D> <dy_dtype> <cos_dtype> "
-              "[layout] [slice_start] [slice_end]", file=sys.stderr)
-        print("  layout: NO_BROADCAST | BROADCAST_BSN | BSND | SBND | "
-              "BNSD | BNSD_BA", file=sys.stderr)
+        print(
+            "Usage: python3 gen_data.py <B> <S> <N> <D> <dy_dtype> <cos_dtype> "
+            "[layout] [slice_start] [slice_end]",
+            file=sys.stderr,
+        )
+        print(
+            "  layout: NO_BROADCAST | BROADCAST_BSN | BSND | SBND | BNSD | BNSD_BA",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     b, s, n, d = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
