@@ -828,6 +828,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
+        PipeBarrier<PIPE_ALL>();
         int32_t scanCursor = cursor;
         while (true) {
             int32_t endCount = ReadGmByPassDCache(countPtr);
@@ -1183,8 +1184,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
                     tripleTensorSize / sizeof(int32_t));
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+                PipeBarrier<PIPE_ALL>();
                 CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-
+                PipeBarrier<PIPE_ALL>();
                 SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                 int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
                 int32_t rowEndLocal = rowStartLocal + rowsNumInCore;
