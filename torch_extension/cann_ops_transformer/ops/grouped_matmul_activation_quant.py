@@ -135,14 +135,16 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                                                  dst_type_max=0.0, x_dtype=None,
                                                  weight_dtype=None, weight_scale_dtype=None,
                                                  x_scale_dtype=None):
-            torch._check(len(weight) > 0 and weight[0] is not None,
-                         lambda: "weight must contain at least one non-null tensor for meta output inference.")
-            torch._check(len(weight_scale) > 0 and weight_scale[0] is not None,
-                         lambda: "weight_scale must contain at least one non-null tensor for meta output inference.")
-            torch._check(x_scale is not None, lambda: "x_scale must be provided for meta output inference.")
-            torch._check(x.dim() > 0, lambda: "x must have at least one dimension for meta output inference.")
-            torch._check(weight_scale[0].dim() > 2,
-                         lambda: "weight_scale must have at least 3 dimensions for meta output inference.")
+            if len(weight) == 0 or weight[0] is None:
+                raise ValueError("weight must contain at least one non-null tensor for meta output inference.")
+            if len(weight_scale) == 0 or weight_scale[0] is None:
+                raise ValueError("weight_scale must contain at least one non-null tensor for meta output inference.")
+            if x_scale is None:
+                raise ValueError("x_scale must be provided for meta output inference.")
+            if x.dim() <= 0:
+                raise ValueError("x must have at least one dimension for meta output inference.")
+            if weight_scale[0].dim() <= 2:
+                raise ValueError("weight_scale must have at least 3 dimensions for meta output inference.")
 
             m = x.shape[0]
             n = _infer_nz_logical_n(weight_scale[0])
