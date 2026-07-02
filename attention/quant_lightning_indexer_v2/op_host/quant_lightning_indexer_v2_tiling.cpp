@@ -926,7 +926,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             return ge::GRAPH_FAILED);
     }
     // -----------------------check sparse_values------------------
-    if (npuArch_ == NpuArch::DAV_3510) {}
+    if (npuArch_ == NpuArch::DAV_3510) {
         if (*opParamInfo_.returnValue == 1) {
             OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                 OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
