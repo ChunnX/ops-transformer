@@ -1252,14 +1252,8 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     } else if (archCode == SOC_ASCEND910B) {
         auto w1Desc = context->GetDynamicInputDesc(WEIGHT1_INDEX, 0);
         ge::DataType w1DataType = w1Desc->GetDataType();
-        uint64_t swigluSize = 1UL;
-        uint64_t gmmOutNum = 1UL;
-        if (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) {
-            swigluSize = 2UL;
-        }
-        if (w1DataType == ge::DT_INT4) {
-            gmmOutNum = 2UL;
-        }
+        uint64_t swigluSize = (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) ? 2UL : 1UL;
+        uint64_t gmmOutNum = (w1DataType == ge::DT_INT4) ? 2UL : 1UL;
 
         uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
