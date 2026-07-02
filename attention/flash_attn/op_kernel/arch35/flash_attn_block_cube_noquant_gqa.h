@@ -427,10 +427,8 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
-    {
-        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
-    }
+    // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID()
     {
@@ -443,8 +441,8 @@ public:
     }
 
     // copy query with full s1g and split D
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset,
+                                          uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
 
@@ -491,15 +489,15 @@ public:
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
                           .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
+
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
+                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
