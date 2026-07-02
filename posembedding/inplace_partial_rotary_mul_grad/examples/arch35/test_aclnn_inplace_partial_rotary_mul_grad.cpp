@@ -85,8 +85,6 @@ int main()
     aclTensor* dyRef = nullptr;
     aclTensor* cos = nullptr;
     aclTensor* sin = nullptr;
-    aclTensor* dcosOut = nullptr;
-    aclTensor* dsinOut = nullptr;
 
     std::vector<float> dyHostData = {
         74,  54, 84, 125, 23,  78,  37,  72,  27, 98,  34,  107, 29,  23,  54,  60, 70,  49,  119, 54,  29,  54,
@@ -121,21 +119,12 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建partialSlice aclIntArray
     aclIntArray* partialSlice = aclCreateIntArray(partialSliceData.data(), partialSliceData.size());
-    // 创建dcosOut和dsinOut（xOptional为空时无效，此处创建空shape tensor）
-    std::vector<int64_t> emptyTensorOutShape = {1, 1, 1, 0};
-    std::vector<int64_t> emptyTensorStride(emptyTensorOutShape.size(), 0);
-    dcosOut = aclCreateTensor(emptyTensorOutShape.data(), emptyTensorOutShape.size(), aclDataType::ACL_FLOAT,
-                              emptyTensorStride.data(), 0, aclFormat::ACL_FORMAT_ND, emptyTensorOutShape.data(),
-                              emptyTensorOutShape.size(), nullptr);
-    dsinOut = aclCreateTensor(emptyTensorOutShape.data(), emptyTensorOutShape.size(), aclDataType::ACL_FLOAT,
-                              emptyTensorStride.data(), 0, aclFormat::ACL_FORMAT_ND, emptyTensorOutShape.data(),
-                              emptyTensorOutShape.size(), nullptr);
 
     // 调用aclnnInplacePartialRotaryMulGrad第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, nullptr, rotaryMode, partialSlice,
-                                                            dcosOut, dsinOut, &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, rotaryMode, partialSlice,
+                                                            &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
@@ -169,8 +158,6 @@ int main()
     aclDestroyTensor(dyRef);
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
-    aclDestroyTensor(dcosOut);
-    aclDestroyTensor(dsinOut);
 
     aclrtFree(dyRefDeviceAddr);
     aclrtFree(cosDeviceAddr);
