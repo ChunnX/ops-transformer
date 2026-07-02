@@ -119,7 +119,7 @@ def qsmla(param_combinations):
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
         Testcase_Name = f"quantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
-    logging.info("input_params:", params)
+    logging.info(f"input_params: {params}")
 
     # 输入参数的合法性校验
     try:

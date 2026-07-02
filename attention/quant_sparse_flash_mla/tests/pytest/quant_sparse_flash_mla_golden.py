@@ -120,9 +120,9 @@ class GeneralizedSFAQuant:
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
-            cur_cmp_residual = (
-                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
-            )
+            cur_cmp_residual = cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            cur_cmp_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
+
             for i_N2 in range(self.N2):
                 logging.info(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
@@ -165,12 +165,12 @@ class GeneralizedSFAQuant:
                             i_B,
                             i_N2,
                             i_S1,
-                            cur_ori_act_kv,
+                            cur_cmp_restored,
                             cur_act_q,
                         )
                     elif self.template_run_mode == "CFA":
                         empty_flag, cur_cmp_k = self.mask_cmp_kv(
-                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q
+                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q
                         )
                     else:
                         empty_flag = True
@@ -475,18 +475,16 @@ def get_max_adjacent_diff(cu_seqlens_q):
     return max_diff
 
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cur_cmp_restored, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
-    # 参数：seqused_ori_kv为原始KV真实长度列表（压缩前的长度）
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_ori_kv = seqused_ori_kv[i_B]  # 原始KV真实长度
+        cur_restored = cmp_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(S1):
                 if cmp_mask_mode == 3:
-                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
                     cur_valid_s2_max = math.floor(
-                        (cur_ori_kv - S1 + i_S1 + 1) / cmp_ratio
+                        (cur_restored - S1 + i_S1 + 1) / cmp_ratio
                     )
                 else:
                     raise ValueError(
@@ -503,19 +501,19 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mas
 
 
 def gen_cmp_sparse_indices_tnd(
-    cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode
+    cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, cmp_restored_len, cmp_mask_mode
 ):
     cmp_sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
         cur_act_q = seqused_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        cur_ori_kv = seqused_ori_kv[i_B]
+        cur_restored = cmp_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 if cmp_mask_mode == 3:
                     # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
                     cur_valid_s2_max = math.floor(
-                        (cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio
+                        (cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
@@ -683,9 +681,9 @@ def gen_cmp_kv(
     cmp_max_block_num_per_batch,
     cu_seqlens_q,
     seqused_q,
-    seqused_ori_kv,
     seqused_cmp_kv,
     cu_seqlens_cmp_kv,
+    cmp_residual_kv,
     cmp_ratio,
     cmp_mask_mode,
     template_run_mode,
@@ -722,9 +720,10 @@ def gen_cmp_kv(
     # generate cmp_sparse_indices
     cmp_sparse_indices = None
     if template_run_mode == "SCFA" and cmp_max_s2 != 0:
+        cmp_restored_len = [seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)]
         if layout_q == "BSND":
             cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(
-                cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode
+                cmp_ratio, B, S1, N2, K, cmp_restored_len, cmp_mask_mode
             )
         elif layout_q == "TND":
             cmp_sparse_indices = gen_cmp_sparse_indices_tnd(
@@ -735,7 +734,7 @@ def gen_cmp_kv(
                 K,
                 cu_seqlens_q,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 cmp_mask_mode,
             )
 
@@ -897,9 +896,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             cmp_max_block_num_per_batch,
             cu_seqlens_q,
             seqused_q,
-            seqused_ori_kv,
             seqused_cmp_kv,
             cu_seqlens_cmp_kv,
+            cmp_residual_kv,
             cmp_ratio,
             cmp_mask_mode,
             template_run_mode,
