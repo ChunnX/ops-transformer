@@ -47,6 +47,45 @@ struct PerTileQuantParams {
     uint32_t col;
 };
 
+struct SplitKnAccumParams {
+    uint32_t kGroups = 0;
+    uint64_t partialStride = 0;
+
+    __aicore__ inline bool NeedAccumulate() const {
+        return kGroups > 0;
+    }
+};
+
+__aicore__ inline const SplitKnAccumParams& DefaultSplitKnAccumParams() {
+    static SplitKnAccumParams defaultSplitKnAccumParams = {0, 0};
+    return defaultSplitKnAccumParams;
+}
+
+template<typename AccumType>
+__aicore__ inline void AccumulateKnPartials(
+    const LocalTensor<AccumType> &output,
+    const GlobalTensor<AccumType> &partials,
+    uint32_t mStart,
+    uint32_t mLen,
+    uint32_t nLen,
+    uint32_t kGroups,
+    uint64_t partialStride)
+{
+    if (nLen == 0 || mLen == 0 || kGroups == 0) {
+        return;
+    }
+
+    uint16_t chunkElems = CeilDivT(static_cast<uint32_t>(mLen * nLen), static_cast<uint32_t>(8));
+    uint16_t srcGap = CeilDivT(static_cast<uint32_t>(partialStride - mLen * nLen), static_cast<uint32_t>(8));
+
+    DataCopy(output, partials[mStart * nLen], {static_cast<uint16_t>(kGroups), chunkElems, srcGap, 0});
+    SetWitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    for (uint32_t k = 1; k < kGroups; k++) {
+        Add(output, output, output[k * mLen * nLen], mLen * nLen);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
 /**
  * @brief RowMuls muls by row, 每行的元素乘以相同的元素，该元素需要扩展到一个数据块；
  *        dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]

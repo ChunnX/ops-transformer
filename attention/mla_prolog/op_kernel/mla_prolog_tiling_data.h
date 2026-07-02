@@ -50,6 +50,10 @@ struct MlaPrologBaseParams {
     uint32_t mm2SingleCoreN;     // single headSizeCkv+headSizeKr（单核心矩阵乘2的N维度大小，Ckv+Kr头维度之和）
     uint32_t mm3SingleCoreN;     // single headSizeQc+headSizeQr（单核心矩阵乘3的N维度大小，Qc+Qr头维度之和）
     uint32_t mm4SingleCoreBatch; // single numHeadSize（单核心矩阵乘4的批大小，对应单个头数量）
+    uint32_t mm1KnNGroupSize;    // MM1: N-group count (KN模式)
+    uint32_t mm1KnKGroupSize;    // MM1: K-group count (KN模式)
+    uint32_t mm2KnNGroupSize;    // MM2: N-group count (KN模式)
+    uint32_t mm2KnKGroupSize;    // MM2: K-group count (KN模式)
     uint32_t dtileSize;
     uint32_t kvQuantMode;
     uint32_t tileSize;

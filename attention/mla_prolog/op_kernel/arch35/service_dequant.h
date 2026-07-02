@@ -35,26 +35,26 @@ namespace MlaProlog {
  * @param oriRow 一共有多少行
 */
 template <typename T, typename C, typename O>
-__aicore__ inline void
-DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
-                  const GlobalTensor<C> &deqScaleQcQrWGm, const LocalTensor<float> deQuantScaleQcQrLocal,
-                  const LocalTensor<uint8_t> &shareTmpUb, Rectangle dequantRowColStrideParams, uint32_t oriRow)
-{
+__aicore__ inline void DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm, const GlobalTensor<C> &deqScaleQcQrWGm,
+                               const LocalTensor<float> deQuantScaleQcQrLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                               Rectangle dequantRowColStrideParams, uint32_t oriRow) {
     int64_t count = dequantRowColStrideParams.row * dequantRowColStrideParams.col;
 
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams copyParams{
+    DataCopyParams copyParams {
         static_cast<uint16_t>(dequantRowColStrideParams.row),
         static_cast<uint16_t>(dequantRowColStrideParams.col * sizeof(T) / 32U),
-        static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
+        static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U),
+        0};
 
-    Rectangle rectangleParams{
-        static_cast<uint32_t>(1),     // row
-        static_cast<uint32_t>(count), // col
-        static_cast<uint32_t>(count)  // columnStride
+    Rectangle rectangleParams {
+        (uint32_t)1,     // row
+        (uint32_t)count, // col
+        (uint32_t)count  // columnStride
     };
 
     for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += dequantRowColStrideParams.row) {
@@ -68,7 +68,10 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+        // cast
+        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -88,19 +91,21 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
  * @param oriRow 一共有多少行
 */
 template <typename T, typename O>
-__aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
-                                      const LocalTensor<uint8_t> &shareTmpUb, Rectangle castRowColStrideParams,
-                                      uint32_t oriRow)
-{
+__aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm,
+                                      const GlobalTensor<T> &inputGm,
+                                      const LocalTensor<uint8_t> &shareTmpUb,
+                                      Rectangle castRowColStrideParams,
+                                      uint32_t oriRow) {
     int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
 
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
     LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams copyParams{
+    DataCopyParams copyParams {
         static_cast<uint16_t>(castRowColStrideParams.row),
         static_cast<uint16_t>(castRowColStrideParams.col * sizeof(T) / 32U),
-        static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U), 0};
+        static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U),
+        0};
 
     for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
         int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
@@ -133,33 +138,38 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const Glo
           row 行数
           col 列数
           stride 一行的真实长度
- * @param oriCol 一列真实的长度
+ * @param oriCol 一列真实的长度 
  * @param dstStride 目的数据行间的偏移
  * @param subBlockIdx_ 这是奇数核还是偶数核
  */
 // 用于enableGroupComputeOpt场景
 template <typename T, typename C, typename O>
-__aicore__ inline void
-DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm, const GlobalTensor<C> &deqScaleQcQrWGm,
-                const LocalTensor<C> &deQuantScaleQcQrLocal, const LocalTensor<uint8_t> &shareTmpUb,
-                Rectangle dequantRowColStrideParams, uint32_t oriCol, uint32_t dstStride, uint32_t subBlockIdx_)
-{
+__aicore__ inline void DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm, const GlobalTensor<C> &deqScaleQcQrWGm,
+                               const LocalTensor<C>& deQuantScaleQcQrLocal, const LocalTensor<uint8_t> &shareTmpUb, 
+                               Rectangle dequantRowColStrideParams, uint32_t oriCol, uint32_t dstStride,
+                               uint32_t subBlockIdx_) {
     int64_t count = dequantRowColStrideParams.col * 1;
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
-    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>(); // count * sizeof(C)
+    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
-    DataCopyParams inputCopyParams{
-        static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(T) / 32U),
-        static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U), 0};
+    DataCopyParams inputCopyParams {
+        static_cast<uint16_t>(1),
+        static_cast<uint16_t>(count * sizeof(T) / 32U),
+        static_cast<uint16_t>((dequantRowColStrideParams.stride - dequantRowColStrideParams.col) * sizeof(T) / 32U),
+        0};
 
-    DataCopyParams outputCopyParams{static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(O) / 32U), 0,
-                                    static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
-
-    Rectangle rectangleParams{
-        static_cast<uint32_t>(1),     // row
-        static_cast<uint32_t>(count), // col
-        static_cast<uint32_t>(count)  // columnStride
+    DataCopyParams outputCopyParams {
+        static_cast<uint16_t>(1),
+        static_cast<uint16_t>(count * sizeof(O) / 32U),
+        0,
+        static_cast<uint16_t>(dstStride * sizeof(O) / 32U)};
+    
+    Rectangle rectangleParams {
+        (uint32_t)1,    // row
+        (uint32_t)count,// col
+        (uint32_t)count // columnStride
     };
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -173,15 +183,18 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+        // cast
+        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
         DataCopy(outputGm[outputOffset], outputLocal, count);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    }
+    }   
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
-} // namespace MlaProlog
+}
 #endif

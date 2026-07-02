@@ -20,10 +20,6 @@
 
 namespace MlaProlog {
 
-constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
-constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
-constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
-
 
 /**
  * @brief Struct to encapsulate all local tensor objects for matrix multiplication
@@ -401,6 +397,60 @@ __aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalT
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
     }
     Fixpipe(tensorCGm, cL0, fixParams);
+}
+
+template <typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToUb(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+    fixParams.nSize = nSize;
+    fixParams.mSize = Align(mSize, 2U);
+    fixParams.srcStride = srcStride;
+    fixParams.dstStride = dstStride;
+    fixParams.params.ndNum = 1;
+    fixParams.params.srcNdStride = 0;
+    fixParams.params.dstNdStride = 0;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, MLA_PROLOG_CFG_ROW_MAJOR_UB>(tensorCGm, cL0, fixParams);
+}
+
+template <typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToL1(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::NZ> fixParams;
+    fixParams.nSize = nSize;
+    fixParams.mSize = mSize;
+    fixParams.srcStride = srcStride;
+    fixParams.dstStride = dstStride * 16;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, MLA_PROLOG_CFG_NZ_L1>(tensorCGm, cL0, fixParams);
 }
 
 /**
