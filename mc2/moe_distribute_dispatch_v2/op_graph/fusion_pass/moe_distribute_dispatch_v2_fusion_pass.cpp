@@ -28,8 +28,15 @@ const std::string MOE_CONTEXT_TAG = "MOE_DISPATCH_COMBINE_V2_CONTEXT";
 const std::string MOE_EP_NAME = "group_ep";
 
 const uint32_t IDX_0 = 0;
-constexpr size_t kV2TotalOutputs = 7;
-constexpr size_t kV2TotalInputs = 7;
+
+const std::vector<std::string> kSharedInputNames = {
+    "x", "expert_ids", "scales", "x_active_mask", "expert_scales",
+    "elastic_info", "performance_info"
+};
+const std::vector<std::string> kSharedOutputNames = {
+    "expand_x", "dynamic_scales", "assist_info_for_combine", "expert_token_nums",
+    "ep_recv_count", "tp_recv_count", "expand_scales"
+};
 
 const std::vector<std::string> REQUIRED_INT_ATTRS = {
     "ep_world_size", "ep_rank_id", "moe_expert_num"
@@ -85,18 +92,27 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::CreateFusionNode(
         return ge::GRAPH_FAILED;
     }
     fusionOp.UpdateInputDesc(static_cast<uint32_t>(IDX_0), tensorDesc);
-    for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
-        auto srcPair = moeDistributeDispatchNode.GetInDataNodesAndPortIndexs(static_cast<int32_t>(v2Port));
+    for (const auto &inputName : kSharedInputNames) {
+        int32_t v2Idx = -1;
+        if (moeDistributeDispatchNode.GetInputIndexByName(ge::AscendString(inputName.c_str()), v2Idx) !=
+            ge::GRAPH_SUCCESS) {
+            continue;
+        }
+        auto srcPair = moeDistributeDispatchNode.GetInDataNodesAndPortIndexs(v2Idx);
         if (srcPair.first == nullptr) { continue; }
         ge::TensorDesc srcDesc;
         if (srcPair.first->GetOutputDesc(srcPair.second, srcDesc) != ge::GRAPH_SUCCESS) { continue; }
-        fusionOp.UpdateInputDesc(static_cast<uint32_t>(v2Port + 1), srcDesc);
+        fusionOp.UpdateInputDesc(inputName, srcDesc);
     }
-    size_t v2OutputNum = moeDistributeDispatchNode.GetOutputsSize();
-    for (size_t v2Port = 0; v2Port < v2OutputNum; v2Port++) {
+    for (const auto &outputName : kSharedOutputNames) {
+        int32_t v2Idx = -1;
+        if (moeDistributeDispatchNode.GetOutputIndexByName(ge::AscendString(outputName.c_str()), v2Idx) !=
+            ge::GRAPH_SUCCESS) {
+            continue;
+        }
         ge::TensorDesc v2OutDesc;
-        if (moeDistributeDispatchNode.GetOutputDesc(static_cast<int32_t>(v2Port), v2OutDesc) == ge::GRAPH_SUCCESS) {
-            fusionOp.UpdateOutputDesc(static_cast<uint32_t>(v2Port), v2OutDesc);
+        if (moeDistributeDispatchNode.GetOutputDesc(v2Idx, v2OutDesc) == ge::GRAPH_SUCCESS) {
+            fusionOp.UpdateOutputDesc(outputName, v2OutDesc);
         }
     }
     fusionNode = graph.AddNodeByOp(fusionOp);
@@ -109,22 +125,38 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(
     ge::GNode &contextNodePtr) const
 {
     ge::graphStatus edgeRet;
-    for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
-        auto srcPair = moeNodePtr.GetInDataNodesAndPortIndexs(static_cast<int32_t>(v2Port));
+    for (const auto &inputName : kSharedInputNames) {
+        int32_t v2Idx = -1;
+        if (moeNodePtr.GetInputIndexByName(ge::AscendString(inputName.c_str()), v2Idx) != ge::GRAPH_SUCCESS) {
+            continue;
+        }
+        auto srcPair = moeNodePtr.GetInDataNodesAndPortIndexs(v2Idx);
         if (srcPair.first == nullptr) { continue; }
-        edgeRet = graph.AddDataEdge(*srcPair.first, srcPair.second, fusionNode, static_cast<int32_t>(v2Port) + 1);
+        int32_t v3Idx = -1;
+        if (fusionNode.GetInputIndexByName(ge::AscendString(inputName.c_str()), v3Idx) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        edgeRet = graph.AddDataEdge(*srcPair.first, srcPair.second, fusionNode, v3Idx);
         if (edgeRet != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
-    std::vector<std::vector<std::pair<ge::GNodePtr, int32_t>>> outputConsumers(kV2TotalOutputs);
-    for (size_t i = IDX_0; i < kV2TotalOutputs; i++) {
-        outputConsumers[i] = moeNodePtr.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(i));
+    std::vector<std::pair<std::string, std::vector<std::pair<ge::GNodePtr, int32_t>>>> outputConsumers;
+    for (const auto &outputName : kSharedOutputNames) {
+        int32_t v2Idx = -1;
+        if (moeNodePtr.GetOutputIndexByName(ge::AscendString(outputName.c_str()), v2Idx) != ge::GRAPH_SUCCESS) {
+            continue;
+        }
+        outputConsumers.emplace_back(outputName, moeNodePtr.GetOutDataNodesAndPortIndexs(v2Idx));
     }
     graph.RemoveNode(moeNodePtr);
-    for (size_t i = IDX_0; i < kV2TotalOutputs; i++) {
-        for (auto &outPair : outputConsumers[i]) {
-            edgeRet = graph.AddDataEdge(fusionNode, static_cast<int32_t>(i), *outPair.first, outPair.second);
+    for (const auto &entry : outputConsumers) {
+        int32_t v3Idx = -1;
+        if (fusionNode.GetOutputIndexByName(ge::AscendString(entry.first.c_str()), v3Idx) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        for (const auto &outPair : entry.second) {
+            edgeRet = graph.AddDataEdge(fusionNode, v3Idx, *outPair.first, outPair.second);
             if (edgeRet != ge::GRAPH_SUCCESS) {
                 return ge::GRAPH_FAILED;
             }
