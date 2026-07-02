@@ -1276,15 +1276,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertSwiglu()
             for (uint32_t nLoc = 0; nLoc < outputN; nLoc += tileN) {
                 uint32_t curN = (nLoc + tileN > outputN) ? (outputN - nLoc) : tileN;
 
-                // Copy gate and up tiles from GM to UB
+                // Copy gate and up tiles from GM to VECIN (epilogue expects data in VECIN)
                 GlobalTensor<bfloat16_t> gateGm, upGm;
                 gateGm.SetGlobalBuffer((__gm__ bfloat16_t*)(gmm1OutAddr +
                     (mLoc * hiddenDim_ + nLoc) * sizeof(bfloat16_t)));
                 upGm.SetGlobalBuffer((__gm__ bfloat16_t*)(gmm1OutAddr +
                     (mLoc * hiddenDim_ + nLoc + outputN) * sizeof(bfloat16_t)));
 
-                LocalTensor<bfloat16_t> gateUb = dataResTensor_;
-                LocalTensor<bfloat16_t> upUb = dataResTensor_[tileM * tileN];
+                // Epilogue expects: gate at VECIN offset 0, up at VECIN offset MAX_SINGLE_MN*2
+                LocalTensor<bfloat16_t> gateUb(TPosition::VECIN, 0, MAX_SINGLE_MN_256_256);
+                LocalTensor<bfloat16_t> upUb(TPosition::VECIN, MAX_SINGLE_MN_256_256 * sizeof(bfloat16_t), MAX_SINGLE_MN_256_256);
 
                 DataCopy(gateUb, gateGm, curM * curN);
                 DataCopy(upUb, upGm, curM * curN);
