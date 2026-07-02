@@ -148,6 +148,7 @@ public:
     this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
+    this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)

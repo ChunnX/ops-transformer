@@ -145,7 +145,7 @@ int main()
 {
   // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
-  int32_t deviceId = 5;
+  int32_t deviceId = 0;
   aclrtContext context = nullptr;
   aclrtStream stream = nullptr;
   auto ret = Init(deviceId, &context, &stream);
@@ -182,6 +182,8 @@ int main()
   std::vector<int64_t> cmpBlockTableShape = {B, (cmpKvLen + cmpBlockSize - 1) / cmpBlockSize};
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
+  std::vector<int64_t> seqUsedCmpKvShape = {B};
+  std::vector<int64_t> cmpResidualKvShape = {B};
   std::vector<int64_t> sinksShape = {N1};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T1, N1, D};
@@ -200,6 +202,8 @@ int main()
   void* cuSeqLensCmpKvDeviceAddr = nullptr;
   void* seqUsedQDeviceAddr = nullptr;
   void* seqUsedOriKvDeviceAddr = nullptr;
+  void* seqUsedCmpKvDeviceAddr = nullptr;
+  void* cmpResidualKvDeviceAddr = nullptr;
   void* sinksDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
@@ -216,6 +220,8 @@ int main()
   aclTensor* cuSeqLensCmpKv = nullptr;
   aclTensor* seqUsedQ = nullptr;
   aclTensor* seqUsedOriKv = nullptr;
+  aclTensor* seqUsedCmpKv = nullptr;
+  aclTensor* cmpResidualKv = nullptr;
   aclTensor* sinks = nullptr;
   aclTensor* metadata = nullptr;
   aclTensor* attnOut = nullptr;
@@ -244,6 +250,8 @@ int main()
   }
   std::vector<int32_t> emptyHostData;
   std::vector<int32_t> seqUsedOriKvHostData(B, static_cast<int32_t>(s2Act));
+  std::vector<int32_t> seqUsedCmpKvHostData(B, static_cast<int32_t>(cmpKvLen));
+  std::vector<int32_t> cmpResidualKvHostData(B, static_cast<int32_t>(s2Act % cmpRatio));
   std::vector<float> sinksHostData(N1, 1.0f);
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
@@ -283,6 +291,10 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(seqUsedOriKvHostData, seqUsedOriKvShape, &seqUsedOriKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedOriKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(seqUsedCmpKvHostData, seqUsedCmpKvShape, &seqUsedCmpKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedCmpKv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
@@ -302,7 +314,7 @@ int main()
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
       seqUsedQ, seqUsedOriKv,
-      nullptr, nullptr, nullptr, nullptr,
+      seqUsedCmpKv, cmpResidualKv, nullptr, nullptr,
       N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
@@ -336,7 +348,7 @@ int main()
       oriBlockTable, cmpBlockTable,
       cuSeqLensQ, nullptr, nullptr,
       nullptr, seqUsedOriKv,
-      nullptr, nullptr, nullptr, nullptr,
+      seqUsedCmpKv, cmpResidualKv, nullptr, nullptr,
       sinks, metadata,
       softmaxScale, cmpRatio,
       oriMaskMode, cmpMaskMode,
@@ -375,6 +387,8 @@ int main()
   aclDestroyTensor(cuSeqLensCmpKv);
   aclDestroyTensor(seqUsedQ);
   aclDestroyTensor(seqUsedOriKv);
+  aclDestroyTensor(seqUsedCmpKv);
+  aclDestroyTensor(cmpResidualKv);
   aclDestroyTensor(sinks);
   aclDestroyTensor(metadata);
   aclDestroyTensor(attnOut);
@@ -392,6 +406,12 @@ int main()
   }
   if (seqUsedOriKvDeviceAddr != nullptr) {
     aclrtFree(seqUsedOriKvDeviceAddr);
+  }
+  if (seqUsedCmpKvDeviceAddr != nullptr) {
+    aclrtFree(seqUsedCmpKvDeviceAddr);
+  }
+  if (cmpResidualKvDeviceAddr != nullptr) {
+    aclrtFree(cmpResidualKvDeviceAddr);
   }
   aclrtFree(sinksDeviceAddr);
   aclrtFree(metadataDeviceAddr);

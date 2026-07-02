@@ -20,7 +20,7 @@
   sortedIndices= sortedIndices[sortedIndices[rangeOptional[0]]<=i<sortedIndices[rangeOptional[1]]]
   $$
 
-- probs非None：
+- probsOptional非None：
   
   $$
   unpermutedTokens[i] = permutedTokensOptional[sortedIndices[i]]
@@ -41,7 +41,7 @@
   $$
   permutedTokensGradOut[sortedIndices[i]] = ((unpermutedTokensGrad.unsqueeze(1) * probs.unsqueeze(-1)).reshape(-1, hiddenSize))[i]
   $$
-- probs为None：
+- probsOptional为None：
   
   $$
   permutedTokensGradOut[sortedIndices[i]] = unpermutedTokensGrad[i]

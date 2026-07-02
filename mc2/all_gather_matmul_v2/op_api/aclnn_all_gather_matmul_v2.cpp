@@ -177,6 +177,43 @@ static bool CheckAttr(int64_t streamMode)
     return true;
 }
 
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
+    const aclTensor *bias, aclTensor *gatherOut, aclTensor *amaxOut)
+{
+    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            op::ToString(x1->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            op::ToString(x2->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "output",
+            op::ToString(output->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+
+    if (bias != nullptr && bias->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "bias",
+            op::ToString(bias->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (gatherOut != nullptr && gatherOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "gatherOut",
+            op::ToString(gatherOut->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (amaxOut != nullptr && amaxOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "amaxOut",
+            op::ToString(amaxOut->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    return true;
+}
+
 static bool IsGatherOut(const aclTensor *gatherOut)
 {
     OP_CHECK_NULL(gatherOut, return false);
@@ -239,13 +276,15 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 // 分别对输入类型为fp8/hif8和fp16/bf16数据类型进行分别校验
 static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, int64_t streamMode,
-    const aclTensor *output)
+    const aclTensor *output, aclTensor *gatherOut, aclTensor *amaxOut)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
+
+    CHECK_RET(CheckFormat(x1, x2, output, bias, gatherOut, amaxOut), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
@@ -326,6 +365,18 @@ static aclnnStatus CheckScale(const aclTensor *x1Scale, const aclTensor *x2Scale
         OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherMatmulV2", "x2Scale");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (x1Scale->GetStorageFormat() != op::Format::FORMAT_ND &&
+        x1Scale->GetStorageFormat() != op::Format::FORMAT_NCL) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1Scale",
+            op::ToString(x1Scale->GetStorageFormat()).GetString(), "Only ND/NCL format is supported");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (x2Scale->GetStorageFormat() != op::Format::FORMAT_ND &&
+        x2Scale->GetStorageFormat() != op::Format::FORMAT_NCL) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x2Scale",
+            op::ToString(x2Scale->GetStorageFormat()).GetString(), "Only ND/NCL format is supported");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 如果scaleInV1 和 scaleInV2都不为空指针则为scalar类型数据
     auto x1ScaleLen = x1Scale->GetViewShape().GetDim(0);
     auto x2ScaleLen = x2Scale->GetViewShape().GetDim(0);
@@ -334,6 +385,11 @@ static aclnnStatus CheckScale(const aclTensor *x1Scale, const aclTensor *x2Scale
 
     // scale不为空指针为则scalar类型
     if (quantScale != nullptr) {
+        if (quantScale->GetStorageFormat() != op::Format::FORMAT_ND) {
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "quantScale",
+                op::ToString(quantScale->GetStorageFormat()).GetString(), "Only ND format is supported");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         if (quantScale->GetViewShape().GetDimNum() != ONE_DIMS) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "quantScale",
                 (std::to_string(quantScale->GetViewShape().GetDimNum()) + "D").c_str(),
@@ -479,7 +535,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    auto retParam = CheckParams(x1, x2, bias, streamMode, output);
+    auto retParam = CheckParams(x1, x2, bias, streamMode, output, gatherOut, amaxOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
     if (checkX1InputEmptyTensor(x1, x2)) {

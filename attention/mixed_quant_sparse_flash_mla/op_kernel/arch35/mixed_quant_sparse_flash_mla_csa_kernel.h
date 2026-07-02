@@ -489,9 +489,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
-                runParam.s2SplitIdx = s2SplitIdxCounter;
-                if (runParam.isS2Split && gS1Index == runParam.gs1LoopEndIdx - 1) {
-                    s2SplitIdxCounter++;
+                if (runParam.isS2Split) {
+                    runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 if constexpr (IS_SPLIT_G) {
                     maxS2LoopCnt -= runParam.s2LoopEndIdx;
