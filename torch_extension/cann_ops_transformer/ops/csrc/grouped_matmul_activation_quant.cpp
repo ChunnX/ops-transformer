@@ -20,14 +20,14 @@
 
 namespace op_api {
 namespace {
-constexpr int64_t GE_DTYPE_FLOAT = 0;
-constexpr int64_t GE_DTYPE_FLOAT8_E5M2 = 35;
-constexpr int64_t GE_DTYPE_FLOAT8_E4M3FN = 36;
-constexpr int64_t GE_DTYPE_FLOAT8_E8M0 = 37;
-constexpr int64_t ACL_DTYPE_OFFSET = 256;
-constexpr int64_t DIM_0 = 0;
-constexpr int64_t DIM_2 = 2;
-constexpr int64_t MX_GROUP_SIZE = 64;
+constexpr int64_t GE_DTYPE_FLOAT = 0L;
+constexpr int64_t GE_DTYPE_FLOAT8_E5M2 = 35L;
+constexpr int64_t GE_DTYPE_FLOAT8_E4M3FN = 36L;
+constexpr int64_t GE_DTYPE_FLOAT8_E8M0 = 37L;
+constexpr int64_t ACL_DTYPE_OFFSET = 256L;
+constexpr int64_t DIM_0 = 0L;
+constexpr int64_t DIM_2 = 2L;
+constexpr int64_t MX_GROUP_SIZE = 64L;
 
 bool IsKnownGeDtype(int64_t dtype)
 {
