@@ -63,7 +63,7 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
 
 
 _causal_conv1d_update_op_builder = CausalConv1dUpdateOpBuilder()
-_op_module = _causal_conv1d_update_op_builder.load()
+
 
 
 @impl(AS_LIBRARY, _causal_conv1d_update_op_builder.name, "PrivateUse1")
@@ -81,7 +81,7 @@ def _causal_conv1d_update(
     block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
     initial_state_idx: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    return _op_module.causal_conv1d_update(
+    return _causal_conv1d_update_op_builder.load().causal_conv1d_update(
         x, conv_state, weight, bias,
         activation,
         conv_state_indices,
