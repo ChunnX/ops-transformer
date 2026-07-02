@@ -100,6 +100,8 @@ public:
         int32_t listLen;
         int32_t expertPerRank;
         uint64_t maxOutputSize;
+        // for reuse workspace, gmm1 out preRow Stride use max(n,k)
+        uint32_t gmmOutPreRowStride;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -172,6 +174,7 @@ public:
                 moeInitRoutingQuantV2TilingData_.srcToDstCapacityComputeParamsOp;
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
+            gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
         }
     };
 
@@ -227,7 +230,7 @@ private:
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
         serverId_ = static_cast<int32_t>(RuntimeRank(params) / SERVER_RANK_SIZE_A2);
 
-        workspaceInfo = WorkspaceInfo(params);
+        workspaceInfo = WorkspaceInfo(params, shmem);
         peermemInfo = PeermemInfo(params, shmem);
 
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrcumsumMM));
@@ -245,7 +248,7 @@ private:
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
 
         gmPerTokenScale1.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
+            reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale));
         gmPerTokenScale2.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
 
@@ -527,7 +530,8 @@ private:
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
             LayoutB layoutB1 = params.layoutB1;
             LayoutScale layoutScale = params.layoutScale1;
-            LayoutC layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n());
+            LayoutC layoutC;
+            layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n(), params.gmmOutPreRowStride);
             blockScheduler.Update(inGroupProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
             uint32_t coreLoops = blockScheduler.GetCoreLoops();
             // Determine the starting loopIdx of the current core under the current groupIdx
@@ -581,7 +585,7 @@ private:
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
-            gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();
+            gmGroupOffsetC += inGroupProblemShape.m() * params.gmmOutPreRowStride;
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
 
@@ -1267,7 +1271,7 @@ private:
                 uint32_t rowStartThisCore = dequantSum[syncIdx];
                 MatrixCoord offsetC{rowStartThisCore, 0};
                 MatrixCoord shapeC{curRowNum, params.problemShape.n()};
-                LayoutC layoutC{curRowNum, params.problemShape.n()};
+                LayoutC layoutC{curRowNum, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
@@ -1276,7 +1280,7 @@ private:
                         params.EP - 1, RuntimeRank(params), 0) - tokenPerExpertLayout(0, params.EP - 1, 0)],
                     rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank, params.EP,
                     gmCGMM1[gmOffsetC], RuntimeRank(params), params.listLen, resource,
-                    params.epilogueCoreNum, params.swigluLimit);
+                    params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
             }
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1471,50 +1475,58 @@ private:
         WorkspaceInfo() {}
 
         CATLASS_DEVICE
-        WorkspaceInfo(const Params &params)
+        WorkspaceInfo(const Params &params, const HcclShmem<true> &shmem)
         {
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
+            uint64_t idx = 0;
             expandedRowIdx = params.ptrWorkspace;
-
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
-            ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
+
             uint64_t paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
+            ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += paddedExpertNumAligned * params.EP * sizeof(int32_t);
-            // workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
+
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
-
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
+
             ptrPerTokenScale2 = params.ptrWorkspace + workspaceOffset;
-
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
-            ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
 
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
+            // ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
+            // workspaceOffset += paddedExpertNumAligned * params.EP * sizeof(int32_t);
+
+            // gmm out resues workspace
             ptrC = params.ptrWorkspace + workspaceOffset;  // 7
-
-            workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC) * 2;
             ptrC2 = params.ptrWorkspace + workspaceOffset;  // 8
+            workspaceOffset += params.maxOutputSize * params.gmmOutPreRowStride * sizeof(ElementC) * 2;
 
-            workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC) * 2;
             ptrA1Int4 = params.ptrWorkspace + workspaceOffset;
-
-            workspaceOffset += params.maxOutputSize * params.problemShape.k();
             ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
-
-            workspaceOffset += params.maxOutputSize * k2;
+            workspaceOffset += params.maxOutputSize *
+ 	            (params.problemShape.k() > k2 ? params.problemShape.k() : k2);
 
             ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
             ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
 
             ptrSumBeforeRankForDispatch = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += paddedExpertNumAligned * sizeof(int32_t);
+
             ptrSumBeforeRankForCombine = params.ptrWorkspace + workspaceOffset;
             workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
-            workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
+
             ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
-            workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
+            workspaceOffset += params.EP * sizeof(int32_t) * 16;
+            // if ASCEND_IS_AIV {
+            //     uint64_t KB_SIZE = 1024;
+            //     uint64_t MMB_SIZE = 1024 * 1024;
+            //     if (get_block_idx() + get_subblockid() * get_block_num() == 0)
+            //         AscendC::PRINTF("[HELLO WORLD][%d] workspaceOffset=%luB-%luKB-%luMB.\n", idx++, 
+            //             workspaceOffset, (workspaceOffset + KB_SIZE - 1) / KB_SIZE,
+            //             (workspaceOffset + MMB_SIZE - 1) / MMB_SIZE);
+            // }
+            // ElementA:1-ElementC:2
         }
     };
 
