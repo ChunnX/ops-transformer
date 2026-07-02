@@ -931,7 +931,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                 OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
                 return ge::GRAPH_FAILED);
-            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
                 OP_LOGE(opName_, "input query and output sparse_values last dim must be same as attr topk."),
                 return ge::GRAPH_FAILED);
         }
