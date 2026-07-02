@@ -1052,13 +1052,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
+        startPos.dIdx = 0;
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
         } else {
             startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
         }
-        startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
         shape.headNum = constInfo.n2Size;
@@ -1255,8 +1255,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     // 这里base M N K不要写死
     MatmulK<INPUT_T, INPUT_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-        mmL0ABuffers, mmL0BBuffers,
-        mm1ResL0C.GetTensor<T>(),
+        mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
         param);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
@@ -1589,7 +1588,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
         }
-        
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
@@ -1603,8 +1601,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
     if constexpr (isPa) {
         Position startPos;
-        startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
+        startPos.bIdx = runInfo.boIdx;
+        
         if constexpr (isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
@@ -1947,13 +1946,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
     // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
+    fixpipeParams.mSize = runInfo.s2RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
     if constexpr (optionalDn) {
         fixpipeParams.nSize = (runInfo.s1RealSize + 63) >> 6 << 6;
     } else {
         fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
     }
-    fixpipeParams.mSize = runInfo.s2RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
     if constexpr (useDn && isFp8) {
         fixpipeParams.dstStride = 64;
     } else {

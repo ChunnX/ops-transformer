@@ -427,10 +427,8 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
-    {
-        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
-    }
+    // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID()
     {
@@ -443,8 +441,8 @@ public:
     }
 
     // copy query with full s1g and split D
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset,
+                                          uint32_t dRealSize, RunInfoX &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
 
@@ -491,15 +489,15 @@ public:
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
                           .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
+
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
+                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
@@ -852,8 +850,7 @@ public:
         uint32_t realN = baseNSize;
         for (uint32_t nIdx = 0; nIdx < nLoops; ++nIdx) {
             if (nIdx == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseNSize;
-                realN = tailSize ? tailSize : baseNSize;
+                realN = constInfo.dSizeV - nIdx * baseNSize;
             }
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
@@ -927,16 +924,9 @@ public:
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-        MMParam param = {
-            (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-            useDn,                                 // isLeftTranspose
-            false                                  // isRightTranspose
-        };
-        if constexpr (!useDn) {
-            param.realM = (uint32_t)runInfo.actMSize;
-        }
+        MMParam param = MakeMMParam(mBaseSize, (uint32_t)constInfo.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, useDn, false,
+                                    true, true, 0, useDn ? 0 : (uint32_t)runInfo.actMSize);
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
         if constexpr ((uint32_t)dVTemplateType <= 128) {
