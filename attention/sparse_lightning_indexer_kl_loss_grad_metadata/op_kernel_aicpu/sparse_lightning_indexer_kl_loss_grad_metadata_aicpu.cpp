@@ -18,7 +18,6 @@
 #include <numeric>
 #include "log.h"
 #include "status.h"
-#include "cust_op/cust_cpu_utils.h"
 #include "../../sparse_lightning_indexer_kl_loss_grad/op_kernel/sparse_lightning_indexer_kl_loss_grad_metadata.h"
 #include "sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
 
