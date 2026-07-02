@@ -22,40 +22,26 @@ namespace ops {
 static constexpr size_t INPUT_DY_INDEX = 0;
 static constexpr size_t INPUT_COS_INDEX = 1;
 static constexpr size_t INPUT_SIN_INDEX = 2;
-static constexpr size_t INPUT_X_INDEX = 3;
 static constexpr size_t OUTPUT_DY_INDEX = 0;
-static constexpr size_t OUTPUT_DCOS_INDEX = 1;
-static constexpr size_t OUTPUT_DSIN_INDEX = 2;
 
-static ge::graphStatus InferShapeForInplacePartialRotaryMulGrad(gert::InferShapeContext* context)
+
+static ge::graphStatus InferShapeForInplacePartialRotaryMulGrad(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeForInplacePartialRotaryMulGrad.");
-    const gert::Shape* dyShape = context->GetInputShape(INPUT_DY_INDEX);
+    const gert::Shape *dyShape = context->GetInputShape(INPUT_DY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dyShape);
-    const gert::Shape* cosShape = context->GetInputShape(INPUT_COS_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, cosShape);
-    const gert::Shape* sinShape = context->GetInputShape(INPUT_SIN_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sinShape);
-    gert::Shape* outDyShape = context->GetOutputShape(OUTPUT_DY_INDEX);
+    gert::Shape *outDyShape = context->GetOutputShape(OUTPUT_DY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outDyShape);
-    gert::Shape* dcosShape = context->GetOutputShape(OUTPUT_DCOS_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, dcosShape);
-    gert::Shape* dsinShape = context->GetOutputShape(OUTPUT_DSIN_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, dsinShape);
 
     *outDyShape = *dyShape;
-    *dcosShape = *cosShape;
-    *dsinShape = *sinShape;
 
     OP_LOGD(context->GetNodeName(), "End to do InferShapeForInplacePartialRotaryMulGrad.");
     return ge::GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataTypeForInplacePartialRotaryMulGrad(gert::InferDataTypeContext* context)
+static graphStatus InferDataTypeForInplacePartialRotaryMulGrad(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(OUTPUT_DY_INDEX, context->GetInputDataType(INPUT_DY_INDEX));
-    context->SetOutputDataType(OUTPUT_DCOS_INDEX, context->GetInputDataType(INPUT_COS_INDEX));
-    context->SetOutputDataType(OUTPUT_DSIN_INDEX, context->GetInputDataType(INPUT_SIN_INDEX));
     return GRAPH_SUCCESS;
 }
 
