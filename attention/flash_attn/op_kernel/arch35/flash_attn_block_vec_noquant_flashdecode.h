@@ -335,7 +335,7 @@ protected:
 
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf;
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
+        FaVectorApi::ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
                                 actualCombineLoopSize, constInfo.isSoftmaxLseEnable, learnableSinkFlag);
     }
 
@@ -390,7 +390,7 @@ protected:
                                           uint32_t cntKV, uint32_t dealRowCount)
     {
         uint64_t dSizeV_Align = (uint64_t)this->dSizeV_Align;
-        ReduceFinalRes_VF<T>(reduceOut, lseLocal, mm2Res, dealRowCount, dSizeV_Align, cntKV);
+        FaVectorApi::ReduceFinalRes_VF(reduceOut, lseLocal, mm2Res, dealRowCount, dSizeV_Align, cntKV);
     }
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM)
