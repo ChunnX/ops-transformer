@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch/combine setup CCU — 编译运行指导</title>
+<style>
+  :root{--bg:#0f1419;--panel:#1a212b;--panel2:#222c38;--ink:#e6edf3;--mut:#9fb0c0;--line:#33404f;
+    --accent:#5cc8ff;--ok:#5dd39e;--warn:#ffd166;--pink:#f472b6;--code:#0b0f14;--cmd:#0d1b24;--ccu:#c792ea;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:30px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--accent);color:#06222e;border-radius:8px;font-size:15px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  h3{font-size:16.5px;margin:20px 0 8px;color:var(--accent)}
+  p{margin:8px 0}.sub{color:var(--mut);font-size:13.5px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--mut)}.badge b{color:var(--accent)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600}
+  td code,p code,li code{background:var(--code);padding:1px 6px;border-radius:5px;font-size:12.5px;color:#ffd9a0}
+  pre{background:var(--cmd);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0;white-space:pre-wrap;word-break:break-all}
+  pre .c{color:#6b7c8f}pre .p{color:#5dd39e}pre .k{color:#ff9d6b}pre .v{color:#8fd6ff}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:14px 0}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;flex:1 1 150px;min-width:140px}
+  .step .t{font-weight:700;color:var(--accent);font-size:13.5px}.step .d{font-size:12px;color:var(--mut);margin-top:4px}
+  .step .cmd{font-family:"SF Mono",Menlo,monospace;font-size:11px;color:#ffd9a0;margin-top:6px;word-break:break-all}
+  .arrow{display:flex;align-items:center;color:var(--accent);font-size:19px;flex:0 0 auto}
+  .note{border-left:3px solid var(--warn);background:#2a2517;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--ok);background:#16291f}.danger{border-left:3px solid var(--pink);background:#2a1620}
+  ul{margin:8px 0 8px 2px;padding-left:20px}li{margin:5px 0}
+  .kbd{font-family:monospace;background:#2a2517;color:var(--warn);padding:1px 6px;border-radius:4px;border:1px solid #4a4020}
+  b.f{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>dispatch / combine setup CCU — 编译运行指导</h1>
+  <p class="sub">怎么在 A6 上编译、跑通两个 setup CCU 算子，以及在 A5 上能验证什么（地址 math）、不能验证什么（CCU 本体）。</p>
+  <div class="badges">
+    <span class="badge">工程 <b>experimental/mc2/{dispatch_setup, combine_setup}</b></span>
+    <span class="badge">形态 <b>CCU 直调</b>（min_driver + standalone cmake）</span>
+    <span class="badge">CCU 本体 <b>A6-only</b></span>
+    <span class="badge">2-rank MPI</span>
+  </div>
+
+  <!-- 0 心智 -->
+  <h2><span class="n">0</span>先建心智：三层，各在哪跑</h2>
+  <div class="panel">
+    <div class="flow">
+      <div class="step"><div class="t">① host 预算逻辑</div><div class="d">routeTable/wishCnt/assistTable 的 expert-major 地址计算（纯 C++）</div><div class="cmd">A5 可编可测 ✓</div></div>
+      <div class="arrow">→</div>
+      <div class="step" style="border-color:var(--ccu)"><div class="t">② CCU kernel</div><div class="d">Algorithm() 建微码图，逐 token 跨卡 push</div><div class="cmd">A6-only（a5 编不了）</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="t">③ 驱动 + 拉起</div><div class="d">CCU container/channel/2-rank MPI/launch + 串 teardown</div><div class="cmd">A6 运行</div></div>
+    </div>
+    <div class="note"><b>关键分界</b>：① 是纯 C++、a5 已编译+跑通自检；② 继承 hcomm::CcuKernel，其符号 a5 libhcomm 里没有（a6-only）；③ 驱动本体 a5 可编（CCU 关），CCU 拉起 a6 开。</div>
+  </div>
+
+  <!-- 1 算子原型 -->
+  <h2><span class="n">1</span>算子原型（4 算子 I/O · docx 真值 ↔ 本实现）</h2>
+  <p class="sub">完整逐字段对齐表见「端到端手把手讲解」§1；此处给编译 / 联调需要的 I/O 契约与硬件强制偏离摘要。</p>
+  <div class="panel">
+    <table>
+      <tr><th>算子</th><th>输入</th><th>输出</th></tr>
+      <tr><td><b>dispatch setup</b><br>(CCU)</td><td>x = xData[bs,h] fp8 + xScale[bs,h/32] e8m0 · routeTable[bs*topk,3] int64(host预算) · 本卡 dataRegion/scaleRegion 接收区(PreSync 换址) · commCmdInfo/oneBuf</td><td>写对端 dataRegion[R*E*bs,h] fp8 + scaleRegion[R*E*bs,h/32] e8m0(expert-major) · 本卡 ready[0..R)=1</td></tr>
+      <tr><td><b>dispatch teardown</b><br>(AIV)</td><td>token_data[R*E*bs,h] + token_scale · wish_cnt[R*E] · expert_ids[bs,topk]</td><td>expand_x[A,h] + expand_scale · send_counts[R*E] 前缀和 · expand_idx[bs,topk] · expert_token_nums[E]</td></tr>
+      <tr><td><b>combine setup</b><br>(CCU)</td><td>expandXData[A,h] fp8 + expandXScale · assistTable[A,3] int64(host预算) · 本卡 combineData/combineScale 接收区 · commCmdInfo/oneBuf</td><td>写对端 combineData[R*E*bs,h] fp8 + combineScale[R*E*bs,h/32] e8m0</td></tr>
+      <tr><td><b>combine teardown</b><br>(AIV)</td><td>combine_data[R*E*bs,h] + combine_scale · expert_scales[bs,topk] · expand_idx[bs,topk] · expert_ids[bs,topk]</td><td>x[bs,h] bf16</td></tr>
+    </table>
+    <p class="sub" style="margin:6px 0 0">A = R·bs·min(topk,E)。真实场景 R=2/E=4/bs=8/topk=8/h=7168 → A=64，数据区 [R*E*bs,h]=[64,7168]。</p>
+  </div>
+  <div class="note danger">
+    <b>setup 侧因 CCU 硬件/API 无法直译 docx 原型的偏离（等价实现、数据布局零偏离，详见手把手 §1）：</b>
+    <ul style="margin-bottom:0">
+      <li><b>wishCnt 输出</b>：docx 是 dispatch setup 的输出；实现由 <b>driver host 预算</b>（CCU 无 StoreVariableAt、不能动态标量 GM 写累加）。shape / 语义 [R*E] 不变。</li>
+      <li><b>expert_id_2_dst_va_map</b> → <b>PreSync 换基址 + token + host 预算 routeTable</b>（CCU 访存是 (VA, token) 对，token 须运行时 PreSync 换来，纯 host VA 不可寻址）。</li>
+      <li><b>expert_id_2_dst_notify_va_map</b> → <b>per-channel/tag arrive-notify</b>（RecordExpectCount + WriteNbWithArriveNotify + WaitallpeersarriveNotify），非 per-expert Xn 地址。</li>
+      <li><b>mxfp8</b>：每数据区拆 payload(fp8_e4m3fn) + scale(e8m0, h/32) 两个 GM——docx「mxfp8 量化后面加」要求，非偏离。</li>
+      <li><b>combine 数据区 [R*E*bs,h]</b>：docx 已修正含 *bs，与实现完全一致。</li>
+    </ul>
+  </div>
+
+  <!-- 2 A5 能做的：host 预算自检 -->
+  <h2><span class="n">2</span>A5 上能做的：地址 math 端到端自检</h2>
+  <p class="sub">CCU 本体跑不了，但 CCU 执行的<b>地址逻辑</b>（host 预算的 expert-major 落点）是纯 C++、可在 a5 完整验证——用一个 host 侧模型模拟整条数据流，检查每个 token 精确往返。</p>
+  <pre><span class="c"># A5 编译运行地址自检（无需 CCU/NPU）</span>
+cd /home/developer/ops-transformer/experimental/mc2/common
+g++ -std=c++17 -Iinc setup_addressing_check.cpp -o /tmp/addr_chk
+/tmp/addr_chk
+<span class="c"># 期望：dispatch放置→teardown紧密化→combine送回→gather→重建，每token marker精确往返</span>
+<span class="p">==== 地址 math 端到端自检: PASS=6 FAIL=0 ====</span></pre>
+  <div class="panel ok note"><b>实测：</b>6 场景全 PASS（真实 topk=8 退化 + 稀疏 topk=3/2 + 小 + E8/GE16 + topk=5）。证明 host 预算的 routeTable/wishCnt/assistTable 与已测 teardown 契约字节级自洽。<b>这是 setup 侧当前唯一能机器验证的部分，也是最易错的部分。</b></div>
+
+  <!-- 2 A6 编译 -->
+  <h2><span class="n">3</span>A6 上编译（CCU 本体 + 驱动）</h2>
+  <p class="sub">每个 setup 是独立 standalone cmake 工程（不走 ops-transformer 注册框架），产出 host 驱动 exe。A6 上开 <code>*_CCU_A6=ON</code> 才编入 CCU kernel。</p>
+  <pre><span class="c"># A6（ssh 上去；CANN/hcomm 为 a6 版）</span>
+cd /home/developer/ops-transformer/experimental/mc2/dispatch_setup
+cmake -B build_a6 -DDISPATCH_CCU_A6=ON -DSOC_VERSION=&lt;a6 soc&gt; \
+      -DASCEND_CANN_PACKAGE_PATH=&lt;a6 CANN&gt; -DMPI_HOME=&lt;mpi 根&gt;
+cmake --build build_a6 -j
+<span class="c"># combine 同理</span>
+cd ../combine_setup &amp;&amp; cmake -B build_a6 -DCOMBINE_CCU_A6=ON ... &amp;&amp; cmake --build build_a6 -j</pre>
+  <div class="note"><b>为什么 A5 编不了 CCU</b>（实测铁证）：a5 缺 <code>ccu_kernel_arg.h</code>/<code>ccu_types.h</code>；<code>channels_</code> 是 private unordered_set（a6 可索引）；<code>CompletedEvent</code> 无 <code>SetMask</code>。<b>A6-proven 真实参考在 a5 上同样编不过</b> → 不是代码问题，是 a5 CCU 头/库与 a6 不同代。故 <code>DISPATCH_CCU_A6=OFF</code>（a5 默认）只编驱动本体、不编 ccu.cpp。</div>
+
+  <!-- 3 A6 运行 -->
+  <h2><span class="n">4</span>A6 上运行（2-rank MPI + 串 teardown）</h2>
+  <pre><span class="c"># 清场（约束：跑前 npu-smi 看占用，有进程全杀）</span>
+npu-smi info; pkill -9 python; pkill -9 dispatch_min_driver; sleep 3
+<span class="c"># 环境</span>
+source &lt;a6 CANN&gt;/set_env.sh
+export ASCEND_CUSTOM_OPP_PATH=${ASCEND_OPP_PATH}/vendors/custom_transformer   <span class="c"># teardown aclnn 需要</span>
+export LD_LIBRARY_PATH=&lt;CANN&gt;/lib64:&lt;hcomm lib&gt;:$LD_LIBRARY_PATH
+<span class="c"># 2-rank MPI 拉起（driver 内建 CCU container/channel UBC_CTP + 2 die）</span>
+mpirun --allow-run-as-root -n 2 ./build_a6/dispatch_min_driver
+<span class="c"># 期望：两 rank 各写对端数据区 + 置 ready，teardown(AIV) 轮询 ready=1 后读数据区，精度对齐 golden</span></pre>
+  <p class="sub">driver 职责：① host 预算 routeTable/wishCnt/expert_ids（<code>setup_host_precompute.h</code>）；② 分配 data/scale 两区 + commCmdInfo；③ 建 CCU container（rank≥2）+ channel（协议 UBC_CTP，resGroupTag = tag）；④ launch CCU kernel；⑤ 串已装的 teardown aclnn 验证端到端。</p>
+
+  <!-- 4 坑 -->
+  <h2><span class="n">5</span>常见坑速查</h2>
+  <table>
+    <tr><th>现象</th><th>根因</th><th>解</th></tr>
+    <tr><td>链接 undefined: WriteNbWithArriveNotify / CcuKernel*</td><td>SE 实现 a6-only；或类名/签名/大小写没逐字对齐</td><td>A6 libhcomm 才有；<code>Waitallpeers</code>大W/<code>clearallpeers</code>小c 一字不差</td></tr>
+    <tr><td>a5 编 ccu.cpp 报 ccu_kernel_arg.h 缺</td><td>a5 CCU 头与 a6 不同代</td><td>a5 用 <code>*_CCU_A6=OFF</code>（不编 CCU）；CCU 编译只在 a6</td></tr>
+    <tr><td>ccuContainer is nullptr</td><td>rank&lt;2（CCU 容器须 rank≥2）</td><td>必须 <code>mpirun -n 2</code></td></tr>
+    <tr><td>107003 stream not in current context</td><td>用了 aclrtCreateContext</td><td>用 aclrtSetDevice 隐式默认 context，别显式建</td></tr>
+    <tr><td>teardown 读到旧/错数据</td><td>上板静默错：Variable 非 int64 排布 / token 没两端设 / dstByteOff 算错</td><td>routeTable int64 步进 8；LocalAddr/RemoteAddr .token 必设；先跑 §1 地址自检</td></tr>
+    <tr><td>arrive-notify 不满足挂住</td><td>某对端发 0 token 时 target 语义</td><td>SE 确认（见手把手 §7 边界）；host 按实际发≥1 的对端数调 target</td></tr>
+  </table>
+
+  <!-- 5 状态 -->
+  <h2><span class="n">6</span>当前交付状态（G5 三层，如实标注）</h2>
+  <div class="panel"><div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px">
+    <b class="f">✓ 代码已写</b><span>两个 setup CCU kernel（.h/.cpp）+ host 预算逻辑（<code>setup_host_precompute.h</code>）。API 按<b>记忆中的</b> A6-proven 参考对齐，<b>a6 落地前须对照真实 <code>ccu_kernel.h</code> / <code>*_api.h</code> 逐签名核实</b>（当前无 diff 佐证）。</span>
+    <b class="f">✓ 已机器验证</b><span>仅 <b>host 预算地址 math</b> 端到端自检 6/6（a5 纯 C++，<b>单线程顺序模型</b>）——<b>不含 CCU .cpp 任何一行</b>，也不覆盖多卡并发写竞争 / arrive-notify 计数 / token 可见性。</span>
+    <b style="color:var(--warn)">◑ 未编译</b><span>CCU kernel <b>连编译都未在任何环境过</b>（a5 CCU 头旧代编不了、a6 无访问）；<code>dispatch_min_driver</code> 现为 <b>status 位握手原型（4 参 TaskArg），与被审 kernel 的 7 区 / 14 参 TaskArg 不兼容</b>，需按真实数据面重写；combine driver / CMake 全缺。</span>
+    <b style="color:var(--pink)">✗ 未验证</b><span>CCU kernel 编译 + 上板 + 数据面正确性——<b>设计正确 ≠ 实现正确 ≠ 上板正确</b>，全部待 A6。</span>
+  </div></div>
+
+  <p class="sub" style="margin-top:26px;text-align:center">配套：原理见 <code>setup_端到端手把手讲解.html</code> · 设计契约 <code>SETUP_DESIGN.md</code> · teardown 编译运行 <code>teardown_编译运行手把手教程.html</code></p>
+</div>
+</body>
+</html>

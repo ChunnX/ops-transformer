@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch/combine setup CCU — 端到端手把手讲解</title>
+<style>
+  :root{--bg:#0f1419;--panel:#1a212b;--panel2:#222c38;--ink:#e6edf3;--mut:#9fb0c0;--line:#33404f;
+    --accent:#5cc8ff;--ok:#5dd39e;--warn:#ffd166;--pink:#f472b6;--code:#0b0f14;
+    --ccu:#c792ea;--aiv:#5cc8ff;--r0:#3b82f6;--r1:#22c55e;--e0:#60a5fa;--e1:#f472b6;--hole:#3a4453;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:1200px;margin:0 auto;padding:30px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:42px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--accent);color:#06222e;border-radius:8px;font-size:15px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  h3{font-size:16.5px;margin:22px 0 9px;color:var(--accent)}
+  p{margin:9px 0}.sub{color:var(--mut);font-size:13.5px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--mut)}
+  .badge b{color:var(--accent)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600}
+  td code,p code,li code{background:var(--code);padding:1px 6px;border-radius:5px;font-size:12.5px;color:#ffd9a0}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0;white-space:pre-wrap;word-break:break-word}
+  pre .c{color:#6b7c8f}pre .k{color:#ff9d6b}pre .v{color:#8fd6ff}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:14px 0}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;flex:1 1 150px;min-width:135px}
+  .step .t{font-weight:700;font-size:13.5px}.step .d{font-size:12px;color:var(--mut);margin-top:4px}
+  .step.ccu{border-color:var(--ccu)} .step.ccu .t{color:var(--ccu)}
+  .step.aiv{border-color:var(--aiv)} .step.aiv .t{color:var(--aiv)}
+  .arrow{display:flex;align-items:center;color:var(--accent);font-size:19px;flex:0 0 auto}
+  .note{border-left:3px solid var(--warn);background:#2a2517;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--ok);background:#16291f}
+  .fix{border-left:3px solid var(--pink);background:#2a1620}
+  .formula{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-family:"SF Mono",Menlo,monospace;font-size:13.5px;color:#ffd9a0;margin:10px 0}
+  ul{margin:8px 0 8px 2px;padding-left:20px}li{margin:5px 0}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px}.kv b{color:var(--accent)}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:5px;border:1px solid var(--line);color:var(--mut);margin-left:4px}
+  b.f{color:var(--accent)} .in{color:#8fd6ff}.out{color:#5dd39e}
+  .blk{display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap}
+  .blk .lab{font-size:12px;color:var(--mut);width:170px;flex:0 0 auto;text-align:right}
+  .cells{display:flex;gap:5px;flex-wrap:wrap}
+  .cell{min-width:44px;height:36px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;color:#06151f;border:1px solid rgba(255,255,255,.18);padding:0 4px}
+  .r0{background:var(--r0)}.r1{background:var(--r1)}.hole{background:var(--hole);color:var(--mut);border:1px dashed #56627280}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>dispatch / combine setup CCU — 端到端手把手讲解</h1>
+  <p class="sub">补齐四算子 MoE 通算融合的 setup（CCU 跨卡搬运）侧。与已实现的 teardown（AIV）拼成完整 0.5RTT 流水。A6 视角实现（a5 无法编译/运行 CCU，见 §7 边界）。</p>
+  <div class="badges">
+    <span class="badge">真实场景 <b>bs=8/topk=8/h=7168/E=4/R=2</b></span>
+    <span class="badge">全链 <b>mxfp8</b>(fp8_e4m3fn + e8m0)</span>
+    <span class="badge">setup=<b>CCU</b> 跨卡 / teardown=<b>AIV</b> 本地</span>
+    <span class="badge">对齐 <b>Ccu方案设计.docx</b> + A6-proven 参考</span>
+  </div>
+
+  <!-- 0 全景 -->
+  <h2><span class="n">0</span>四算子全景：setup 补的是哪两块</h2>
+  <p>一次 MoE 通算融合 dispatch/combine 各拆成 <b>setup（CCU，跨卡通信）</b> + <b>teardown（AIV，本地整理）</b>。teardown 已实现并实测全绿；本次补齐两个 <b style="color:var(--ccu)">setup CCU</b>。</p>
+  <div class="panel">
+    <div class="flow">
+      <div class="step ccu"><div class="t">① dispatch setup (CCU)★</div><div class="d">本卡 token 按路由跨卡写到对端 expert-major 数据区（WriteNbWithArriveNotify）</div></div>
+      <div class="arrow">→</div>
+      <div class="step aiv"><div class="t">② dispatch teardown (AIV)</div><div class="d">读数据区去空洞→expandX(mxfp8)</div><div class="tag">已实现</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="t">③ GMM 专家计算</div><div class="d">expandX 过专家 FFN</div></div>
+    </div>
+    <div class="flow">
+      <div class="step ccu"><div class="t">④ combine setup (CCU)★</div><div class="d">expandX 结果按路由送回源卡 combine 数据区</div></div>
+      <div class="arrow">→</div>
+      <div class="step aiv"><div class="t">⑤ combine teardown (AIV)</div><div class="d">gather k 份反量化加权和→x</div><div class="tag">已实现</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="t">x [bs,h]</div><div class="d">最终输出</div></div>
+    </div>
+    <div class="note"><b>0.5RTT</b>：setup 用 CCU（硬件通算重叠单元）把跨卡搬运与计算重叠。setup 写完对端数据区后置 ready 位，teardown（AIV）轮询到就绪即读——这就是 setup→teardown 的跨算子握手。</div>
+  </div>
+
+  <!-- 1 算子原型对齐 -->
+  <h2><span class="n">1</span>算子原型对齐（docx 真值 ↔ 本实现）</h2>
+  <p class="sub">按 docx「算子原型」逐条核对。<b>teardown 4 输出全对齐</b>（已实现实测，mxfp8 各加一个 scale tensor）；<b>setup 有 3 类因 CCU 硬件/API 无法直译的偏离</b>，均等价实现，下面列清原因。</p>
+  <div class="panel">
+    <table>
+      <tr><th>算子</th><th>docx 原型 项</th><th>本实现</th><th>对齐?</th></tr>
+      <tr><td rowspan="5">dispatch<br>setup</td><td>输入 x [bs,h]</td><td>xData[bs,h] fp8 + xScale[bs,h/32] e8m0</td><td>✓ +mxfp8</td></tr>
+      <tr><td>输入 expert_id_2_dst_va_map</td><td>PreSync 换对端 dataRegion/scaleRegion 基址+token + host 预算 routeTable(偏移)</td><td>⚠ API 偏离</td></tr>
+      <tr><td>输入 expert_id_2_dst_notify_va_map</td><td>channel/tag arrive-notify(RecordExpectCount/WriteNbWithArriveNotify)</td><td>⚠ API 偏离</td></tr>
+      <tr><td>输出 hbm数据区 [R*E*bs,h]</td><td>对端 dataRegion[R*E*bs,h] fp8 + scaleRegion[R*E*bs,h/32] e8m0</td><td>✓ +mxfp8</td></tr>
+      <tr><td>输出 wishCnt [R*E]</td><td>driver host 预算填充（非 CCU 产）</td><td>⚠ 硬件偏离</td></tr>
+      <tr><td>dispatch<br>teardown</td><td>token数据区/wishCnt/topk表 → expandX/sendCounts/expandIdx/expertTokenNums</td><td>全对齐（token_data/token_scale/wish_cnt/expert_ids → expand_x/expand_scale/send_counts/expand_idx/expert_token_nums）</td><td>✓ 已测</td></tr>
+      <tr><td rowspan="4">combine<br>setup</td><td>输入 expandX [A,h]</td><td>expandXData[A,h] fp8 + expandXScale[A,h/32] e8m0</td><td>✓ +mxfp8</td></tr>
+      <tr><td>输入 sendCounts 前缀和</td><td>host 预算 assistTable{ownerRank,dataDstByteOff,scaleDstByteOff}（sendCounts 折进；payload/scale 各一偏移）</td><td>⚠ 簿记偏离</td></tr>
+      <tr><td>输入 expert_id_2_rank/notify_va_map</td><td>PreSync + assistTable + channel/tag arrive-notify</td><td>⚠ API 偏离</td></tr>
+      <tr><td>输出 hbm数据区 [R*E*bs,h]（docx 已修正）</td><td>owner combineData[R*E*bs,h] fp8 + combineScale e8m0</td><td>✓ +mxfp8</td></tr>
+      <tr><td>combine<br>teardown</td><td>hbm数据区 [R*E*bs,h]/expert_scales/expand_Idx → x[bs,h]</td><td>全对齐（combine_data[R*E*bs,h]/combine_scale/expert_scales/expand_idx/expert_ids → x），expert_ids 按 docx 末注"遍历 expert_ids 表"补入</td><td>✓ 已测</td></tr>
+    </table>
+  </div>
+  <div class="note danger">
+    <b>因 CCU 硬件/API 无法直译的偏离（3 类 + 1 说明，均等价实现、数据布局零偏离）：</b>
+    <ul style="margin-bottom:0">
+      <li><b>① wishCnt 输出（dispatch）— 硬件</b>：CCU <b>不支持动态地址标量 GM 写</b>（SE 无 StoreVariableAt）。A6-proven 参考也不由 CCU 产 wishCnt。→ 由 driver host 预算（wishCnt 是全卡 expert_ids 的确定性函数）。</li>
+      <li><b>② expert_id_2_dst_va_map — CCU 寻址 API</b>：CCU 访存地址 = <b>(VA, token) 对</b>，token 是对端窗口注册的寻址凭证、<b>不能是 host 任意常量</b>，必须运行时经 PreSync（NotifyRecord/Wait）从对端换来。故 docx 的"专家→目的 VA"由 <b>PreSync（基址 VA+token）+ host 预算 routeTable（块内偏移）</b>共同实现；纯 host va_map（只有 VA、无 token）在 CCU 上不可寻址。</li>
+      <li><b>③ expert_id_2_dst_notify_va_map — CCU 0.5RTT API</b>：CCU 的 arrive-notify 计数是 <b>per-channel/tag 的 countXn</b>（RecordExpectCount 预告 + WriteNbWithArriveNotify 累加 + WaitallpeersarriveNotify 等待），<b>不是 per-expert 的 Xn 地址</b>。故 docx 的"专家→目的 Xn"由 channel/tag arrive-notify 机制实现。</li>
+      <li><b>④（非硬件偏离，说明）</b>：mxfp8 分离 payload/scale 是"全链 mxfp8"要求（docx 原文"mxfp8 量化后面加"）；combine 的 sendCounts→assistTable 是 host 预算簿记决策（同 ① 的硬件因，见 §2）。</li>
+      <li><b>⑤ combine 数据区形状 —— 已与 docx 对齐（docx 已修正为 [R*E*bs,h]）</b>：此前 docx combine 输出/输入写 [R*E,h]（漏 *bs），本实现按正确性必需用 [R*E*bs,h]——combine teardown 按 <code>(ge, expand_idx)</code> gather 每 token 副本，每全局专家块须 <b>bs 个槽位</b>；bs&gt;1 时缺 *bs 会同专家多 token 互覆盖、无法做 per-token 加权和。<b>技术总监已修正 docx 为 [R*E*bs,h]，现两侧完全一致</b>（与已测 combine_teardown 字节级自洽）。</li>
+    </ul>
+  </div>
+
+  <!-- 2 关键决策 -->
+  <h2><span class="n">2</span>一个关键架构决策：host 预算簿记</h2>
+  <div class="panel fix">
+    <b style="color:var(--pink)">★ CCU 硬约束 → 簿记移出 CCU</b>
+    <p class="sub" style="margin:8px 0">CCU <b>不支持动态地址的标量 GM 写</b>（SE 无 StoreVariableAt）。A6-proven 参考因此把所有簿记（wishCnt / expand_idx / dstByteOff 路由）都 <b>host 预算</b>好、传给 CCU。本设计沿用：</p>
+    <ul style="margin-bottom:0">
+      <li><b>setup CCU 只搬 token 数据</b>（payload + scale），落点全由 host 预算的 <code>routeTable / assistTable</code> 决定（device 不算 ge/E、不乘法、不写标量）。</li>
+      <li><b>wishCnt / expand_idx</b> 由 driver host 预算（它有全卡 expert_ids，是确定性函数）。数据布局 100% 对齐 docx（expert-major）与已测 teardown；仅"名义产出方"从 CCU 挪到 host。</li>
+    </ul>
+  </div>
+
+  <!-- 2 mxfp8 在途 -->
+  <h2><span class="n">3</span>在途数据：mxfp8（payload + scale 两个独立区）</h2>
+  <p>量化在算子外做好，传进来即 mxfp8。每 token = <b>fp8_e4m3fn payload（h 字节）</b> + <b>e8m0 scale（h/32 字节，group=32）</b>，是<b>两个独立 GM 区</b>。setup 每 token 做<b>两次跨卡写</b>（payload 一次、scale 一次），落到对端的 dataRegion 与 scaleRegion。</p>
+  <div class="formula">真实场景 h=7168 → 每 token = 7168 字节 payload + 224 字节 scale · A = R·bs·min(topk,E) = 64 行</div>
+
+  <!-- 3 dispatch setup -->
+  <h2><span class="n">4</span>dispatch setup CCU：逐 token 跨卡 push</h2>
+  <p class="sub">本卡 rank0 有 bs 个 token；每 token 选 topk 个全局专家。setup 把每个复制体写到"拥有该专家的卡"的 expert-major 数据区。</p>
+  <h3>路由与落点（host 预算的 routeTable）</h3>
+  <div class="formula">
+    ge = expert_ids[i][j]　→　dstRank = ge/E · le = ge%E<br>
+    block = <b style="color:var(--e1)">le*R + my_rank</b>（expert-major，源卡=my_rank）· pos = 该 ge 出现次数（=expand_idx）<br>
+    row = block*bs + pos　→　dataDstByteOff = row*h · scaleDstByteOff = row*(h/32)
+  </div>
+  <p class="sub">routeTable[i*topk+j] = {dstRank, dataDstByteOff, scaleDstByteOff}（int64，host 预算）。CCU 读它 → <code>WriteNbWithArriveNotify(channel[dstRank], dataRegionBase[dstRank]+dataDstByteOff, x[i], h 字节, tag)</code>，scale 同理。</p>
+  <h3>对端 dataRegion 落点示意（rank0 发，小例子 E=2/R=2/bs=4）</h3>
+  <div class="panel">
+    <div class="blk"><div class="lab">对端块 e0·src0(=rank0)</div><div class="cells"><div class="cell r0">A0</div><div class="cell r0">A1</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <div class="blk"><div class="lab">对端块 e1·src0</div><div class="cells"><div class="cell r0">C0</div><div class="cell hole">·</div><div class="cell hole">·</div><div class="cell hole">·</div></div></div>
+    <p class="sub" style="margin-top:6px">rank0 把它到专家 e0 的 2 个 token 依 pos=0,1 紧密放进对端块 (e0,src0) 的前两槽；到 e1 的 1 个放块 (e1,src0)。<b>这正是已测 dispatch_teardown 读的 expert-major 布局</b>——setup 写、teardown 读，字节级咬合。</p>
+  </div>
+  <h3>CCU Algorithm 段式（照 A6-proven 参考）</h3>
+  <pre>1 InitResource(Var/LocalAddr×2/RemoteAddr×2/event/BlockCcuBuf)
+2 LoadArgs(顺序=GeneArgs)  2.5 clearallpeersarriveNotify(tag)
+3 PreSync(NotifyRecord/Wait 交换对端 data/scale 区 addr+token，4 XN 槽)
+5 PreCount(读 routeTable dstRank 累加 sendBytes) → 6 RecordExpectCount(逐对端)
+7 DoMainLoop: for i,j { 读 routeTable → CCU_IF(dstRank==r):
+     self→LocalCopyNb(payload)+LocalCopyNb(scale) / cross→WriteNbWithArriveNotify×2 }
+9 WaitallpeersarriveNotify(R-1)  10 LocalCopyNb 置 ready[0..R)=1</pre>
+
+  <!-- 4 combine setup -->
+  <h2><span class="n">5</span>combine setup CCU：expandX 送回源卡（对称反向）</h2>
+  <p class="sub">owner 卡算完专家输出（expandX，expert-major），把每行送回<b>原始源卡</b>的 combine 数据区（每全局专家一块 ge，块内位 = 该 token 的 expand_idx）。</p>
+  <div class="formula">
+    expandX 行 r 属块(le,src) 第 pos 个 → ge = owner*E+le · 送回卡 = src<br>
+    dataDstByteOff = (ge*bs + pos)*h　→　assistTable[r] = {ownerRank=src, dataDstByteOff, scaleDstByteOff}
+  </div>
+  <p class="sub">host 展开 A 行、每行 CCU_IF(ownerRank==r) 路由；<b>padding 行 ownerRank=哨兵 → 全跳过</b>（cnt&lt;A 的尾部）。段式与 dispatch 同构，独立 tag <code>moe_combine_05rtt</code>。</p>
+
+  <!-- 5 CCU API -->
+  <h2><span class="n">6</span>CCU 数据面 4 接口（坐实自 ccu_kernel.h + api.h）</h2>
+  <div class="panel"><div class="kv">
+    <b>WriteNbWithArriveNotify</b><span>写<b>对端</b>：<code>(channel, RemoteAddr rem, LocalAddr loc, Variable len, tag)</code>，len 字节 atomic-add 到对端 wtCount。<b>唯一跨卡写</b>。</span>
+    <b>LocalCopyNb</b><span>写<b>本卡自己</b>：<code>(LocalAddr dst, LocalAddr src, Variable len, &buf, 1, event)</code> + WaitEvent。<b>不能写对端</b>。</span>
+    <b>RecordExpectCount</b><span>预告"我会发多少字节"到对端 wishCntXn。</span>
+    <b>WaitallpeersarriveNotify</b><span>收方等 totalCntXn 达 target(=R-1)。</span>
+    <b>clearallpeersarriveNotify</b><span>清上轮计数（起头必清）。</span>
+  </div>
+  <p class="sub" style="margin:8px 0 0"><b>铁律</b>：类名/签名/大小写逐字一致否则链 SE undefined；Variable 恒 8 字节（routeTable 按 int64 排布步进 8）；LocalAddr/RemoteAddr 的 .token 两端必设；不支持 Variable+立即数（立即数先落 Variable）。</p></div>
+
+  <!-- 6 契约 -->
+  <h2><span class="n">7</span>setup 产出 = teardown 输入（字节级咬合）</h2>
+  <table>
+    <tr><th>setup</th><th>产出</th><th>= teardown 输入</th></tr>
+    <tr><td>dispatch_setup</td><td>对端 dataRegion[R*E*bs,h] fp8 (expert-major le*R+src) + scaleRegion[R*E*bs,h/32] e8m0 + ready</td><td>dispatch_teardown 的 token_data/token_scale（wishCnt 由 host 预算给）</td></tr>
+    <tr><td>combine_setup</td><td>源卡 combineData[R*E*bs,h] fp8 (每专家一块 ge, 位 expand_idx) + combineScale e8m0</td><td>combine_teardown 的 combine_data/combine_scale</td></tr>
+  </table>
+
+  <!-- 7 边界 + 验证 -->
+  <h2><span class="n">8</span>验证状态与诚实边界</h2>
+  <div class="panel ok note">
+    <b>已机器验证（a5，纯 C++ host 模型）：</b>地址 math 端到端自检 <b>6/6 全 PASS</b>——模拟 dispatch 放置→teardown 紧密化→combine 送回→combine_teardown gather→重建，<b>每个 token marker 精确往返</b>（含字节偏移/expert-major 块序/块内位/wishCnt 一致）。即 CCU 执行的地址逻辑与已测 teardown 契约端到端自洽。
+  </div>
+  <div class="note">
+    <b>无法在 a5 验证的部分（硬环境限制，实测铁证）：</b>a5 的 CCU 头/库是与 a6 <b>不同的旧/残缺 API</b>（缺 ccu_kernel_arg.h/ccu_types.h；channels_ 是 private unordered_set；CompletedEvent 无 SetMask）。<b>A6-proven 真实参考在 a5 上同样编不过</b> → CCU kernel 的编译+上板只能在 A6 做（你无法访问）。CCU 代码验证方式 = 与 a6-proven 参考逐 API 对齐 + 上面地址 math 已验。
+  </div>
+  <div class="note">
+    <b>待 A6 落地前需 SE 确认：</b>GetRemoteAddr index 语义、WaitallpeersarriveNotify 在"某对端发 0 token"时的 target 语义、CCU_IF/CCU_WHILE 宏细节。
+  </div>
+
+  <p class="sub" style="margin-top:26px;text-align:center">配套：teardown 原理见 <code>teardown_端到端流程讲解_mxfp8.html</code> · 设计契约 <code>SETUP_DESIGN.md</code> · 编译运行 <code>setup_编译运行指导.html</code></p>
+</div>
+</body>
+</html>

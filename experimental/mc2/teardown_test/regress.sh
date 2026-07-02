@@ -10,6 +10,7 @@ run() {  # run <op> <bs> <topk> <h> <E> <R> <seed> <tag>
   if echo "$out" | grep -q PASS; then echo "  [OK ] $op $1 $2 $3 $4 $5 seed$6  ($tag)"; PASS=$((PASS+1));
   else echo "  [BAD] $op $1 $2 $3 $4 $5 seed$6  ($tag)"; echo "$out" | sed 's/^/        /'; FAIL=$((FAIL+1)); fi
 }
+
 echo "===== 回归集 ====="
 echo "-- 退化场景 topk=8=GE(全密) h=7168 --"
 run dispatch 8 8 7168 4 2 1234 "degen"
@@ -27,3 +28,5 @@ echo "-- 链式(dispatch NPU expand_idx → combine) h=7168 sparse --"
 if bash run_chain.sh 8 2 7168 4 2 5 2>&1 | grep -q "COMBINE_TEARDOWN PASS"; then echo "  [OK ] chain 8 2 7168 4 2"; PASS=$((PASS+1)); else echo "  [BAD] chain"; FAIL=$((FAIL+1)); fi
 echo "===== 回归汇总: PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ] && echo "ALL GREEN" || exit 1
+
+
