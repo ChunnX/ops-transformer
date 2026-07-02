@@ -19,6 +19,7 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/mutex_buffers_policy.h"
 
 namespace FagBaseApi {
 
@@ -47,64 +48,13 @@ struct PreloadArgs<true> {
     bool copyNext = false;
 };
  
-/* ============每块物理buffer一个MutexID的轻量封装=============
- * 不接管Buffer生命周期，只按“返回引用地址”识别物理buffer，
- * 从而给DB/3buff等多缓冲策略的每一块物理buffer分配独立MutexID。
- */
-template <uint32_t N>
-struct PerBufferMutex {
-    MutexID ids[N];
-    const void *slots_[N];
-    uint32_t count_ = 0;
-
-    __aicore__ inline void Init()
-    {
-        count_ = 0;
-        for (uint32_t i = 0; i < N; ++i) {
-            ids[i] = AllocMutexID();
-            slots_[i] = nullptr;
-        }
-    }
-
-    __aicore__ inline void Uninit()
-    {
-        for (uint32_t i = 0; i < N; ++i) {
-            ReleaseMutexID(ids[i]);
-        }
-    }
-
-    // 用返回引用的地址识别是哪一块物理buffer，得到对应MutexID下标
-    __aicore__ inline uint32_t IndexOf(const void *p)
-    {
-        for (uint32_t i = 0; i < count_; ++i) {
-            if (slots_[i] == p) {
-                return i;
-            }
-        }
-        slots_[count_] = p;
-        return count_++; // 构造保证 count_ < N
-    }
-
-    template <pipe_t pipe>
-    __aicore__ inline void Lock(uint32_t idx)
-    {
-        AscendC::Mutex::Lock<pipe>(ids[idx]);
-    }
-
-    template <pipe_t pipe>
-    __aicore__ inline void Unlock(uint32_t idx)
-    {
-        AscendC::Mutex::Unlock<pipe>(ids[idx]);
-    }
-};
-
 /* ============确定Query的L1类型============= */
 template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
 struct QL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicy3buff<BufferType::L1, SyncType::NO_SYNC>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
 };
  
 /* ============确定Key的L1类型============= */
@@ -112,8 +62,8 @@ template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
 struct KL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicyDB<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
 };
  
 /* ============确定Dy的L1类型============= */
@@ -121,8 +71,8 @@ template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
 struct DyL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicy3buff<BufferType::L1, SyncType::NO_SYNC>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
 };
  
 /* ============确定mm1 mm2 mm3共用几块L0C buffer============= */
@@ -177,10 +127,33 @@ public:
         GET_IS_L1_REUSE<INPUT_TYPE>(HEAD_DIM_ALIGN, IS_DETER_OLD(DETER_SPARSE_TYPE), false);
     constexpr static bool IS_L1_PRELOAD = GET_IS_L1_PRELOAD<INPUT_TYPE>(
         HEAD_DIM_ALIGN, SPLIT_AXIS, IS_DETER_OLD(DETER_SPARSE_TYPE), IS_TND, false, IS_ROPE);
+    static_assert(!IS_L1_PRELOAD || IS_L1_REUSE,
+                  "IS_L1_PRELOAD requires IS_L1_REUSE for Mutex L1 buffer policies.");
+    constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
+    // Counts only L1 MutexBuffers explicitly allocated by this cube block. L0 buffers are not included; recalculate
+    // the 28 MutexID limit if L0 or other modules move to Mutex.
+    constexpr static uint32_t SINGLE_L1_MUTEX_BUF_NUM = 1;
+    constexpr static uint32_t DB_L1_MUTEX_BUF_NUM = 2;
+    constexpr static uint32_t THREE_L1_MUTEX_BUF_NUM = 3;
+    // Non-reuse paths do not instantiate dY/Q/K/V policies; common/fp32 buffers below cover those MutexIDs.
+    constexpr static uint32_t DY_L1_MUTEX_BUF_NUM =
+        IS_L1_REUSE ? (IS_L1_PRELOAD ? THREE_L1_MUTEX_BUF_NUM : DB_L1_MUTEX_BUF_NUM) : 0;
+    constexpr static uint32_t Q_L1_MUTEX_BUF_NUM =
+        IS_L1_REUSE ? (IS_L1_PRELOAD ? THREE_L1_MUTEX_BUF_NUM : DB_L1_MUTEX_BUF_NUM) : 0;
+    constexpr static uint32_t K_L1_MUTEX_BUF_NUM = IS_L1_REUSE ? DB_L1_MUTEX_BUF_NUM : 0;
+    constexpr static uint32_t V_L1_MUTEX_BUF_NUM = IS_L1_REUSE ? SINGLE_L1_MUTEX_BUF_NUM : 0;
+    constexpr static uint32_t COMMON_L1_MUTEX_BUF_NUM =
+        (!IS_L1_REUSE && !IS_FP32_D_EXCEED_256) ? DB_L1_MUTEX_BUF_NUM : 0;
+    constexpr static uint32_t FP32_L1_MUTEX_BUF_NUM =
+        (!IS_L1_REUSE && IS_FP32_D_EXCEED_256) ? (SINGLE_L1_MUTEX_BUF_NUM + SINGLE_L1_MUTEX_BUF_NUM) : 0;
+    constexpr static uint32_t L1_MUTEX_ID_NUM = DY_L1_MUTEX_BUF_NUM + Q_L1_MUTEX_BUF_NUM + K_L1_MUTEX_BUF_NUM +
+        V_L1_MUTEX_BUF_NUM + COMMON_L1_MUTEX_BUF_NUM + FP32_L1_MUTEX_BUF_NUM;
+    constexpr static uint32_t ASCENDC_MUTEX_ID_LIMIT = 28;
+    static_assert(L1_MUTEX_ID_NUM <= ASCENDC_MUTEX_ID_LIMIT, "FAGBlockCube uses too many MutexIDs.");
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
+    using L1MutexBufT = MutexBuffer<BufferType::L1>;
     constexpr static bool IS_DKV_RESIDENT_L0C =
         IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) && !IS_FP32_INPUT;
-    constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
  
     constexpr static uint32_t DQ_L0_SPLIT_K = GET_DQ_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEM, HEAD_DIM_ALIGN>();
     constexpr static uint32_t DKV_L0_SPLIT_K = GET_DKV_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEN, HEAD_DIM_ALIGN>();
@@ -202,15 +175,15 @@ public:
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
     typename std::conditional<IS_L1_REUSE, typename DyL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type dYL1Buf;
-    typename std::conditional<IS_L1_REUSE, BuffersPolicySingleBuffer<BufferType::L1, SYNC_TYPE>, std::nullptr_t>::type vL1Buf;
+    typename std::conditional<IS_L1_REUSE, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type vL1Buf;
     typename std::conditional<IS_L1_REUSE, typename QL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type qL1Buf;
     typename std::conditional<IS_L1_REUSE, typename KL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type kL1Buf;
-    typename std::conditional<!IS_L1_REUSE, BuffersPolicyDB<BufferType::L1>, std::nullptr_t>::type commonL1Buf;
+    typename std::conditional<!IS_L1_REUSE, MutexBuffersPolicyDB<BufferType::L1>, std::nullptr_t>::type commonL1Buf;
     //fp32 d>256 l1buffer 
-    typename std::conditional<IS_FP32_D_EXCEED_256, BuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf1;
-    typename std::conditional<IS_FP32_D_EXCEED_256, BuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf2;
+    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf1;
+    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf2;
  
     // l0ab buffer manage, double buffer
     BufferManager<BufferType::L0A> l0aBufferManager;
@@ -236,13 +209,6 @@ public:
     BuffersPolicySingleBuffer<BufferType::L0C> dvL0CSpecialBuf;
     
     bool isDkvL0CResidentForD192Dv128 = false;
-    // 每块物理buffer一个MutexID：preload下dY/q为3buff、k为DB、v为单buffer
-    constexpr static uint32_t DY_L1_BUF_NUM = IS_L1_PRELOAD ? 3 : 2;
-    constexpr static uint32_t Q_L1_BUF_NUM = IS_L1_PRELOAD ? 3 : 2;
-    PerBufferMutex<DY_L1_BUF_NUM> dyL1PerBufMutex;
-    PerBufferMutex<Q_L1_BUF_NUM> qL1PerBufMutex;
-    PerBufferMutex<2> kL1PerBufMutex;
-    PerBufferMutex<1> vL1PerBufMutex;
 
     __aicore__ inline FAGBlockCube(){};
     __aicore__ inline ~FAGBlockCube();
@@ -298,11 +264,16 @@ public:
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline FAGBlockCube<TEMPLATE_ARGS>::~FAGBlockCube()
 {
-    if constexpr (IS_L1_PRELOAD) {
-        dyL1PerBufMutex.Uninit();
-        qL1PerBufMutex.Uninit();
-        kL1PerBufMutex.Uninit();
-        vL1PerBufMutex.Uninit();
+    if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
+        dYL1Buf.Uninit(*l1BufferManagerPtr);
+        vL1Buf.Uninit(*l1BufferManagerPtr);
+        qL1Buf.Uninit(*l1BufferManagerPtr);
+        kL1Buf.Uninit(*l1BufferManagerPtr);
+    } else if constexpr (IS_FP32_D_EXCEED_256) {
+        fp32L1Buf1.Uninit(*l1BufferManagerPtr);
+        fp32L1Buf2.Uninit(*l1BufferManagerPtr);
+    } else {
+        commonL1Buf.Uninit(*l1BufferManagerPtr);
     }
 }
  
@@ -339,12 +310,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo 
         IS_ROPE;
     // init l1 buffer
     if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
-        if constexpr (IS_L1_PRELOAD) {
-            dyL1PerBufMutex.Init();
-            qL1PerBufMutex.Init();
-            kL1PerBufMutex.Init();
-            vL1PerBufMutex.Init();
-        }
         if constexpr (IS_ROPE) {
             // rope场景mm1 headDim固定为128
             dYL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * ROPE_D_128 * sizeof(INPUT_TYPE));
@@ -398,29 +363,20 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                                                                  FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                                  PreloadArgs<IS_ROPE> &preloadArgs)
 {
-    Buffer<BufferType::L1, SYNC_TYPE> dyL1Buffer;
-    Buffer<BufferType::L1, SYNC_TYPE> dyL1NextBuffer;
-    Buffer<BufferType::L1, SYNC_TYPE> vL1Buffer;
+    L1MutexBufT dyL1Buffer;
+    L1MutexBufT dyL1NextBuffer;
+    L1MutexBufT vL1Buffer;
     Nd2NzParams nd2NzParams;
-    uint32_t dyMutexIdx = 0;
-    uint32_t dyNextMutexIdx = 0;
-    uint32_t vMutexIdx = 0;
  
     // load left matrix to L1
     if constexpr (IS_L1_PRELOAD) {
         if (preloadArgs.copyCurrent) {
-            auto &dyRef = dYL1Buf.Get();
-            dyMutexIdx = dyL1PerBufMutex.IndexOf(&dyRef);
-            dyL1Buffer = dyRef;
+            dyL1Buffer = dYL1Buf.Get();
         } else {
-            auto &dyRef = dYL1Buf.GetPre();
-            dyMutexIdx = dyL1PerBufMutex.IndexOf(&dyRef);
-            dyL1Buffer = dyRef;
+            dyL1Buffer = dYL1Buf.GetPre();
         }
         if (preloadArgs.copyNext) {
-            auto &dyNextRef = dYL1Buf.Get();
-            dyNextMutexIdx = dyL1PerBufMutex.IndexOf(&dyNextRef);
-            dyL1NextBuffer = dyNextRef;
+            dyL1NextBuffer = dYL1Buf.Get();
         }
     } else if constexpr (IS_L1_REUSE) {
         dyL1Buffer = dYL1Buf.Get();
@@ -433,10 +389,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
     }
     // copy current, when IS_L1_PRELOAD=true, only first loop copy current
     if (!IS_L1_PRELOAD || preloadArgs.copyCurrent) {
-        dyL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步(preload下NO_SYNC空操作，由mutex接管)
-        if constexpr (IS_L1_PRELOAD) {
-            dyL1PerBufMutex.template Lock<PIPE_MTE2>(dyMutexIdx);
-        }
+        dyL1Buffer.LockProd();
         LocalTensor<INPUT_TYPE> dyL1Tensor = dyL1Buffer.template GetTensor<INPUT_TYPE>();
         nd2NzParams.ndNum = 1;
         nd2NzParams.nValue = runInfo.commonRunInfo.s1RealSize;
@@ -448,18 +401,10 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         nd2NzParams.dstNzNStride = 1;
         nd2NzParams.dstNzMatrixStride = 0;
         DataCopy(dyL1Tensor, this->dyGm[runInfo.dyOffset], nd2NzParams);
-        // when IS_L1_PRELOAD=true, only first loop need set
-        dyL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-        if constexpr (IS_L1_PRELOAD) {
-            dyL1PerBufMutex.template Unlock<PIPE_MTE2>(dyMutexIdx);
-        }
+        dyL1Buffer.UnlockProd();
     }
     // wait pre
-    dyL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
-    if constexpr (IS_L1_PRELOAD) {
-        // 消费段加锁，Unlock在mm5(IterateMmPDy)复用释放处，软件流水按物理块idx对齐
-        dyL1PerBufMutex.template Lock<PIPE_MTE1>(dyMutexIdx);
-    }
+    dyL1Buffer.LockCons();
     constexpr uint32_t baseN = (IS_FP32_INPUT && HEAD_DIM_ALIGN > 512) ? CUBE_BASEN / 2 : CUBE_BASEN;
     uint32_t nLoops = 1;
     uint32_t realN = runInfo.commonRunInfo.s2RealSize;
@@ -480,11 +425,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         bool isCopyRight = true;
         if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
             isCopyRight = !runInfo.isS2IdxNoChange;
-            auto &vRef = vL1Buf.Get();
-            if constexpr (IS_L1_PRELOAD) {
-                vMutexIdx = vL1PerBufMutex.IndexOf(&vRef);
-            }
-            vL1Buffer = vRef;
+            vL1Buffer = vL1Buf.Get();
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
                 vL1Buffer = fp32L1Buf2.Get();
@@ -493,12 +434,8 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             }
         }
 
-        vL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            vL1PerBufMutex.template Lock<PIPE_MTE2>(vMutexIdx);
-        }
-
         if (isCopyRight) {
+            vL1Buffer.LockProd();
             LocalTensor<INPUT_TYPE> vL1Tensor = vL1Buffer.template GetTensor<INPUT_TYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = realN;
@@ -509,18 +446,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(vL1Tensor, this->valueGm[runInfo.commonRunInfo.valueOffset + gmNOffset], nd2NzParams);
-            vL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            vL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
-        }
-        if constexpr (IS_L1_PRELOAD) {
-            vL1PerBufMutex.template Unlock<PIPE_MTE2>(vMutexIdx);
+            vL1Buffer.UnlockProd();
         }
 
         // load next left matrix to L1
         if constexpr(IS_L1_PRELOAD) {
             if (preloadArgs.copyNext) {
-                dyL1NextBuffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
-                dyL1PerBufMutex.template Lock<PIPE_MTE2>(dyNextMutexIdx);
+                dyL1NextBuffer.LockProd();
                 LocalTensor<INPUT_TYPE> dyL1Tensor = dyL1NextBuffer.template GetTensor<INPUT_TYPE>();
                 nd2NzParams.ndNum = 1;
                 nd2NzParams.nValue = preloadArgs.nextMOrN;
@@ -533,9 +465,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                 nd2NzParams.dstNzNStride = 1;
                 nd2NzParams.dstNzMatrixStride = 0;
                 DataCopy(dyL1Tensor, this->dyGm[preloadArgs.nextDyOffset], nd2NzParams);
-                // current loop no matched wait, will wait in next loop
-                dyL1NextBuffer.template Set<HardEvent::MTE2_MTE1>();
-                dyL1PerBufMutex.template Unlock<PIPE_MTE2>(dyNextMutexIdx);
+                dyL1NextBuffer.UnlockProd();
             }
         }
 
@@ -565,9 +495,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
 
-        if constexpr (IS_L1_PRELOAD) {
-            vL1PerBufMutex.template Lock<PIPE_MTE1>(vMutexIdx);
-        }
+        vL1Buffer.LockCons();
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
             MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
@@ -580,13 +508,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                 mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
 
-        if (!IS_L1_REUSE && !IS_L1_PRELOAD && n == nLoops - 1) {
-            dyL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        }
-        vL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            vL1PerBufMutex.template Unlock<PIPE_MTE1>(vMutexIdx);
-        }
+        vL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
             mm1L0CBuffer.Set<HardEvent::M_FIX>();
@@ -610,6 +532,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             mm1L0CBuffer.Set<HardEvent::FIX_M>();                               // 反向同步
         }
     }
+    dyL1Buffer.UnlockCons();
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -617,29 +540,20 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                                                                 FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                                 PreloadArgs<IS_ROPE> &preloadArgs)
 {
-    Buffer<BufferType::L1, SYNC_TYPE> qL1Buffer;
-    Buffer<BufferType::L1, SYNC_TYPE> qL1NextBuffer;
-    Buffer<BufferType::L1, SYNC_TYPE> kL1Buffer;
+    L1MutexBufT qL1Buffer;
+    L1MutexBufT qL1NextBuffer;
+    L1MutexBufT kL1Buffer;
     Nd2NzParams nd2NzParams;
-    uint32_t qMutexIdx = 0;
-    uint32_t qNextMutexIdx = 0;
-    uint32_t kMutexIdx = 0;
  
     // load left matrix to L1
     if constexpr (IS_L1_PRELOAD) {
         if (preloadArgs.copyCurrent) {
-            auto &qRef = qL1Buf.Get();
-            qMutexIdx = qL1PerBufMutex.IndexOf(&qRef);
-            qL1Buffer = qRef;
+            qL1Buffer = qL1Buf.Get();
         } else {
-            auto &qRef = qL1Buf.GetPre();
-            qMutexIdx = qL1PerBufMutex.IndexOf(&qRef);
-            qL1Buffer = qRef;
+            qL1Buffer = qL1Buf.GetPre();
         }
         if (preloadArgs.copyNext) {
-            auto &qNextRef = qL1Buf.Get();
-            qNextMutexIdx = qL1PerBufMutex.IndexOf(&qNextRef);
-            qL1NextBuffer = qNextRef;
+            qL1NextBuffer = qL1Buf.Get();
         }
     } else if constexpr (IS_L1_REUSE) {
         qL1Buffer = qL1Buf.Get();
@@ -653,10 +567,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
  
     // copy current, when IS_L1_PRELOAD=true, only first loop copy current
     if (!IS_L1_PRELOAD || preloadArgs.copyCurrent) {
-        qL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步(preload下NO_SYNC空操作，由mutex接管)
-        if constexpr (IS_L1_PRELOAD) {
-            qL1PerBufMutex.template Lock<PIPE_MTE2>(qMutexIdx);
-        }
+        qL1Buffer.LockProd();
         LocalTensor<INPUT_TYPE> qL1Tensor = qL1Buffer.template GetTensor<INPUT_TYPE>();
         if constexpr (IS_ROPE) {
             nd2NzParams.ndNum = 1;
@@ -685,17 +596,10 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(qL1Tensor, this->queryGm[runInfo.commonRunInfo.queryOffset], nd2NzParams);
         }
-        qL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-        if constexpr (IS_L1_PRELOAD) {
-            qL1PerBufMutex.template Unlock<PIPE_MTE2>(qMutexIdx);
-        }
+        qL1Buffer.UnlockProd();
     }
     
-    qL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
-    if constexpr (IS_L1_PRELOAD) {
-        // 消费段加锁，Unlock在mm4(IterateMmDsQ)复用释放处
-        qL1PerBufMutex.template Lock<PIPE_MTE1>(qMutexIdx);
-    }
+    qL1Buffer.LockCons();
     constexpr uint32_t baseN = (IS_FP32_INPUT && HEAD_DIM_ALIGN > 512) ? CUBE_BASEN / 2 : CUBE_BASEN;
     uint32_t nLoops = 1;
     uint32_t realN = runInfo.commonRunInfo.s2RealSize;
@@ -717,17 +621,9 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
             isCopyRight = !runInfo.isS2IdxNoChange;
             if (isCopyRight) {
-                auto &kRef = kL1Buf.Get();
-                if constexpr (IS_L1_PRELOAD) {
-                    kMutexIdx = kL1PerBufMutex.IndexOf(&kRef);
-                }
-                kL1Buffer = kRef;
+                kL1Buffer = kL1Buf.Get();
             } else {
-                auto &kRef = kL1Buf.GetPre();
-                if constexpr (IS_L1_PRELOAD) {
-                    kMutexIdx = kL1PerBufMutex.IndexOf(&kRef);
-                }
-                kL1Buffer = kRef;
+                kL1Buffer = kL1Buf.GetPre();
             }
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
@@ -738,10 +634,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         }
     
         if (isCopyRight) {
-            kL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步(preload下NO_SYNC空操作，由mutex接管)
-            if constexpr (IS_L1_PRELOAD) {
-                kL1PerBufMutex.template Lock<PIPE_MTE2>(kMutexIdx);
-            }
+            kL1Buffer.LockProd();
             LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buffer.template GetTensor<INPUT_TYPE>();
             if constexpr (IS_ROPE) {
                 nd2NzParams.ndNum = 1;
@@ -767,20 +660,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                 nd2NzParams.dstNzMatrixStride = 0;
                 DataCopy(kL1Tensor, this->keyGm[runInfo.commonRunInfo.keyOffset + gmNOffset], nd2NzParams);
             }
-            kL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            kL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
-            if constexpr (IS_L1_PRELOAD) {
-                kL1PerBufMutex.template Unlock<PIPE_MTE2>(kMutexIdx);
-                // 消费段加锁(与produce同为isCopyRight条件)，Unlock在mm3(IterateMmDsK)复用释放处
-                kL1PerBufMutex.template Lock<PIPE_MTE1>(kMutexIdx);
-            }
+            kL1Buffer.UnlockProd();
         }
     
         // load next left matrix to L1
         if constexpr(IS_L1_PRELOAD) {
             if (preloadArgs.copyNext) {
-                qL1NextBuffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
-                qL1PerBufMutex.template Lock<PIPE_MTE2>(qNextMutexIdx);
+                qL1NextBuffer.LockProd();
                 LocalTensor<INPUT_TYPE> qL1Tensor = qL1NextBuffer.template GetTensor<INPUT_TYPE>();
                 nd2NzParams.ndNum = 1;
                 nd2NzParams.nValue = preloadArgs.nextMOrN;
@@ -801,9 +687,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                     nd2NzParams.srcDValue = constInfo.mm2Ka / NUM_TWO;
                     DataCopy(qL1Tensor[nd2NzParams.dstNzC0Stride * ROPE_D_128], this->queryRopeGm[preloadArgs.nextQueryRopeOffset], nd2NzParams);
                 }
-                // current loop no matched wait, will wait in next loop
-                qL1NextBuffer.template Set<HardEvent::MTE2_MTE1>();
-                qL1PerBufMutex.template Unlock<PIPE_MTE2>(qNextMutexIdx);
+                qL1NextBuffer.UnlockProd();
             }
         }
     
@@ -831,6 +715,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             true,
             ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
+        kL1Buffer.LockCons();
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
             MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
@@ -842,13 +727,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                 qL1Buffer.template GetTensor<INPUT_TYPE>(), kL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
                 mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
-    
-        if  (!IS_L1_REUSE && !IS_L1_PRELOAD && n == nLoops - 1) {  // qL1不需要二次datacopy
-            qL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        }
-        if  (!IS_L1_REUSE && !IS_L1_PRELOAD) {  // qL1不需要二次datacopy
-            kL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        }
+        kL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
             mm2L0CBuffer.Set<HardEvent::M_FIX>();
@@ -878,6 +757,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             mm2L0CBuffer.Set<HardEvent::FIX_M>();
         }
     }
+    qL1Buffer.UnlockCons();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -989,8 +869,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
                                                 BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
- 
+    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get(); 
     constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = 1;
     uint32_t realN = constInfo.commonConstInfo.dSize;
@@ -1005,17 +884,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
                 realN = tailSize ? tailSize : baseN;
             }
         }
-        Buffer<BufferType::L1, SYNC_TYPE> kL1Buffer;
+        L1MutexBufT kL1Buffer;
         LocalTensor<INPUT_TYPE> kL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t kMutexIdx = 0;
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &kRef = kL1Buf.GetReused(runInfo.isNextS2IdxNoChange);
-            if constexpr (IS_L1_PRELOAD) {
-                kMutexIdx = kL1PerBufMutex.IndexOf(&kRef);
-            }
-            kL1Buffer = kRef;
+            kL1Buffer = kL1Buf.GetReused(runInfo.isNextS2IdxNoChange);
             kL1Tensor = kL1Buffer.template GetTensor<INPUT_TYPE>();
         } else {
             // load right matrix to L1
@@ -1024,7 +898,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             } else {
                 kL1Buffer = commonL1Buf.Get();           
             }
-            kL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            kL1Buffer.LockProd();
             kL1Tensor = kL1Buffer.template GetTensor<INPUT_TYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s2RealSize;
@@ -1035,9 +909,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(kL1Tensor, this->keyGm[runInfo.commonRunInfo.keyOffset + gmNOffset], nd2NzParams);
-            kL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            kL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            kL1Buffer.UnlockProd();
         }
+        kL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> mm3L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1079,17 +953,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
-        bool isCopyRight = true;
-        if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
-            isCopyRight = !runInfo.isNextS2IdxNoChange;
-        }
-        if (isCopyRight) {
-            kL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-            if constexpr (IS_L1_PRELOAD) {
-                // 复用释放：与mm2中isCopyRight下的Lock<PIPE_MTE1>成对
-                kL1PerBufMutex.template Unlock<PIPE_MTE1>(kMutexIdx);
-            }
-        }
+        kL1Buffer.UnlockCons();
         
         if constexpr (!ENABLE_UNITFLAG) {
             mm3L0CBuffer.Set<HardEvent::M_FIX>();
@@ -1099,8 +963,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
         if constexpr (!ENABLE_UNITFLAG) {
             mm3L0CBuffer.Set<HardEvent::FIX_M>();
         }
-    }
-}
+    }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
@@ -1109,8 +972,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
                                                 BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
- 
+    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get(); 
     constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = ((uint32_t)constInfo.commonConstInfo.dSize + baseN - 1) / baseN; // 尾块处理
     uint32_t realN = baseN;
@@ -1119,17 +981,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             uint32_t tailSize = (uint32_t)constInfo.commonConstInfo.dSize % baseN;
             realN = tailSize ? tailSize : baseN;
         }
-        Buffer<BufferType::L1, SYNC_TYPE> kL1Buffer;
+        L1MutexBufT kL1Buffer;
         LocalTensor<INPUT_TYPE> kL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t kMutexIdx = 0;
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &kRef = kL1Buf.GetReused(runInfo.isNextS2IdxNoChange);
-            if constexpr (IS_L1_PRELOAD) {
-                kMutexIdx = kL1PerBufMutex.IndexOf(&kRef);
-            }
-            kL1Buffer = kRef;
+            kL1Buffer = kL1Buf.GetReused(runInfo.isNextS2IdxNoChange);
             kL1Tensor = kL1Buffer.template GetTensor<INPUT_TYPE>();
         } else {
             // load right matrix to L1
@@ -1138,7 +995,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             } else {
                 kL1Buffer = commonL1Buf.Get();           
             }
-            kL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            kL1Buffer.LockProd();
             kL1Tensor = kL1Buffer.template GetTensor<INPUT_TYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s2RealSize;
@@ -1149,9 +1006,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(kL1Tensor, this->keyGm[runInfo.commonRunInfo.keyOffset + gmNOffset], nd2NzParams);
-            kL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            kL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            kL1Buffer.UnlockProd();
         }
+        kL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> mm3L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1191,17 +1048,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         
-        bool isCopyRight = true;
-        if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
-            isCopyRight = !runInfo.isNextS2IdxNoChange;
-        }
-        if (isCopyRight) {
-            kL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-            if constexpr (IS_L1_PRELOAD) {
-                // 复用释放：与mm2中isCopyRight下的Lock<PIPE_MTE1>成对
-                kL1PerBufMutex.template Unlock<PIPE_MTE1>(kMutexIdx);
-            }
-        }
+        kL1Buffer.UnlockCons();
  
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
@@ -1226,8 +1073,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
         Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
         mm3L0CBuffer.Set<HardEvent::FIX_M>();
-    }
-}
+    }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
@@ -1355,7 +1201,6 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             dsL1Tensor.SetAddrWithOffset(dsL1Tensor, CUBE_BASEM * CUBE_BASEN);
         }
     }
-
     constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = 1;
     uint32_t realN = constInfo.commonConstInfo.dSize;
@@ -1371,18 +1216,13 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
                 realN = tailSize ? tailSize : baseN;
             }
         }
-        Buffer<BufferType::L1, SYNC_TYPE> qL1Buffer;
+        L1MutexBufT qL1Buffer;
         LocalTensor<INPUT_TYPE> qL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t qMutexIdx = 0;
         // load right matrix to L1
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &qRef = qL1Buf.GetReused();
-            if constexpr (IS_L1_PRELOAD) {
-                qMutexIdx = qL1PerBufMutex.IndexOf(&qRef);
-            }
-            qL1Buffer = qRef;
+            qL1Buffer = qL1Buf.GetReused();
             qL1Tensor = qL1Buffer.template GetTensor<INPUT_TYPE>();
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
@@ -1390,7 +1230,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             } else {
                 qL1Buffer = commonL1Buf.Get();           
             }
-            qL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            qL1Buffer.LockProd();
             qL1Tensor = qL1Buffer.template GetTensor<INPUT_TYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s1RealSize;
@@ -1401,9 +1241,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(qL1Tensor, this->queryGm[runInfo.commonRunInfo.queryOffset + gmNOffset], nd2NzParams);
-            qL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            qL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            qL1Buffer.UnlockProd();
         }
+        qL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> dkL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1455,11 +1295,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
-        qL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            // 复用释放：与mm2中qL1的Lock<PIPE_MTE1>成对
-            qL1PerBufMutex.template Unlock<PIPE_MTE1>(qMutexIdx);
-        }
+        qL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
             dkL0CBuffer.Set<HardEvent::M_FIX>();
@@ -1469,8 +1305,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
         if constexpr (!ENABLE_UNITFLAG) {
             dkL0CBuffer.Set<HardEvent::FIX_M>();
         }
-    }
-}
+    }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
@@ -1483,8 +1318,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
     LocalTensor<INPUT_TYPE> dsL1Tensor = dSL1Buffer.GetTensor<INPUT_TYPE>();
     if (isDqNeedDeter) {
         dsL1Tensor.SetAddrWithOffset(dsL1Tensor, CUBE_BASEM * CUBE_BASEN);
-    }
-    constexpr uint32_t baseN = l1BaseD;
+    }    constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = ((uint32_t)constInfo.commonConstInfo.dSize + baseN - 1) / baseN; // 尾块处理
     uint32_t realN = baseN;
     for (uint32_t n = 0; n < nLoops; ++n) {
@@ -1492,18 +1326,13 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             uint32_t tailSize = (uint32_t)constInfo.commonConstInfo.dSize % baseN;
             realN = tailSize ? tailSize : baseN;
         }
-        Buffer<BufferType::L1, SYNC_TYPE> qL1Buffer;
+        L1MutexBufT qL1Buffer;
         LocalTensor<INPUT_TYPE> qL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t qMutexIdx = 0;
         // load right matrix to L1
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &qRef = qL1Buf.GetReused();
-            if constexpr (IS_L1_PRELOAD) {
-                qMutexIdx = qL1PerBufMutex.IndexOf(&qRef);
-            }
-            qL1Buffer = qRef;
+            qL1Buffer = qL1Buf.GetReused();
             qL1Tensor = qL1Buffer.template GetTensor<INPUT_TYPE>();
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
@@ -1511,7 +1340,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             } else {
                 qL1Buffer = commonL1Buf.Get();           
             }
-            qL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            qL1Buffer.LockProd();
             qL1Tensor = qL1Buffer.template GetTensor<INPUT_TYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s1RealSize;
@@ -1522,9 +1351,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(qL1Tensor, this->queryGm[runInfo.commonRunInfo.queryOffset + gmNOffset], nd2NzParams);
-            qL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            qL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            qL1Buffer.UnlockProd();
         }
+        qL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> dkL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1561,11 +1390,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         
-        qL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            // 复用释放：与mm2中qL1的Lock<PIPE_MTE1>成对
-            qL1PerBufMutex.template Unlock<PIPE_MTE1>(qMutexIdx);
-        }
+        qL1Buffer.UnlockCons();
 
         dkL0CBuffer.Set<HardEvent::M_FIX>();
         dkL0CBuffer.Wait<HardEvent::M_FIX>();
@@ -1583,8 +1408,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
         Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
         dkL0CBuffer.Set<HardEvent::FIX_M>();
-    }
-}
+    }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
@@ -1704,8 +1528,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
                                                 BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = pL1Buf.Get();
- 
+    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = pL1Buf.Get(); 
     constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = 1;
     uint32_t realN = constInfo.commonConstInfo.dSizeV;
@@ -1720,18 +1543,13 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
                 realN = tailSize ? tailSize : baseN;
             }
         }
-        Buffer<BufferType::L1, SYNC_TYPE> dYL1Buffer;
+        L1MutexBufT dYL1Buffer;
         LocalTensor<OUTDTYPE> dYL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t dyMutexIdx = 0;
         // load right matrix to L1
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &dyRef = dYL1Buf.GetReused();
-            if constexpr (IS_L1_PRELOAD) {
-                dyMutexIdx = dyL1PerBufMutex.IndexOf(&dyRef);
-            }
-            dYL1Buffer = dyRef;
+            dYL1Buffer = dYL1Buf.GetReused();
             dYL1Tensor = dYL1Buffer.template GetTensor<OUTDTYPE>();
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
@@ -1739,7 +1557,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             } else {
                 dYL1Buffer = commonL1Buf.Get();           
             }
-            dYL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            dYL1Buffer.LockProd();
             dYL1Tensor = dYL1Buffer.template GetTensor<OUTDTYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s1RealSize;
@@ -1750,9 +1568,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(dYL1Tensor, this->dyGm[runInfo.dyOffset + gmNOffset], nd2NzParams);
-            dYL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            dYL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            dYL1Buffer.UnlockProd();
         }
+        dYL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> dvL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1807,11 +1625,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
-        dYL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            // 复用释放：与mm1(IterateMmDyV)中dy消费段的Lock<PIPE_MTE1>成对
-            dyL1PerBufMutex.template Unlock<PIPE_MTE1>(dyMutexIdx);
-        }
+        dYL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
             dvL0CBuffer.Set<HardEvent::M_FIX>();
@@ -1821,8 +1635,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
         if constexpr (!ENABLE_UNITFLAG) {
             dvL0CBuffer.Set<HardEvent::FIX_M>();
         }
-    }
-}
+    }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
@@ -1831,8 +1644,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
                                                 BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = pL1Buf.Get();
- 
+    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = pL1Buf.Get(); 
     constexpr uint32_t baseN = l1BaseD;
     uint32_t nLoops = ((uint32_t)constInfo.commonConstInfo.dSizeV + baseN - 1) / baseN; // 尾块处理
     uint32_t realN = baseN;
@@ -1841,18 +1653,13 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             uint32_t tailSize = (uint32_t)constInfo.commonConstInfo.dSizeV % baseN;
             realN = tailSize ? tailSize : baseN;
         }    
-        Buffer<BufferType::L1, SYNC_TYPE> dYL1Buffer;
+        L1MutexBufT dYL1Buffer;
         LocalTensor<OUTDTYPE> dYL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
-        uint32_t dyMutexIdx = 0;
         // load right matrix to L1
         if constexpr (IS_L1_PRELOAD || IS_L1_REUSE) {
-            auto &dyRef = dYL1Buf.GetReused();
-            if constexpr (IS_L1_PRELOAD) {
-                dyMutexIdx = dyL1PerBufMutex.IndexOf(&dyRef);
-            }
-            dYL1Buffer = dyRef;
+            dYL1Buffer = dYL1Buf.GetReused();
             dYL1Tensor = dYL1Buffer.template GetTensor<OUTDTYPE>();
         } else {
             if constexpr (IS_FP32_D_EXCEED_256) {
@@ -1860,7 +1667,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             } else {
                 dYL1Buffer = commonL1Buf.Get();           
             }
-            dYL1Buffer.template Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+            dYL1Buffer.LockProd();
             dYL1Tensor = dYL1Buffer.template GetTensor<OUTDTYPE>();
             nd2NzParams.ndNum = 1;
             nd2NzParams.nValue = runInfo.commonRunInfo.s1RealSize;
@@ -1871,9 +1678,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(dYL1Tensor, this->dyGm[runInfo.dyOffset + gmNOffset], nd2NzParams);
-            dYL1Buffer.template Set<HardEvent::MTE2_MTE1>();
-            dYL1Buffer.template Wait<HardEvent::MTE2_MTE1>();
+            dYL1Buffer.UnlockProd();
         }
+        dYL1Buffer.LockCons();
  
         Buffer<BufferType::L0C> dvL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
@@ -1913,11 +1720,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         
-        dYL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
-        if constexpr (IS_L1_PRELOAD) {
-            // 复用释放：与mm1(IterateMmDyV)中dy消费段的Lock<PIPE_MTE1>成对
-            dyL1PerBufMutex.template Unlock<PIPE_MTE1>(dyMutexIdx);
-        }
+        dYL1Buffer.UnlockCons();
 
         dvL0CBuffer.Set<HardEvent::M_FIX>();
         dvL0CBuffer.Wait<HardEvent::M_FIX>();
@@ -1935,12 +1738,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
         Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
         dvL0CBuffer.Set<HardEvent::FIX_M>();
-    }
-}
+    }}
  
 TEMPLATES_DEF
 class FAGBlockCubeDummy {
 public:
+    constexpr static uint32_t L1_MUTEX_ID_NUM = 0;
     __aicore__ inline FAGBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *pipe, FagTilingType tilingData,
                                               BufferManager<BufferType::L1> *l1BuffMgr){};
