@@ -298,11 +298,14 @@ private:
 
     __aicore__ inline void BuildRopeNzScatterIndex()
     {
-        for (uint32_t dim = 0U; dim < QKV_K_SCALE_HEAD_DIM_D128; ++dim) {
+        for (uint32_t dim = 0U; dim < QKV_K_SCALE_D128_HALF_SIZE; ++dim) {
             const uint32_t dBlock = dim / QKV_K_SCALE_NZ_C0;
             const uint32_t dInner = dim % QKV_K_SCALE_NZ_C0;
-            qkNzScatterIndexUb_.SetValue(
-                dim, static_cast<uint16_t>(dBlock * QK_PREPROCESS_UB_NZ_ROW_STRIDE * QKV_K_SCALE_NZ_C0 + dInner));
+            // BF16 values produced by f32->bf16 cast occupy one lane in each 32-bit slot.
+            qkNzScatterIndexUb_.SetValue(2U * dim,
+                                          static_cast<uint16_t>(dBlock * QK_PREPROCESS_UB_NZ_ROW_STRIDE *
+                                                                    QKV_K_SCALE_NZ_C0 +
+                                                                dInner));
         }
     }
 

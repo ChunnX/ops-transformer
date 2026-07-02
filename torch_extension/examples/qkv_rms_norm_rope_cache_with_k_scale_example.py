@@ -25,16 +25,11 @@ Example:
 
 import argparse
 from dataclasses import dataclass, replace
-from pathlib import Path
 import sys
 from typing import Dict, Iterable, List, Tuple
 
 import torch
 import torch_npu
-
-TORCH_EXTENSION_DIR = Path(__file__).resolve().parents[1]
-if str(TORCH_EXTENSION_DIR) not in sys.path:
-    sys.path.insert(0, str(TORCH_EXTENSION_DIR))
 
 HEAD_SIZE = 128
 DEFAULT_EPSILON = 1e-6
