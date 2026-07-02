@@ -104,7 +104,12 @@ bool GroupedQmmTiling::IsMxfp4() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingle() const
 {
-    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
+    auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    const bool separatedWeightShape = weightShape != nullptr &&
+        (weightShape->GetOriginShape().GetDimNum() == SPLIT_K_W_DIMS ||
+         weightShape->GetStorageShape().GetDimNum() == WEIGHTNZ_DIM_NUM - 1);
+    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX &&
+           (!inputParams_.isSingleW || separatedWeightShape) &&
            inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
