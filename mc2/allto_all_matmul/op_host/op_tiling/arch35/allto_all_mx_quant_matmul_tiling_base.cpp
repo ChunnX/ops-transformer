@@ -517,6 +517,12 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
         allToAllMatmulBuilder.withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype, hcclDtype)
             .withCommEngine(hcclServerEngine)
             .build();
+    if (hcclServerEngine == Mc2Comm::ENGINE_AICPU) {
+        const uint64_t commM = (inferredInfo_.tailM > inferredInfo_.tileM) ? inferredInfo_.tailM : inferredInfo_.tileM;
+        const uint64_t rankForComm = isMxFp4_ ? ((contextInfo_.args_.orgKValue + 1U) / 2U) :
+            contextInfo_.args_.orgKValue;
+        allToAllTilingConfig.SetDataCount(commM * rankForComm);
+    }
     if (!allToAllMatmulBuilder.isSuccess()) {
         OP_LOGE(opName_, "Allto All Matmul build hccl tiling config failed: %s",
                 allToAllMatmulBuilder.errorMsg().c_str());

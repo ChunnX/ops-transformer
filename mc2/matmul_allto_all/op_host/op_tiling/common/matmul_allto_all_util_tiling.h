@@ -191,6 +191,7 @@ private:
     uint16_t commBlockNum = 0;
     uint16_t queueNum = 0;
     uint8_t commEngine = 0;
+    uint64_t dataCount = 0;
 
     // 标识是否参与build操作,为false则跳过对应的set方法调用
     bool hasReduceType = false;
@@ -201,6 +202,7 @@ private:
     bool hasCommBlockNum = false;
     bool hasQueueNum = false;
     bool hasCommEngine = false;
+    bool hasDataCount = false;
 
     bool hasGotInit = false;
 
@@ -217,6 +219,7 @@ public:
         static constexpr const char *COMM_BLOCK_NUM = "commBlockNum";
         static constexpr const char *QUEUE_NUM = "queueNum";
         static constexpr const char *COMM_ENGINE = "commEngine";
+        static constexpr const char *DATA_COUNT = "dataCount";
     };
 
     struct AlgConfigType {
@@ -245,6 +248,7 @@ public:
     Mc2CcTilingConfigBuilder &withCommBlockNum(uint16_t commBlockNum);
     Mc2CcTilingConfigBuilder &withQueueNum(uint16_t queueNum);
     Mc2CcTilingConfigBuilder &withCommEngine(uint8_t commEngine);
+    Mc2CcTilingConfigBuilder &withDataCount(uint64_t dataCount);
 
     AscendC::Mc2CcTilingConfig build();
     bool isSuccess() const;

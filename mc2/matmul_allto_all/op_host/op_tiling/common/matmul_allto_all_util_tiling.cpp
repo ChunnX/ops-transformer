@@ -843,6 +843,13 @@ Mc2CcTilingConfigBuilder &Mc2CcTilingConfigBuilder::withCommEngine(uint8_t commE
     return *this;
 }
 
+Mc2CcTilingConfigBuilder &Mc2CcTilingConfigBuilder::withDataCount(uint64_t dataCount)
+{
+    this->dataCount = dataCount;
+    this->hasDataCount = true;
+    return *this;
+}
+
 AscendC::Mc2CcTilingConfig Mc2CcTilingConfigBuilder::build()
 {
     if (this->hasReduceType) {
@@ -877,6 +884,8 @@ AscendC::Mc2CcTilingConfig Mc2CcTilingConfigBuilder::build()
               [this]() { return this->mc2CcTilingConfig.SetQueueNum(this->queueNum); });
     setConfig(ConfigFile::COMM_ENGINE, this->hasCommEngine,
               [this]() { return this->mc2CcTilingConfig.SetCommEngine(this->commEngine); });
+    setConfig(ConfigFile::DATA_COUNT, this->hasDataCount,
+              [this]() { return this->mc2CcTilingConfig.SetDataCount(this->dataCount); });
     return this->mc2CcTilingConfig;
 }
 
