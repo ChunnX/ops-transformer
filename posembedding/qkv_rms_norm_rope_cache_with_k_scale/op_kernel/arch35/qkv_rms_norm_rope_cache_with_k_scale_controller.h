@@ -15,7 +15,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t QKV_LAYOUT>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleController {
 public:
     __aicore__ inline void Process(const GlobalTensors &tensors,
@@ -28,7 +28,7 @@ public:
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
-        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> basicBlock;
+        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT> basicBlock;
         TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
         basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
@@ -101,10 +101,10 @@ private:
         tile.aivTokenSize = aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
     }
 
-    __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> &basicBlock,
-                                           const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
-                                           const TokenRange &range,
-                                           TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
+    __aicore__ inline uint64_t
+    ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT> &basicBlock,
+                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range,
+                TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
     {
         uint64_t localTileId = 0U;
         for (uint64_t tokenOffset = range.begin; tokenOffset < range.end;) {

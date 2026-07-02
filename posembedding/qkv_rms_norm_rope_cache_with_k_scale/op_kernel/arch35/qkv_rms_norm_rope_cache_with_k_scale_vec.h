@@ -16,7 +16,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t QKV_LAYOUT>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
@@ -147,7 +147,8 @@ private:
     static constexpr uint32_t QK_PREPROCESS_BF16_NZ_BYTES = QKV_K_SCALE_OUTPUT_ONE_BUFFER_BYTES / 2U;
     static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS = QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
     static constexpr uint32_t QK_PREPROCESS_UB_NZ_ROW_STRIDE = QKV_K_SCALE_HEAD_DIM_D128;
-    static constexpr bool IS_TND = QKV_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
+    static constexpr bool QKV_IS_TND = QKV_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
+    static constexpr bool Q_OUT_IS_TND = Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
@@ -188,7 +189,7 @@ private:
         const LocalTensor<int32_t> slotMapping =
             slotMappingDbPoolUb_[inputBufferId * QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
         const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
-        if constexpr (IS_TND) {
+        if constexpr (QKV_IS_TND) {
             DataCopyGmToUb2D(input, qkvGm_[tile.aivTokenOffset * qkvHeadNum * headDim_], 1U,
                              tile.aivTokenSize * qkvHeadNum * headDim_, tile.aivTokenSize * qkvHeadNum * headDim_);
         } else {
@@ -263,16 +264,19 @@ private:
         uint32_t qOutputTokenStride;
         uint32_t kOutputTokenStride;
         uint32_t outputHeadStride;
-        if constexpr (IS_TND) {
+        if constexpr (QKV_IS_TND) {
             const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
             inputTokenStride = qkvHeadNum * QKV_K_SCALE_D128_FULL_SIZE;
             inputHeadStride = QKV_K_SCALE_D128_FULL_SIZE;
+        } else {
+            inputTokenStride = QKV_K_SCALE_D128_FULL_SIZE;
+            inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_K_SCALE_D128_FULL_SIZE;
+        }
+        if constexpr (Q_OUT_IS_TND) {
             qOutputTokenStride = static_cast<uint32_t>(qHeadNum_);
             kOutputTokenStride = static_cast<uint32_t>(kvHeadNum_);
             outputHeadStride = 1U;
         } else {
-            inputTokenStride = QKV_K_SCALE_D128_FULL_SIZE;
-            inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_K_SCALE_D128_FULL_SIZE;
             qOutputTokenStride = 1U;
             kOutputTokenStride = 1U;
             outputHeadStride = tokenCapacity;
@@ -345,7 +349,7 @@ private:
         const uint64_t vInputHeadBase = qHeadNum_ + kvHeadNum_;
         uint32_t inputTokenStride;
         uint32_t inputHeadStride;
-        if constexpr (IS_TND) {
+        if constexpr (QKV_IS_TND) {
             const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
             inputTokenStride = qkvHeadNum * QKV_K_SCALE_D128_FULL_SIZE;
             inputHeadStride = QKV_K_SCALE_D128_FULL_SIZE;
@@ -376,7 +380,7 @@ private:
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         // Q dynamic quant keeps two VF entries. NTD writes compact contiguous head-major q/q_scale
         // from a padded cube buffer; reusing the TND address formula can make NTD stores overlap.
-        if constexpr (IS_TND) {
+        if constexpr (Q_OUT_IS_TND) {
             AscendC::VF_CALL<QDynamicQuantD128TndVfImpl>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
                 (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
@@ -399,7 +403,7 @@ private:
         uint32_t inputTokenStride;
         uint32_t outputHeadStrideBytes;
         uint32_t outputTokenStrideBytes;
-        if constexpr (IS_TND) {
+        if constexpr (Q_OUT_IS_TND) {
             inputHeadStride = QKV_K_SCALE_D128_FULL_SIZE;
             inputTokenStride = static_cast<uint32_t>(kvHeadNum_) * QKV_K_SCALE_D128_FULL_SIZE;
             outputHeadStrideBytes = fp32RowBytes;
@@ -421,7 +425,7 @@ private:
                                          const LocalTensor<float> &qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
-        if constexpr (IS_TND) {
+        if constexpr (Q_OUT_IS_TND) {
             DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * qHeadNum_ * headDim_], qFp8, tile.aivTokenSize * qHeadNum_,
                              headDim_, headDim_, headDim_);
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset * qHeadNum_], qScale, 1U, tile.aivTokenSize * qHeadNum_,
@@ -443,7 +447,7 @@ private:
         const uint64_t kFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         uint64_t kUbTokenStride;
         uint64_t kUbHeadStride;
-        if constexpr (IS_TND) {
+        if constexpr (Q_OUT_IS_TND) {
             kUbTokenStride = kvHeadNum_ * kFp8SparseRowStride;
             kUbHeadStride = kFp8SparseRowStride;
         } else {

@@ -139,9 +139,9 @@ static ge::graphStatus ParseQOutLayout(gert::InferShapeContext *context, const g
         OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "q_out_layout", qOutLayout, "NTD or TND");
         return ge::GRAPH_FAILED;
     }
-    if (isNtd != qkvIsNtd) {
+    if (qkvIsNtd && isTnd) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", qOutLayout,
-                                              "q_out_layout must be the same as qkv_layout");
+                                              "qkv_layout=NTD with q_out_layout=TND is not supported");
         return ge::GRAPH_FAILED;
     }
     qOutIsNtd = isNtd;

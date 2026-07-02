@@ -46,6 +46,12 @@ constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 constexpr uint64_t TEST_LAYOUT_NTD = 0U;
 constexpr uint64_t TEST_LAYOUT_TND = 1U;
 constexpr uint64_t QKV_LAYOUT_TILING_KEY_SHIFT = 8U;
+constexpr uint64_t Q_OUT_LAYOUT_TILING_KEY_SHIFT = 12U;
+
+uint64_t EncodeQkvKScaleTilingKey(uint64_t qkvLayout, uint64_t qOutLayout)
+{
+    return (qkvLayout << QKV_LAYOUT_TILING_KEY_SHIFT) | (qOutLayout << Q_OUT_LAYOUT_TILING_KEY_SHIFT);
+}
 
 struct TilingRunOptions {
     uint64_t aicNum = 32U;
@@ -185,6 +191,7 @@ struct ConcurrentTilingCase {
     uint64_t coreTokenTile;
     uint64_t coreGroupNum;
     uint64_t qkvLayout = TEST_LAYOUT_NTD;
+    uint64_t qOutLayout = TEST_LAYOUT_NTD;
 };
 
 struct ConcurrentTilingResult {
@@ -252,7 +259,7 @@ std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
 
 std::vector<TensorSpec> BuildTilingOutputSpecs(const ContractInput &input)
 {
-    const bool isTnd = input.qkvLayout == TEST_LAYOUT_TND;
+    const bool isTnd = input.qOutLayout == TEST_LAYOUT_TND;
     std::vector<TensorSpec> outputs;
     outputs.reserve(5U);
     gert::Shape qOutShape;
@@ -290,7 +297,7 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     attrs.push_back(gert::TilingContextPara::OpAttr("qkv_layout",
         Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
     attrs.push_back(gert::TilingContextPara::OpAttr("q_out_layout",
-        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
+        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qOutLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
     attrs.push_back(
         gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
     return attrs;
@@ -504,6 +511,7 @@ struct CsvTilingCase {
     uint64_t headDim = 128;
     uint64_t aicNum = 32;
     uint64_t qkvLayout = TEST_LAYOUT_NTD;
+    uint64_t qOutLayout = TEST_LAYOUT_NTD;
     ge::graphStatus expectedStatus = ge::GRAPH_SUCCESS;
     uint64_t tokenTile = 0;
     uint64_t tokenTilePerAiv = 0;
@@ -660,6 +668,15 @@ void ApplyRunOptionUpdate(TilingRunOptions &options, const std::string &field, c
     }
 }
 
+void ApplyInputUpdate(ContractInput &input, const std::string &field, const std::string &value)
+{
+    if (field == "qOutLayout") {
+        input.qOutLayout = ParseLayout(value);
+        return;
+    }
+    throw std::invalid_argument("unknown input update field: " + field);
+}
+
 void ApplyCsvUpdate(ContractInput &input, TilingRunOptions &options, const std::string &update)
 {
     const std::string trimmed = ops::ut::Trim(update);
@@ -672,8 +689,13 @@ void ApplyCsvUpdate(ContractInput &input, TilingRunOptions &options, const std::
         throw std::invalid_argument("bad csv update: " + trimmed);
     }
     if (dotPos == std::string::npos || dotPos > equalPos) {
-        ApplyRunOptionUpdate(options, ops::ut::Trim(trimmed.substr(0, equalPos)),
-            ops::ut::Trim(trimmed.substr(equalPos + 1)));
+        const std::string field = ops::ut::Trim(trimmed.substr(0, equalPos));
+        const std::string value = ops::ut::Trim(trimmed.substr(equalPos + 1));
+        if (field == "qOutLayout") {
+            ApplyInputUpdate(input, field, value);
+        } else {
+            ApplyRunOptionUpdate(options, field, value);
+        }
         return;
     }
     ApplyTensorUpdate(input, trimmed);
@@ -700,6 +722,7 @@ CsvTilingCase ParseCsvCase(const std::vector<std::string> &cols)
     item.headDim = ParseU64(CsvColumn(cols, 6), 128U);
     item.aicNum = ParseU64(CsvColumn(cols, 7), 32U);
     item.qkvLayout = ParseLayout(CsvColumn(cols, 8));
+    item.qOutLayout = item.qkvLayout;
     item.expectedStatus = ParseGraphStatus(CsvColumn(cols, 9));
     item.tokenTile = ParseU64(CsvColumn(cols, 10));
     item.tokenTilePerAiv = ParseU64(CsvColumn(cols, 11));
@@ -786,7 +809,10 @@ void ExpectTilingKey(const CsvTilingCase &item, const ContractInput &input, cons
 {
     const uint64_t expectedLayout =
         input.qkvLayout == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
-    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), expectedLayout << QKV_LAYOUT_TILING_KEY_SHIFT)
+    const uint64_t expectedQOutLayout =
+        input.qOutLayout == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
+    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey),
+        EncodeQkvKScaleTilingKey(expectedLayout, expectedQOutLayout))
         << "caseName=" << item.caseName;
 }
 
@@ -862,6 +888,7 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
     const auto &item = GetParam();
     auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
     input.qkvLayout = item.qkvLayout;
+    input.qOutLayout = item.qOutLayout;
     RefreshShapes(input);
     TilingRunOptions options;
     options.aicNum = item.aicNum;
@@ -918,11 +945,11 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
     constexpr uint32_t ITERATIONS = 64U;
     std::vector<ConcurrentTilingCase> cases;
     cases.reserve(5U);
-    cases.push_back({128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32});
-    cases.push_back({512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 2, 16, 32});
-    cases.push_back({1024, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 32, 32});
-    cases.push_back({128, 128, 8, 8, 128, 32, ge::GRAPH_FAILED, 0, 0, 0});
-    cases.push_back({128, 16, 2, 2, 64, 32, ge::GRAPH_FAILED, 0, 0, 0});
+    cases.push_back({128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32, TEST_LAYOUT_NTD, TEST_LAYOUT_NTD});
+    cases.push_back({512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 2, 16, 32, TEST_LAYOUT_NTD, TEST_LAYOUT_NTD});
+    cases.push_back({1024, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 32, 32, TEST_LAYOUT_NTD, TEST_LAYOUT_NTD});
+    cases.push_back({128, 128, 8, 8, 128, 32, ge::GRAPH_FAILED, 0, 0, 0, TEST_LAYOUT_NTD, TEST_LAYOUT_NTD});
+    cases.push_back({128, 16, 2, 2, 64, 32, ge::GRAPH_FAILED, 0, 0, 0, TEST_LAYOUT_NTD, TEST_LAYOUT_NTD});
     std::atomic<bool> start(false);
     std::array<ConcurrentTilingResult, THREAD_COUNT> results;
     std::array<std::thread, THREAD_COUNT> threads;
@@ -937,6 +964,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
                 const auto &item = cases[caseIdx];
                 auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
                 input.qkvLayout = item.qkvLayout;
+                input.qOutLayout = item.qOutLayout;
                 RefreshShapes(input);
                 TilingInfo tilingInfo;
                 const bool success = ExecuteTilingForInput(input, tilingInfo, item.aicNum);
