@@ -83,6 +83,20 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersTndOutputAndCacheShapes)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersTndInputNtdOutputAndCacheShapes)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    auto inputs = BuildInputs();
+    inputs[0] = {{{17, 20, 128}, {17, 20, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+                                     BuildAttrs(headNums, "TND", "NTD"));
+
+    std::vector<std::vector<int64_t>> expected = {
+        {16, 17, 128}, {16, 17}, {8, 2, 128, 128}, {8, 2, 128, 128}, {8, 2, 128, 1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidQkvLayout)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
@@ -126,7 +140,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidQOutLayout)
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsQOutLayoutMismatch)
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNtdInputTndQOutLayout)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),

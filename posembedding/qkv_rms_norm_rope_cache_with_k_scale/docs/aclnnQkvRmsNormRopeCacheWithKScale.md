@@ -284,7 +284,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">qOutLayout（const char*）</td>
       <td>输入</td>
       <td><code>qOut</code>和<code>qScale</code>的N/T轴布局标识。</td>
-      <td><ul><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li><li>不支持空指针。</li><li>当前实现要求与<code>qkvLayout</code>一致。</li></ul></td>
+      <td><ul><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li><li>不支持空指针。</li><li>当前不支持<code>qkvLayout="NTD"</code>、<code>qOutLayout="TND"</code>。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -443,9 +443,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
 - 输入shape限制：
   - 当前实现仅支持`D=128`。
-  - `qkvLayout`和`qOutLayout`必须相同；`qkv`、`qOut`、`qScale`必须保持相同N/T布局：
-    - `qkvLayout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
-    - `qkvLayout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
+  - `qkvLayout`控制`qkv`的N/T轴布局，`qOutLayout`控制`qOut`和`qScale`的N/T轴布局：
+    - `qkvLayout="TND"`，`qOutLayout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
+    - `qkvLayout="TND"`，`qOutLayout="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
+    - `qkvLayout="NTD"`，`qOutLayout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
 - 输入值域限制：
