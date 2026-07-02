@@ -12,6 +12,7 @@
 
 #include <string>
 
+#include "grouped_matmul_activation_quant_common.h"
 #include "gmm/common/op_host/log_format_util.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/data_type_utils.h"
@@ -28,16 +29,6 @@ using Ops::Transformer::Gmm::FormatString;
 namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulActivationQuant);
 
-namespace {
-constexpr int64_t X_M_DIM_INDEX = 0L;
-constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1L;
-constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2L;
-constexpr int64_t MX_GROUP_SIZE = 64L;
-constexpr int64_t MX_SCALE_PAIR = 2L;
-constexpr size_t FIRST_TENSOR_INDEX = 0UL;
-constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
-} // namespace
-
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *bias, const aclTensor *xScale, const char *activationType, bool transposeWeight,
@@ -47,7 +38,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     L0_DFX(GroupedMatmulActivationQuant, x, groupList, weight, weightScale, bias, xScale, activationType,
            transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax);
     if (executor == nullptr || x == nullptr || weightScale == nullptr || weightScale->Size() == 0 ||
-        (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
+        (*weightScale)[gmaq::FIRST_TENSOR_INDEX] == nullptr) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("GroupedMatmulActivationQuant", "executor, x and weightScale",
             FormatString("executor=%s, x=%s, weightScale=%s", executor == nullptr ? "nullptr" : "not nullptr",
                          x == nullptr ? "nullptr" : "not nullptr",
@@ -56,19 +47,19 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
         return std::tuple(nullptr, nullptr);
     }
 
-    int64_t m = x->GetViewShape().GetDim(X_M_DIM_INDEX);
-    const auto &weightScaleShape = (*weightScale)[FIRST_TENSOR_INDEX]->GetViewShape();
-    if (weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM) {
+    int64_t m = x->GetViewShape().GetDim(gmaq::X_M_DIM_INDEX);
+    const auto &weightScaleShape = (*weightScale)[gmaq::FIRST_TENSOR_INDEX]->GetViewShape();
+    if (weightScaleShape.GetDimNum() != gmaq::WEIGHT_SCALE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulActivationQuant", "weightScale",
             std::to_string(weightScaleShape.GetDimNum()),
             "the shape dim of weightScale must be 4");
         return std::tuple(nullptr, nullptr);
     }
-    int64_t n = transposeWeight ? weightScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
-                                  weightScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
+    int64_t n = transposeWeight ? weightScaleShape.GetDim(gmaq::WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                                  weightScaleShape.GetDim(gmaq::WEIGHT_SCALE_N_DIM_INDEX);
     gert::Shape outShape({m, n});
-    int64_t scaleN = static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE));
-    gert::Shape scaleOutShape({m, scaleN, MX_SCALE_PAIR});
+    int64_t scaleN = static_cast<int64_t>(Ops::Base::CeilDiv(n, gmaq::MX_GROUP_SIZE));
+    gert::Shape scaleOutShape({m, scaleN, gmaq::MX_SCALE_PAIR});
     auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(yDtype), ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
     if (out == nullptr || scaleOut == nullptr) {
