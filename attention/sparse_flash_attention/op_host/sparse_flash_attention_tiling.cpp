@@ -1401,7 +1401,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
             std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
     
-    if (isA5_) {            
+    if (isA5_) {
         OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == SFALayout::BSND),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "query",
                 std::to_string(s1Size_).c_str(),
