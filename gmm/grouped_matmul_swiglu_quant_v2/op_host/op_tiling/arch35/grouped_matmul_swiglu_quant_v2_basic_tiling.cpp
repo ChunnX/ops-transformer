@@ -290,9 +290,19 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4Input() const
     return IsFp4(inputParams_.aDtype) && IsFp4(inputParams_.bDtype);
 }
 
+bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input() const
+{
+    return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 {
     return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp8WeightNz() const
+{
+    return IsFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
