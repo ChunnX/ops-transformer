@@ -289,7 +289,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>quantMode</td>
         <td>输入</td>
         <td>表示量化模式。</td>
-        <td>支持传入nullptr或空字符串。当前仅支持"MX"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"。若显式传入非"MX"，则报错。</td>
+        <td>支持传入nullptr或空字符串。当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"mx"。若显式传入非"mx"，则报错。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -544,7 +544,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           </table>
 
         - activationType仅支持"gelu_tanh"。
-        - quantMode显式传入时当前仅支持"MX"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"；否则报错。
+        - quantMode显式传入时当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"mx"；否则报错。
         - N必须为64整数倍。
         - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
         - y支持FLOAT8_E4M3FN、FLOAT8_E5M2。
@@ -780,7 +780,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         aclIntArray *tuningConfig = nullptr;
         const char *activationType = "gelu_tanh";
         int64_t groupListType = 1;
-        const char *quantMode = "MX";
+        const char *quantMode = "mx";
         const char *roundMode = "rint";
         int64_t scaleAlg = 0;
         float dstTypeMax = 0.0F;
