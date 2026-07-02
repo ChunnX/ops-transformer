@@ -99,7 +99,6 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 // a4w4 NZ 场景：weight1/weight2 均为 fp4 NZ 格式。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
-// 
 constexpr int64_t TOPO_TYPE_MTE = 0U; // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
@@ -244,16 +243,19 @@ struct WorkspaceInfo {
                 static_cast<int64_t>(ALIGN_512));
 
             combineCommDataPtr = base + workspaceSize;
-            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(uint32_t)), (int64_t)ALIGN_32); //todo: 16_t
-            //每个 token 含数据+三元组(32B)
-            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-            uint32_t maxDataSize = Ops::Base::CeilAlign((int64_t)(tilingData->bs *  maxDataSizePerToken * 
-                                   tilingData->expertPerRank  * tilingData->epWorldSize) , (int64_t)ALIGN_512);
+            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+                                                                  sizeof(uint32_t)), (int64_t)ALIGN_32);
+            // 每个 token 含数据+三元组(32B)
+            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
+                (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+            uint32_t maxDataSize = Ops::Base::CeilAlign((int64_t)(tilingData->bs * maxDataSizePerToken *
+                tilingData->expertPerRank * tilingData->epWorldSize), (int64_t)ALIGN_512);
             workspaceSize += maxDataSize;
 
-            combineCommNotifyPtr = base + workspaceSize; //todo: 100KB 通知区
+            combineCommNotifyPtr = base + workspaceSize;
             // 每个 expert 分配一个 int32 通知
-            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
+            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)),
+                (int64_t)ALIGN_512);
             workspaceSize += maxNotifySize;
         }
     }

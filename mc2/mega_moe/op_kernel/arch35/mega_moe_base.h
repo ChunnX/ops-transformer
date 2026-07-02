@@ -48,7 +48,8 @@ struct PeermemInfo {
     GM_ADDR dispatchRecivePtr;       // dispatch 1级通信区,
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1, uint32_t serverNum = 1)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
+                                  uint32_t serverNum = 1)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -79,11 +80,10 @@ struct PeermemInfo {
             uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
                 static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
-            uint32_t tokenBytes = Ops::Base::CeilAlign(static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + 
-                scaleBytes, static_cast<uint32_t>(ALIGN_32)) + ALIGN_32), static_cast<int64_t>(ALIGN_512));  
+            uint32_t tokenBytes = Ops::Base::CeilAlign(static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes,
+                static_cast<uint32_t>(ALIGN_32)) + ALIGN_32), static_cast<int64_t>(ALIGN_512));
             offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t) * serverNum),
                 (int64_t)ALIGN_512);
-            
         }
         combineSendPtr = base + offset;
     }
