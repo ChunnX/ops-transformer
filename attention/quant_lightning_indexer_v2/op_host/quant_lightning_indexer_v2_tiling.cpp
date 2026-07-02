@@ -488,7 +488,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
                 OP_LOGE(opName_, "when layout_q is TND and layout_k is PA_BBND, "
                     "input cu_seqlens_q's shape must equal seqused_k's shape + 1"),
                 return ge::GRAPH_FAILED);
-        } else if (kLayout_ == DataLayout::TND){
+        } else if (kLayout_ == DataLayout::TND) {
             // q、k都为TND, cuSeqlensQ与cuSeqlensK维度一致校验
             OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor->GetStorageShape().GetShapeSize() !=
                 opParamInfo_.cuSeqLensK.tensor->GetStorageShape().GetShapeSize(),
@@ -833,7 +833,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             if (*opParamInfo_.returnValue == 1 && opParamInfo_.sparseValues.shape != nullptr) {
                 OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0) != qTsize),
                     OP_LOGE(opName_, "TND case input query and sparse_values dim 0 are %u, %ld "
-                        "respectively, they must be same.", qTsize, 
+                        "respectively, they must be same.", qTsize,
                         opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0)),
                     return ge::GRAPH_FAILED);
             }
@@ -929,7 +929,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                 OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
                 return ge::GRAPH_FAILED);
-            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
+            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) !=
+                *opParamInfo_.sparseCount),
                 OP_LOGE(opName_, "input query and output sparse_values last dim must be same as attr topk."),
                 return ge::GRAPH_FAILED);
         }
