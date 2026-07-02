@@ -9,20 +9,21 @@
  */
 
 /*!
- * \file flash_attn_kernel_noquant_gqa.h
- * \brief
+ * \file flash_attn_kernel_noquant_gqa_nd.h
+ * \brief FlashAttentionNoQuantGqaKernelNd —— Nd 路径专用 kernel 模板（独立类）。
  */
 
-#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
-#define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
+#define FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
 
+#include "adv_api/activation/softmax.h" // SoftmaxConfig / SoftmaxMode，fia_public_define.h 依赖
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "flash_attn_block_cube_noquant_gqa.h"
-#include "flash_attn_block_vec_noquant_gqa.h"
+#include "flash_attn_block_cube_noquant_gqa_nd.h"
+#include "flash_attn_block_vec_noquant_gqa_nd.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
@@ -40,18 +41,21 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernel {
+template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+class FlashAttentionNoQuantGqaKernelNd {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
-
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+    using T = float;
+    using SEQLEN_T = uint32_t;
+    using INPUT_T = typename FA_T::inputType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool BMM2_TOUB = FA_T::bmm2Write2Ub;
+    static constexpr bool HAS_MASK = FA_T::hasMask;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
@@ -63,68 +67,38 @@ public:
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
+    // ===== 静态 cross-core 事件 ID（避开 6、7，Set/Wait 对称）=====
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
+    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    static constexpr uint32_t CC_BMM1_0 = 0U;   // bmm1 ping（BOTH 双向）
+    static constexpr uint32_t CC_BMM1_1 = 1U;   // bmm1 pong
+    static constexpr uint32_t CC_BMM2_0 = 2U;   // bmm2 slot0 / ping
+    static constexpr uint32_t CC_BMM2_1 = 3U;   // bmm2 slot1 / pong
+    static constexpr uint32_t CC_BMM2_2 = 4U;   // bmm2 slot2（仅 GM 三缓冲）
+    static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
+    static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
+    static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
+    // 与上面静态分配的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子(__mix__(1,2)) 的标准做法。
+    // 不再使用 CrossCoreSetFlag<0> 自实现 barrier ：手动 mode 0 + PIPE_ALL 在某些时序下会
+    // 触发 aicore subErrType 0x4 trap（见 base04_aicore.log），SyncAll 内部封装更稳健。
 
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
-
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
-    // CV buffers
-    BufferManager<BufferType::GM> gmBufferManager;
-    BufferManager<BufferType::UB> ubBufferManager;
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-
-    GlobalTensor<int32_t> cuSeqLensGmQ;
-    GlobalTensor<int32_t> cuSeqLensGmKv;
-    GlobalTensor<int32_t> seqUsedGmQ;
-    GlobalTensor<int32_t> seqUsedGmKv;
-    GlobalTensor<uint32_t> faMetaDataGm;
-    GlobalTensor<uint32_t> fdMetaDataGm;
-    GlobalTensor<float> softmaxLseGm;
-    GlobalTensor<INPUT_T> sinkGm;
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-
     ConstInfoX constInfo;
 
+    SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool;
+    SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool;
+
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
-    TPipe *pipe;
+
+    // block define
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
 
-    uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
-    uint32_t totalSize = 0U;
-    uint32_t createdTaskCount = 0U;
-    uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
-
-    // schduler params
-    uint64_t actSeqLensKv = 0;
-    uint64_t actSeqLensQ = 0;
-    int32_t s1SizeCurrBatch = 0;
-    uint32_t curS2Start;
-    uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
-    uint32_t mloop = 0;
-    bool headS2Split = false;
-    bool tailS2Split = false;
-    bool emptyBatch = false;
-    uint32_t dealZerosMSize = 0;
-
+    // 分核信息
+    GlobalTensor<uint32_t> faMetaDataGm;
+    GlobalTensor<uint32_t> fdMetaDataGm;
     // metadata
     uint32_t sectionNum_;
     bool isFd;
@@ -139,96 +113,74 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    //  Shared buffer between fa and fd
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2]; // 共用
-    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
-    TBuf<> SharedBuffer3;                          // 共用
+    // input and output global tensor
+    GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<INPUT_T> sinkGm;
 
-    // 非tnd时不使用cuSeqLens，这里保证定义
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
-        qCuSeqLensParser;
+    // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
+    LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
+    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
+    LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
+    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
 
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
-        kvCuSeqLensParser;
-
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
+    // schduler params
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t curS2Start;
+    uint32_t curS2End = 0;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
+    uint32_t mloop = 0;
+    bool headS2Split = false;
+    bool tailS2Split = false;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+    __aicore__ inline FlashAttentionNoQuantGqaKernelNd() :
+        cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+        vecFaBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+        vecFdBlock(constInfo, qSeqLensTool, kvSeqLensTool) {};
+
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
-        this->pipe = tPipe;
         this->tilingData = tiling;
 
         InitConstInfo();
 
-        keyPtr = key;
-        valuePtr = value;
-
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
-        } else {
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
-        }
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
-        } else {
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
-        }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
         isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
-        
-        InitQCuSeqLensParser();
-        InitKvCuSeqLensParser();
+
+        qSeqLensTool.Init(cuSeqLensQ, constInfo.cuSeqLensQSize, seqUsedQ, constInfo.seqUsedQSize, constInfo.s1Size);
+        kvSeqLensTool.Init(cuSeqLensKv, constInfo.cuSeqLensKVSize, seqUsedKv, constInfo.seqUsedKvSize, constInfo.s2Size);
 
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
             fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
+                (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                    FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
-                                        attentionOut, workspace);
-                vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
-            } else {
-                vecFaBlock.InitVecBlock(tPipe, seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
-                                        workspace);
-                vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
-            }
+            vecFaBlock.InitVecBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qCuSeqLensParser,
-                                        kvCuSeqLensParser);
-            } else {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qSeqUsedParser,
-                                        kvSeqUsedParser);
-            }
+            cubeBlock.InitCubeBlock(query, key, value, blockTable);
         }
         if (isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
-                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm, keyPtr);
+                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm);
                 if (learnableSink != nullptr) {
                     sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
                     constInfo.learnableSinkFlag = true;
@@ -238,61 +190,40 @@ public:
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
                 }
-                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
-                } else {
-                    vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
-                }
             }
         }
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
-        uint32_t mm1OutDtype = sizeof(T);
+        constexpr uint32_t mm1SlotSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+        constexpr uint32_t mm2SlotSize = BMM2_TOUB ?
+            (mBaseSize / CV_RATIO * dVBaseSize * sizeof(T)) : 0U;
+        constexpr uint32_t l1PSlotSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t bmm1UbBase  = 2U * mm2SlotSize; // bmm2 在前，bmm1 在后
 
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        constexpr uint32_t L1_BUFFER_SIZE = 524288; // 512 * 1024
-        l1BufferManager.Init(pipe, L1_BUFFER_SIZE);
-        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        // bmm2 双缓冲（仅 BMM2_TOUB）
         if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2);
+            bmm2UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, 0U,          mm2SlotSize);
+            bmm2UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, mm2SlotSize, mm2SlotSize);
         }
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+        // bmm1 双缓冲
+        bmm1UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase,               mm1SlotSize);
+        bmm1UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase + mm1SlotSize, mm1SlotSize);
 
-        // GM Buffer
+        // l1P 三缓冲
+        l1PSlot[0] = LocalTensor<uint8_t>(TPosition::A1, 0U,               l1PSlotSize);
+        l1PSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1PSlotSize,      l1PSlotSize);
+        l1PSlot[2] = LocalTensor<uint8_t>(TPosition::A1, 2U * l1PSlotSize, l1PSlotSize);
+
+        // bmm2 GM 三缓冲（仅 !BMM2_TOUB）
         if constexpr (!BMM2_TOUB) {
-            // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-            int64_t mm2ResultSize = mBaseSize * constInfo.dBasicBlock;
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
-            // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
-            gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
-            bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
-        }
-    }
-
-    __aicore__ inline void InitQCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
-        } else {
-            qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
-        }
-    }
-
-    __aicore__ inline void InitKvCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
-        } else {
-            kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
+            int64_t mm2GmSlotElems = mBaseSize * constInfo.dBasicBlock;
+            int64_t prevCoreOffset = constInfo.aicIdx * 3 * mm2GmSlotElems;
+            bmm2GmSlot[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset);
+            bmm2GmSlot[1].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + mm2GmSlotElems);
+            bmm2GmSlot[2].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + 2 * mm2GmSlotElems);
+            workspace = workspace + constInfo.coreNum * 3 * mm2GmSlotElems * sizeof(T);
         }
     }
 
@@ -347,34 +278,6 @@ public:
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
-            }
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
-        }
-        if ASCEND_IS_AIV {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
-        }
-    }
-
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         // AICPU metadata format: 16 fields per AIC core, 0-indexed (no leading CORE_ENABLE).
@@ -386,6 +289,42 @@ public:
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
+    __aicore__ inline void CrossCoreBufferInit()
+    {
+        if ASCEND_IS_AIV {
+            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
+            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
+            //   - AIV0 SetFlag(N)  →  AIC's flagId N
+            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
+            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
+            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
+            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
+            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
+            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
+            if constexpr (BMM2_TOUB) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
+            }
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
+        }
+    }
+
+    __aicore__ inline void CrossCoreBufferUnInit()
+    {
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
+            if constexpr (BMM2_TOUB) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
+            }
+        }
+    }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
         if (constInfo.aicIdx >= constInfo.coreNum) {
@@ -396,7 +335,7 @@ public:
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
-        createdTaskCount = 0;
+        uint32_t createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
         headS2Split = false;
@@ -457,20 +396,8 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
-            } else {
-                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
-                } else {
-                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
-                }
-            }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
-            } else {
-                actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
-            }
+            actSeqLensQ = qSeqLensTool.GetActualSeqLength(bIdx);
+            actSeqLensKv = kvSeqLensTool.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
@@ -557,7 +484,7 @@ public:
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
-        if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
+        if constexpr (GetOutUbFormat<LAYOUT_T>() == UbFormat::S1G) {
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
         } else {
@@ -573,10 +500,10 @@ public:
         }
 
         // 3. trans index of token to index of block
-        int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
-        int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         uint32_t s2StartWithSparse = 0U;
         uint32_t s2EndWithSparse = 0U;
+        int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
+        int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
@@ -631,29 +558,47 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        uint32_t slotIdx = runInfo.loop % 2U;
+        auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
+        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
+        uint32_t l1PIdx  = runInfo.loop % 3U;
+        uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
-            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
+                                  l1PTensor, l1PCcId, runInfo);
         } else {
-            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
+            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
+                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
+                                  l1PTensor, l1PCcId, runInfo);
         }
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        uint32_t bmm1Slot = runInfo.loop % 2U;
+        uint32_t l1PIdx   = runInfo.loop % 3U;
+        uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
+        auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
+        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
         if constexpr (BMM2_TOUB) {
-            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
         } else {
-            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
+            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
+                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
         }
     }
 
@@ -672,7 +617,7 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
@@ -694,7 +639,16 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        info.isChangeBatch = false;
+        if (constInfo.isKvContinuous) {
+            info.isChangeBatch = false;
+        } else {
+            // for tensor-list
+            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
+                info.isChangeBatch = true;
+            } else {
+                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+            }
+        }
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -706,13 +660,7 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
+        info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -770,15 +718,47 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
+        vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
+        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
+        // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
+        // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
+        // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                vecFaBlock.DrainMaskReverseSync();
+            }
+        }
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        SyncAll();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                // 排干 FA AllocEventID 预置的 stage2OutBuf 释放 flag，避免与 FD 共享 UB 区时残留污染
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::stage2OutBufFreeEventId);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::stage2OutBufFreeEventId);
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+        }
+        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
+        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
-        vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
+        AscendC::SyncAll();
         vecFdBlock.FreeEventID();
+        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
+        // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                vecFaBlock.PresetMaskReverseSync();
+            }
+        }
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
@@ -810,12 +790,13 @@ public:
         fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
+
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
-                vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
+                vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
             } else {
                 cubeBlock.InitBuffers();
@@ -840,8 +821,8 @@ public:
             CrossCoreBufferUnInit();
         }
     }
-}; // FlashAttentionNoQuantGqaKernel
+}; // FlashAttentionNoQuantGqaKernelNd
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
