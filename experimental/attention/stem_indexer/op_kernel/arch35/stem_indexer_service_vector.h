@@ -527,7 +527,7 @@ __aicore__ inline void SIVector<SIT>::RunTopKFourRows(
     if (isFirstS2InnerLoop) {
         vector1::PadMrgFourRowsFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
                                               mBaseIdx, batchRowNum, MAX_TOPK_COUNT + trunkLen_,
-                                              trunkLen_, initialBlocks_);
+                                              trunkLen_);
     } else {
         vector1::PadMrgFourRowsNotFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
                                                  mBaseIdx, batchRowNum,
@@ -632,6 +632,12 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
     indiceLenCopyParams.srcStride = 0;
     indiceLenCopyParams.dstStride = 0;
+
+    if (isFirstS2InnerLoop && initialBlocks_ > 0) {
+        vector1::PadMrgRowsInitBlockVF(mrgValueLocal_, MAX_TOPK_COUNT + trunkLen_,
+                                       (uint32_t)curAivGS1ProcNum, TOPK_ALIGN_SIZE,
+                                       (uint32_t)initialBlocks_);
+    }
 
     for (uint32_t mBaseIdx = 0; mBaseIdx < (uint32_t)curAivGS1ProcNum; mBaseIdx += TOPK_ROW_BATCH) {
         uint32_t batchRowNum = ((uint32_t)curAivGS1ProcNum - mBaseIdx > TOPK_ROW_BATCH) ?

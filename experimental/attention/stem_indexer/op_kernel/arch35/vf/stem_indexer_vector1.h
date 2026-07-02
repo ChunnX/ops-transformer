@@ -184,14 +184,12 @@ __simd_vf__ inline void PadMrgSingleRowRangeVFImpl(__ubuf__ uint32_t* rowBuf,
 __simd_vf__ inline void PadMrgOneRowFirstS2RangeVFImpl(__ubuf__ uint32_t* rowBuf,
                                                       const uint32_t topkSelectNum,
                                                       const uint32_t s2BlockValidLen,
-                                                      const uint32_t s2BlockValidLenAlign,
-                                                      const uint32_t initialBlocks)
+                                                      const uint32_t s2BlockValidLenAlign)
 {
     const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
     PadMrgRowRangeVFCore(rowBuf,
                          topkSelectNumAlign + s2BlockValidLen,
                          topkSelectNumAlign + s2BlockValidLenAlign);
-    PadMrgRowRangeVFCore(rowBuf, topkSelectNumAlign, topkSelectNumAlign + initialBlocks);
 }
 
 __simd_vf__ inline void PadMrgOneRowNotFirstS2RangeVFImpl(__ubuf__ uint32_t* rowBuf,
@@ -220,34 +218,24 @@ __simd_vf__ inline void PadMrgRowsRangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
     }
 }
 
-__aicore__ inline void PadMrgRangeScalarDuplicate(LocalTensor<uint32_t> rowLocal,
-                                                  const uint32_t padStart,
-                                                  const uint32_t padEnd)
+__simd_vf__ inline void PadMrgRowsInitBlockVFImpl(__ubuf__ uint32_t* mrgValueBuf,
+                                                 const uint32_t rowStride,
+                                                 const uint32_t rowNum,
+                                                 const uint32_t topkSelectNumAlign,
+                                                 const uint32_t initialBlocks)
 {
-    if (padEnd <= padStart) {
-        return;
-    }
+    MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskInit;
+    MicroAPI::RegTensor<int32_t> regIdx;
+    MicroAPI::RegTensor<uint32_t> regZero;
+    MicroAPI::Duplicate(regZero, 0U, maskAll);
+    MicroAPI::Arange(regIdx, 0);
+    MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskInit, (MicroAPI::RegTensor<uint32_t>&)regIdx,
+                                              initialBlocks, maskAll);
 
-    constexpr uint32_t VEC_REPEAT_SIZE = 64U;
-    uint32_t cur = padStart;
-    const uint32_t headOffset = cur % VEC_REPEAT_SIZE;
-    if (headOffset != 0U) {
-        const uint32_t blockBase = cur - headOffset;
-        const uint32_t blockEnd = blockBase + VEC_REPEAT_SIZE;
-        const uint32_t headEnd = (padEnd < blockEnd) ? padEnd : blockEnd;
-        const uint32_t endOffset = headEnd - blockBase;
-        uint64_t mask[1];
-        uint64_t endMask = ~0ULL;
-        if (endOffset < VEC_REPEAT_SIZE) {
-            endMask = (1ULL << endOffset) - 1ULL;
-        }
-        mask[0] = (~0ULL << headOffset) & endMask;
-        AscendC::Duplicate(rowLocal[blockBase], (uint32_t)0, mask, 1, 1, 0);
-        cur = headEnd;
-    }
-
-    if (cur < padEnd) {
-        AscendC::Duplicate(rowLocal[cur], (uint32_t)0, padEnd - cur);
+    for (uint32_t rowIdx = 0; rowIdx < rowNum; rowIdx++) {
+        __ubuf__ uint32_t* rowBuf = mrgValueBuf + rowIdx * rowStride + topkSelectNumAlign;
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(rowBuf, regZero, maskInit);
     }
 }
 
@@ -264,14 +252,27 @@ __aicore__ inline void PadMrgSingleRowRangeVF(const LocalTensor<uint32_t> &mrgVa
     PadMrgSingleRowRangeVFImpl(mrgValueBuf + rowOffset, padStart, padEnd);
 }
 
+__aicore__ inline void PadMrgRowsInitBlockVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                            const uint32_t rowStride,
+                                            const uint32_t rowNum,
+                                            const uint32_t topkSelectNumAlign,
+                                            const uint32_t initialBlocks)
+{
+    if (rowNum == 0U || initialBlocks == 0U) {
+        return;
+    }
+
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    PadMrgRowsInitBlockVFImpl(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+}
+
 __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
                                                    const LocalTensor<uint32_t> &topkNumLocal,
                                                    const LocalTensor<uint32_t> &s2BlockValidLenLocal,
                                                    const uint32_t mBaseIdx,
                                                    const uint32_t batchRowNum,
                                                    const uint32_t rowStride,
-                                                   const uint32_t trunkLen,
-                                                   const uint32_t initialBlocks)
+                                                   const uint32_t trunkLen)
 {
     if (batchRowNum == 0U) {
         return;
@@ -284,18 +285,9 @@ __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<uint32_t> 
         const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
         const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
         const uint32_t rowOffset = mInnerIdx * rowStride;
-        const uint32_t topkSelectNumAlign = SICommon::Align(topkSelectNum, 256U);
-        // 定位补丁：暂时注释 VF padding，改用基线风格 scalar Duplicate 验证 window/tail 是否被清干净。
-        // PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
-        //                                topkSelectNum, s2BlockValidLen,
-        //                                s2BlockValidLenAlign, initialBlocks);
-        (void)mrgValueBuf;
-        PadMrgRangeScalarDuplicate(mrgValueLocal[rowOffset],
-                                   topkSelectNumAlign + s2BlockValidLen,
-                                   topkSelectNumAlign + s2BlockValidLenAlign);
-        PadMrgRangeScalarDuplicate(mrgValueLocal[rowOffset],
-                                   topkSelectNumAlign,
-                                   topkSelectNumAlign + initialBlocks);
+        PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                       topkSelectNum, s2BlockValidLen,
+                                       s2BlockValidLenAlign);
     }
 }
 
@@ -318,16 +310,9 @@ __aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<uint32_
         const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
         const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
         const uint32_t rowOffset = mInnerIdx * rowStride;
-        const uint32_t topkSelectNumAlign = SICommon::Align(topkSelectNum, 256U);
-        // 定位补丁：暂时注释 VF padding，改用基线风格 scalar Duplicate 验证 window/tail 是否被清干净。
-        // PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
-        //                                   topkSelectNum, s2BlockValidLen,
-        //                                   s2BlockValidLenAlign);
-        (void)mrgValueBuf;
-        PadMrgRangeScalarDuplicate(mrgValueLocal[rowOffset], topkSelectNum, topkSelectNumAlign);
-        PadMrgRangeScalarDuplicate(mrgValueLocal[rowOffset],
-                                   topkSelectNumAlign + s2BlockValidLen,
-                                   topkSelectNumAlign + s2BlockValidLenAlign);
+        PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                          topkSelectNum, s2BlockValidLen,
+                                          s2BlockValidLenAlign);
     }
 }
 
