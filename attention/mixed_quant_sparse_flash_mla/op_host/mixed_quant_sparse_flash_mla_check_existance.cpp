@@ -112,16 +112,12 @@ ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
     if (perfMode_ != QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(
-        opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
-        OP_LOGE(opName_, "oriKv must not be empty in HCA mode."),
-        return ge::GRAPH_FAILED);
++    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
++                OP_LOGE(opName_, "oriKv must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
-            opParamInfo_.cmpRatio != nullptr,
-        OP_LOGE(opName_, "cmpKv must not be empty in HCA mode."),
-        return ge::GRAPH_FAILED);
++    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
++                    opParamInfo_.cmpRatio != nullptr,
++                OP_LOGE(opName_, "cmpKv must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
@@ -129,11 +125,9 @@ ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
         OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
-                    opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_BBND,
-                OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND, "
-                                 "cmpKv is provided and cmpSparseIndices is not provided."),
-                return ge::GRAPH_FAILED);
++    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
++                    opParamInfo_.cmpRatio == nullptr,
++                OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kvLayout_ == QSMLALayout::PA_BBND && opParamInfo_.cmpBlockTable.tensor == nullptr,
                 OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND in HCA mode."),
