@@ -713,9 +713,7 @@ ge::graphStatus RFATiling::CheckAttr(gert::TilingContext *rfaContext)
     }
     kvHeads_ = static_cast<uint32_t>(*rfaContext->GetAttrs()->GetAttrPointer<int64_t>(NUM_KEY_VALUE_HEADS_INDEX));
     
-    if (rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
-        scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
-    } else {
+    if (rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX) != nullptr) {
         scaleValue_ = *rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX);
     }
     
@@ -938,6 +936,9 @@ ge::graphStatus RFATiling::GetRFATiling(gert::TilingContext *rfaContext,
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(rfaContext->GetNodeName(), "ProcessInput failed");
         return ret;
+    }
+    if (rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
+        scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
     }
     
     ret = CheckKvCacheLayout(rfaContext);
