@@ -209,7 +209,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
             std::string(opParamInfo_.layOut).c_str()), return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
                 OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
-                        "but now max_seqlen_q is %ld.",
+                        "but now max_seqlen_q is %d.",
                 *opParamInfo_.maxSeqlenQ), return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
                 OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
@@ -482,10 +482,12 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                 outputIdxOffsetShapeDim),
                 return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
-            OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
-                qExpectShapeDim, sparseValuesShapeDim),
-            return ge::GRAPH_FAILED);
+        if (*opParamInfo_.returnValue == 1) {
+            OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
+                OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
+                    qExpectShapeDim, sparseValuesShapeDim),
+                return ge::GRAPH_FAILED);
+        }
     }
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
@@ -699,16 +701,23 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
     // -----------------------check T-------------------
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
-                (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize) ||
-                (opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize),
-                OP_LOGE(opName_, "TND case input query, weights, sparse_indices, sparse_values "
-                    "and output_idx_offset dim 0 are %u, %ld, %ld, %ld, %ld "
+                (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
+                OP_LOGE(opName_, "TND case input query, weights and sparse_indices "
+                    "dim 0 are %u, %ld, %ld "
                     "respectively, they must be same.",
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
-                    opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0),
-                    opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
+                    opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
+        if (*opParamInfo_.returnValue == 1) {
+            if (opParamInfo_.valuesOut.shape != nullptr) {
+                OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize),
+                    OP_LOGE(opName_, "TND case input query and sparse_values dim 0 are %u, %ld "
+                        "respectively, they must be same.",
+                        opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
+                    return ge::GRAPH_FAILED);
+            }
+        }
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE(opName_, "TND case input query and output_idx_offset dim 0 are %u, %ld "
@@ -802,16 +811,26 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                OP_LOGE(opName_, "input query and output sparse_indices shape n2 dim must be same,"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
-               OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same,"),
-               return ge::GRAPH_FAILED);
+    // -----------------------check cmp_residual_k-------------------
+    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+        OP_CHECK_IF((opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
+            OP_LOGE(opName_, "input cmp_residual_k's shape size (%u) must be equal to batch_size (%u).",
+                    opParamInfo_.cmpResidualK.tensor->GetShapeSize(), bSize_),
+            return ge::GRAPH_FAILED);
+    }
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr topk."),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
-               OP_LOGE(opName_, "output sparse_values shape last dim must be same as attr topk."),
-               return ge::GRAPH_FAILED);
+    // -----------------------check sparse_values------------------
+    if (npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.returnValue == 1) {
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+            OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
+            OP_LOGE(opName_, "input query and output sparse_values last dim must be same as attr topk."),
+            return ge::GRAPH_FAILED);
+    }
     // -----------------------check metadata-------------------
     OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) &&
                 (opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT)),
