@@ -292,7 +292,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-
     BSAGParams bsag_params;
     bsag_params.query = query;
     bsag_params.key = key;
@@ -315,11 +314,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     bsag_params.dkOut = dk;
     bsag_params.dvOut = dv;
     aclnnStatus ret = ValidateParams(bsag_params);
-
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    
     L2_DFX_PHASE_1(aclnnBlockSparseAttentionGrad,
                    DFX_IN(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
                           actualSeqLengthsOptional, actualSeqLengthsKvOptional, qInputLayout, qInputLayout, numKeyValueHeads,
