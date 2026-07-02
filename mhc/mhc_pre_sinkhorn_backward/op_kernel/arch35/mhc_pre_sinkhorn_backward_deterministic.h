@@ -386,107 +386,182 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::G
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::PhaseA_CLoop(int64_t bsIdx, int64_t bsLen)
 {
-    int64_t bsOffset = blockIdx_ * td_->blockFactorBS + bsIdx * ubFactorBS_;
-    int64_t hPreOffset = bsOffset * n_;
-    int64_t xOffset = bsOffset * n_ * c_;
-    int64_t gradHinOffset = bsOffset * c_;
+    // ================================================================
+    // PhaseA — C 维循环: gradHPre + gradXFromHin + xFp32
+    //
+    // 步骤:
+    //   1. gradHPreBuf_ 清零 [bsLen, n_]
+    //   2. 搬入 hPre[bsLen, n_] GM→UB
+    //   3. C 维循环:
+    //      a. 搬入 x[bsLen, n_, cSlice] + gradHin[bsLen, cSlice] GM→UB
+    //      b. 逐 BS 逐 N 逐 VF:
+    //         - gradHin cast fp32
+    //         - x cast fp32
+    //         - gradXFromHin = gradHin * hPre        → UB (后搬出 WS)
+    //         - gradHPre    += (x * gradHin).sum(C)  → UB (累加)
+    //      c. 搬出 xFp32 + gradXFromHin → WS
+    //
+    // UB 布局 (每 cSlice 迭代):
+    //   gradHPreBuf_:    [bsLen, n_]         fp32, 累加器, 跨 cSlice 持久
+    //   hPreQue_:        [bsLen, n_]         fp32, 跨 cSlice 持久
+    //   xQue_:           [bsLen, n_, cAligned]  X_T (fp16/bf16)
+    //   gradHinQue_:     [bsLen, cAligned]      GRADHIN_T (fp16/bf16)
+    //   xFp32Que_:       [bsLen, n_, cAligned]  fp32 (输出)
+    //   gradXFromHinQue_:[bsLen, n_, cAligned]  fp32 (输出)
+    //
+    // GM 布局:
+    //   x:        [B*S, n_, c_]    按行存储, 每行 n_*c_ 元素
+    //   gradHin:  [B*S, c_]        按行存储, 每行 c_ 元素
+    //   hPre:     [B*S, n_]        按行存储, 每行 n_ 元素
+    // ================================================================
 
-    // gradHPre 清零
-    auto gradHPreLocal = gradHPreBuf_.template Get<U>();
-    Duplicate(gradHPreLocal, float(0), bsLen * n_);
+    // --- GM 偏移: 当前 BS 批次在全局中的位置 ---
+    int64_t gmBsOffset    = blockIdx_ * td_->blockFactorBS + bsIdx * ubFactorBS_;
+    int64_t gmHPreOffset  = gmBsOffset * n_;
+    int64_t gmXOffset     = gmBsOffset * n_ * c_;
+    int64_t gmGradHinOffset = gmBsOffset * c_;
 
-    // 搬入 hPre
-    CopyInQue(hPreAndGradHPostQue_, hPreGm_[hPreOffset], bsLen, n_);
-    auto hPreLocal = hPreAndGradHPostQue_.template DeQue<U>();
+    // --- Step 1: gradHPre 清零 ---
+    auto gradHPreUb = gradHPreBuf_.template Get<U>();
+    Duplicate(gradHPreUb, float(0), bsLen * n_);
 
-    __local_mem__ U *hPreAddr    = reinterpret_cast<__local_mem__ U *>(hPreLocal.GetPhyAddr());
-    __local_mem__ U *gradHPreAddr = reinterpret_cast<__local_mem__ U *>(gradHPreLocal.GetPhyAddr());
+    // --- Step 2: 搬入 hPre[bsLen, n_] ---
+    CopyInQue(hPreAndGradHPostQue_, hPreGm_[gmHPreOffset], bsLen, n_);
+    auto hPreUb = hPreAndGradHPostQue_.template DeQue<U>();
 
-    // C 维循环
+    __local_mem__ U *hPrePtr     = reinterpret_cast<__local_mem__ U *>(hPreUb.GetPhyAddr());
+    __local_mem__ U *gradHPrePtr = reinterpret_cast<__local_mem__ U *>(gradHPreUb.GetPhyAddr());
+
+    // --- Step 3: C 维循环 ---
+    uint32_t vfLen = Ops::Base::GetVRegSize() / sizeof(U);
+
     for (int64_t cIdx = 0; cIdx < cNumPerBS_; cIdx++) {
-        int64_t cLen = (cIdx == cNumPerBS_ - 1) ? cTailPerBS_ : ubFactorCAlignFp32_;
-        int64_t cLenXAlign = Ops::Base::CeilAlign(cLen * xSize_, blockSize_) / xSize_;
-        int64_t cLenUAlign = Ops::Base::CeilAlign(cLen * uSize_, blockSize_) / uSize_;
-        int64_t cLenGhAlign = Ops::Base::CeilAlign(cLen * ghSize_, blockSize_) / ghSize_;
+        // 当前 C 切片的实际元素数 (尾块可能不足)
+        int64_t cSliceLen = (cIdx == cNumPerBS_ - 1) ? cTailPerBS_ : ubFactorCAlignFp32_;
 
-        int64_t xStartOft = xOffset + cIdx * ubFactorC_;
-        int64_t gradHinStartOft = gradHinOffset + cIdx * ubFactorC_;
+        // 对齐后的每行元素数 (按各类型大小对齐到 blockSize_)
+        int64_t cSliceAlignX  = Ops::Base::CeilAlign(cSliceLen * xSize_, blockSize_) / xSize_;
+        int64_t cSliceAlignU  = Ops::Base::CeilAlign(cSliceLen * uSize_, blockSize_) / uSize_;
+        int64_t cSliceAlignGh = Ops::Base::CeilAlign(cSliceLen * ghSize_, blockSize_) / ghSize_;
 
-        // 搬入 x[bs, n, cSlice] 和 gradHin[bs, cSlice]
-        CopyInQue(xQue_, xGm_[xStartOft], bsLen * n_, cLenXAlign, (c_ - cLen) * xSize_);
-        CopyInQue(gradHinQue_, gradHinGm_[gradHinStartOft], bsLen, cLenGhAlign, (c_ - cLen) * ghSize_);
-        auto xLocal = xQue_.template DeQue<X_T>();
-        auto gradHinLocal = gradHinQue_.template DeQue<GRADHIN_T>();
+        // 当前 C 切片在 GM 中的偏移
+        int64_t gmXSliceOffset     = gmXOffset + cIdx * ubFactorC_;
+        int64_t gmGradHinSliceOffset = gmGradHinOffset + cIdx * ubFactorC_;
 
-        auto xFp32Local = xFp32Que_.template AllocTensor<U>();
-        auto gradXFromHinLocal = gradXFromHinQue_.template AllocTensor<U>();
+        // --- Step 3a: 搬入 x[bsLen, n_, cSlice] + gradHin[bsLen, cSlice] ---
+        // GM 中 x 按 [bs, n, c] 排布, 每行 c_ 元素, 跨步 (c_ - cSliceLen) 跳过剩余 C
+        CopyInQue(xQue_, xGm_[gmXSliceOffset], bsLen * n_, cSliceAlignX, (c_ - cSliceLen) * xSize_);
+        CopyInQue(gradHinQue_, gradHinGm_[gmGradHinSliceOffset], bsLen, cSliceAlignGh, (c_ - cSliceLen) * ghSize_);
+        auto xUb        = xQue_.template DeQue<X_T>();
+        auto gradHinUb  = gradHinQue_.template DeQue<GRADHIN_T>();
 
-        __local_mem__ X_T *xAddr = reinterpret_cast<__local_mem__ X_T *>(xLocal.GetPhyAddr());
-        __local_mem__ U *xCastAddr = reinterpret_cast<__local_mem__ U *>(xFp32Local.GetPhyAddr());
-        __local_mem__ GRADHIN_T *gradHinAddr = reinterpret_cast<__local_mem__ GRADHIN_T *>(gradHinLocal.GetPhyAddr());
-        __local_mem__ U *gradXFromHinAddr = reinterpret_cast<__local_mem__ U *>(gradXFromHinLocal.GetPhyAddr());
+        // 分配输出 tensor
+        auto xFp32Ub        = xFp32Que_.template AllocTensor<U>();
+        auto gradXFromHinUb = gradXFromHinQue_.template AllocTensor<U>();
 
-        uint32_t vfLen = Ops::Base::GetVRegSize() / sizeof(U);
-        uint16_t loopCnt = (cLen + vfLen - 1) / vfLen;
+        // UB 裸指针 (供 MicroAPI 使用)
+        __local_mem__ X_T       *xPtr            = reinterpret_cast<__local_mem__ X_T *>(xUb.GetPhyAddr());
+        __local_mem__ U         *xFp32Ptr        = reinterpret_cast<__local_mem__ U *>(xFp32Ub.GetPhyAddr());
+        __local_mem__ GRADHIN_T *gradHinPtr      = reinterpret_cast<__local_mem__ GRADHIN_T *>(gradHinUb.GetPhyAddr());
+        __local_mem__ U         *gradXFromHinPtr = reinterpret_cast<__local_mem__ U *>(gradXFromHinUb.GetPhyAddr());
 
+        uint16_t vfLoopCnt = static_cast<uint16_t>((cSliceLen + vfLen - 1) / vfLen);
+
+        // --- Step 3b: 逐 BS 逐 VF 逐 N 计算 ---
+        // 偏移传递: 每层只定义本层偏移, 内层用 base + offset 访问
+        //
+        // UB 布局 (以 x 为例, fp16):
+        //   [bs0_n0_c0..cAlign | bs0_n1_c0..cAlign | ... | bs1_n0_c0..cAlign | ...]
+        //    ← cSliceAlignX →    ← cSliceAlignX →
+        //    ←──── n_ 行 ────→   ←──── n_ 行 ────→
+        //    ←──────────── bsLen 轮 ────────────→
+        //
+        // 各 buffer 的行步长:
+        //   hPre / gradHPre:  n_            (每 BS 一行, n_ 元素)
+        //   gradHin:          cSliceAlignGh (每 BS 一行, cSliceAlignGh 元素)
+        //   x:                cSliceAlignX  (每 N 头一行)
+        //   xFp32 / gradXFromHin: cSliceAlignU (每 N 头一行)
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<GRADHIN_T> gradHinReg;
-            AscendC::MicroAPI::RegTensor<U> gradHinCastReg;
+            AscendC::MicroAPI::RegTensor<U> gradHinFp32Reg;
             AscendC::MicroAPI::RegTensor<X_T> xReg;
-            AscendC::MicroAPI::RegTensor<U> xCastReg;
+            AscendC::MicroAPI::RegTensor<U> xFp32Reg;
             AscendC::MicroAPI::RegTensor<U> gradHPreReg;
-            AscendC::MicroAPI::RegTensor<U> gradHPreRegSumReg;
+            AscendC::MicroAPI::RegTensor<U> gradHPreAccReg;
             AscendC::MicroAPI::RegTensor<U> gradXFromHinReg;
             AscendC::MicroAPI::MaskReg valueMaskReg;
-            AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
+            AscendC::MicroAPI::MaskReg oneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
 
-            for (uint16_t i = 0; i < static_cast<uint16_t>(bsLen); i++) {
-                auto gradHPreStart = gradHPreAddr + i * n_;
-                uint32_t maskLen = static_cast<uint32_t>(cLen);
-                for (uint16_t j = 0; j < loopCnt; j++) {
-                    auto gradHinStart = gradHinAddr + i * cLenGhAlign + j * vfLen;
+            uint32_t maskLen = static_cast<uint32_t>(cSliceLen);
+
+            for (uint16_t bsI = 0; bsI < static_cast<uint16_t>(bsLen); bsI++) {
+                // 行基址: BS 偏移内置到指针, 内层只关心本层偏移
+                // 1D (每BS一行): hPre, gradHPre, gradHin
+                auto hPreRow       = hPrePtr     + bsI * n_;
+                auto gradHPreRow   = gradHPrePtr + bsI * n_;
+                auto gradHinRow    = gradHinPtr  + bsI * cSliceAlignGh;
+                // 2D (每BS n_行): x, xFp32, gradXFromHin
+                auto xBase          = xPtr          + bsI * n_ * cSliceAlignX;
+                auto xFp32Base      = xFp32Ptr      + bsI * n_ * cSliceAlignU;
+                auto gradXFromHBase = gradXFromHinPtr + bsI * n_ * cSliceAlignU;
+
+                for (uint16_t vfJ = 0; vfJ < vfLoopCnt; vfJ++) {
                     valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-                    AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHinReg, gradHinStart);
-                    AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHinCastReg, gradHinReg, valueMaskReg);
 
-                    for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
+                    // VF 层偏移: 当前 VF 块在 C 维的偏移
+                    int64_t vfOffC = vfJ * vfLen;
+
+                    AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                        gradHinReg, gradHinRow + vfOffC);
+                    AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHinFp32Reg, gradHinReg, valueMaskReg);
+
+                    for (uint16_t nK = 0; nK < static_cast<uint16_t>(n_); nK++) {
                         AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
                                                        AscendC::MicroAPI::MemType::SCALAR_LOAD>();
-                        U hPre = *(hPreAddr + i * n_ + k);
-                        U gradHPre = *(gradHPreStart + k);
-                        auto xCastStart = xCastAddr + (i * n_ + k) * cLenUAlign + j * vfLen;
-                        auto xAddrStart = xAddr + (i * n_ + k) * cLenXAlign + j * vfLen;
-                        auto gradXFromHinStart = gradXFromHinAddr + (i * n_ + k) * cLenUAlign + j * vfLen;
 
-                        AscendC::MicroAPI::DataCopy<X_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xReg, xAddrStart);
-                        AscendC::MicroAPI::Cast<U, X_T, castTrait16ToFloat>(xCastReg, xReg, valueMaskReg);
-                        AscendC::MicroAPI::Muls(gradXFromHinReg, gradHinCastReg, hPre, valueMaskReg);
-                        AscendC::MicroAPI::Mul(gradHPreReg, xCastReg, gradHinCastReg, valueMaskReg);
+                        auto xRow         = xBase         + nK * cSliceAlignX;
+                        auto xFp32Row     = xFp32Base     + nK * cSliceAlignU;
+                        auto gradXFromHRow = gradXFromHBase + nK * cSliceAlignU;
+
+                        U hPreVal     = hPreRow[nK];
+                        U gradHPreOld = gradHPreRow[nK];
+
+                        AscendC::MicroAPI::DataCopy<X_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                            xReg, xRow + vfOffC);
+                        AscendC::MicroAPI::Cast<U, X_T, castTrait16ToFloat>(xFp32Reg, xReg, valueMaskReg);
+
+                        // gradXFromHin = gradHin * hPre
+                        AscendC::MicroAPI::Muls(gradXFromHinReg, gradHinFp32Reg, hPreVal, valueMaskReg);
+
+                        // gradHPre = (x * gradHin).sum(C)
+                        AscendC::MicroAPI::Mul(gradHPreReg, xFp32Reg, gradHinFp32Reg, valueMaskReg);
                         AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(gradHPreReg, gradHPreReg, valueMaskReg);
-                        AscendC::MicroAPI::Adds(gradHPreRegSumReg, gradHPreReg, gradHPre, OneMaskReg);
+                        AscendC::MicroAPI::Adds(gradHPreAccReg, gradHPreReg, gradHPreOld, oneMaskReg);
 
-                        AscendC::MicroAPI::DataCopy(gradXFromHinStart, gradXFromHinReg, valueMaskReg);
-                        AscendC::MicroAPI::DataCopy(xCastStart, xCastReg, valueMaskReg);
-                        AscendC::MicroAPI::Store(gradHPreStart + k, gradHPreRegSumReg, 1);
+                        AscendC::MicroAPI::DataCopy(
+                            gradXFromHRow + vfOffC, gradXFromHinReg, valueMaskReg);
+                        AscendC::MicroAPI::DataCopy(
+                            xFp32Row + vfOffC, xFp32Reg, valueMaskReg);
+                        AscendC::MicroAPI::Store(gradHPreRow + nK, gradHPreAccReg, 1);
                     }
                 }
             }
         }
 
-        xFp32Que_.EnQue(xFp32Local);
-        gradXFromHinQue_.EnQue(gradXFromHinLocal);
-        xQue_.FreeTensor(xLocal);
-        gradHinQue_.FreeTensor(gradHinLocal);
+        xFp32Que_.EnQue(xFp32Ub);
+        gradXFromHinQue_.EnQue(gradXFromHinUb);
+        xQue_.FreeTensor(xUb);
+        gradHinQue_.FreeTensor(gradHinUb);
 
-        // 搬出 → WS
-        xFp32Local = xFp32Que_.template DeQue<U>();
-        gradXFromHinLocal = gradXFromHinQue_.template DeQue<U>();
-        CopyOutQue(xFp32Que_, xFp32Ws_[xStartOft], bsLen * n_, cLenUAlign, 0, (c_ - cLen) * uSize_);
-        CopyOutQue(gradXFromHinQue_, gradXFromHinWs_[xStartOft], bsLen * n_, cLenUAlign, 0, (c_ - cLen) * uSize_);
+        // --- Step 3c: 搬出 xFp32 + gradXFromHin → WS ---
+        // CopyOutQue 内部自动 DeQue + FreeTensor, 无需手动 DeQue
+        // WS 中按 [bs, n, c] 排布, 跨步 (c_ - cSliceLen) 跳过剩余 C
+        CopyOutQue(xFp32Que_, xFp32Ws_[gmXSliceOffset], bsLen * n_, cSliceAlignU, 0, (c_ - cSliceLen) * uSize_);
+        CopyOutQue(gradXFromHinQue_, gradXFromHinWs_[gmXSliceOffset], bsLen * n_, cSliceAlignU, 0, (c_ - cSliceLen) * uSize_);
     }
 
-    hPreAndGradHPostQue_.FreeTensor(hPreLocal);
+    hPreAndGradHPostQue_.FreeTensor(hPreUb);
 }
 
 template <typename X_T, typename GRADHIN_T, typename U>
@@ -623,7 +698,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             Cast(xOutLocal.template ReinterpretCast<X_T>(), xOutLocal, RoundMode::CAST_RINT, cLen * n_);
         }
         xFp32Que_.EnQue(xOutLocal);
-        auto xOutCast = xFp32Que_.template DeQue<X_T>();
+        // CopyOutQue 内部自动 DeQue + FreeTensor
         CopyOutQue(xFp32Que_, gradXGm_[calcOffset], 1, cLen * n_);
 
         xQue_.FreeTensor(xLocal);
