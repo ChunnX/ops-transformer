@@ -271,6 +271,8 @@ private:
     ge::graphStatus CheckDtypeAndAttr();
     ge::graphStatus CheckParam();
     ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
+    bool Is3dBsdBroadcastLayout(const gert::Shape &xShape, const gert::Shape &cosShape) const;
+    void Set3dBsdShapeAttrs(const gert::Shape &xShape);
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t d);
     ge::graphStatus CheckShapeAllPositive(const int64_t idx) const;
     ge::graphStatus CheckShapeAllPositive() const;
@@ -322,6 +324,8 @@ protected:
     int64_t dSplitCoef_;
     bool is1snd_ = false;
     bool isTndLayout_ = false;
+    // 3D BSD: x=(B,S,D), cos/sin=(1,S,D), mapped to BSND with N=1.
+    bool is3dBsdLayout_ = false;
 };
 
 } // namespace optiling

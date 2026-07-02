@@ -1049,7 +1049,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 {
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
 
-    int64_t normalAxisSize = 0;
+    uint64_t normalAxisSize = 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         normalAxisSize = fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g;
     } else {
@@ -1059,7 +1059,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
     // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
-    int64_t singleLoopNBurstNum = SFMG_DEFAULT_BURST_NUM;
+    uint64_t singleLoopNBurstNum = SFMG_DEFAULT_BURST_NUM;
     if (fBaseParams.queryType == ge::DT_FLOAT) {
         inputSize = FP32_BYTES;
         outDtypeSize = FP32_BYTES;
@@ -1089,17 +1089,17 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 
     // 计算单核的计算量
     uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * AICV_RATIO_DEFAULT;
-    int64_t normalCoreSize = CeilCommon(normalAxisSize, sfmgUsedCoreNum);
-    sfmgUsedCoreNum = CeilCommon(normalAxisSize, normalCoreSize);
-    int64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
+    uint64_t normalCoreSize = CeilDivideBy(normalAxisSize, static_cast<uint64_t>(sfmgUsedCoreNum));
+    sfmgUsedCoreNum = CeilDivideBy(normalAxisSize, normalCoreSize);
+    uint64_t tailCoreSize = normalAxisSize - (sfmgUsedCoreNum - 1) * normalCoreSize;
     // 非fp8场景按照实际head dim的大小计算
     if (fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16) {
         singleLoopNBurstNum = sfmgDyBufferLen / inputSize / valueDAlign;
     }
-    int64_t normalCoreLoopTimes = CeilCommon(normalCoreSize, singleLoopNBurstNum);
-    int64_t normalCoreLastLoopNBurstNum = normalCoreSize - (normalCoreLoopTimes - 1) * singleLoopNBurstNum;
-    int64_t tailCoreLoopTimes = CeilCommon(tailCoreSize, singleLoopNBurstNum);
-    int64_t tailCoreLastLoopNBurstNum = tailCoreSize - (tailCoreLoopTimes - 1) * singleLoopNBurstNum;
+    uint64_t normalCoreLoopTimes = CeilDivideBy(normalCoreSize, singleLoopNBurstNum);
+    uint64_t normalCoreLastLoopNBurstNum = normalCoreSize - (normalCoreLoopTimes - 1) * singleLoopNBurstNum;
+    uint64_t tailCoreLoopTimes = CeilDivideBy(tailCoreSize, singleLoopNBurstNum);
+    uint64_t tailCoreLastLoopNBurstNum = tailCoreSize - (tailCoreLoopTimes - 1) * singleLoopNBurstNum;
 
     OP_LOGI("DoPreSfmgTiling",
             "DoPreSfmgTiling, sfmgUsedCoreNum = %d, ubsize = %d, valueDAlign = %d,"

@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。其中yOut为softmax的topK结果；expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
+- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。yOut：当renorm=0时，对x做Softmax后取的topK值；当renorm=1时，对x先取topK再进行Softmax，得到的结果。expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
 - 计算公式：
 
 1. renorm = 0,

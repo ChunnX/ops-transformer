@@ -142,7 +142,7 @@ constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP = 0X1;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 #ifdef ENABLE_DUMP_DATA
-#define DO_DUMP_DATA(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)
+#define DO_DUMP_DATA(srcTensor, id, len) DumpTensor(srcTensor, id, len)
 #else
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
@@ -365,22 +365,22 @@ struct MMBufParams {
 
 struct AicOffset {
     int64_t weightDqOffset = 0;
-    int64_t dequantScaleWDqOffset = 0;
-    int64_t cqResOffset = 0;
-    int64_t rmsNormCqResOffset = 0;
-    int64_t dequantScaleWDkvKrOffset = 0;
-    int64_t weightDkvKrOffset = 0;
-    int64_t ckvKrResOffset = 0;
     int64_t weightUqQrOffset = 0;
     int64_t weightUqOffset = 0;
     int64_t weightQrOffset = 0;
-    int64_t qcQrResOffset = 0;
+    int64_t weightUkOffset = 0;
+    int64_t weightDkvKrOffset = 0;
+    int64_t dequantScaleWDqOffset = 0;
+    int64_t dequantScaleWDkvKrOffset = 0;
     int64_t dequantScaleCqOffset = 0;
+    int64_t dequantScaleWuqqrOffset = 0;
+    int64_t cqResOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t ckvKrResOffset = 0;
+    int64_t qcQrResOffset = 0;
     int64_t qCResOffset = 0;
     int64_t qRResOffset = 0;
     int64_t qcOffset = 0;
-    int64_t weightUkOffset = 0;
-    int64_t dequantScaleWuqqrOffset = 0;
     int64_t qnResOffset = 0;
 };
 
@@ -390,9 +390,9 @@ struct AivOffset {
     int64_t rmsNormCqOffset = 0;
     int64_t rmsNormCqResOffset = 0;
     int64_t rmsNormCkvOffset = 0;
-    int64_t ropeKrOffset = 0;
     int64_t mmQnPreDequantOffset = 0;
     int64_t mmQnPreDequantResOffset = 0;
+    int64_t ropeKrOffset = 0;
     int64_t ropeQrOffset = 0;
     int64_t ropeQrResOffset = 0;
     int64_t ropeQrSplitNOffset = 0;
@@ -446,44 +446,27 @@ struct CastQcQrSplitNParams {
     uint32_t dstStride;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
-                                           .doBasicBlock = false,
-                                           .doMultiDataLoad = true,
-                                           .basicM = 0,
-                                           .basicN = 0,
-                                           .basicK = 0,
-                                           .intrinsicsCheck = true,
-                                           .isNBatch = false,
-                                           .enVecND2NZ = false,
-                                           .doSpecialBasicBlock = false,
-                                           .doMTE2Preload = false,
-                                           .singleCoreM = 0,
-                                           .singleCoreN = 0,
-                                           .singleCoreK = 0,
-                                           .stepM = 0,
-                                           .stepN = 0,
-                                           .baseMN = 0,
-                                           .singleCoreMN = 0,
-                                           .enUnitFlag = false,
-                                           .isPerTensor = false,
-                                           .hasAntiQuantOffset = false,
-                                           .doIBShareNorm = false,
-                                           .doSpecialMDL = false,
-                                           .enableInit = false,
-                                           .batchMode = BatchMode::NONE,
-                                           .enableEnd = false,
-                                           .enableGetTensorC = false,
-                                           .enableSetOrgShape = true,
-                                           .enableSetBias = false,
-                                           .enableSetTail = true,
-                                           .enableQuantVector = false,
-                                           .enableSetDefineData = true,
-                                           .iterateMode = IterateMode::ITERATE_MODE_ALL};
 template <uint8_t modeId, pipe_t pipe>
 __aicore__ inline void WaitAllCore(uint16_t flagId)
 {
     CrossCoreSetFlag<modeId, pipe>(flagId);
     CrossCoreWaitFlag(flagId);
 }
+
+template <typename INPUT_T, typename SCALE_T, bool EXCLUDE_MXFP8>
+__aicore__ constexpr bool IsFullQuantMode()
+{
+    constexpr bool IS_FP8_E8M0 = std::is_same<SCALE_T, FP8E8M0>::value;
+    if constexpr (EXCLUDE_MXFP8) {
+        // Pattern A: INT8 ‖ HIF8 ‖ (FP8E4M3 && !IS_FP8_E8M0)
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, HIF8>::value ||
+               (std::is_same<INPUT_T, FP8E4M3>::value && !IS_FP8_E8M0);
+    } else {
+        // Pattern B: INT8 ‖ FP8E4M3 ‖ HIF8
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, FP8E4M3>::value ||
+               std::is_same<INPUT_T, HIF8>::value;
+    }
+}
+
 }
 #endif
