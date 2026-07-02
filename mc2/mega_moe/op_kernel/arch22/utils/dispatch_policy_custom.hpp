@@ -69,18 +69,15 @@ template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_ST
 struct MmadDispatchPolicyFor {
     // For W4A4 we need the WithCallback variant so the per-channel scale
     // can be applied during fixpipe.
-    using type =
-        std::conditional_t<
-            std::is_same_v<BType_, AscendC::int4b_t>,
-            MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                    L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-            std::conditional_t<
-                IS_A2_,
-                MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
-                                                    L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
-                                                    ENABLE_SHUFFLE_K_>>>;
+    using type = std::conditional_t<
+        std::is_same_v<BType_, AscendC::int4b_t>,
+        MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                               ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+        std::conditional_t<IS_A2_,
+                           MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                          L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+                           MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                               L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>>>;
 };
 
 template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,

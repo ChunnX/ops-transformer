@@ -18,9 +18,9 @@
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
-#define HOST_DEVICE __forceinline__ [aicore]
+#define HOST_DEVICE __forceinline__[aicore]
 #else
-#define GM_ADDR uint8_t*
+#define GM_ADDR uint8_t *
 #define HOST_DEVICE
 #endif
 
@@ -89,7 +89,7 @@ constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 // Combine buffer constants
-constexpr uint32_t TRIPLE_SIZE = 8U;  // 每个 token 的三元组大小（8 个 int32）
+constexpr uint32_t TRIPLE_SIZE = 8U; // 每个 token 的三元组大小（8 个 int32）
 // GroupedMatmul modes
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
@@ -125,16 +125,17 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
         dispatchRevScalePtr = base + workspaceSize;
 
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
-            MXFP_SCALE_GROUP_NUM, ALIGN_512);
+        workspaceSize += Ops::Base::CeilAlign(
+            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h / MXFP_SCALE_GROUP_NUM, ALIGN_512);
 
         swigluQuantDataPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
-            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
+        workspaceSize += Ops::Base::CeilAlign(
+            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
 
         swigluQuantScalePtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
-            SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
+                                                  SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                              ALIGN_512);
 
         expertRevTokenNumsPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
@@ -148,10 +149,10 @@ struct WorkspaceInfo {
         flagDispatchToGmm1Ptr = base + workspaceSize;
         // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
         // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
-        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
-            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
-        int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
-            static_cast<int64_t>(INT_CACHELINE));
+        int64_t maxWavesPerExpert =
+            Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t dispatchFlagSlotsPerExpert =
+            Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
@@ -168,9 +169,10 @@ struct WorkspaceInfo {
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
             // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
             cumsumInfoPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize),
-                ALIGN_32) * tilingData->aicNum;
+            workspaceSize +=
+                Ops::Base::CeilAlign(
+                    static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
+                tilingData->aicNum;
             // gmm1MmadRes: GMM1 matmul output (maxOutputSize × hiddenDim bf16).
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
