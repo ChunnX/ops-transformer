@@ -1633,7 +1633,7 @@ private:
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
+            workspaceOffset += params.EP * AlignUp(params.expertPerRank, 16) * sizeof(int32_t);
 
             // W4A8 not use
             if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
