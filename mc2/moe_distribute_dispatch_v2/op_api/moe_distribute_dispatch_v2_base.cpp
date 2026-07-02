@@ -68,14 +68,13 @@ enum class CommType : uint64_t {
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                           [[maybe_unused]] const char *groupTp, aclTensor *expandX,
                           [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
-                          aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
+                          aclTensor *expertTokensNums, aclTensor *epRecvCounts)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(expandX, return false);
     OP_CHECK_NULL(assistInfoForCombine, return false);
     OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
@@ -90,8 +89,12 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
                                 aclTensor *tpRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
-                                   expertTokensNums, epRecvCounts, tpRecvCounts),
+                                   expertTokensNums, epRecvCounts),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
 
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
