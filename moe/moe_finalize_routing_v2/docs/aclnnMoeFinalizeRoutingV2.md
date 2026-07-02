@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- **接口功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
+- **接口功能**：MoE(Mixture of Experts)计算中，最后处理合并MoE(专家混合)FFN(Feed-Forward Network，前馈网络)的输出结果。
 - **计算公式**：
 
   $$
@@ -321,6 +321,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 #include "aclnnop/aclnn_moe_finalize_routing_v2.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \

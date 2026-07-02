@@ -392,6 +392,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 #include "aclnnop/aclnn_moe_finalize_routing_v3.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \

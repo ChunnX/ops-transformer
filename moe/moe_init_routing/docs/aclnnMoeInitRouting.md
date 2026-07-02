@@ -117,7 +117,7 @@ aclnnStatus aclnnMoeInitRouting(
       <td>输入</td>
       <td>表示总的最大处理row数且大于等于0，expandedXOut只有这么多行是有效的。</td>
       <td>-</td>
-      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -129,7 +129,7 @@ aclnnStatus aclnnMoeInitRouting(
       <td>-</td>
       <td>与x一致</td>
       <td>ND</td>
-      <td>shape为(min(NUM_ROWS, activeNum) * k, H)</td>
+      <td>shape为(min(NUM_ROWS, activeNum) * K, H)</td>
       <td>x</td>
     </tr>
     <tr>
@@ -217,10 +217,10 @@ aclnnStatus aclnnMoeInitRouting(
         <td>activeNum的值小于0。</td>
       </tr>
       <tr>
-        <td>expandedXOut的shape不等于(min(num_rows, activeNum) * k, H)。</td>
+        <td>expandedXOut的shape不等于(min(num_rows, activeNum) * K, H)。</td>
       </tr>
       <tr>
-        <td>expandedRowIdxOut和expandedExpertIdxOut的shape不相等，且不等于(num_rows * k, )。</td>
+        <td>expandedRowIdxOut和expandedExpertIdxOut的shape不相等，且不等于(num_rows * K, )。</td>
       </tr>
     </tbody>
   </table>

@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- **算子功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
+- **算子功能**：MoE(Mixture of Experts)计算中，最后处理合并MoE(Mixture of Experts)FFN(Feed-Forward Network)的输出结果。
 - **计算公式**：
 
   $$
@@ -42,7 +42,7 @@
       <tr>
         <td>expandedX</td>
         <td>输入</td>
-        <td>公式中的`expandedX`，MoE的FFN输出。</td>
+        <td>公式中的`expandedX`，MoE(Mixture of Experts)的FFN(Feed-Forward Network)输出。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -91,7 +91,7 @@
       <tr>
         <td>dropPadMode</td>
         <td>属性</td>
-        <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
+        <td>表示是否支持丢弃模式，并说明expandedRowIdx的排列方式。</td>
         <td>INT64</td>
         <td>-</td>
       </tr>
