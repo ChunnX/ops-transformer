@@ -159,6 +159,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     aclOpExecutor      **executor)
 ```
 
+说明：C接口调用时需按照函数原型完整传入所有实参，不能省略中间参数。本文中“支持默认值”表示调用时可传入默认语义值、nullptr或空字符串，不表示该实参可以不传。
+
 ```Cpp
 aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     void          *workspace,
@@ -245,9 +247,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>xScaleOptional</td>
-        <td rowspan="1">可选输入</td>
+        <td rowspan="1">输入</td>
         <td>表示左矩阵的量化因子，对应公式中的xScale。</td>
-        <td>当前MX量化场景下需要传入。</td>
+        <td>参数名保留Optional命名。当前MX量化场景下必须传入有效Tensor，不能传nullptr。</td>
         <td>FLOAT8_E8M0</td>
         <td>ND</td>
         <td>3</td>
@@ -265,9 +267,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>groupListType</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示groupList的解释方式。</td>
-        <td>可选属性，默认值为0。支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。</td>
+        <td>支持默认值0，调用C接口时仍需传入该实参。支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -275,9 +277,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>tuningConfig</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示调优参数，预留参数。</td>
-        <td>可选属性，默认值为[0]，当前暂不使用。</td>
+        <td>支持传入nullptr，当前暂不使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -285,9 +287,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>quantMode</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示量化模式。</td>
-        <td>可选属性。当前仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"。若显式传入非"MX"，则报错。</td>
+        <td>支持传入nullptr或空字符串。当前仅支持"MX"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"。若显式传入非"MX"，则报错。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -295,9 +297,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>roundMode</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示量化舍入模式。</td>
-        <td>可选属性，默认值为"rint"，当前仅支持"rint"。</td>
+        <td>支持传入nullptr或空字符串，默认设置为"rint"，当前仅支持"rint"。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -305,9 +307,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>scaleAlg</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示量化因子计算算法。</td>
-        <td>可选属性，默认值为0。当前MX量化场景下支持0或1，其中0表示OCP实现，1表示cuBLAS实现。</td>
+        <td>支持默认值0，调用C接口时仍需传入该实参。当前MX量化场景下支持0或1，其中0表示OCP实现，1表示cuBLAS实现。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -315,9 +317,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>dstTypeMax</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
-        <td>可选属性，默认值为0.0。当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。</td>
+        <td>支持默认值0.0，调用C接口时仍需传入该实参。当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -403,7 +405,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、roundMode、y、yScale、workspaceSize或executor为空。</td>
+      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、y、yScale、workspaceSize或executor为空。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -542,7 +544,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           </table>
 
         - activationType仅支持"gelu_tanh"。
-        - quantMode为可选属性，显式传入时当前仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"；否则报错。
+        - quantMode显式传入时当前仅支持"MX"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则默认设置为"MX"；否则报错。
         - N必须为64整数倍。
         - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
         - y支持FLOAT8_E4M3FN、FLOAT8_E5M2。
