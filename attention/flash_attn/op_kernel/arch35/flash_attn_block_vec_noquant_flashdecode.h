@@ -76,7 +76,6 @@ private:
     static constexpr float FLOAT_INF = 3e+99;
     uint32_t preLoadNum = 2U;
     uint32_t dSizeV_Align;
-    static constexpr bool attenMaskFlag = hasAtten;
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
@@ -114,15 +113,8 @@ protected:
     QSeqParserType *qActSeqLensParser = nullptr;
     KvSeqParserType *kvActSeqLensParser = nullptr;
 
-    int64_t preTokensPerBatch = 0;
-    int64_t nextTokensPerBatch = 0;
-
-    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     bool learnableSinkFlag = false;
 
-    uint64_t actSeqLensKv = 0;
-    uint64_t actSeqLensQ = 0;
     // ================================类成员变量====================================
     // aic、aiv核信息
     uint32_t blockIdx = 0U;
@@ -405,8 +397,6 @@ protected:
     {
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf;
         AscendC::PipeBarrier<PIPE_V>();
-        DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-        DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
@@ -420,30 +410,6 @@ protected:
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
         Bmm2DataCopyOutTrans(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-    }
-    __aicore__ inline void CalcPreNextTokens()
-    {
-        actSeqLensQ = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-            actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
-        } else {
-            actSeqLensKv = kvActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-        }
-        int64_t safePreToken = constInfo.preTokens;
-        int64_t safeNextToken = constInfo.nextTokens;
-
-        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
-
-        if (constInfo.sparseMode == BAND) {
-            preTokensPerBatch = safePreToken;
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ + safeNextToken;
-        } else if ((constInfo.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
-            nextTokensPerBatch = safeNextToken;
-            preTokensPerBatch = actSeqLensKv - actSeqLensQ + safePreToken;
-        } else {
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
-            preTokensPerBatch = 0;
-        }
     }
     __aicore__ inline void CopySinkIn(uint32_t cntM)
     {
@@ -466,48 +432,6 @@ protected:
             DataCopy(sinkExpBuf[row * BLOCK_ELEMENT_NUM], sinkBrcbBuf[gIdx * BLOCK_ELEMENT_NUM], BLOCK_ELEMENT_NUM);
         }
         AscendC::PipeBarrier<PIPE_V>();
-    }
-
-    template <typename UBOUT_T>
-    __aicore__ inline void DealInvalidRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t columnCount)
-    {
-        if (!attenMaskFlag) {
-            return;
-        }
-
-        if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
-            return;
-        }
-
-        fa_base_vector::InvalidRowParams params{
-            .actS1Size = actSeqLensQ,
-            .gSize = static_cast<uint64_t>(constInfo.gSize),
-            .gS1Idx = taskInfo.gS1Idx + startRow,
-            .dealRowCount = dealRowCount,
-            .columnCount = columnCount,
-            .preTokensPerBatch = preTokensPerBatch,
-            .nextTokensPerBatch = nextTokensPerBatch,
-        };
-
-        fa_base_vector::InvalidRows<UBOUT_T, fa_base_vector::GeInputUbFormat<layout>()> invalidRows;
-        invalidRows(attenOutUb, params);
-    }
-
-    template <typename UBOUT_T>
-    __aicore__ inline void DealInvalidMaskRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow,
-                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM)
-    {
-        if (!attenMaskFlag) {
-            return;
-        }
-        if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
-            return;
-        }
-        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
-
-        fa_base_vector::InvalidMaskRows<UBOUT_T, T, true>(0, dealRowCount, columnCount, lseMaxUb, negativeIntScalar,
-                                                          attenOutUb);
     }
 
 public:
@@ -557,7 +481,6 @@ public:
                 SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
             }
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
-            CalcPreNextTokens();
             if (constInfo.isSoftmaxLseEnable) {
                 LocalTensor<T> maxLseUb = fdLseUbBuf;
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
@@ -646,11 +569,6 @@ protected:
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM) {};
     __aicore__ inline void SinkMax(LocalTensor<T> lseMaxUb, uint32_t startRow, uint32_t dealRowCount);
-
-    __aicore__ inline void DealInvalidRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t columnCount);
-    __aicore__ inline void DealInvalidMaskRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                               uint32_t columnCount, uint32_t cntM);
 };
 
 } // namespace BaseApi
