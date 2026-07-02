@@ -40,11 +40,14 @@ namespace Kernel {
 
 namespace {
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+>>>>>>> 8fea66858 (fix code review comments)
 constexpr uint64_t IDX_A_OFFSET = 0UL;
 constexpr uint64_t IDX_B_OFFSET = 1UL;
 constexpr uint64_t IDX_X1SCALE_OFFSET = 2UL;
@@ -131,7 +134,6 @@ public:
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUb_;
     bool isVecSetSyncCom_ = false;
-    bool initSingleGroup_ = true;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -264,6 +266,7 @@ public:
         }
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
@@ -277,6 +280,11 @@ public:
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
 >>>>>>> 333b4b93d (remove cmake)
+=======
+        int64_t m = Get<MNK_M>(problemShape_);
+        int64_t n = Get<MNK_N>(problemShape_);
+        int64_t k = Get<MNK_K>(problemShape_);
+>>>>>>> 8fea66858 (fix code review comments)
 
         if constexpr (isFp4) {
             Get<IDX_A_OFFSET>(baseOffset_) = ((preOffset_ - m) * k) >> 1;
@@ -327,6 +335,7 @@ public:
     {
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
 <<<<<<< HEAD
+<<<<<<< HEAD
         Get<MNK_M>(problemShape_) = splitValue;
         if (Get<MNK_M>(problemShape_) == 0) {
             return false;
@@ -334,6 +343,10 @@ public:
 =======
         Get<M_VALUE>(problemShape_) = splitValue;
         if (Get<M_VALUE>(problemShape_) == 0) {
+=======
+        Get<MNK_M>(problemShape_) = splitValue;
+        if (Get<MNK_M>(problemShape_) == 0) {
+>>>>>>> 8fea66858 (fix code review comments)
             return false;
         }
 <<<<<<< HEAD
@@ -347,11 +360,15 @@ public:
     __aicore__ inline void InitParamsAndTensor(const Params &params)
     {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 8fea66858 (fix code review comments)
         Get<MNK_M>(problemShape_) = params.gmmParams.m;
         Get<MNK_N>(problemShape_) = params.gmmParams.n;
         Get<MNK_K>(problemShape_) = params.gmmParams.k;
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
+<<<<<<< HEAD
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
                 perGroupBOffset_ = Align16(n) * (isFp4 ? Align64(k) : Align32(k));
@@ -370,6 +387,8 @@ public:
 =======
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
+=======
+>>>>>>> 8fea66858 (fix code review comments)
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
                 perGroupBOffset_ = Align16(n) * (isFp4 ? Align64(k) : Align32(k));
@@ -385,6 +404,7 @@ public:
 
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
         int64_t m = Get<MNK_M>(problemShape_);
@@ -408,19 +428,28 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
+=======
+        int64_t m = Get<MNK_M>(problemShape_);
+        int64_t n = Get<MNK_N>(problemShape_);
+        int64_t k = Get<MNK_K>(problemShape_);
+>>>>>>> 8fea66858 (fix code review comments)
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
-        while (bs.GetTileIdx(tileIdx)) {
+        if (!bs.GetTileIdx(tileIdx)) {
+ 	        return;
+ 	    }
+ 	    UpdateOffset(groupIdx);
+        UpdateGlobalBuffer(params);
+        SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
+ 	    do {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
+<<<<<<< HEAD
             if (Get<M_VALUE>(singleShape) <= 0 || Get<N_VALUE>(singleShape) <= 0) {
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+            if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+>>>>>>> 8fea66858 (fix code review comments)
                 return;
-            }
-            if (initSingleGroup_) {
-                UpdateOffset(groupIdx);
-                UpdateGlobalBuffer(params);
-                SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
-                initSingleGroup_ = false;
             }
             auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE, c0Size>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx),
@@ -446,10 +475,14 @@ public:
                 }
                 AscendC::Std::tuple<int64_t, int64_t, int64_t> mmSingleShape{
 <<<<<<< HEAD
+<<<<<<< HEAD
                     Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), k};
 =======
                     Get<M_VALUE>(singleShape), Get<N_VALUE>(singleShape), k};
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+                    Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), k};
+>>>>>>> 8fea66858 (fix code review comments)
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
@@ -460,10 +493,14 @@ public:
             if ASCEND_IS_AIV {
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
 <<<<<<< HEAD
+<<<<<<< HEAD
                     Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
 =======
                     Get<M_VALUE>(singleShape), Get<N_VALUE>(singleShape), 0, 0};
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+                    Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
+>>>>>>> 8fea66858 (fix code review comments)
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     Get<IDX_C_OFFSET>(blockOffset_), Get<IDX_C_SCALE_OFFSET>(blockOffset_),
                     Get<IDX_X2SCALE_OFFSET>(blockOffset_), Get<IDX_X1SCALE_OFFSET>(blockOffset_),
@@ -474,10 +511,14 @@ public:
                 NotifyCube();
             }
 <<<<<<< HEAD
+<<<<<<< HEAD
         } while (bs.GetTileIdx(tileIdx));
 =======
         }
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
+=======
+        } while (bs.GetTileIdx(tileIdx));
+>>>>>>> 8fea66858 (fix code review comments)
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -510,6 +551,7 @@ public:
             }
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
             TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
                                        Get<MNK_K>(problemShape_)};
             bs.UpdateNextProblem(resProblemShape);
@@ -523,20 +565,27 @@ public:
 =======
             TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_),
                                        Get<K_VALUE>(problemShape_)};
+=======
+            TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
+                                       Get<MNK_K>(problemShape_)};
+>>>>>>> 8fea66858 (fix code review comments)
             bs.UpdateNextProblem(resProblemShape);
             epilogueOp_.UpdateNextProblem(resProblemShape);
 >>>>>>> 333b4b93d (remove cmake)
             if ASCEND_IS_AIC {
-                MmShape mmProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_),
-                                       Get<K_VALUE>(problemShape_)};
+                MmShape mmProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
+                                       Get<MNK_K>(problemShape_)};
                 mmadOp_.UpdateParamsForNextProblem(mmProblemShape);
             }
+<<<<<<< HEAD
 <<<<<<< HEAD
             SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
 >>>>>>> 6193fa03d (Add GroupedMatmulActivationQuant)
 =======
             initSingleGroup_ = true;
 >>>>>>> 333b4b93d (remove cmake)
+=======
+>>>>>>> 8fea66858 (fix code review comments)
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();
