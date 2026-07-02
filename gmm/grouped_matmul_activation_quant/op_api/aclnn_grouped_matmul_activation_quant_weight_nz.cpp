@@ -388,12 +388,20 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     op::Shape weightExpectShape;
     op::Shape weightScaleExpectShape;
     if (transposeWeight) {
-        weightExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::NZ_LAST_DIM), Ops::Base::CeilDiv(n, gmaq::NZ_C0_DIM), gmaq::NZ_C0_DIM,
-                             gmaq::NZ_LAST_DIM};
+        weightExpectShape = {
+            e,
+            Ops::Base::CeilDiv(k, gmaq::NZ_LAST_DIM),
+            Ops::Base::CeilDiv(n, gmaq::NZ_C0_DIM),
+            gmaq::NZ_C0_DIM,
+            gmaq::NZ_LAST_DIM};
         weightScaleExpectShape = {e, n, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), gmaq::MX_SCALE_PAIR};
     } else {
-        weightExpectShape = {e, Ops::Base::CeilDiv(n, gmaq::NZ_LAST_DIM), Ops::Base::CeilDiv(k, gmaq::NZ_C0_DIM), gmaq::NZ_C0_DIM,
-                             gmaq::NZ_LAST_DIM};
+        weightExpectShape = {
+            e,
+            Ops::Base::CeilDiv(n, gmaq::NZ_LAST_DIM),
+            Ops::Base::CeilDiv(k, gmaq::NZ_C0_DIM),
+            gmaq::NZ_C0_DIM,
+            gmaq::NZ_LAST_DIM};
         weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), n, gmaq::MX_SCALE_PAIR};
     }
     op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
@@ -401,7 +409,8 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
               ACLNN_ERR_PARAM_INVALID);
     GMMAQ_CHECK_WITH_LOG(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight storageShape", op::ToString(weightShape).GetString(),
-            FormatString("the storageShape of weight must be %s", op::ToString(weightExpectShape).GetString()).c_str()));
+            FormatString("the storageShape of weight must be %s",
+                         op::ToString(weightExpectShape).GetString()).c_str()));
     CHECK_RET(CheckTensorShapeEqual(weightScale, "weightScale", weightScaleExpectShape) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
