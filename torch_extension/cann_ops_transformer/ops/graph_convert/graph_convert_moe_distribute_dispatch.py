@@ -47,14 +47,16 @@ if _TORCHAIR_AVAILABLE:
                                 const_expert_num: int = 0, y_dtype: int = 28, dependencies=[], node_name=None):
         """REG_OP(MoeDistributeDispatchV3)\n
         .INPUT(context, TensorType({DT_INT32}))\n
-        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
+            DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .INPUT(expert_ids, TensorType({DT_INT32}))\n
-        .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT}))\n
+        .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OPTIONAL_INPUT(x_active_mask, TensorType({DT_BOOL}))\n
         .OPTIONAL_INPUT(expert_scales, TensorType({DT_FLOAT}))\n
         .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))\n
         .OPTIONAL_INPUT(performance_info, TensorType({DT_INT64}))\n
-        .OUTPUT(expand_x, TensorType({DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))\n
+        .OUTPUT(expand_x, TensorType({DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
+            DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .OUTPUT(dynamic_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OUTPUT(assist_info_for_combine, TensorType({DT_INT32}))\n
         .OUTPUT(expert_token_nums, TensorType({DT_INT64}))\n
@@ -131,9 +133,10 @@ if _TORCHAIR_AVAILABLE:
             dependencies=dependencies,
             ir=IrDef("MoeDistributeDispatchV3") \
             .input("context", "DT_INT32") \
-            .input("x", "DT_BF16, DT_FLOAT16") \
+            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, "
+                        "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .input("expert_ids", "DT_INT32") \
-            .optional_input("scales", "DT_FLOAT") \
+            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .optional_input("x_active_mask", "DT_BOOL") \
             .optional_input("expert_scales", "DT_FLOAT") \
             .optional_input("elastic_info", "DT_INT32") \
@@ -155,7 +158,8 @@ if _TORCHAIR_AVAILABLE:
             .attr("copy_expert_num", attr.Int(0)) \
             .attr("const_expert_num", attr.Int(0)) \
             .attr("y_dtype", attr.Int(28)) \
-            .output("expand_x", "DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8") \
+            .output("expand_x", "DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .output("dynamic_scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .output("assist_info_for_combine", "DT_INT32") \
             .output("expert_token_nums", "DT_INT64") \
