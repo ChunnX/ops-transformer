@@ -71,11 +71,11 @@ __aicore__ inline void CombineTokensLayered(
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)),
-                                                          (int64_t)ALIGN_32);
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+                                                          sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
     // 每个 token 含数据+三元组(32B)
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
-                                                      (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC,
                                                                  COMBINE_SEND_ADDR, ALIGN_32 / sizeof(int32_t));
     AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
@@ -257,8 +257,10 @@ __aicore__ inline void DrainUrmaConnections(
 template <typename ElementMMadOut2>
 __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 {
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
-    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),  (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+        sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
+        (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
     // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
@@ -271,13 +273,16 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
     uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
     uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
     uint32_t endRankId = startRankId + processRankNum;
-    uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t), (uint64_t)ALIGN_32);
+    uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t),
+        (uint64_t)ALIGN_32);
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
 
-    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, cntTensorLength / sizeof(int32_t));
-    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength, cntTensorLength / sizeof(int32_t));
+    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512,
+        cntTensorLength / sizeof(int32_t));
+    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength,
+        cntTensorLength / sizeof(int32_t));
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
@@ -285,7 +290,8 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 
     // mask slot 参数
     int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
-    int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
+    int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
+        (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
     int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
     uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));

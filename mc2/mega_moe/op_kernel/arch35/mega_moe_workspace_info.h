@@ -243,18 +243,19 @@ struct WorkspaceInfo {
                 static_cast<int64_t>(ALIGN_512));
 
             combineCommDataPtr = base + workspaceSize;
-            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(uint32_t)),
-                                                                  (int64_t)ALIGN_32);
+            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+                                                                  sizeof(uint32_t)), (int64_t)ALIGN_32);
             // 每个 token 含数据+三元组(32B)
-            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) *
-                                                              (ALIGN_32 + maxDataLengthPerBlock);
-            uint32_t maxDataSize = Ops::Base::CeilAlign((int64_t)(tilingData->bs * maxDataSizePerToken * 
-                                                        tilingData->expertPerRank * tilingData->epWorldSize) , (int64_t)ALIGN_512);
+            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
+                (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+            uint32_t maxDataSize = Ops::Base::CeilAlign((int64_t)(tilingData->bs * maxDataSizePerToken *
+                tilingData->expertPerRank * tilingData->epWorldSize), (int64_t)ALIGN_512);
             workspaceSize += maxDataSize;
 
             combineCommNotifyPtr = base + workspaceSize;
             // 每个 expert 分配一个 int32 通知
-            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
+            uint32_t maxNotifySize = Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)),
+                (int64_t)ALIGN_512);
             workspaceSize += maxNotifySize;
         }
     }
