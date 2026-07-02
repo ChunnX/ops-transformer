@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -219,6 +220,18 @@ int64_t CeilDivInt64(int64_t dividend, int64_t divisor)
     return static_cast<int64_t>(Ops::Base::CeilDiv(dividend, divisor));
 }
 
+bool TryMultiplyInt64(int64_t lhs, int64_t rhs, int64_t &result)
+{
+    if (lhs < 0 || rhs < 0) {
+        return false;
+    }
+    if (lhs != 0 && rhs > std::numeric_limits<int64_t>::max() / lhs) {
+        return false;
+    }
+    result = lhs * rhs;
+    return true;
+}
+
 bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
     auto shape = tensor->GetViewShape();
@@ -231,12 +244,17 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor)
     if (strides[penultimateDim] != 1 || strides[lastDim] != shape.GetDim(penultimateDim)) {
         return false;
     }
-    int64_t expectedStride = shape.GetDim(lastDim) * shape.GetDim(penultimateDim);
+    int64_t expectedStride = 0;
+    if (!TryMultiplyInt64(shape.GetDim(lastDim), shape.GetDim(penultimateDim), expectedStride)) {
+        return false;
+    }
     for (int64_t batchDim = static_cast<int64_t>(shape.GetDimNum()) - 3; batchDim >= 0; --batchDim) {
         if (strides[batchDim] != expectedStride) {
             return false;
         }
-        expectedStride *= shape.GetDim(batchDim);
+        if (!TryMultiplyInt64(expectedStride, shape.GetDim(batchDim), expectedStride)) {
+            return false;
+        }
     }
     return true;
 }
@@ -251,8 +269,12 @@ bool IsTransposeForMxShape(const aclTensor *tensor)
     int64_t lastDim = static_cast<int64_t>(shape.GetDimNum()) - 1;
     int64_t secondLastDim = static_cast<int64_t>(shape.GetDimNum()) - 2;
     int64_t thirdLastDim = static_cast<int64_t>(shape.GetDimNum()) - 3;
+    int64_t expectedSecondLastStride = 0;
+    if (!TryMultiplyInt64(shape.GetDim(thirdLastDim), MX_SCALE_PAIR, expectedSecondLastStride)) {
+        return false;
+    }
     return strides[lastDim] == 1 && strides[thirdLastDim] == MX_SCALE_PAIR &&
-           strides[secondLastDim] == shape.GetDim(thirdLastDim) * MX_SCALE_PAIR;
+           strides[secondLastDim] == expectedSecondLastStride;
 }
 
 bool TryInferTransposeByShape(const aclTensor *x, const aclTensor *groupList, const aclTensor *weight,
@@ -696,10 +718,10 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     const char *effectiveQuantMode = nullptr;
     const char *effectiveRoundMode = nullptr;
     int64_t effectiveYDtype = 0L;
-    CHECK_RET(CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-                          transposeWeight, groupListType, quantMode, roundMode, scaleAlg, dstTypeMax,
-                          y, yScale, uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode,
-                          effectiveYDtype) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus checkRet = CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
+        transposeWeight, groupListType, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale,
+        uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode, effectiveYDtype);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     if (y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;
