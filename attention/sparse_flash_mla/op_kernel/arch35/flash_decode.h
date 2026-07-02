@@ -149,14 +149,8 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
     uint32_t MAX_SUM_BYTES = layout.StagingMaxSumBytes();
-    uint32_t slotStride = MAX_SUM_BYTES / sizeof(float);
-    uint32_t floatOffset = workspaceIdx * slotStride +
+    uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
         stagingMOffset * layout.broadcastElems;
-    float maxVal0 = maxUb.GetValue(0);
-    float sumVal0 = sumUb.GetValue(0);
-    printf("[VEC1_OUT] blk=%d wsIdx=%u mOff=%u validRows=%u absFloatOff=%u slotStride=%u be=%u max0=%f sum0=%f\n",
-           GetBlockIdx(), workspaceIdx, stagingMOffset, validRows, floatOffset,
-           slotStride, layout.broadcastElems, maxVal0, sumVal0);
     DataCopyExtParams lseOutParams{static_cast<uint16_t>(validRows),
         static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
@@ -174,15 +168,9 @@ __aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout,
     uint8_t vToMte3Id, uint8_t mte3ToVId)
 {
     uint32_t ATTEN_OUT_BYTES = layout.StagingAttenOutBytes();
-    uint32_t outSplitStride = ATTEN_OUT_BYTES / sizeof(float);
-    uint32_t absPOFloatOff = workspaceIdx * outSplitStride + stagingMOffset * dValid;
     GlobalTensor<float> stagingOut;
     stagingOut.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
         workspaceIdx * ATTEN_OUT_BYTES));
-    float pOval0 = vec2ResUb.GetValue(0);
-    printf("[VEC2_OUT] blk=%d wsIdx=%u mOff=%u validRows=%u dValid=%u absPOFloatOff=%u outSplitStride=%u pO0=%f\n",
-           GetBlockIdx(), workspaceIdx, stagingMOffset, validRows, dValid,
-           absPOFloatOff, outSplitStride, pOval0);
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
     DataCopyExtParams outParams;
@@ -222,10 +210,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         workspaceIdx * ATTEN_OUT_BYTES));
     uint32_t outSplitStride = ATTEN_OUT_BYTES / sizeof(float);
 
-    printf("[FD_IN] blk=%d wsIdx=%u wsNum=%u fdMOff=%u mNum=%u splitStride=%u outSplitStride=%u be=%u mChunks=%u\n",
-           GetBlockIdx(), workspaceIdx, workspaceNum, fdMOffset, mNum,
-           splitStride, outSplitStride, layout.broadcastElems,
-           (mNum + layout.chunkRows - 1) / layout.chunkRows);
     uint32_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
     for (uint32_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
         uint32_t startRow = chunkIdx * layout.chunkRows;
@@ -247,16 +231,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         SetFlag<HardEvent::MTE2_V>(mte2ToVId);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
 
-        for (uint32_t dbgSplit = 0; dbgSplit < workspaceNum; dbgSplit++) {
-            uint32_t absMaxOff = (workspaceIdx + dbgSplit) * splitStride +
-                (fdMOffset + startRow) * layout.broadcastElems;
-            uint32_t dbgDstOff = dbgSplit * dealRowCount * layout.broadcastElems;
-            float fdMaxVal = blockMaxUb.GetValue(dbgDstOff);
-            float fdSumVal = blockSumUb.GetValue(dbgDstOff);
-            printf("[FD_IN_LSE] blk=%d chunk=%u split=%u absMaxFloatOff=%u max0=%f sum0=%f\n",
-                   GetBlockIdx(), chunkIdx, dbgSplit, absMaxOff, fdMaxVal, fdSumVal);
-        }
-
         LocalTensor<T> sinkUb;
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, workspaceNum, false, false);
@@ -277,11 +251,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            uint32_t absPOOff = (workspaceIdx + splitIdx) * outSplitStride +
-                (fdMOffset + startRow) * dValid;
-            float fdPOval0 = partialOFp32.GetValue(0);
-            printf("[FD_IN_PO] blk=%d chunk=%u split=%u absPOFloatOff=%u pO0=%f\n",
-                   GetBlockIdx(), chunkIdx, splitIdx, absPOOff, fdPOval0);
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);

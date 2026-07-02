@@ -396,7 +396,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         crossCoreSyncBufId++;
     }
     uint32_t fdStagingOffset = 0U;
-    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
         constexpr uint32_t S2_REAL_BUF_LEN = 128U;
         uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
@@ -631,10 +631,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         }
         SyncAll();
         if (fdRunInfo.coreEnable) {
-            printf("do fd\n");
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
-        } else {
-            printf("do not fd\n");
         }
     }
 }
@@ -725,7 +722,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Com
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ParseFdRunInfo(
+__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ParseFdRunInfo(
     FdRunInfo &fdRunInfo)
 {
     uint32_t aivIdx = static_cast<uint32_t>(this->constInfo.aivIdx);
@@ -743,7 +740,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
+__aicore__ inline int64_t SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
     const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
 {
     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
@@ -760,7 +757,7 @@ __aicore__ inline int64_t SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline bool SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
+__aicore__ inline bool SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
     RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint, int64_t s2EndPoint,
     bool isFirstS2RangeTask, bool isLastS2RangeTask)
 {
