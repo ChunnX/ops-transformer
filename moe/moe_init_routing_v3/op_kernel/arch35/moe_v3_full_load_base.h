@@ -120,6 +120,7 @@ protected:
     int64_t actualExpertIdxNum_ = 0;
     int64_t expertCountElements_ = 0;
     int64_t actualExpertTotalNum_ = 0;
+    int64_t needExpertTotalCount_ = 0;
     int64_t curIndexStart_;
     int64_t startXRow_;
     int64_t endXRow_;
@@ -165,6 +166,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->perCoreIndicesElements_ = this->gatherOutTilingData_->perCoreIndicesElements;
     this->activeNum_ = tilingData->activeNum;
     this->dropPadMode_ = tilingData->dropPadMode;
+    this->needExpertTotalCount_ = static_cast<int64_t>(this->dropPadMode_ != DROP_PAD_MODE);
     this->expertCapacity_ = tilingData->expertCapacity;
     this->outputRows_ = this->dropPadMode_ == DROP_PAD_MODE ? tilingData->expertNum * tilingData->expertCapacity :
  	                    this->activeNum_;
@@ -214,8 +216,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx
         expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum);
     }
 
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
-                                        Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+    if (this->needExpertTotalCount_) {
+        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
+                                            Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+    }
 }
 
 template <typename T>
@@ -500,15 +504,18 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
                 expertTokensOutLocal.SetValue(expertOffset * EXERPT_TOKENS_KEY_VALUE, i + expertStart_);
                 expertTokensOutLocal.SetValue(expertOffset * EXERPT_TOKENS_KEY_VALUE + 1, expertCount);
                 expertOffset++;
-                actualExpertTotalNum_ += expertCount;
+                if (needExpertTotalCount_) {
+                    actualExpertTotalNum_ += expertCount;
+                }
             }
         }
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
-        for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountLocal.GetValue(i));
-            expertTokensOutLocal.SetValue(i, expertCount);
-            actualExpertTotalNum_ += expertCount;
+        Cast(expertTokensOutLocal, expertCountLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        if (needExpertTotalCount_) {
+            for (int64_t i = 0; i < actualExpertNum_; i++) {
+                actualExpertTotalNum_ += static_cast<int64_t>(expertCountLocal.GetValue(i));
+            }
         }
     } else {
         int64_t cumsumCount = 0;
@@ -516,7 +523,9 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
             int64_t expertCount = static_cast<int64_t>(expertCountLocal.GetValue(i));
             cumsumCount += expertCount;
             expertTokensOutLocal.SetValue(i, cumsumCount);
-            actualExpertTotalNum_ += expertCount;
+            if (needExpertTotalCount_) {
+                actualExpertTotalNum_ += expertCount;
+            }
         }
     }
     event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
@@ -527,9 +536,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
     DataCopyPad(expertTokensCountOrCumsumGm_, expertTokensOutLocal, copyParams);
     expertTokensCopyOutQueue_.FreeTensor(expertTokensOutLocal);
 
-    expertTotalCountGm_.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
+    if (needExpertTotalCount_) {
+        expertTotalCountGm_.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+            expertTotalCountGm_);
+    }
 }
 
 template <typename T>
