@@ -590,10 +590,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedCmpKv() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaOriTopkLength() const
 {
-    OP_CHECK_IF(opParamInfo_.oriTopkLength.tensor == nullptr,
-        OP_LOGE(opName_, "input oriTopkLength can not be nullptr, but it's empty"),
-        return ge::GRAPH_FAILED);
-
     if (opParamInfo_.oriTopkLength.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.oriTopkLength.tensor->GetShapeSize() == 0,
             OP_LOGE(opName_, "Any dim of input oriTopkLength cannot be 0 "),
@@ -622,10 +618,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaOriTopkLength() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpTopkLength() const
 {
-    OP_CHECK_IF(opParamInfo_.cmpTopkLength.tensor == nullptr,
-        OP_LOGE(opName_, "input cmpTopkLength can not be nullptr, but it's empty"),
-        return ge::GRAPH_FAILED);
-
     if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpTopkLength.tensor->GetShapeSize() == 0,
             OP_LOGE(opName_, "Any dim of input cmpTopkLength cannot be 0 "),

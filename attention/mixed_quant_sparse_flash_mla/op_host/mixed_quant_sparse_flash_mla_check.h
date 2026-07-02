@@ -241,7 +241,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
- 	QSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -483,10 +483,10 @@ private:
     ge::graphStatus CheckSingleParaSequsedKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
- 	ge::graphStatus CheckSingleParaSequsedQ() const;
+    ge::graphStatus CheckSingleParaSequsedQ() const;
     ge::graphStatus CheckSingleParaSequsedCmpKv() const;
     ge::graphStatus CheckSingleParaOriTopkLength() const;
- 	ge::graphStatus CheckSingleParaCmpTopkLength() const;
+    ge::graphStatus CheckSingleParaCmpTopkLength() const;
     ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSingleParaMetadata() const;
     ge::graphStatus CheckSingleParaTopkValueMode() const;
