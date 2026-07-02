@@ -29,8 +29,8 @@
 #include "../common.h"
 #include "mm_allreduce.h"
 #include "../matmul_all_reduce_tiling_key.h"
-#include "../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
-#include "../../3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
 #include "../arch22/unquant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {

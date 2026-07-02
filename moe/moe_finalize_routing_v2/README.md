@@ -96,6 +96,13 @@
         <td>-</td>
       </tr>
       <tr>
+        <td>k</td>
+        <td>属性</td>
+        <td>表示每个token选出的top-K专家个数。scalesOptional不为空时，若k>1则校验k必须与scalesOptional的shape第二维一致；scalesOptional为空时，直接使用k推导输出shape。默认值为1。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>out</td>
         <td>输出</td>
         <td>公式中的`out`。</td>

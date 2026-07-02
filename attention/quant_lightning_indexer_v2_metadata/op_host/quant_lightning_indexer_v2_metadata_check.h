@@ -285,6 +285,20 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
     CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
         "The batch_size obtained from query should be the same as that obtained from key, but got %lld and %lld",
         queryBatchSize, keyBatchSize);
+    // 校验TND场景q维度一致性
+    if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistQliV2(sequsedQOptional)) {
+        int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
+        CHECK_COND(cuSeqlensQBatchSize == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
+            "When layout_q is TND and seqused_q is passed, The batch_size obtained from cu_seqlens_q should be the "
+            "same as that obtained from seqused_q, but got %lld and %lld", cuSeqlensQBatchSize, queryBatchSize);
+    }
+    // 校验TND场景k维度一致性
+    if (strcmp(layoutKOptional, "TND") == 0 && IsTensorExistQliV2(sequsedKOptional)) {
+        int64_t cuSeqlensKBatchSize = cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
+        CHECK_COND(cuSeqlensKBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
+            "When layout_k is TND and seqused_k is passed, The batch_size obtained from cu_seqlens_k should be the "
+            "same as that obtained from seqused_k, but got %lld and %lld", cuSeqlensKBatchSize, keyBatchSize);
+    }
     // 校验 cmp_residual_k 元素数
     if (IsTensorExistQliV2(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);

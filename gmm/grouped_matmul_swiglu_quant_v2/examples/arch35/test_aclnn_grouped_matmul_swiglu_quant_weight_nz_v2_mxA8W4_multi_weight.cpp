@@ -89,20 +89,38 @@ int CreateAclTensorListNZTranspose(const std::vector<std::vector<T>> &hostData,
                                    aclDataType dataType, aclTensorList **tensor)
 {
     int size = storageShapes.size();
-    aclTensor *tensors[size];
+    std::vector<aclTensor *> tensors(size, nullptr);
     for (int i = 0; i < size; i++) {
         auto storageSize = GetShapeSize(storageShapes[i]) * sizeof(T);
         auto ret = aclrtMalloc(deviceAddr + i, storageSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(*(deviceAddr + j));
+                *(deviceAddr + j) = nullptr;
+            }
+            return ret;
+        }
 
         ret = aclrtMemcpy(*(deviceAddr + i), storageSize, hostData[i].data(), storageSize, ACL_MEMCPY_HOST_TO_DEVICE);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+            aclrtFree(*(deviceAddr + i));
+            *(deviceAddr + i) = nullptr;
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(*(deviceAddr + j));
+                *(deviceAddr + j) = nullptr;
+            }
+            return ret;
+        }
 
         tensors[i] = aclCreateTensor(viewShapes[i].data(), viewShapes[i].size(), dataType, transposeStrides[i].data(),
                                      0, aclFormat::ACL_FORMAT_FRACTAL_NZ, storageShapes[i].data(),
                                      storageShapes[i].size(), *(deviceAddr + i));
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 
@@ -113,19 +131,37 @@ int CreateAclTensorListTranspose(const std::vector<std::vector<T>> &hostData,
                                  aclDataType dataType, aclFormat formatType, aclTensorList **tensor)
 {
     int size = viewShapes.size();
-    aclTensor *tensors[size];
+    std::vector<aclTensor *> tensors(size, nullptr);
     for (int i = 0; i < size; i++) {
         auto storageSize = GetShapeSize(viewShapes[i]) * sizeof(T);
         auto ret = aclrtMalloc(deviceAddr + i, storageSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(*(deviceAddr + j));
+                *(deviceAddr + j) = nullptr;
+            }
+            return ret;
+        }
 
         ret = aclrtMemcpy(*(deviceAddr + i), storageSize, hostData[i].data(), storageSize, ACL_MEMCPY_HOST_TO_DEVICE);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+            aclrtFree(*(deviceAddr + i));
+            *(deviceAddr + i) = nullptr;
+            for (int j = 0; j < i; j++) {
+                aclDestroyTensor(tensors[j]);
+                aclrtFree(*(deviceAddr + j));
+                *(deviceAddr + j) = nullptr;
+            }
+            return ret;
+        }
 
         tensors[i] = aclCreateTensor(viewShapes[i].data(), viewShapes[i].size(), dataType, transposeStrides[i].data(),
                                      0, formatType, viewShapes[i].data(), viewShapes[i].size(), *(deviceAddr + i));
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 
@@ -184,17 +220,33 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
     aclTensor *output = nullptr;
     aclTensor *outputScale = nullptr;
 
-    std::vector<uint8_t> xHostData(M * K, 1);
+    std::vector<uint8_t> xHostData(M * K);
+    for (int64_t i = 0; i < M * K; i++) {
+        xHostData[i] = static_cast<uint8_t>(i % 0x7F);
+    }
     std::vector<std::vector<uint8_t>> weightHostDataList;
     std::vector<std::vector<uint8_t>> weightScaleHostDataList;
     for (int64_t i = 0; i < E; i++) {
-        weightHostDataList.push_back(std::vector<uint8_t>((N / 32) * (K / 16) * 16 * 32, 1));
-        weightScaleHostDataList.push_back(std::vector<uint8_t>(N * kScaleBlock * 2, 1));
+        int64_t weightSize = (N / 32) * (K / 16) * 16 * 32;
+        std::vector<uint8_t> weightData(weightSize);
+        for (int64_t j = 0; j < weightSize; j++) {
+            weightData[j] = static_cast<uint8_t>((j + i * 37) % 256);
+        }
+        weightHostDataList.push_back(weightData);
+        int64_t scaleSize = N * kScaleBlock * 2;
+        std::vector<uint8_t> scaleData(scaleSize);
+        for (int64_t j = 0; j < scaleSize; j++) {
+            scaleData[j] = static_cast<uint8_t>((j + i * 5) % 16 + 120);
+        }
+        weightScaleHostDataList.push_back(scaleData);
     }
-    std::vector<uint8_t> xScaleHostData(M * CeilDiv(K, 64) * 2, 1);
+    std::vector<uint8_t> xScaleHostData(M * CeilDiv(K, 64) * 2);
+    for (int64_t i = 0; i < M * CeilDiv(K, 64) * 2; i++) {
+        xScaleHostData[i] = static_cast<uint8_t>(i % 16 + 120);
+    }
     std::vector<int64_t> groupListHostData(E, M / E);
-    std::vector<uint8_t> outputHostData(M * N / 2, 1);
-    std::vector<uint8_t> outputScaleHostData(M * CeilDiv(N, 128) * 2, 1);
+    std::vector<uint8_t> outputHostData(M * N / 2, 0);
+    std::vector<uint8_t> outputScaleHostData(M * CeilDiv(N, 128) * 2, 0);
 
     aclIntArray *tuningConfig = nullptr;
 

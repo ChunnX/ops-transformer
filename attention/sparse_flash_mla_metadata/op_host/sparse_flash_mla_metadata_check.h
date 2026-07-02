@@ -241,8 +241,17 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                         SMLA_A5_PLATFORM_LOG.c_str(), cmpRatio);
             } else {
                 int64_t expectedCmpRatio = (cmpTopk > 0) ? 4 : 128;
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be %lld on %s, but got %lld",
-                        expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                if (cmpTopk > 0) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is non-zero(CSA with "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                } else {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "cmp_ratio should be %lld on %s when cmp_topk is 0(HCA without "
+                            "cmp_sparse_indices), but got %lld",
+                            expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+                }
             }
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -645,24 +654,53 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     }
     // 校验 q/kv 维度一致性
     int64_t queryBatchSize = GetQueryBatchSizeSmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize);
+    // 校验TND场景q维度一致性
+    if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistSmla(sequsedQOptional)) {
+        int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
+        if (cuSeqlensQBatchSize != queryBatchSize) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when layout_q is TND and seqused_q is passed, the batch_size obtained "
+                "from cu_seqlens_q should be the same as that obtained from seqused_q, but got %lld and %lld",
+                cuSeqlensQBatchSize, queryBatchSize);
+        }
+    }
     if (hasOriKv) {
-        int64_t oriKvBatchSize = GetOriKvBatchSizeSmla(
-            sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional, batchSize);
+        int64_t oriKvBatchSize = GetOriKvBatchSizeSmla(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
+                                                       batchSize);
+        // 校验q与ori_kv维度一致性
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
-                    "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
-                    oriKvBatchSize);
+                "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
+                oriKvBatchSize);
             return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验TND场景ori_kv维度一致性
+        if (strcmp(layoutKvOptional, "TND") == 0 && IsTensorExistSmla(sequsedOriKvOptional)) {
+            int64_t cuSeqlensOriKvBatchSize = cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
+            if (cuSeqlensOriKvBatchSize != oriKvBatchSize) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, layout_kv is TND and seqused_ori_kv is "
+                    "passed, the batch_size obtained from cu_seqlens_ori_kv should be the same as that obtained from "
+                    "seqused_ori_kv, but got %lld and %lld", cuSeqlensOriKvBatchSize, oriKvBatchSize);
+            }
         }
     }
     if (hasCmpKv) {
-        int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmla(
-            sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional, batchSize);
+        int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmla(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
+                                                       batchSize);
+        // 校验q与cmp_kv维度一致性
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
-                    "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,
-                    cmpKvBatchSize);
+                "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,
+                cmpKvBatchSize);
             return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验TND场景cmp_kv维度一致性
+        if (strcmp(layoutKvOptional, "TND") == 0 && IsTensorExistSmla(sequsedCmpKvOptional)) {
+            int64_t cuSeqlensCmpKvBatchSize = cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
+            if (cuSeqlensCmpKvBatchSize != cmpKvBatchSize) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, layout_kv is TND and seqused_cmp_kv is "
+                    "passed, the batch_size obtained from cu_seqlens_cmp_kv should be the same as that obtained from "
+                    "seqused_cmp_kv, but got %lld and %lld", cuSeqlensCmpKvBatchSize, cmpKvBatchSize);
+            }
         }
         // 校验 cmp_residual_kv 元素数
         if (IsTensorExistSmla(cmpResidualKvOptional)) {
