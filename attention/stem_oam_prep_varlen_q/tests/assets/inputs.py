@@ -28,15 +28,10 @@ def stem_oam_prep_varlen_q_input(
         stemStride=16,
         **kwargs
 ):
-    """
-    Input generator for stem_oam_prep_varlen_q.
-
-    Generates random q_scale values for FP8 input.
-    """
     total_tokens = q.shape[0]
     H_q = q.shape[1]
 
-    if q_scale is None and q.dtype == np.uint8:
+    if q_scale is None:
         q_scale = np.random.uniform(0.5, 1.5, (total_tokens, H_q)).astype(np.float32)
 
     return [q, q_seq_lens, cu_seq_lens_q, q_scale]
