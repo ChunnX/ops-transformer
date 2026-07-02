@@ -22,7 +22,6 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 1;
-constexpr int64_t INT4_SMALL_COL_BATCH_BYTES = BLOCK_BYTES * 8;
 
 __aicore__ inline void CopySmallQuantOutToBatch(LocalTensor<int8_t> &dstLocal, LocalTensor<int8_t> &srcLocal,
                                                 int64_t dstOffset, int64_t copyBytes)
@@ -172,7 +171,6 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
                 MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
                 MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-                MicroAPI::MaskReg maskRegVL8 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL8>();
 
                 if constexpr (!IsSameType<T, float>::value) {
                     ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, 0);
@@ -188,7 +186,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::ReduceMax(scaleValueReg, scaleValueReg, maskRegAll);
                 MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
                 MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
-                MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
+                MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL1);
 
                 MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
@@ -301,7 +299,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int6
             LocalTensor<int8_t> outBatchLocal = outBatchLocal0;
             LocalTensor<float> scaleBatchLocal = scaleBatchLocal0;
             int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
-            int64_t outBatchRows = Max(static_cast<int64_t>(1), INT4_SMALL_COL_BATCH_BYTES / colsAsInt8_);
+            int64_t outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(perLoopCols_, sizeof(float)) / colsAsInt8_);
             int64_t outBatchCount = 0;
             int64_t outBatchStart = 0;
             int64_t outBatchBufIdx = 0;
@@ -469,7 +467,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int6
         if (colsAsInt8_ < BLOCK_BYTES) {
             outBatchLocal = outBatchQueue_.AllocTensor<int8_t>();
             scaleBatchLocal = scaleBatchQueue_.AllocTensor<float>();
-            outBatchRows = Max(static_cast<int64_t>(1), INT4_SMALL_COL_BATCH_BYTES / colsAsInt8_);
+            outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(perLoopCols_, sizeof(float)) / colsAsInt8_);
         }
     }
     int32_t lastExpertIdx = -1;
@@ -919,10 +917,11 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
                       AlignBytes(perLoopCols_, sizeof(float)));
     pipe_->InitBuffer(calcQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        pipe_->InitBuffer(outBatchQueue_, 2, Max(AlignBytes(perLoopCols_, sizeof(float)), INT4_SMALL_COL_BATCH_BYTES));
+        pipe_->InitBuffer(outBatchQueue_, 2, AlignBytes(perLoopCols_, sizeof(float)));
         int64_t scaleBatchBytes = BLOCK_BYTES;
         if (colsAsInt8_ < BLOCK_BYTES) {
-            int64_t outBatchRows = Max(static_cast<int64_t>(1), INT4_SMALL_COL_BATCH_BYTES / colsAsInt8_);
+            int64_t outBatchRows =
+                Max(static_cast<int64_t>(1), AlignBytes(perLoopCols_, sizeof(float)) / colsAsInt8_);
             int64_t scaleBatchRows = Max(BLOCK_BYTES / static_cast<int64_t>(sizeof(float)), outBatchRows);
             scaleBatchBytes = AlignBytes(scaleBatchRows, sizeof(float));
         }
