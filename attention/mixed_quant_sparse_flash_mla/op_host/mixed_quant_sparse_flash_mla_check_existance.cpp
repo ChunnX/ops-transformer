@@ -134,6 +134,17 @@ ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
             "cmpKv is provided and cmpSparseIndices is not provided."),
         return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::PA_BBND && opParamInfo_.cmpBlockTable.tensor == nullptr,
+        OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND in HCA mode."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::PA_BBND && opParamInfo_.sequsedCmpKv.tensor == nullptr,
+        OP_LOGE(opName_, "sequsedCmpKv must not be empty when kvLayout is PA_BBND in HCA mode."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
+        OP_LOGE(opName_, "cuSeqLensCmpKv must not be empty when kvLayout is TND in HCA mode."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -157,22 +168,35 @@ ge::graphStatus QSMLATilingCheck::CheckCSAExistence()
         OP_LOGE(opName_, "oriKv and cmpKv must not be empty when cmpKv and cmpSparseIndices are provided."),
         return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::PA_BBND && opParamInfo_.cmpBlockTable.tensor == nullptr,
+        OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND in CSA mode."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::PA_BBND && opParamInfo_.sequsedCmpKv.tensor == nullptr,
+        OP_LOGE(opName_, "sequsedCmpKv must not be empty when kvLayout is PA_BBND in CSA mode."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(kvLayout_ == QSMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
+        OP_LOGE(opName_, "cuSeqLensCmpKv must not be empty when kvLayout is TND in CSA mode."),
+        return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
 {
+    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr,
+        OP_LOGE(opName_, "cmpRatio is required, but got nullptr."),
+        return ge::GRAPH_FAILED);
+
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 1 && *opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when SWA mode, cmpRatio must be 1 or 4 or 128, but got %u", *opParamInfo_.cmpRatio),
-            return ge::GRAPH_FAILED);
-    } else if (perfMode_ == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when HCA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+        OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
+            OP_LOGE(opName_, "When SWA mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when CSA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+        OP_CHECK_IF(*opParamInfo_.cmpRatio < 1 || *opParamInfo_.cmpRatio > 128,
+            OP_LOGE(opName_, "When non-SWA mode, cmpRatio must be in range [1, 128], but got %ld.",
+                *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
     }
 

@@ -24,12 +24,12 @@ namespace optiling {
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
 {
-    OP_CHECK_IF(oriWinLeft_ != 127, // 127:当前不泛化
-        OP_LOGE(opName_, "oriWinLeft_ only support 127, but got %u", oriWinLeft_),
+    OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
+        OP_LOGE(opName_, "oriWinLeft_ only support -1 or >=0, but got %ld", oriWinLeft_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(oriWinRight_ != 0, // 0:当前不泛化
-        OP_LOGE(opName_, "oriWinRight_ only support 0, but got %u", oriWinRight_),
+    OP_CHECK_IF(oriWinRight_ != -1 && oriWinRight_ < 0,
+        OP_LOGE(opName_, "oriWinRight_ only support -1 or >=0, but got %ld", oriWinRight_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -61,11 +61,17 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
         OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE &&
-                dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
-        OP_LOGE(opName_, "dSizeVInput only support %u and %u, but got %u", KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
+    if (quant_mode_ == 1) {
+        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
+            OP_LOGE(opName_, "When quant_mode is 1, dSizeVInput only support %u, but got %u",
+                KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE, dSizeVInput_),
+            return ge::GRAPH_FAILED);
+    } else if (quant_mode_ == 2) {
+        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
+            OP_LOGE(opName_, "When quant_mode is 2, dSizeVInput only support %u, but got %u",
                 KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO, dSizeVInput_),
-        return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
