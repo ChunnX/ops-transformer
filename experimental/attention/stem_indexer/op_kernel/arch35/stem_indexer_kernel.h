@@ -118,6 +118,7 @@ protected:
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
                                             SICommon::RunInfo runInfo);
+    __aicore__ inline void CleanOutput();
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -551,9 +552,10 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
 template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::Process()
 {
+    CleanOutput();
+    SyncAll<false>();
+
     if (isUsedCoreEqZero) {
-        // 没有计算任务，直接清理输出
-        ProcessInvalid();
         return;
     }
 
@@ -561,12 +563,12 @@ __aicore__ inline void SIPreload<SIT>::Process()
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessInvalid()
+__aicore__ inline void SIPreload<SIT>::CleanOutput()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
         uint64_t totalIndiceSize =
-            constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount;
+            constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize;
         uint64_t singleCoreIndiceSize = SICommon::Align((totalIndiceSize + aivCoreNum - 1) / aivCoreNum,
                                                          GM_ALIGN_BYTES / sizeof(int32_t));
         uint64_t indiceBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreIndiceSize;
@@ -592,6 +594,12 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
 }
 
 template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::ProcessInvalid()
+{
+    CleanOutput();
+}
+
+template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::ProcessMain()
 {
     if(!splitCoreInfo.isCoreEnable){
@@ -611,7 +619,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
 
@@ -629,9 +636,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
                 ++gloop;
             }
             splitCoreInfo.s2Start = 0;
-        }
-        if (tempLoopInfo.needDealActS1LessThanS1) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
         splitCoreInfo.gS1Start = 0;
     }
@@ -652,10 +656,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     if ASCEND_IS_AIC {
         matmulService.ComputeMm1(runInfo);
     } else {
-        if (runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
-                                         runInfo.indiceOutOffset);
-        }
         vectorService.ProcessVec1(runInfo);
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
