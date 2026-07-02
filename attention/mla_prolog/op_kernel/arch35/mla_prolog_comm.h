@@ -86,9 +86,10 @@ enum class ACTUAL_SEQ_MODE : uint8_t {
     EN_Q_LEN = static_cast<uint8_t>(1),
 };
 
-enum class SPLIT_M_MODE : uint8_t {
-    DISABLED = static_cast<uint8_t>(0),
-    ENABLED = static_cast<uint8_t>(1),
+enum class SPLIT_MODE : uint8_t {
+    SPLIT_N  = static_cast<uint8_t>(0),
+    SPLIT_M  = static_cast<uint8_t>(1),
+    SPLIT_KN = static_cast<uint8_t>(2),
 };
 
 enum class ROPE_MODE : uint8_t {
@@ -140,12 +141,30 @@ constexpr int FINISH_MM_QCQR_SPLIT_BATCH = 0x3;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP = 0X1;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
+constexpr int FINISH_VEC_QR = 0X5;
+constexpr int FINISH_VEC_QN = 0X6;
+
+// Split-KN sync flags
+constexpr int FINISH_MM_CQ_KN = 0x3;
+constexpr int FINISH_MM_CKVKR_KN = 0x4;
 
 #ifdef ENABLE_DUMP_DATA
 #define DO_DUMP_DATA(srcTensor, id, len) DumpTensor(srcTensor, id, len)
 #else
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
+
+constexpr uint8_t UNIT_FLAG_DISABLE = 0;
+constexpr uint8_t UNIT_FLAG_CHECK = 0b10;
+constexpr uint8_t UNIT_FLAG_SET = 0b11;
+constexpr uint8_t SINGL_TARGET_MODE = 0;
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_M = 0b01;
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_N = 0b10;
+
+constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false};
+constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_UB = {CO2Layout::NZ, true};
+constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_L1 = {CO2Layout::NZ, false};
 
 class NoneType {};
 
@@ -227,7 +246,7 @@ constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
 
 template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
-          bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
+          bool IS_PERTILE = false, uint32_t CV_RATIO = 2, bool IS_SPLIT_KN = false, typename... Args>
 struct MLAPType {
     using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
@@ -262,13 +281,13 @@ struct MLAPType {
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
-
-// 类模板特化，支持mxfp8/fp8全量化
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
+          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO,
+          bool IS_SPLIT_KN, typename... Args>
 struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
-                IS_PERTILE, CV_RATIO, Args...> {
+                IS_PERTILE, CV_RATIO, IS_SPLIT_KN, Args...> {
     using mmInputType = FP8E4M3; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = FP8E4M3;
     using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
@@ -296,13 +315,15 @@ struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROU
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
 
 // 类模板特化，支持hif8全量化
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
+          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO,
+          bool IS_SPLIT_KN, typename... Args>
 struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
-                IS_PERTILE, CV_RATIO, Args...> {
+                IS_PERTILE, CV_RATIO, IS_SPLIT_KN, Args...> {
     using mmInputType = HIF8; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = HIF8;
     using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
@@ -330,6 +351,7 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMP
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
 
 struct MMParams {
@@ -345,6 +367,8 @@ struct MMParams {
     uint32_t baseN;
     uint32_t baseK;
     uint32_t stepK;
+    uint32_t stepKMax;
+    uint32_t kStart;
     uint32_t needSetOrgShape;
     uint32_t kL1StepSize;
     uint32_t kScale;
