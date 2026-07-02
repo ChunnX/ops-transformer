@@ -56,6 +56,7 @@ struct RunInfo {
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
+    uint64_t valueOutOffset;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
@@ -104,6 +105,7 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
+    bool returnValue = false;          // 是否返回sparse_value
     uint32_t cmpRatio = 1;             // 压缩率
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
@@ -133,6 +135,7 @@ struct LdSplitCoreInfo {
         uint32_t mStart = 0U;
         uint32_t mNum = 0U;
         uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
+        uint64_t valueOutCoreOffset = 0U;   // 最终输出value搬出的初始偏移地址
     };
 
 template <typename T1, typename T2>
