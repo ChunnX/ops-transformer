@@ -146,29 +146,35 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens");
         return ge::GRAPH_FAILED;
     }
-    int32_t* qSeqLensData = const_cast<int32_t*>(qSeqLensTensor->GetData<int32_t>());
-    if (qSeqLensData == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens data");
-        return ge::GRAPH_FAILED;
-    }
+    const int32_t* qSeqLensData = qSeqLensTensor->GetData<int32_t>();
 
-    uint32_t max_q_len = 0;
-    totalBlocks = 0;
     uint32_t H_q = tiling->num_q_heads;
     uint32_t batchU32 = tiling->batch_size;
 
-    for (uint32_t b = 0; b < batchU32; b++) {
-        uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
-        uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
-        uint32_t num_Qb_b = q_padded_b / B;
-        totalBlocks += H_q * num_Qb_b;
-        if (q_len_b > max_q_len) {
-            max_q_len = q_len_b;
-        }
-    }
+    if (qSeqLensData != nullptr) {
+        uint32_t max_q_len = 0;
+        totalBlocks = 0;
 
-    uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
-    tiling->max_Qb = max_q_padded / B;
+        for (uint32_t b = 0; b < batchU32; b++) {
+            uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
+            uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
+            uint32_t num_Qb_b = q_padded_b / B;
+            totalBlocks += H_q * num_Qb_b;
+            if (q_len_b > max_q_len) {
+                max_q_len = q_len_b;
+            }
+        }
+
+        uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
+        tiling->max_Qb = max_q_padded / B;
+    } else {
+        auto qShape = context->GetInputShape(0);
+        uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
+        uint32_t max_q_len = (batchU32 > 0) ? (totalTokens + batchU32 - 1) / batchU32 : totalTokens;
+        uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
+        tiling->max_Qb = max_q_padded / B;
+        totalBlocks = H_q * tiling->max_Qb * batchU32;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
