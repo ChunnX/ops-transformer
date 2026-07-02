@@ -16,28 +16,11 @@
 #ifndef CANN_OPS_TRANSFORMER_HCCL_COMMON_H
 #define CANN_OPS_TRANSFORMER_HCCL_COMMON_H
 
-#include "aclnn_common.h"
-#include <torch_npu/csrc/framework/utils/OpAdapter.h>
-#include <dlfcn.h>
-#include <vector>
-#include <functional>
-#include <type_traits>
-#include <ATen/Tensor.h>
-#include <acl/acl_base.h>
-#include <acl/acl_rt.h>
-#include <c10/util/Exception.h>
-#include "torch_npu/csrc/core/npu/NPUStream.h"
-#include "torch_npu/csrc/framework/OpCommand.h"
-#include "torch_npu/csrc/framework/interface/EnvVariables.h"
-#include "torch_npu/csrc/aten/NPUNativeFunctions.h"
-#include "torch_npu/csrc/core/npu/DeviceUtils.h"
+#include "aclnn_api_loader.h"
 #include "hccl/hccl_res.h"
 #include "hccl/hcomm_res_defs.h"
 #include "hccl/hccl_rank_graph.h"
-#if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
-    #include "torch_npu/csrc/flopcount/FlopCount.h"
-#endif
-#define NPU_NAME_SPACE at_npu::native
+
 
 using _HcclKfcAllocOpArgs = HcclResult (*)(void **);                                        // 通信配置对象创建
 using _HcclKfcOpArgsSetAlgConfig = HcclResult (*)(void *, char *);                          // 设置通信类型
