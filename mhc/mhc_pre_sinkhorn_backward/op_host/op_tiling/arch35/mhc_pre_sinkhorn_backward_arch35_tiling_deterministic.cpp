@@ -9,8 +9,8 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.cpp
- * \brief
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.cpp
+ * \brief deterministic tiling — C-Short/C-Long 分场景 UB 预算
  */
 
 #include "register/op_def_registry.h"
@@ -25,36 +25,46 @@
 using namespace AscendC;
 namespace optiling {
 
-constexpr uint8_t GRAD_HIN_IDX = 0;
-constexpr uint8_t GRAD_H_POST_IDX = 1;
-constexpr uint8_t GRAD_H_RES_IDX = 2;
-constexpr uint8_t INPUT_X_IDX = 3;
-constexpr uint8_t PHI_IDX = 4;
-constexpr uint8_t ALPHA_IDX = 5;
-constexpr uint8_t BIAS_IDX = 6;
-constexpr uint8_t H_PRE_IDX = 7;
-constexpr uint8_t HC_BEFORE_NORM_IDX = 8;
-constexpr uint8_t INV_RMS_IDX = 9;
-constexpr uint8_t SUM_OUT_IDX = 10;
-constexpr uint8_t NORM_OUT_IDX = 11;
-constexpr uint8_t GRAD_X_IDX = 0;
-constexpr uint8_t GRAD_PHI_IDX = 1;
-constexpr uint8_t GRAD_ALPHA_IDX = 2;
-constexpr uint8_t GRAD_BIAS_IDX = 3;
-constexpr uint8_t BATCH_SIZE_DIM_IDX = 0;
-constexpr uint8_t SEQ_LENGTH_DIM_IDX = 1;
-constexpr uint8_t N_DIM_IDX = 2;
-constexpr uint8_t C_DIM_IDX = 3;
-constexpr float DEFAULT_EPS = 1e-6f;
-constexpr uint8_t ITER_COUNT_IDX = 0;
-constexpr int64_t DOUBLE_BUFFER = 2;
-constexpr uint8_t BF16_BYTE_SIZE = 2;
-constexpr int64_t ALPHA_SIZE_3 = 3;
-constexpr int64_t N_SIZE_4 = 4;
-constexpr int64_t ALIGN_32 = 32;
-constexpr int64_t FP32_BYTE_SIZE = 4;
-constexpr uint64_t UB_RESERVE_SIZE = 256;
-constexpr int64_t WS_BUFFER_INTERVAL = 1024;
+// 输入/输出索引
+constexpr uint8_t GRAD_HIN_IDX        = 0;
+constexpr uint8_t GRAD_H_POST_IDX     = 1;
+constexpr uint8_t GRAD_H_RES_IDX      = 2;
+constexpr uint8_t INPUT_X_IDX         = 3;
+constexpr uint8_t PHI_IDX             = 4;
+constexpr uint8_t ALPHA_IDX           = 5;
+constexpr uint8_t BIAS_IDX            = 6;
+constexpr uint8_t H_PRE_IDX           = 7;
+constexpr uint8_t HC_BEFORE_NORM_IDX  = 8;
+constexpr uint8_t INV_RMS_IDX         = 9;
+constexpr uint8_t SUM_OUT_IDX         = 10;
+constexpr uint8_t NORM_OUT_IDX        = 11;
+constexpr uint8_t GRAD_X_IDX          = 0;
+constexpr uint8_t GRAD_PHI_IDX        = 1;
+constexpr uint8_t GRAD_ALPHA_IDX      = 2;
+constexpr uint8_t GRAD_BIAS_IDX       = 3;
+
+// 维度索引
+constexpr uint8_t BATCH_SIZE_DIM_IDX  = 0;
+constexpr uint8_t SEQ_LENGTH_DIM_IDX  = 1;
+constexpr uint8_t N_DIM_IDX           = 2;
+constexpr uint8_t C_DIM_IDX           = 3;
+
+// 常量
+constexpr float    DEFAULT_EPS         = 1e-6f;
+constexpr uint8_t  ITER_COUNT_IDX      = 0;
+constexpr int64_t  DOUBLE_BUFFER       = 2;
+constexpr int64_t  BF16_BYTE_SIZE      = 2;
+constexpr int64_t  FP32_BYTE_SIZE      = 4;
+constexpr uint64_t UB_RESERVE_SIZE     = 256;
+constexpr int64_t  WS_BUFFER_INTERVAL  = 1024;
+constexpr int64_t  UB_FACTOR_C_DEFAULT = 256;  // C-Long 时默认 C 切分粒度
+
+// UB Buffer 计数（与 kernel TBuf 声明对应）
+constexpr int64_t NUM_K_BUFS_FIXED    = 3;   // biasBuf_ + gradCalcBuf1_ + gradCalcBuf2_
+constexpr int64_t NUM_NN_BUFS_SIGMOID = 3;   // gradZBuf_ + normOutForwardBuf_ + zBuf_
+constexpr int64_t NUM_NN_BUFS_SK      = 8;   // tmpDiv×4 + tmpMul + zResMax + zResMaxIdx + tmp + isMax
+constexpr int64_t NUM_SUM_OUT_BUFS    = 2;   // sumOutRowBuf_ + sumOutColBuf_
+constexpr int64_t NUM_NORM_OUT_BUFS   = 1;   // normOutBuf_
 
 template <typename T>
 constexpr T AlignUp(T value, T align)
@@ -66,32 +76,32 @@ using namespace ge;
 using namespace std;
 using namespace AscendC;
 
+// ================================================================
+// IsCapable
+// ================================================================
 bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 {
-    auto isDeterministic = (context_->GetDeterministic() == 1);
-    if (!isDeterministic) {
-        return false;
-    }
-
-    return true;
+    return context_->GetDeterministic() == 1;
 }
 
+// ================================================================
+// SetTilingData — MatMul tiling + 字段填充
+// ================================================================
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 {
-    MhcPreSinkhornBackwardArch35DeterminiticTilingData* tilingData =
-        context_->GetTilingData<MhcPreSinkhornBackwardArch35DeterminiticTilingData>();
+    auto* tilingData = context_->GetTilingData<MhcPreSinkhornBackwardArch35DeterminiticTilingData>();
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
 
-    mm1K_ = n_ * n_ + 2 * n_;
+    int64_t kDim = n_ * n_ + 2 * n_;
+    mm1K_ = kDim;
     mm1M_ = batchSize_ * seqLength_;
     mm1N_ = n_ * c_;
-
     mm2K_ = batchSize_ * seqLength_;
-    mm2M_ = n_ * n_ + 2 * n_;
+    mm2M_ = kDim;
     mm2N_ = n_ * c_;
 
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
@@ -121,94 +131,107 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
         return ge::GRAPH_FAILED;
     }
 
-    tilingData->batchSize = batchSize_;
-    tilingData->seqLength = seqLength_;
-    tilingData->c = c_;
-    tilingData->n = n_;
-    tilingData->usedAivNum = usedAivNum_;
-    tilingData->skIterCount = skIterCount_;
-    tilingData->cLoopDataLen = cLoopDataLen_;
-    tilingData->bsLoopDataLen = bsLoopDataLen_;
-    tilingData->bsTaskCount = bsTaskCount_;
-    tilingData->tailBsTaskCount = tailBsTaskCount_;
-    tilingData->cBlockLoops = cBlockLoops_;
-    tilingData->cBlockTailLoops = cBlockTailLoops_;
-    tilingData->cBlockCount = cBlockCount_;
-    tilingData->cBlockTailCount = cBlockTailCount_;
-    tilingData->cBlockTailTailCount = cBlockTailTailCount_;
-    tilingData->finalUsedAivNum = finalUsedAivNum_;
-    tilingData->eps = hcEps_;
-    tilingData->aicNum = coreNumAic_;
+    tilingData->b             = batchSize_;
+    tilingData->s             = seqLength_;
+    tilingData->c             = c_;
+    tilingData->n             = n_;
+    tilingData->usedCoreNum   = usedCoreNum_;
+    tilingData->aicCoreNum    = coreNumAic_;
+    tilingData->ubFactorBS    = ubFactorBS_;
+    tilingData->ubFactorC     = ubFactorC_;
+    tilingData->blockFactorBS = blockFactorBS_;
+    tilingData->blockTailBS   = blockTailBS_;
+    tilingData->skIterCount   = skIterCount_;
+    tilingData->eps           = hcEps_;
 
     return ge::GRAPH_SUCCESS;
 }
 
+// ================================================================
+// DoUbTiling — C-Short/C-Long 分场景 UB 预算
+//
+// 策略:
+//   1. 先算 C 全量时每 BS 的 UB 开销 (perBsCostC_full)
+//   2. 如果 perBsCostC_full + perBsCostK ≤ availUb → C-Short: ubFactorC=c
+//   3. 否则 → C-Long: ubFactorC=对齐值, 重算 perBsCostC
+//   4. 最后: ubFactorBS = (availUb - fixedCost) / (perBsCostC + perBsCostK)
+// ================================================================
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
     int64_t totalBs = batchSize_ * seqLength_;
-    bsTaskCount_ = Ops::Base::CeilDiv(totalBs, static_cast<int64_t>(coreNumAiv_));
-    usedAivNum_ = Ops::Base::CeilDiv(totalBs, bsTaskCount_);
-    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
-    cLoopDataLen_ = c_;
-    bsLoopDataLen_ = bsTaskCount_;
-    ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
-    ubSize_ = ubSize_ - UB_RESERVE_SIZE;
-    auto restSize = static_cast<int64_t>(-1);
+    int64_t kDim = n_ * n_ + 2 * n_;
+    int64_t nn = n_ * n_;
 
-    /* UB分布：x、h_pre And grad_h_pre、grad_h_in、hc_before_norm、inv_rms、
-               grad_h_res、xFP32、grad_x_from_in、grad_alpha And grad_bias、
-               grad_h_pre、grad_z、bias、norm_out_forward、z、gradCalcBuf1_、
-               gradCalcBuf2_、tmpBuf、sumOutBuf、normOutBuf_、idxBuf~maxBuf
-    */
-    while (restSize <= 0) {
-        int64_t occupy =
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
-            5 * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
-            skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
-            4 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
+    // --- BS 分核 ---
+    blockFactorBS_ = Ops::Base::CeilDiv(totalBs, static_cast<int64_t>(coreNumAiv_));
+    usedCoreNum_   = Ops::Base::CeilDiv(totalBs, blockFactorBS_);
+    blockTailBS_   = totalBs - blockFactorBS_ * (usedCoreNum_ - 1);
 
-        restSize = ubSize_ - occupy;
-        if (restSize <= 0 && bsLoopDataLen_ > 1) {
-            bsLoopDataLen_--;
-        } else if (restSize <= 0 && bsLoopDataLen_ == 1) {
-            cLoopDataLen_--;
+    // --- UB 预算 ---
+    ubBlockSize_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
+    int64_t availUb = static_cast<int64_t>(ubSize_) - UB_RESERVE_SIZE;
+
+    auto AlignB = [&](int64_t bytes) {
+        return static_cast<int64_t>(Ops::Base::CeilAlign(bytes, ubBlockSize_));
+    };
+
+    int64_t cFp16AlignFull = AlignB(c_ * BF16_BYTE_SIZE);
+    int64_t cFp32AlignFull = AlignB(c_ * FP32_BYTE_SIZE);
+    int64_t nAlign   = AlignB(n_ * FP32_BYTE_SIZE);
+    int64_t nnAlign  = AlignB(nn * FP32_BYTE_SIZE);
+    int64_t kAlign   = AlignB(kDim * FP32_BYTE_SIZE);
+
+    // 固定开销 (与 BS/C 无关)
+    int64_t fixedCost = kAlign * NUM_K_BUFS_FIXED
+                      + nnAlign                              // gradAlphaAndBiasQue_
+                      + ubBlockSize_;                        // gradAlphaSumQue_
+
+    // 每 BS 的 C 无关开销 (K 维, N≤8)
+    int64_t perBsCostK =
+        DOUBLE_BUFFER * nAlign                             // hPreAndGradHPostQue_
+      + DOUBLE_BUFFER * kAlign                              // hcBeforeNormQue_
+      + DOUBLE_BUFFER * nnAlign                             // gradHResQue_
+      + DOUBLE_BUFFER * AlignB(FP32_BYTE_SIZE)              // invRmsQue_
+      + nAlign                                              // gradHPreBuf_
+      + nnAlign * NUM_NN_BUFS_SIGMOID                       // gradZ + normOutFwd + z
+      + nnAlign * NUM_NN_BUFS_SK                            // tmpDiv×4 + tmpMul + zResMax×2 + tmp + isMax
+      + nAlign * NUM_SUM_OUT_BUFS * skIterCount_            // sumOutRow + sumOutCol
+      + nnAlign * NUM_NORM_OUT_BUFS * skIterCount_;         // normOutBuf
+
+    // 每 BS 的 C 相关开销 (C 全量)
+    int64_t perBsCostC_full =
+        DOUBLE_BUFFER * n_ * cFp16AlignFull                 // xQue_
+      + DOUBLE_BUFFER * n_ * cFp32AlignFull * 2             // xFp32Que_ + gradXFromHinQue_
+      + DOUBLE_BUFFER * cFp16AlignFull;                     // gradHinQue_
+
+    // --- 场景判断 ---
+    int64_t perBsCostC;
+    if (perBsCostC_full + perBsCostK <= availUb - fixedCost) {
+        // C-Short: 不切 C, 全量处理
+        ubFactorC_ = c_;
+        perBsCostC = perBsCostC_full;
+    } else {
+        // C-Long: 切 C, 用对齐粒度
+        ubFactorC_ = AlignUp(UB_FACTOR_C_DEFAULT, int64_t(8));  // 对齐到 8 元素
+        if (ubFactorC_ > c_) {
+            ubFactorC_ = c_;
         }
+        int64_t cFp16Align = AlignB(ubFactorC_ * BF16_BYTE_SIZE);
+        int64_t cFp32Align = AlignB(ubFactorC_ * FP32_BYTE_SIZE);
+        perBsCostC =
+            DOUBLE_BUFFER * n_ * cFp16Align
+          + DOUBLE_BUFFER * n_ * cFp32Align * 2
+          + DOUBLE_BUFFER * cFp16Align;
     }
 
-    // final
-    auto bsncTaskCount = Ops::Base::CeilDiv(totalBs * n_ * c_, static_cast<int64_t>(coreNumAiv_));
-    finalUsedAivNum_ = Ops::Base::CeilDiv(totalBs * n_ * c_, bsncTaskCount);
-    auto tailBsncTaskCount_ = totalBs * n_ * c_ - bsncTaskCount * (finalUsedAivNum_ - 1);
-    cBlockCount_ = bsncTaskCount;
-    cBlockTailCount_ = tailBsncTaskCount_;
-    restSize = static_cast<int64_t>(-1);
-    while (restSize <= 0) {
-        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
-        restSize = ubSize_ - occupy;
-        if (restSize <= 0 && cBlockCount_ > 1) {
-            cBlockCount_--;
-        }
+    // --- 计算 ubFactorBS ---
+    int64_t perBsCost = perBsCostC + perBsCostK;
+    if (perBsCost > 0) {
+        ubFactorBS_ = (availUb - fixedCost) / perBsCost;
+    } else {
+        ubFactorBS_ = blockFactorBS_;
     }
-    cBlockLoops_ = Ops::Base::CeilDiv(bsncTaskCount, cBlockCount_);
-    cBlockTailLoops_ = Ops::Base::CeilDiv(tailBsncTaskCount_, cBlockCount_);
-    cBlockTailCount_ = bsncTaskCount - cBlockCount_ * (cBlockLoops_ - 1);
-    cBlockTailTailCount_ = tailBsncTaskCount_ - cBlockCount_ * (cBlockTailLoops_ - 1);
+    ubFactorBS_ = max(int64_t(1), min(ubFactorBS_, blockFactorBS_));
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoOpTiling()
@@ -227,7 +250,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
 {
     context_->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -236,15 +258,24 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
+
+    int64_t totalBs = batchSize_ * seqLength_;
+    int64_t kDim = n_ * n_ + 2 * n_;
+
+    // 新方案 WS 布局 (gradXFromRms 不落 WS, gradNormOut 不落 WS):
+    // 1. xFp32[B*S, N, C]
+    // 2. gradXFromHin[B*S, N, C]
+    // 3. gradHcBeforeNorm[B*S, K]  (供 AIC mm1)
+    // 4. gradXFromMatmul[B*S, N*C] (AIC mm1 输出)
+    // 5. gradAlpha[3 * usedCoreNum] (跨核归约)
+    // 6. gradBias[usedCoreNum * K]  (跨核归约)
     size_t userWorkspaceSize =
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +              // xFP32
-        3 * usedAivNum_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                                // gradAlpha
-        (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL + // gradBias
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3 + 3 * WS_BUFFER_INTERVAL +      // gradXFrom
-        batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +   // grad_hc_before_norm
-        batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +   // grad_norm_out
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +              // gradXFromMatMul
-        batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;               // gradXFromRms
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // xFp32
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // gradXFromHin
+        totalBs * kDim * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                         // gradHcBeforeNorm
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // gradXFromMatmul
+        3 * usedCoreNum_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                       // gradAlpha
+        (2 * usedCoreNum_ * n_ + usedCoreNum_ * n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL; // gradBias
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
@@ -257,30 +288,16 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
 {
     std::ostringstream info;
-    info << "batchSize: " << batchSize_ << std::endl;
-    info << "seqLength: " << seqLength_ << std::endl;
+    info << "b: " << batchSize_ << std::endl;
+    info << "s: " << seqLength_ << std::endl;
     info << "c: " << c_ << std::endl;
     info << "n: " << n_ << std::endl;
-    info << "aivNum: " << coreNumAiv_ << std::endl;
-    info << "usedAivNum: " << usedAivNum_ << std::endl;
-    info << "cLoopDataLen: " << cLoopDataLen_ << std::endl;
-    info << "bsLoopDataLen: " << bsLoopDataLen_ << std::endl;
+    info << "usedCoreNum: " << usedCoreNum_ << std::endl;
+    info << "ubFactorBS: " << ubFactorBS_ << std::endl;
+    info << "ubFactorC: " << ubFactorC_ << std::endl;
+    info << "blockFactorBS: " << blockFactorBS_ << std::endl;
+    info << "blockTailBS: " << blockTailBS_ << std::endl;
     info << "skIterCount: " << skIterCount_ << std::endl;
-    info << "bsTaskCount: " << bsTaskCount_ << std::endl;
-    info << "tailBsTaskCount: " << tailBsTaskCount_ << std::endl;
-    info << "cBlockLoops: " << cBlockLoops_ << std::endl;
-    info << "cBlockTailLoops: " << cBlockTailLoops_ << std::endl;
-    info << "cBlockCount: " << cBlockCount_ << std::endl;
-    info << "cBlockTailCount: " << cBlockTailCount_ << std::endl;
-    info << "cBlockTailTailCount: " << cBlockTailTailCount_ << std::endl;
-    info << "finalUsedAivNum: " << finalUsedAivNum_ << std::endl;
-    info << "mm1K: " << mm1K_ << std::endl;
-    info << "mm1M: " << mm1M_ << std::endl;
-    info << "mm1N: " << mm1N_ << std::endl;
-    info << "mm2K: " << mm2K_ << std::endl;
-    info << "mm2M: " << mm2M_ << std::endl;
-    info << "mm2N: " << mm2N_ << std::endl;
-
     OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
 }
 
