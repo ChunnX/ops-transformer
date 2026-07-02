@@ -469,9 +469,45 @@ gmm@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - ops/ops-transformer/gmm/grouped_matmul
-                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
+                - ops/ops-transformer/gmm/grouped_matmul/op_api
+                - ops/ops-transformer/gmm/grouped_matmul/op_graph
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_def.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_common_util.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_quant_checker.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_quant_checker.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35
+                - ops/ops-transformer/gmm/grouped_matmul/op_kernel/arch35
+                - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_api
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_graph
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_def.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_infershape.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_kernel/arch35
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_kernel/grouped_matmul_finalize_routing_apt.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_kernel/grouped_matmul_finalize_routing_utils.h
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_api
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_graph
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/grouped_matmul_swiglu_quant_v2_def.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/grouped_matmul_swiglu_quant_v2_host_utils.h
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/grouped_matmul_swiglu_quant_v2_infershape.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/arch35
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/arch35
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_apt.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_utils.h
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null 
             kernel_style: null  
