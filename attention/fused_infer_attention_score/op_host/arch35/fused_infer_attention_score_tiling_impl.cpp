@@ -208,9 +208,15 @@ static inline int64_t ParseSeqLength(const gert::Tensor *tensor, uint32_t dims, 
 void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaInfo)
 {
     const auto &params = fiaInfo.opParamInfo;
-    uint32_t qDims = params.actualSeqLengthsQ.tensor ? params.actualSeqLengthsQ.tensor->GetShapeSize() : 0;
-    uint32_t kvDims = params.actualSeqLengths.tensor ? params.actualSeqLengths.tensor->GetShapeSize() : 0;
-    uint32_t prefixDims = params.actualSharedPrefixLen.tensor ? params.actualSharedPrefixLen.tensor->GetShapeSize() : 0;
+    uint32_t qDims = params.actualSeqLengthsQ.tensor
+                         ? static_cast<uint32_t>(std::max(params.actualSeqLengthsQ.tensor->GetShapeSize(),
+                                                          static_cast<int64_t>(0))) : 0U;
+    uint32_t kvDims = params.actualSeqLengths.tensor
+                          ? static_cast<uint32_t>(std::max(params.actualSeqLengths.tensor->GetShapeSize(),
+                                                           static_cast<int64_t>(0))) : 0U;
+    uint32_t prefixDims = params.actualSharedPrefixLen.tensor
+                              ? static_cast<uint32_t>(std::max(params.actualSharedPrefixLen.tensor->GetShapeSize(),
+                                                               static_cast<int64_t>(0))) : 0U;
 
     InitTilingFlags(fiaInfo, params.actualSeqLengthsQ.tensor, qDims,
                     params.actualSeqLengths.tensor, kvDims,

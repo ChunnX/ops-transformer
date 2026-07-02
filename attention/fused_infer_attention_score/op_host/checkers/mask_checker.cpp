@@ -292,8 +292,11 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) c
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
-    uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
-    uint32_t attenMaskSize = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
+    uint32_t attenMaskBatch =
+        static_cast<uint32_t>(std::max(maskShape->GetStorageShape().GetDim(DIM_NUM_0), static_cast<int64_t>(0)));
+    uint32_t attenMaskSize = static_cast<uint32_t>(
+        std::max(maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1),
+                 static_cast<int64_t>(0)));
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
     } else {
