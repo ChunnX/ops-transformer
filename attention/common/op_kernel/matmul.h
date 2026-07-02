@@ -479,16 +479,16 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor,
         if (param.realM != 0) {
             mmadParams.m = param.realM;
         }
-        mmadParams.n = param.singleN;
-        mmadParams.k = tileK;
         if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
             mmadParams.m = 16;
         }
+        mmadParams.k = tileK;
+        mmadParams.n = param.singleN;
         mmadParams.cmatrixInitVal = param.isOutKFisrt && (k == 0);
         mmadParams.cmatrixSource = false;
         if (param.unitFlag != 0) {
             mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
-                                  UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+                                   UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
         }
  
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
