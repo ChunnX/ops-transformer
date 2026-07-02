@@ -552,8 +552,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gGmOffset,
         loadDataMxParams.xStartPosition = 0;
         loadDataMxParams.yStartPosition = 0;
         loadDataMxParams.xStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-        loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
-        loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
+        loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, MXFP8_BLOCK_SIZE * FP8_TWO);
+        loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, MXFP8_BLOCK_SIZE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
         LoadData(dstTensor,
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
@@ -591,8 +591,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0b(uint64_t s2L1Offset, ui
         loadDataMxParams.xStartPosition = 0;
         loadDataMxParams.yStartPosition = 0;
         loadDataMxParams.xStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
-        loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
-        loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
+        loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, MXFP8_BLOCK_SIZE * FP8_TWO);
+        loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, MXFP8_BLOCK_SIZE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
         LoadData(dstTensor,
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
