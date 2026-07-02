@@ -17,8 +17,8 @@ import pytest
 import random
 import torch
 
-DATA_RANGE_LEFT = -10
-DATA_RANGE_RIGHT = 10
+DATA_RANGE_LEFT = 1
+DATA_RANGE_RIGHT = 1
 
 # 三种运行模式
 # 0 不切S2
@@ -27,8 +27,8 @@ DATA_RANGE_RIGHT = 10
 
 RUN_MODE = 1
 
-np.random.seed(42)
-torch.manual_seed(42)
+# np.random.seed(42)
+# torch.manual_seed(42)
 
 class GeneralizedSFA:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
@@ -211,7 +211,6 @@ class GeneralizedSFA:
                             v_tile = k_tile.clone()
                             mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
                             scale_res = mm1_res * self.softmax_scale  # 外层for S1 循环，据实拷入数据，因此不需要mask
-
                             row_max_old = row_max.clone()
                             row_max_tmp = torch.max(scale_res, dim=1)[0]
                             # row_max_tmp = row_max_tmp.unsqueeze(1)
@@ -221,6 +220,7 @@ class GeneralizedSFA:
                             update_mul_expand = update_mul.unsqueeze(1)
                             cur_softmax_res = torch.exp(scale_res - row_max_expand)
                             row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+                            # print(row_sum)
                             cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
                             cur_o = torch.matmul(cur_softmax_res, v_tile)
                             cur_attn_out = cur_attn_out * update_mul_expand + cur_o

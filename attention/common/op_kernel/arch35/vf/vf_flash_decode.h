@@ -210,7 +210,7 @@ __simd_vf__ void ComputeScaleValue_8_VF(__ubuf__ uint16_t * lseSink, __ubuf__ T 
         // 如果 softmaxMax 等于负无穷，则将 lse 结果置为 inf
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregLseMax, vregMinValue, pregTailN);
         MicroAPI::Select<T>(vregRes, vregInfValue, vregRes, pregCompare);
-        MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseUb, vregRes, pregTailN);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(lseUb, vregRes, pregTailN);
     }
 
     MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
@@ -271,7 +271,7 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
                                                               (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         MicroAPI::Max<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
     }
-    MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseMaxReduce, vregLseMax, pregTailN);
+    MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(lseMaxReduce, vregLseMax, pregTailN);
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseMaxTmp, 
@@ -308,7 +308,7 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
         // 如果 softmaxMax 等于负无穷，则将 lse 结果置为 inf
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregLseMax, vregMinValue, pregTailN);
         MicroAPI::Select<T>(vregRes, vregInfValue, vregRes, pregCompare);
-        MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseOutUb, vregRes, pregTailN);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(lseOutUb, vregRes, pregTailN);
     }
     
     MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
@@ -450,8 +450,8 @@ __simd_vf__ void ComputeScaleValue_16_VF(__ubuf__ uint16_t * lseSink, __ubuf__ u
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare2, vregLseMax2, vregMinValue, pregTailN2);
         MicroAPI::Select<T>(vregRes, vregInfValue, vregRes, pregCompare);
         MicroAPI::Select<T>(vregRes2, vregInfValue, vregRes2, pregCompare2);
-        MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseUb, vregRes, pregTailN);
-        MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseUb2, vregRes2, pregTailN2);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(lseUb, vregRes, pregTailN);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(lseUb2, vregRes2, pregTailN2);
     }
 
     MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
