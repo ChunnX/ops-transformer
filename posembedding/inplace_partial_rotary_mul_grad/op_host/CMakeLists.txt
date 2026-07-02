@@ -12,16 +12,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         inplace_partial_rotary_mul_grad_def.cpp
     )
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn_inner)
-endif()
-
-set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    add_ops_compile_options(
-        OP_NAME InplacePartialRotaryMulGrad
-        COMPUTE_UNIT Ascend950PR_9599
-        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
-    )
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)
 endif()
 
 if (BUILD_OPS_RTY_KERNEL)
@@ -30,9 +21,7 @@ if (BUILD_OPS_RTY_KERNEL)
             OPTIONS --cce-auto-sync=on
                     -Wno-deprecated-declarations
                     -Werror
-                    -mllvm -cce-aicore-hoist-movemask=false
-                    --op_relocatable_kernel_binary=true
     )
 else()
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn_inner)
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)
 endif()

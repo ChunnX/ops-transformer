@@ -57,8 +57,6 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_BSND_fp32)
         },
         {
             {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy out
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dcos (x optional→empty)
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dsin
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -245,28 +243,4 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, EMPTY_slice_zero_length)
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
 }
 
-// ==================== xs optional (x present, with dcos/dsin outputs) ====================
-TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_with_x_optional)
-{
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
-        {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // cos
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // sin
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // x (4th input)
-        },
-        {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy out
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dcos (full shape)
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dsin
-        },
-        {
-            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({2, 6})},
-        },
-        nullptr, kSocVersion, k950CoreNum, k950UbSize);
 
-    uint64_t expectTilingKey = 203;
-    vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
-    ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
-}

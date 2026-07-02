@@ -176,8 +176,6 @@ int main()
     aclTensor *dyRef = nullptr;
     aclTensor *cos = nullptr;
     aclTensor *sin = nullptr;
-    aclTensor *dcosOut = nullptr;
-    aclTensor *dsinOut = nullptr;
 
     ret = CreateAclTensor(dyHostData, dyShape, &dyRefDeviceAddr, aclDataType::ACL_FLOAT, &dyRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -188,18 +186,12 @@ int main()
 
     aclIntArray *partialSlice = aclCreateIntArray(partialSliceData.data(), partialSliceData.size());
 
-    std::vector<int64_t> emptyShape = {1, 1, 1, 0};
-    std::vector<int64_t> emptyStride(emptyShape.size(), 0);
-    dcosOut = aclCreateTensor(emptyShape.data(), emptyShape.size(), aclDataType::ACL_FLOAT, emptyStride.data(), 0,
-                              aclFormat::ACL_FORMAT_ND, emptyShape.data(), emptyShape.size(), nullptr);
-    dsinOut = aclCreateTensor(emptyShape.data(), emptyShape.size(), aclDataType::ACL_FLOAT, emptyStride.data(), 0,
-                              aclFormat::ACL_FORMAT_ND, emptyShape.data(), emptyShape.size(), nullptr);
 
     // First stage: get workspace size
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, nullptr, rotaryMode, partialSlice, dcosOut,
-                                                            dsinOut, &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, rotaryMode, partialSlice,
+                                                            &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -251,8 +243,6 @@ int main()
     aclDestroyTensor(dyRef);
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
-    aclDestroyTensor(dcosOut);
-    aclDestroyTensor(dsinOut);
 
     aclrtFree(dyRefDeviceAddr);
     aclrtFree(cosDeviceAddr);

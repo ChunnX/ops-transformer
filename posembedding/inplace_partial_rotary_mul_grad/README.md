@@ -27,10 +27,6 @@
     $$
     sin' = sin[..., start:end]
     $$
-    $$
-    x' = x[..., start:end]
-    $$
-
     则梯度计算公式可表达如下：
 
     （1）half模式（rotary_mode等于0）：
@@ -47,20 +43,10 @@
     $$
 
     $$
-    x1', x2' = chunk(x', chunks=2, dim=-1)
-    $$
-
-    $$
     dx' = cat((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1)
     $$
 
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
 
-    $$
-    dsin = sum(dy' * cat((-x2', x1'), dim=-1), dims)
-    $$
 
     （2）interleave模式（rotary_mode等于1）：
     $$
@@ -76,20 +62,10 @@
     $$
 
     $$
-    x1', x2' = x'[..., :: 2], x'[..., 1 :: 2]
-    $$
-
-    $$
     dx' = stack((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1).reshape(dy'.shape)
     $$
 
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
 
-    $$
-    dsin = sum(dy' * stack((-x2', x1'), dim=-1).reshape(dy'.shape), dims)
-    $$
 
     （3）quarter模式（rotary_mode等于2）：
     $$
@@ -105,20 +81,10 @@
     $$
 
     $$
-    x1', x2', x3', x4' = chunk(x', chunks=4, dim=-1)
-    $$
-
-    $$
     dx' = cat((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1', cos3' * dy3' + sin4' * dy4', cos4' * dy4' - sin3' * dy3'), dim=-1)
     $$
 
-    $$
-    dcos = sum(dy' * x', dims)
-    $$
 
-    $$
-    dsin = sum(dy' * cat((-x2', x1', -x4', x3'), dim=-1), dims)
-    $$
 
     （4）interleave-half模式（rotary_mode等于3）：
     $$
@@ -134,20 +100,10 @@
     $$
 
     $$
-    x1', x2' = x'[..., :: 2], x'[..., 1 :: 2]
-    $$
-
-    $$
     dx' = stack((cos1' * dy1' + sin2' * dy2', cos2' * dy2' - sin1' * dy1'), dim=-1).reshape(dy'.shape)
     $$
 
-    $$
-    dcos = sum(dy' * cat((x1', x2'), dim=-1), dims)
-    $$
 
-    $$
-    dsin = sum(dy' * cat((-x2', x1'), dim=-1), dims)
-    $$
 
 ## 参数说明
 
@@ -191,13 +147,6 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>xOptional</td>
-    <td>可选输入</td>
-    <td>公式中的x，正向计算输入，需与dyRef数据类型一致。如果此参数为空，则不计算dcosOut和dsinOut。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-  </tr>
-  <tr>
     <td>rotaryMode</td>
     <td>属性</td>
     <td>旋转模式，0=half，1=interleave，2=quarter，3=interleave-half。</td>
@@ -211,20 +160,6 @@
     <td>IntArray</td>
     <td>-</td>
   </tr>
-  <tr>
-    <td>dcosOut</td>
-    <td>输出</td>
-    <td>公式中的dcos，输入cos的导数，需与cos数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>dsinOut</td>
-    <td>输出</td>
-    <td>公式中的dsin，输入sin的导数，需与sin数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-  </tr>
 </tbody>
 </table>
 
@@ -235,18 +170,13 @@
 - 该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）。其他模式暂不支持。
 - Inplace执行：输入dyRef和输出共享同一个Tensor，计算结果直接写回输入dyRef。
 - 输入dyRef当前只支持BSND排布，输入cos/sin的shape必须与dyRef满足B/S/N维度的广播关系（如BSND、111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
-  - 输入张量dyRef和xOptional的最后一维大小D必须相同，且D ≤ 1024。
-  - 输入张量cos、sin及输出张量dcosOut、dsinOut的最后一维大小必须等于切片长度(end - start)。
+  - 输入张量dyRef的最后一维大小D必须小于等于1024。
+  - 输入张量cos、sin的最后一维大小必须等于切片长度(end - start)。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
-  - 输入张量xOptional与dyRef的数据类型必须相同。
-  - 输出张量dcosOut与cos的数据类型必须相同。
-  - 输出张量dsinOut与sin的数据类型必须相同。
-  - 当xOptional为空指针时，不计算dcosOut和dsinOut，此时dcosOut和dsinOut无意义。
-  - 当前版本暂不支持xOptional可选参数存在的场景。xOptional输入及dcosOut/dsinOut输出参数保留用于后续扩展方便，现阶段xOptional请传入空指针。
 
 
 ## 调用说明

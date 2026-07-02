@@ -28,8 +28,7 @@
 using namespace std;
 
 extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(
-    GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR x,
-    GM_ADDR dx, GM_ADDR dcos, GM_ADDR dsin,
+    GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx,
     GM_ADDR workspace, GM_ADDR tiling);
 
 class InplacePartialRotaryMulGradKernelTest : public testing::Test {
@@ -45,8 +44,7 @@ protected:
 
     // Generic GM alloc + copy
     void AllocAndCopy(uint8_t*& dyGm, uint8_t*& cosGm, uint8_t*& sinGm,
-                      uint8_t*& dxGm, uint8_t*& dcosGm, uint8_t*& dsinGm,
-                      uint8_t*& workspace, uint8_t*& tilingGm,
+                      uint8_t*& dxGm, uint8_t*& workspace, uint8_t*& tilingGm,
                       const vector<float>& dyData, const vector<float>& cosData,
                       const vector<float>& sinData, size_t dyBytes, size_t cosBytes,
                       size_t tilingBytes)
@@ -55,8 +53,6 @@ protected:
         cosGm     = (uint8_t*)AscendC::GmAlloc(cosBytes);
         sinGm     = (uint8_t*)AscendC::GmAlloc(cosBytes);
         dxGm      = (uint8_t*)AscendC::GmAlloc(dyBytes);
-        dcosGm    = (uint8_t*)AscendC::GmAlloc(cosBytes);
-        dsinGm    = (uint8_t*)AscendC::GmAlloc(cosBytes);
         workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
         tilingGm  = (uint8_t*)AscendC::GmAlloc(tilingBytes);
 
@@ -66,11 +62,10 @@ protected:
     }
 
     void FreeAll(uint8_t* dyGm, uint8_t* cosGm, uint8_t* sinGm,
-                 uint8_t* dxGm, uint8_t* dcosGm, uint8_t* dsinGm,
-                 uint8_t* workspace, uint8_t* tilingGm)
+                 uint8_t* dxGm, uint8_t* workspace, uint8_t* tilingGm)
     {
         AscendC::GmFree(dyGm); AscendC::GmFree(cosGm); AscendC::GmFree(sinGm);
-        AscendC::GmFree(dxGm); AscendC::GmFree(dcosGm); AscendC::GmFree(dsinGm);
+        AscendC::GmFree(dxGm);
         AscendC::GmFree(workspace); AscendC::GmFree(tilingGm);
     }
 
@@ -86,8 +81,8 @@ protected:
         size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
         size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm,
                      dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
 
         auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
@@ -104,12 +99,12 @@ protected:
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(TILING_KEY_BAB);
         ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
-                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+                    dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
         Verify(result, refDx, "BAB");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
     // ---- ABA&BA template: BNSD layout ----
@@ -124,8 +119,8 @@ protected:
         size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
         size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm,
                      dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
 
         auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
@@ -142,12 +137,12 @@ protected:
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(tilingKey);
         ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
-                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+                    dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
         Verify(result, refDx, isBroadCast ? "BA" : "ABA");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
     // ---- AB template: SBND layout ----
@@ -165,8 +160,8 @@ protected:
         size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
         size_t tilingBytes = sizeof(InplacePartialRotaryMulGradABUTTilingData);
 
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm,
                      dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
 
         auto* td = reinterpret_cast<InplacePartialRotaryMulGradABUTTilingData*>(tilingGm);
@@ -183,12 +178,12 @@ protected:
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(TILING_KEY_AB);
         ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
-                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+                    dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
         Verify(result, refDx, "AB");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
     // ---- A&B template: NO_BROADCAST / BROADCAST_BSN (merged B) ----
@@ -204,8 +199,8 @@ protected:
         size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
         size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm,
                      dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
 
         auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
@@ -222,12 +217,12 @@ protected:
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(tilingKey);
         ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
-                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+                    dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
         Verify(result, refDx, (tilingKey == TILING_KEY_A) ? "A" : "B");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
     // ---- EMPTY slice: just verify no-op ----
@@ -238,9 +233,9 @@ protected:
         size_t cosBytes = 0;
         size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *workspace, *tilingGm;
         vector<float> emptyCos;
-        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm,
                      dyData, emptyCos, emptyCos, dyBytes, cosBytes, tilingBytes);
 
         auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
@@ -251,12 +246,12 @@ protected:
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(TILING_KEY_EMPTY);
         ICPU_RUN_KF(inplace_partial_rotary_mul_grad, 1,
-                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+                    dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
         Verify(result, refDx, "EMPTY");
-        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+        FreeAll(dyGm, cosGm, sinGm, dxGm, workspace, tilingGm);
     }
 
     void Verify(const vector<float>& result, const vector<float>& ref,
