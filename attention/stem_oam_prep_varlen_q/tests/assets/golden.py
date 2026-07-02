@@ -11,6 +11,7 @@
 # ----------------------------------------------------------------------------
 import numpy as np
 import math
+import ml_dtypes
 
 __golden__ = {
     "kernel": {
@@ -74,7 +75,9 @@ def stem_oam_prep_varlen_q_golden(
             if q_scale is not None:
                 positions = np.arange(num_Qb * B).reshape(num_Qb, R, S)
                 global_positions = cu_off + positions
-                scales = q_scale[global_positions, h].astype(np.float32)
+                valid_mask = global_positions < len(q_scale)
+                scales = np.zeros((num_Qb, R, S), dtype=np.float32)
+                scales[valid_mask] = q_scale[global_positions[valid_mask], h].astype(np.float32)
                 Q_weighted = Q_blocks * scales[:, :, :, np.newaxis]
             else:
                 Q_weighted = Q_blocks
@@ -84,4 +87,6 @@ def stem_oam_prep_varlen_q_golden(
             for qb in range(num_Qb):
                 qflat[b, h, qb, :] = Q_group_sum[qb].reshape(S * D)
 
-    return qflat.astype(np.float16) if q.dtype == np.float16 else qflat.view(np.uint16)
+    if q.dtype == np.float16:
+        return qflat.astype(np.float16)
+    return qflat.astype(ml_dtypes.bfloat16)
