@@ -43,14 +43,8 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTe
 
     // calcNum >> 6 : calcNum / 64(FP32_REPEAT_ELEMENT_NUM)
     uint64_t repeatTimesAdd = static_cast<uint64_t>(cnt) >> 6;
-    BinaryRepeatParams addParams = {
-        1, // dstBlkStrideIn
-        1, // src0BlkStrideIn
-        1, // src1BlkStrideIn
-        0, // dstRepStrideIn
-        8, // src0RepStrideIn
-        0  // src1RepStrideIn
-    };
+    // dstBlkStride, src0BlkStride, src1BlkStride, dstRepStride, src0RepStride, src1RepStride
+    BinaryRepeatParams addParams = {1, 1, 1, 0, 8, 0};
     Add(xSquareLocal, xSquareLocal[FP32_REPEAT_ELEMENT_NUM], xSquareLocal, FP32_REPEAT_ELEMENT_NUM, repeatTimesAdd - 1,
         addParams);
     AscendC::PipeBarrier<PIPE_V>();
@@ -70,23 +64,15 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTe
     AscendC::PipeBarrier<PIPE_V>();
 
     // Calc: xSquare[1, 8] = brc(xSum[1,1])
-    BrcbRepeatParams repeatParams = {
-        1, // dstBlkStride
-        1  // dstRepStride
-    };
+    // dstBlkStride, dstRepStride
+    BrcbRepeatParams repeatParams = {1, 1};
     Brcb(xSquareLocal, xSumLocal, 1, repeatParams);
     AscendC::PipeBarrier<PIPE_V>();
 
     // Calc: inputLocal = inputLocal / xSquareLocal
     uint64_t mask[2] = {UINT64_MAX, UINT64_MAX};
-    BinaryRepeatParams divParams = {
-        1, // dstBlkStrideIn
-        1, // src0BlkStrideIn
-        0, // src1BlkStrideIn
-        8, // dstRepStrideIn
-        8, // src0RepStrideIn
-        0  // src1RepStrideIn
-    };
+    // dstBlkStride, src0BlkStride, src1BlkStride, dstRepStride, src0RepStride, src1RepStride
+    BinaryRepeatParams divParams = {1, 1, 0, 8, 8, 0};
     Div(inputLocal, inputLocal, xSquareLocal, mask, cnt / 64, divParams);
 
     AscendC::PipeBarrier<PIPE_V>();

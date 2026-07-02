@@ -48,13 +48,13 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
         auto viewShape = tensor->GetViewShape();
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
         auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
-        inputTemp->SetDataType(DataType::DT_INT4);
-        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
-        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
         if (inputTemp == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: CreateView failed at index %d.", i);
             return nullptr;
         }
+        inputTemp->SetDataType(DataType::DT_INT4);
+        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
+        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
         tensors.push_back(inputTemp);
     }
     aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
@@ -84,8 +84,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, aclTensor *yOut,
-    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
+    aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -102,8 +102,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         "moeExpertNum must be > 0, got %ld.", moeExpertNum);
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID,
         "epWorldSize must be > 0, got %ld.", epWorldSize);
-    CHECK_COND(maxRecvTokenNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "maxRecvTokenNum must be > 0, got %ld.", maxRecvTokenNum);
+    CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID,
+        "maxRecvTokenNum must be >= 0, got %ld.", maxRecvTokenNum);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -134,8 +134,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
-        workspaceSize, executor);
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, yOut,
+        expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

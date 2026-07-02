@@ -484,7 +484,7 @@
     <td>✗</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>支持Sliding Window Attention（SWA）、Compressed Flash Attention（CFA）和Sparse Compressed Flash Attention（SCFA）。</td>
+    <td>支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）和HCA（Heavily Compressed Attention）。</td>
   </tr>
   <tr>
     <td>attention</td>

@@ -27,8 +27,8 @@ constexpr int64_t QUANT_MODE_MAX = 2;    // 0:group(bf16) 1:group(e8m0) 2:rope h
 }  // namespace
 
 
-at::Tensor kv_compress_epilog(
-    const at::Tensor &cache, const at::Tensor &x, const at::Tensor &slot_mapping,
+void kv_compress_epilog(
+    at::Tensor &cache, const at::Tensor &x, const at::Tensor &slot_mapping,
     int64_t quant_group_size, int64_t quant_mode, bool round_scale, double x_scale)
 {
     TORCH_CHECK(cache.numel() > 0, "Tensor cache is empty.");
@@ -42,17 +42,14 @@ at::Tensor kv_compress_epilog(
     TORCH_CHECK(tail_dim > MIN_TAIL_DIM && tail_dim % TAIL_DIM_ALIGN == 0,
         "The last dim (d) of x should be greater than 64 and 64-aligned, but got ", tail_dim);
 
-    at::Tensor cache_out{nullptr};
     auto local_device = c10::Device(cache.device());
     const c10::OptionalDeviceGuard device_guard(local_device);
-    cache_out = cache.clone();
 
     float x_scale_f = static_cast<float>(x_scale);
     StorageShapeTensor x_wrapped{x};
     StorageShapeTensor slot_mapping_wrapped{slot_mapping};
-    ACLNN_CMD(aclnnKvCompressEpilog, cache_out, x_wrapped, slot_mapping_wrapped,
+    ACLNN_CMD(aclnnKvCompressEpilog, cache, x_wrapped, slot_mapping_wrapped,
               quant_group_size, quant_mode, round_scale, x_scale_f);
-    return cache_out;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from enum import IntEnum
-from typing import Tuple, Union
+from typing import Union
 import torch
 import torch_npu
 from torch.library import impl
@@ -48,20 +48,18 @@ class IndexerQuantCacheOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "indexer_quant_cache(Tensor cache, Tensor cache_scale, Tensor x, " \
+        return "indexer_quant_cache(Tensor(a!) cache, Tensor(b!) cache_scale, Tensor x, " \
                "Tensor slot_mapping, *, str quant_mode=\"fp8\", bool round_scale=True, " \
-               "float x_scale=1.0) -> (Tensor, Tensor)"
+               "float x_scale=1.0) -> ()"
 
     def register_meta(self):
         """
-        Registers the Meta implementation (Shape/Dtype inference).
-        Essential for FakeTensor / graph mode support.
+        Registers the Meta implementation.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def indexer_quant_cache_meta(cache, cache_scale, x, slot_mapping, *,
-                                     quant_mode=DEFAULT_QUANT_MODE, round_scale=True, x_scale=1.0):
-            # 输出为更新后的 cache 与 cache_scale，shape/dtype 与各自输入相同
-            return (torch.empty_like(cache), torch.empty_like(cache_scale))
+                                     quant_mode=DEFAULT_QUANT_MODE, round_scale=True, x_scale=1.0) -> None:
+            return None
 
 
 # Instantiate the builder
@@ -72,7 +70,7 @@ op_module = indexer_quant_cache_op_builder.load()  # Compiles/loads the .so file
 @impl(AS_LIBRARY, indexer_quant_cache_op_builder.name, "PrivateUse1")
 def indexer_quant_cache(cache: torch.Tensor, cache_scale: torch.Tensor, x: torch.Tensor,
                         slot_mapping: torch.Tensor, *, quant_mode: str = DEFAULT_QUANT_MODE,
-                        round_scale: bool = True, x_scale: float = 1.0) -> Tuple[torch.Tensor, torch.Tensor]:
+                        round_scale: bool = True, x_scale: float = 1.0) -> None:
     quant_mode_int = _resolve_quant_mode(quant_mode)
-    return op_module.indexer_quant_cache(cache, cache_scale, x, slot_mapping,
-                                         quant_mode_int, round_scale, x_scale)
+    op_module.indexer_quant_cache(cache, cache_scale, x, slot_mapping,
+                                  quant_mode_int, round_scale, x_scale)

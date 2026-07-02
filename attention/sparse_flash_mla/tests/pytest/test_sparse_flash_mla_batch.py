@@ -58,6 +58,9 @@ def call_smla_npu(testcase_files):   # 初始化参数和tensor
     else:
         result = "Failed"
         fulfill_percent = 0
+    if test_data['params'].get('return_softmax_lse'):
+            print("return_softmax_lse is true!!!")
+            result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
     utils.save_result(result, fulfill_percent, test_data['params'], result_path)
 
 @pytest.mark.ci

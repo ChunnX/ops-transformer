@@ -168,6 +168,14 @@
 
 ## 调用说明
 
-| 调用方式  | 样例代码                                                     | 说明                                                         |
-| --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnn_FusedInferAttentionScoreV4](./examples/test_aclnn_fused_infer_attention_score.cpp) | 通过[aclnnFusedInferAttentionScoreV4](./docs/aclnnFusedInferAttentionScoreV4.md)调用PromptFlashAttentionV3算子 |
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+
+  | 调用方式  | 样例代码                                                     | 说明                                                         |
+  | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | aclnn接口 | [test_aclnn_FusedInferAttentionScoreV4](./examples/test_aclnn_fused_infer_attention_score_v4_gqa_noquant.cpp) | 通过[aclnnFusedInferAttentionScoreV4](./docs/aclnnFusedInferAttentionScoreV4.md)调用FusedInferAttentionScore算子 |
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
+
+  | 调用方式  | 样例代码                                                     | 说明                                                         |
+  | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | aclnn接口 | [test_aclnn_FusedInferAttentionScoreV5](./examples/arch35/test_aclnn_fused_infer_attention_score_v5.cpp) | 通过[aclnnFusedInferAttentionScoreV5](./docs/aclnnFusedInferAttentionScoreV5.md)调用FusedInferAttentionScore算子 |
