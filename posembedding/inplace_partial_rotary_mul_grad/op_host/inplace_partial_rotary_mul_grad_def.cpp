@@ -19,9 +19,9 @@ namespace ops {
 static const std::vector<ge::DataType> DyDtype = {{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
                                                    ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16}};
 
-static const std::vector<ge::DataType> DcosDtype = {{ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16,
-                                                     ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT,
-                                                     ge::DT_BF16}};
+static const std::vector<ge::DataType> cosDtype = {{ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16,
+                                                    ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT,
+                                                    ge::DT_BF16}};
 static const std::vector<ge::Format> formatList = {{ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                                     ge::FORMAT_ND}};
@@ -29,34 +29,10 @@ class InplacePartialRotaryMulGrad : public OpDef {
 public:
     explicit InplacePartialRotaryMulGrad(const char *name) : OpDef(name)
     {
-        this->Input("dy")
-            .ParamType(REQUIRED)
-            .DataType(DyDtype)
-            .Format(formatList);
-        this->Input("cos")
-            .ParamType(REQUIRED)
-            .DataType(DcosDtype)
-            .Format(formatList);
-        this->Input("sin")
-            .ParamType(REQUIRED)
-            .DataType(DcosDtype)
-            .Format(formatList);
-        this->Input("x")
-            .ParamType(OPTIONAL)
-            .DataType(DyDtype)
-            .Format(formatList);
-        this->Output("dy")
-            .ParamType(REQUIRED)
-            .DataType(DyDtype)
-            .Format(formatList);
-        this->Output("dcos")
-            .ParamType(REQUIRED)
-            .DataType(DcosDtype)
-            .Format(formatList);
-        this->Output("dsin")
-            .ParamType(REQUIRED)
-            .DataType(DcosDtype)
-            .Format(formatList);
+        this->Input("dy").ParamType(REQUIRED).DataType(DyDtype).Format(formatList);
+        this->Input("cos").ParamType(REQUIRED).DataType(cosDtype).Format(formatList);
+        this->Input("sin").ParamType(REQUIRED).DataType(cosDtype).Format(formatList);
+        this->Output("dy").ParamType(REQUIRED).DataType(DyDtype).Format(formatList);
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("partial_slice").AttrType(OPTIONAL).ListInt({0, 0});
 
