@@ -25,6 +25,14 @@ using namespace AscendC;
 
 constexpr int64_t FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM = 1;
 
+__aicore__ inline void CopySmallFullLoadQuantOutToBatch(LocalTensor<int8_t> &dstLocal, LocalTensor<int8_t> &srcLocal,
+                                                        int64_t dstOffset, int64_t copyBytes)
+{
+    for (int64_t i = 0; i < copyBytes; i++) {
+        dstLocal.SetValue(dstOffset + i, srcLocal.GetValue(i));
+    }
+}
+
 template <typename T, typename QuantT = int8_t>
 class MoeV3FullLoadDynamicQuant : public MoeV3FullLoadBase<T> {
 public:
@@ -43,6 +51,8 @@ private:
 private:
     TQue<QuePosition::VECIN, 3> inputXInQueue_;
     TQue<QuePosition::VECIN, 1> smoothInQueue_;
+    TQue<QuePosition::VECOUT, 2> outBatchQueue_;
+    TQue<QuePosition::VECOUT, 2> scaleBatchQueue_;
     TQue<QuePosition::VECOUT, 1> inputXOutQueue_;
     TQue<QuePosition::VECOUT, 1> scaleOutQueue_;
 
@@ -97,6 +107,10 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
                                 2 * AlignBytes(this->cols_, sizeof(T)));
     }
     this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        this->pipe_->InitBuffer(outBatchQueue_, 2, AlignBytes(this->cols_, sizeof(float)));
+        this->pipe_->InitBuffer(scaleBatchQueue_, 2, BLOCK_BYTES);
+    }
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                             AlignBytes(colsAsInt8_, sizeof(int8_t)));
     this->pipe_->InitBuffer(scaleOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, BLOCK_BYTES + BLOCK_BYTES);
@@ -263,6 +277,35 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsAsInt8_), 0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+    LocalTensor<int8_t> outBatchLocal0;
+    LocalTensor<int8_t> outBatchLocal1;
+    LocalTensor<int8_t> outBatchLocal;
+    int64_t outBatchRows = 1;
+    int64_t outBatchCount = 0;
+    int64_t outBatchStart = 0;
+    int64_t outBatchBufIdx = 0;
+    bool outBatchPending0 = false;
+    bool outBatchPending1 = false;
+    LocalTensor<float> scaleBatchLocal0;
+    LocalTensor<float> scaleBatchLocal1;
+    LocalTensor<float> scaleBatchLocal;
+    int64_t scaleBatchRows = BLOCK_BYTES / static_cast<int64_t>(sizeof(float));
+    int64_t scaleBatchCount = 0;
+    int64_t scaleBatchStart = 0;
+    int64_t scaleBatchBufIdx = 0;
+    bool scaleBatchPending0 = false;
+    bool scaleBatchPending1 = false;
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchLocal0 = outBatchQueue_.AllocTensor<int8_t>();
+            outBatchLocal1 = outBatchQueue_.AllocTensor<int8_t>();
+            scaleBatchLocal0 = scaleBatchQueue_.AllocTensor<float>();
+            scaleBatchLocal1 = scaleBatchQueue_.AllocTensor<float>();
+            outBatchLocal = outBatchLocal0;
+            scaleBatchLocal = scaleBatchLocal0;
+            outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(this->cols_, sizeof(float)) / colsAsInt8_);
+        }
+    }
     int32_t lastExpertIdx = -1;
 
     for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
@@ -304,15 +347,95 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         inputXInQueue_.FreeTensor(inLocal);
 
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
-        DataCopyPad(expandedScaleGm_[i], scaleLocal, {1, 4, 0, 0, 0});
-
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
-        DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            if (colsAsInt8_ < BLOCK_BYTES) {
+                if (scaleBatchCount == 0) {
+                    if (scaleBatchBufIdx == 0 && scaleBatchPending0) {
+                        scaleBatchQueue_.FreeTensor(scaleBatchLocal0);
+                        scaleBatchLocal0 = scaleBatchQueue_.AllocTensor<float>();
+                        scaleBatchPending0 = false;
+                    } else if (scaleBatchBufIdx == 1 && scaleBatchPending1) {
+                        scaleBatchQueue_.FreeTensor(scaleBatchLocal1);
+                        scaleBatchLocal1 = scaleBatchQueue_.AllocTensor<float>();
+                        scaleBatchPending1 = false;
+                    }
+                    scaleBatchStart = i;
+                    scaleBatchLocal = (scaleBatchBufIdx == 0) ? scaleBatchLocal0 : scaleBatchLocal1;
+                }
+                if (outBatchCount == 0) {
+                    if (outBatchBufIdx == 0 && outBatchPending0) {
+                        outBatchQueue_.FreeTensor(outBatchLocal0);
+                        outBatchLocal0 = outBatchQueue_.AllocTensor<int8_t>();
+                        outBatchPending0 = false;
+                    } else if (outBatchBufIdx == 1 && outBatchPending1) {
+                        outBatchQueue_.FreeTensor(outBatchLocal1);
+                        outBatchLocal1 = outBatchQueue_.AllocTensor<int8_t>();
+                        outBatchPending1 = false;
+                    }
+                    outBatchStart = i;
+                    outBatchLocal = (outBatchBufIdx == 0) ? outBatchLocal0 : outBatchLocal1;
+                }
+
+                scaleBatchLocal.SetValue(scaleBatchCount, scaleLocal.GetValue(0));
+                scaleBatchCount++;
+                CopySmallFullLoadQuantOutToBatch(outBatchLocal, outLocal, outBatchCount * colsAsInt8_, colsAsInt8_);
+                outBatchCount++;
+
+                bool needFlushScale =
+                    scaleBatchCount == scaleBatchRows || i == endRowIdx - 1 || i == this->activeNum_ - 1;
+                bool needFlushOut =
+                    outBatchCount == outBatchRows || i == endRowIdx - 1 || i == this->activeNum_ - 1;
+                if (needFlushScale || needFlushOut) {
+                    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                }
+                if (needFlushScale) {
+                    DataCopyExtParams copyScaleBatchParams{
+                        1, static_cast<uint32_t>(scaleBatchCount * sizeof(float)), 0, 0, 0};
+                    DataCopyPad(expandedScaleGm_[scaleBatchStart], scaleBatchLocal, copyScaleBatchParams);
+                    if (scaleBatchBufIdx == 0) {
+                        scaleBatchPending0 = true;
+                        scaleBatchBufIdx = 1;
+                    } else {
+                        scaleBatchPending1 = true;
+                        scaleBatchBufIdx = 0;
+                    }
+                    scaleBatchCount = 0;
+                }
+                if (needFlushOut) {
+                    DataCopyExtParams copyOutBatchParams{
+                        1, static_cast<uint32_t>(outBatchCount * colsAsInt8_), 0, 0, 0};
+                    DataCopyPad(expandedXGm_[outBatchStart * colsAsInt8_], outBatchLocal, copyOutBatchParams);
+                    if (outBatchBufIdx == 0) {
+                        outBatchPending0 = true;
+                        outBatchBufIdx = 1;
+                    } else {
+                        outBatchPending1 = true;
+                        outBatchBufIdx = 0;
+                    }
+                    outBatchCount = 0;
+                }
+            } else {
+                DataCopyPad(expandedScaleGm_[i], scaleLocal, {1, 4, 0, 0, 0});
+                DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+            }
+        } else {
+            DataCopyPad(expandedScaleGm_[i], scaleLocal, {1, 4, 0, 0, 0});
+            DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+        }
 
         inputXOutQueue_.FreeTensor(outLocal);
         scaleOutQueue_.FreeTensor(scaleLocal);
     }
 
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchQueue_.FreeTensor(outBatchLocal0);
+            outBatchQueue_.FreeTensor(outBatchLocal1);
+            scaleBatchQueue_.FreeTensor(scaleBatchLocal0);
+            scaleBatchQueue_.FreeTensor(scaleBatchLocal1);
+        }
+    }
     smoothInQueue_.FreeTensor(smoothLocal);
     this->sortedRowIdxQueue_.template EnQue<int32_t>(sortedRowIdx);
     this->sortedExpertIdxQueue_.template EnQue<int32_t>(sortedExpertIdx);
