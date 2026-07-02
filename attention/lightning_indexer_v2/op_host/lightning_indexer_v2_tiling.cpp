@@ -369,7 +369,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                     "input cmp_residual_k must be null"),
                 return ge::GRAPH_FAILED);
         }
-        
     }
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor == nullptr,
@@ -384,7 +383,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                     OP_LOGE(opName_, "when layout_q is TND and layout_k is PA_BBND, "
                         "input cu_seqlens_q's shape must equal seqused_k's shape + 1"),
                     return ge::GRAPH_FAILED);
-            } else if (kLayout_ == DataLayout::TND){
+            } else if (kLayout_ == DataLayout::TND) {
                 // q、k都为TND, cuSeqlensQ与cuSeqlensK维度一致校验
                 OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
                     opParamInfo_.cuSeqlensK.tensor->GetStorageShape().GetShapeSize(),
