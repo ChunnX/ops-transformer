@@ -37,8 +37,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 // check nullptr
 static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* expandX,
-                         aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                         aclTensor* tpRecvCounts)
+                         aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull start");
     OP_CHECK_NULL(x, return false);
@@ -46,7 +45,6 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     OP_CHECK_NULL(expandX, return false);
     OP_CHECK_NULL(expandIdx, return false);
     OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull success");
     if ((groupEp == nullptr)||(strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
@@ -63,8 +61,12 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, c
                                aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
-    CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
+    CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts),
         ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");

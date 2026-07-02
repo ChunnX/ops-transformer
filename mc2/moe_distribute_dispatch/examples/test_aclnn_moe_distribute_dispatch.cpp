@@ -38,9 +38,7 @@
 struct Args {
     uint32_t rankId;
     uint32_t epRankId;
-    uint32_t tpRankId;
     HcclComm hcclEpComm;
-    HcclComm hcclTpComm;
     aclrtStream dispatchStream;
     aclrtStream combineStream;
     aclrtContext context;
@@ -52,7 +50,6 @@ const char* first_rank_id = std::getenv("FIRST_RANK_ID");
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
 uint32_t EP_WORLD_SIZE = 0;
-uint32_t TP_WORLD_SIZE = 0;
 uint32_t DEV_NUM = 0;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -142,7 +139,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     void *expandIdxDeviceAddr = nullptr;
     void *expertTokenNumsDeviceAddr = nullptr;
     void *epRecvCountsDeviceAddr = nullptr;
-    void *tpRecvCountsDeviceAddr = nullptr;
     void *expandScalesDeviceAddr = nullptr;
 
     aclTensor *x = nullptr;
@@ -154,7 +150,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     aclTensor *expandIdx = nullptr;
     aclTensor *expertTokenNums = nullptr;
     aclTensor *epRecvCounts = nullptr;
-    aclTensor *tpRecvCounts = nullptr;
     aclTensor *expandScales = nullptr;
     
     // 定义当前场景下各变量维度
@@ -167,7 +162,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     std::vector<int64_t> expandIdxShape{BS * K};
     std::vector<int64_t> expertTokenNumsShape{localExpertNum};
     std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
-    std::vector<int64_t> tpRecvCountsShape{1};
     std::vector<int64_t> expandScalesShape{A};
 
     long long xShapeSize = GetShapeSize(xShape);
@@ -179,7 +173,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     long long expandIdxShapeSize = GetShapeSize(expandIdxShape);
     long long expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
     long long epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
-    long long tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
     long long expandScalesShapeSize = GetShapeSize(expandScalesShape);
 
     // 构造host侧变量
@@ -198,7 +191,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     std::vector<int32_t> expandIdxHostData(expandIdxShapeSize, 0);
     std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
     std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
-    std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
     // 构造device侧变量
@@ -219,8 +211,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums); 
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);             
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -247,7 +237,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
         expertTokenNumsType,
         expandX, dynamicScales,
         expandIdx, expertTokenNums,
-        epRecvCounts, tpRecvCounts,
+        epRecvCounts, nullptr,
         expandScales, &dispatchWorkspaceSize,
         &dispatchExecutor
     );
@@ -271,7 +261,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
     );
 
     // 调用combine算子第一阶段接口
-    ret = aclnnMoeDistributeCombineGetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
+    ret = aclnnMoeDistributeCombineGetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr,
         hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, nullptr, 0, 0,
         expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
@@ -331,9 +321,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     if (epRecvCounts != nullptr) {
         aclDestroyTensor(epRecvCounts);
     }
-    if (tpRecvCounts != nullptr) {
-        aclDestroyTensor(tpRecvCounts);
-    }   
     if (expandScales != nullptr) {         
         aclDestroyTensor(expandScales);
     }
@@ -367,12 +354,8 @@ int launchOneThreadDispatchAndCombine(Args &args)
     if (expandScalesDeviceAddr != nullptr) {
         aclrtFree(expandScalesDeviceAddr);
     }
-    if (tpRecvCountsDeviceAddr != nullptr) {
-        aclrtFree(tpRecvCountsDeviceAddr);
-    }
 
     HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
     aclrtDestroyStream(args.dispatchStream);
     aclrtDestroyStream(args.combineStream);
     aclrtDestroyContext(args.context);
@@ -408,11 +391,9 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
             << ", hcclComm:" << hcclComm << std::endl;
     uint32_t epRankId = rank_id;
-    uint32_t tpRankId = 0;
 
     args.rankId = rankId;
     args.epRankId = epRankId;
-    args.tpRankId = tpRankId;
     args.hcclEpComm = hcclComm;
     args.dispatchStream = dispatchStream;
     args.combineStream = combineStream;
@@ -458,13 +439,10 @@ int run_example_on_A3A5()
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         uint32_t epRankId = rankId;
-        uint32_t tpRankId = 0;
 
         args[rankId].rankId = rankId;
         args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
         args[rankId].hcclEpComm = commsEp[epRankId];
-        args[rankId].hcclTpComm = nullptr;
         args[rankId].dispatchStream = dispatchStream[rankId];
         args[rankId].combineStream = combineStream[rankId];
         args[rankId].context = context[rankId];
@@ -495,21 +473,18 @@ int main(int argc, char *argv[])
     if (!rank_table_file && !first_rank_id) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 8;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE;
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && !first_rank_id) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 2;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = 2;
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && first_rank_id) {
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 16;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE;
         uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
         std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);

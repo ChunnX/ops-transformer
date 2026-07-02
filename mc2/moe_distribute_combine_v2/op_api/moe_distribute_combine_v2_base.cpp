@@ -92,6 +92,10 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
 {
     CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
