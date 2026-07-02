@@ -69,6 +69,7 @@ constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
 constexpr uint8_t ACTIVATION_TYPE_GELU_TANH = 2;
 constexpr char ACTIVATION_TYPE_GELU_TANH_STR[] = "gelu_tanh";
+constexpr char QUANT_MODE_MX_STR[] = "mx";
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 
 std::string ShapeToDebugString(const gert::Shape &shape)
@@ -125,12 +126,23 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
-    OP_CHECK_IF(quantModePtr == nullptr || yDtypePtr == nullptr || roundModePtr == nullptr ||
-                    scaleAlgPtr == nullptr || activationTypePtr == nullptr,
+    OP_CHECK_IF(yDtypePtr == nullptr || roundModePtr == nullptr || scaleAlgPtr == nullptr ||
+                    activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
-    std::string quantMode(quantModePtr);
-    OP_CHECK_IF(quantMode != "mx",
+    std::string quantMode = quantModePtr == nullptr ? "" : std::string(quantModePtr);
+    if (quantMode.empty()) {
+        OP_CHECK_IF(!(IsFp8(inputParams_.aDtype) && inputParams_.perTokenScaleDtype == ge::DT_FLOAT8_E8M0),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and x_scale",
+                        FormatString("x=%s, x_scale=%s",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
+                        "when quant_mode is empty, x must be FLOAT8_E4M3FN or FLOAT8_E5M2 and x_scale must be "
+                        "FLOAT8_E8M0 to infer quant_mode as mx"),
+                    return false);
+        quantMode = QUANT_MODE_MX_STR;
+    }
+    OP_CHECK_IF(quantMode != QUANT_MODE_MX_STR,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "quant_mode", quantMode,
                     "quant_mode must be mx"),
                 return false);
