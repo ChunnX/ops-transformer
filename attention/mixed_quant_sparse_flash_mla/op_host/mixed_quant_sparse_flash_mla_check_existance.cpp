@@ -34,10 +34,10 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, actualSeqLengthsKv must not be null"),
+                    OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF((opParamInfo_.oriBlockTable.tensor == nullptr) && (opParamInfo_.cmpBlockTable.tensor == nullptr),
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable and cmpBlockTable must be one "),
+        OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
+                    OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -114,19 +114,19 @@ ge::graphStatus QSMLATilingCheck::CheckHCAExistence()
     }
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
-        OP_LOGE(opName_, "oriKv must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE(opName_, "oriKv must not be empty in HCA mode."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
             opParamInfo_.cmpRatio != nullptr,
-        OP_LOGE(opName_, "cmpKv must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE(opName_, "cmpKv must not be empty in HCA mode."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
             opParamInfo_.cmpRatio == nullptr,
-        OP_LOGE(opName_, "cmpRatio must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
