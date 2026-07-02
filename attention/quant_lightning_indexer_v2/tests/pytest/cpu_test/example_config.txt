@@ -28,8 +28,8 @@ layout_k      = BSND
 mask_mode     = 3
 cmp_ratio     = 1
 quant_mode    = 0
-aic_core_num  = 36
-aiv_core_num  = 72
+aic_core_num  = 64
+aiv_core_num  = 64
 
 # --- Input Tensors ---
 # seqused_q: actual query sequence length per batch, shape [batch_size]
