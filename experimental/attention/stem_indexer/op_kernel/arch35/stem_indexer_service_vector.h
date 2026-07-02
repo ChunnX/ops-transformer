@@ -660,6 +660,8 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t indiceLenOffset = (uint32_t)qFlatBase;
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
+        initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
+
         // 当前处理的gS1行起始索引（全局位置）
         int64_t curGS1Idx = gS1Idx * mBaseSize_; 
         // 当前gS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
