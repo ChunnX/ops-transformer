@@ -12,8 +12,8 @@
 
 namespace ops {
 namespace {
-constexpr int64_t DEFAULT_Y_DTYPE = 0;
-constexpr int64_t DEFAULT_SCALE_ALG = 0;
+constexpr int64_t DEFAULT_Y_DTYPE = 0L;
+constexpr int64_t DEFAULT_SCALE_ALG = 0L;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 } // namespace
 
