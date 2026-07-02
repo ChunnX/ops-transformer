@@ -111,7 +111,7 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
 {
     // ccl buff的承载的数据块 1（winIn）：
     // TPE = epWorldSize × CeilAlign(epWorldSize × expertPerRank + 1, 128) × 4B
-    int64_t offsetTokenPerExpert = epWorldSize * 
+    int64_t offsetTokenPerExpert = epWorldSize *
                                    ops::CeilAlign(epWorldSize * expertPerRank + 1, ALIGN_128) *
                                    static_cast<int64_t>(sizeof(int32_t));
 
@@ -1023,8 +1023,6 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     int64_t cclBufferSize = info.cclBufferSize / 2;
     OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).",
         cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
-    OP_TILING_CHECK(cclBufferSize == 0, OP_LOGW(nodeName, "cclBufferSize is 0, skip validation."),
-                    return ge::GRAPH_SUCCESS);
 
     int64_t h = info.K;
     int64_t maxRecvTokenNum = info.maxRecvTokenNum;
