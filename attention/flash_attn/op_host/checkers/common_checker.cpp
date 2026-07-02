@@ -244,6 +244,12 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                       std::to_string(faInfo.vHeadDim).c_str(),
                                                       "The value of axis D of value can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.qkHeadDim != faInfo.vHeadDim,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    faInfo.opName, "axis D of query/key and value",
+                    std::to_string(faInfo.qkHeadDim).c_str(), std::to_string(faInfo.vHeadDim).c_str(),
+                    "The value of axis D of query/key must be equal to the value of axis D of value"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
