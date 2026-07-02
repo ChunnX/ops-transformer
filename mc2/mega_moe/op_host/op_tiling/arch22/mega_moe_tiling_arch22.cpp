@@ -1246,7 +1246,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                     // cumsum + preSumBeforeRank + preSumRankInExpert
                                     info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 2 +
                                     info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * std::max(info.N,n2) * sizeof(int16_t) * 2 + // GMM1&2 Out
+                                    info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * 2 + // GMM1&2 Out
                                     info.maxRecvTokenNum * std::max(info.K, k2) + // swiglu out & quantizedToken
                                     info.worldSize * sizeof(int32_t) * 16; // sync
     } else if (archCode == SOC_ASCEND910B) {
@@ -1256,12 +1256,12 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
         uint64_t gmmOutNum = (w1DataType == ge::DT_INT4) ? 2UL : 1UL;
         uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                                    // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
-                                    paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
-                                    info.maxRecvTokenNum * sizeof(float) * 2UL + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * gmmOutNum + // GMM1&2 Out
-                                    info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
-                                    info.worldSize * sizeof(int32_t) * 16UL; // sync
+            // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
+            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
+            info.maxRecvTokenNum * sizeof(float) * 2UL + // perTokenScale GMM1&2
+            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * gmmOutNum + // GMM1&2 Out
+            info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
+            info.worldSize * sizeof(int32_t) * 16UL; // sync
     }
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
 
