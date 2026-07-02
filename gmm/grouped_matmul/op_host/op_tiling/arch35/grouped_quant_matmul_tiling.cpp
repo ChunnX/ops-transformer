@@ -407,13 +407,17 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
-    const size_t expectedWScaleDimNum =
-        IsWeightNzSingleMultiSingle() ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
-    OP_CHECK_IF(wScaleDimNum != expectedWScaleDimNum,
+    const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingle();
+    const bool validSingleMultiSingleScaleDim =
+        wScaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM - 1 ||
+        (wScaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM && wScaleShape.GetDim(0) == 1);
+    const bool validWScaleDimNum = isWeightNzSingleMultiSingle ? validSingleMultiSingleScaleDim :
+                                                                 wScaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM;
+    OP_CHECK_IF(!validWScaleDimNum,
                 OP_LOGE(inputParams_.opName,
-                        "When split m, the dim num of scale should be %zu in mx quant mode, but actual \
+                        "When split m, the dim num of scale should be %s in mx quant mode, but actual \
 is %zu",
-                        expectedWScaleDimNum, wScaleDimNum),
+                        isWeightNzSingleMultiSingle ? "3 or 4 with E axis equal to 1" : "4", wScaleDimNum),
                 return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
                 OP_LOGE(inputParams_.opName,
@@ -421,13 +425,13 @@ is %zu",
 actual is %zu",
                         xScaleDimNum),
                 return false);
-    const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingle();
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
     if (isWeightNzSingleMultiSingle) {
-        auto wScaleFirstDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
-        auto wScaleSecondDim = static_cast<uint64_t>(wScaleShape.GetDim(1));
+        const size_t wScaleAxisOffset = wScaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM ? 1UL : 0UL;
+        auto wScaleFirstDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleAxisOffset));
+        auto wScaleSecondDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleAxisOffset + 1UL));
         const bool isNkLayout = wScaleFirstDim == logicalNSize && wScaleSecondDim == expectedKDimValue;
         const bool isKnLayout = wScaleFirstDim == expectedKDimValue && wScaleSecondDim == logicalNSize;
         const bool isBroadcastLayout = wScaleFirstDim == 1UL || wScaleSecondDim == 1UL;

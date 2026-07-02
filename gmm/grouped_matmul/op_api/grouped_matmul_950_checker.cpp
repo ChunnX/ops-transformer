@@ -428,11 +428,19 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
         if (gmmParams_.groupType == SPLIT_M) {
             DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetDataType();
             if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
-                const size_t expectedScaleDim =
-                    IsWeightNzSingleMultiSingle() ? MX_SPLIT_K_SCALE_DIM : MX_SPLIT_M_SCALE_DIM;
-                GMM_CHECK_REPORT(scaleDimNumber == expectedScaleDim,
+                const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingle();
+                const bool validSingleMultiSingleScaleDim =
+                    scaleDimNumber == MX_SPLIT_K_SCALE_DIM ||
+                    (scaleDimNumber == MX_SPLIT_M_SCALE_DIM &&
+                     GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0) == 1L);
+                const bool validScaleDim =
+                    isWeightNzSingleMultiSingle ? validSingleMultiSingleScaleDim :
+                                                   scaleDimNumber == MX_SPLIT_M_SCALE_DIM;
+                GMM_CHECK_REPORT(validScaleDim,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), scaleName_.c_str(),
-                        std::to_string(scaleDimNumber), std::to_string(expectedScaleDim)));
+                        std::to_string(scaleDimNumber),
+                        isWeightNzSingleMultiSingle ? "3 or 4 with E axis equal to 1" :
+                                                      std::to_string(MX_SPLIT_M_SCALE_DIM)));
                 GMM_CHECK_REPORT(perTokenDimNumber == MX_SPLIT_M_PER_TOKEN_SCALE_DIM,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), perTokenScaleName_.c_str(),
                         std::to_string(perTokenDimNumber), std::to_string(MX_SPLIT_M_PER_TOKEN_SCALE_DIM)));
@@ -509,8 +517,16 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
             ViewShapeToString(GetInputTensor(gmmParams_.x, tensorIndex.x)),
             "axis M of x must be equal to axis M of perTokenScale [" + std::to_string(pertokenMDimValue) + "]"));
     if (IsWeightNzSingleMultiSingle()) {
-        auto scaleFirstDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
-        auto scaleSecondDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(1);
+        const auto scaleShape = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape();
+        const size_t scaleAxisOffset = scaleDimNum == MX_SPLIT_M_SCALE_DIM ? 1UL : 0UL;
+        if (scaleDimNum == MX_SPLIT_M_SCALE_DIM) {
+            GMM_CHECK_REPORT(scaleShape.GetDim(0) == 1L,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
+                    ViewShapeToString(GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)),
+                    "in weightNz single-multi-single case, axis E of scale must be 1 when scale is 4D"));
+        }
+        auto scaleFirstDimValue = scaleShape.GetDim(scaleAxisOffset);
+        auto scaleSecondDimValue = scaleShape.GetDim(scaleAxisOffset + 1UL);
         const bool isNkLayout = scaleFirstDimValue == weightNDimValue && scaleSecondDimValue == inferedScaleKDimValue;
         const bool isKnLayout = scaleFirstDimValue == inferedScaleKDimValue && scaleSecondDimValue == weightNDimValue;
         const bool isBroadcastLayout = scaleFirstDimValue == 1L || scaleSecondDimValue == 1L;

@@ -2570,8 +2570,19 @@ static bool IsWeightNzSingleMultiSingleMxScaleNoE(const gmm::GroupedMatmulParams
     if (!IsWeightNzSingleMultiSingle(params) || params.scaleOptional == nullptr || (*params.scaleOptional)[0] == nullptr) {
         return false;
     }
-    return (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
-           (*params.scaleOptional)[0]->GetViewShape().GetDimNum() == gmm::MX_SPLIT_K_SCALE_DIM;
+    for (size_t i = 0; i < params.scaleOptional->Size(); ++i) {
+        const auto *scaleTensor = (*params.scaleOptional)[i];
+        if (scaleTensor == nullptr || scaleTensor->GetDataType() != DataType::DT_FLOAT8_E8M0) {
+            return false;
+        }
+        const auto scaleShape = scaleTensor->GetViewShape();
+        const bool noEAxis = scaleShape.GetDimNum() == gmm::MX_SPLIT_K_SCALE_DIM;
+        const bool singleEAxis = scaleShape.GetDimNum() == gmm::MX_SPLIT_M_SCALE_DIM && scaleShape.GetDim(0) == 1L;
+        if (!noEAxis && !singleEAxis) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr,
@@ -2581,8 +2592,10 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!IsWeightNzSingleMultiSingleMxScaleNoE(params)) {
+                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
