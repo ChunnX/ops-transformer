@@ -17,7 +17,7 @@
 // namespace optiling {
 // ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext* context);
 // }
-
+// clang-format off
 namespace ops {
 class FusedInferAttentionScore : public OpDef {
 public:
@@ -2159,3 +2159,4 @@ public:
 };
 OP_ADD(FusedInferAttentionScore, optiling::FusedInferAttentionScoreCompileInfo);
 } // namespace ops
+// clang-format on
