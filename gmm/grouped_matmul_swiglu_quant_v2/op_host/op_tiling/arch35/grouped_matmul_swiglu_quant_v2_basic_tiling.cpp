@@ -31,6 +31,7 @@ constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 3;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
+constexpr size_t ALIGN_4 = 4;
 } // namespace
 
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
@@ -290,11 +291,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4Input() const
     return IsFp4(inputParams_.aDtype) && IsFp4(inputParams_.bDtype);
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input() const
-{
-    return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
-}
-
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 {
     return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
@@ -336,7 +332,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNdDtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input()
+bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input() const
 {
     return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
 }
@@ -458,7 +454,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
     }
 
     if (IsFp4Input() || IsFp4(inputParams_.outDataDtype)) {
-        OP_CHECK_IF(inputParams_.nSize % ALIGN4 != 0,
+        OP_CHECK_IF(inputParams_.nSize % ALIGN_4 != 0,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 inputParams_.opType, "weight", ShapeToString(wShape),
                 "when inputs or output are FLOAT4, n value must be an integer multiple of 4"),
