@@ -307,18 +307,27 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         }
     }
     int32_t lastExpertIdx = -1;
+    LocalTensor<T> prefetchedInLocal;
+    bool hasPrefetched = false;
 
     for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
         int32_t srcIdx = sortedRowIdx.GetValue(i);
         int32_t expertIdx = curExpertId - this->expertStart_;
-        LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
-        if constexpr (IsSameType<T, float>::value) {
-            DataCopyPad(inLocal, xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
+        LocalTensor<T> inLocal;
+        if (hasPrefetched) {
+            inLocal = prefetchedInLocal;
+            hasPrefetched = false;
         } else {
-            DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
+            inLocal = inputXInQueue_.AllocTensor<T>();
+            if constexpr (IsSameType<T, float>::value) {
+                DataCopyPad(inLocal, xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
+            } else {
+                DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams,
+                            {false, 0, 0, 0});
+            }
+            inputXInQueue_.EnQue<T>(inLocal);
         }
-        inputXInQueue_.EnQue<T>(inLocal);
 
         if (this->isInputScale_) {
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
@@ -345,6 +354,22 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
             Compute<false>(smoothLocal);
         }
         inputXInQueue_.FreeTensor(inLocal);
+
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            if (colsAsInt8_ < BLOCK_BYTES && i + 1 < endRowIdx && i + 1 < this->activeNum_) {
+                int32_t nextSrcIdx = sortedRowIdx.GetValue(i + 1);
+                prefetchedInLocal = inputXInQueue_.AllocTensor<T>();
+                if constexpr (IsSameType<T, float>::value) {
+                    DataCopyPad(prefetchedInLocal, xGm_[nextSrcIdx / this->k_ * this->cols_], copyInParams,
+                                {false, 0, 0, 0});
+                } else {
+                    DataCopyPad(prefetchedInLocal[colsAlign_], xGm_[nextSrcIdx / this->k_ * this->cols_],
+                                copyInParams, {false, 0, 0, 0});
+                }
+                inputXInQueue_.EnQue<T>(prefetchedInLocal);
+                hasPrefetched = true;
+            }
+        }
 
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
