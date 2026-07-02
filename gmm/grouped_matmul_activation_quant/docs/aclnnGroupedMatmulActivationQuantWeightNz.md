@@ -385,42 +385,30 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错。参数校验日志中上报的Error code如下：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 942px"><colgroup>
-  <col style="width: 180px">
+  <table style="undefined;table-layout: fixed;width: 1170px"><colgroup>
+  <col style="width: 268px">
+  <col style="width: 140px">
   <col style="width: 762px">
   </colgroup>
   <thead>
     <tr>
-      <th>Error code</th>
+      <th>返回码</th>
+      <th>错误码</th>
       <th>描述</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>EZ0026</td>
-      <td>必选参数为空指针，例如x、groupList、weight、weightScale、activationType、y或yScale为空；MX量化场景下xScaleOptional为空；weight或weightScale的tensorList元素为空。workspaceSize或executor为空时返回ACLNN_ERR_PARAM_NULLPTR。</td>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、roundMode、y、yScale、workspaceSize或executor为空。</td>
     </tr>
     <tr>
-      <td>EZ0026、EZ0027</td>
-      <td>参数取值不满足约束，例如activationType不是"gelu_tanh"，quantMode显式传入非"MX"，roundMode不是"rint"，groupListType、scaleAlg、dstTypeMax、K或N等取值不在支持范围内，或x/weightScale转置关系不支持。</td>
-    </tr>
-    <tr>
-      <td>EZ0020、EZ0021</td>
-      <td>输入或输出数据类型不满足约束，例如x、weight、xScaleOptional、weightScale、groupList、y或yScale的数据类型不支持，或quantMode为空时无法根据x和xScaleOptional的数据类型组合推导出MX量化模式。</td>
-    </tr>
-    <tr>
-      <td>EZ0035</td>
-      <td>输入或输出数据格式不满足约束，例如x、xScaleOptional、groupList、weightScale、y、yScale不是ND格式，或weight不是FRACTAL_NZ格式。</td>
-    </tr>
-    <tr>
-      <td>EZ0009、EZ0012</td>
-      <td>shape或shape维度不满足约束，例如x、groupList、weight、weightScale、xScaleOptional、y或yScale维度不匹配，weight的storageShape不是5维，或实际shape与期望shape不一致。</td>
-    </tr>
-    <tr>
-      <td>EZ0022、EZ0023</td>
-      <td>tensorList数量不满足约束，例如weight或weightScale的tensorList长度不是1，或MXFP8场景下bias不是nullptr、空tensorlist或单个空tensor。</td>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>参数不满足约束，例如activationType不是"gelu_tanh"，bias非空，输入数据类型或数据格式不支持，shape维度不匹配，或属性值不在支持范围内。</td>
     </tr>
   </tbody>
   </table>
