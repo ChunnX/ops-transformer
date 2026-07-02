@@ -282,11 +282,6 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
                         "but now return_value is %ld.",
                 *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
-                OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
-                        "but now return_value is %ld.",
-                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
                 OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
