@@ -75,7 +75,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -104,7 +104,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -142,7 +142,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
