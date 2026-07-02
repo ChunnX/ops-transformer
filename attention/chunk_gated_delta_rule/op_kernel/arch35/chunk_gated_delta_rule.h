@@ -291,7 +291,7 @@ private:
     __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
                                      GlobalTensor<lowType> stateOut)
     {
-        Stage2 stageTwoOp;
+        Stage2<lowType> stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
             out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
@@ -305,13 +305,13 @@ private:
                                           GlobalTensor<highType> stateFp32In,
                                           GlobalTensor<highType> stateFp32Out)
     {
-        Stage2 stageTwoOp;
+        Stage2<float> stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCum_, kCumDecay_,
             stateBf16Wk_, stateDeltaWk_, kg_,
             out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_,
-            true, stateFp32In, stateFp32Out};
+            stateFp32In, stateFp32Out};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();

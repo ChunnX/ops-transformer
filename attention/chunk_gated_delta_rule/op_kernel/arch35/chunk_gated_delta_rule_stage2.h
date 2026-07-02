@@ -33,8 +33,8 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> vInner;    // (Nv, Sp, Dv)
     GlobalTensor<float> gCum;   // (Nv, Sp)
     GlobalTensor<bfloat16_t> kCumdecay; // (Nv, Sp, Dk)
-    GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)
-    GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)
+    GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)  BF16: stateIn, FP32: stateBf16In
+    GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)  BF16: stateOut, FP32: stateDelta
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
@@ -46,13 +46,16 @@ struct StageTwoParams {
     int64_t Dv;
     int64_t Dk;
     bool gOptional;
-    bool isStateFp32;
+    // FP32-specific fields (valid only when Stage2<float>)
     GlobalTensor<float> stateFp32In;
     GlobalTensor<float> stateFp32Out;
 };
 
+template <typename stateType = bfloat16_t>
 class Stage2 {
 public:
+    static constexpr bool kIsFp32 = std::is_same_v<stateType, float>;
+
     __aicore__ inline void Init(StageTwoParams *initParams, int32_t coreNum)
     {
         sTP_ = initParams;
@@ -66,8 +69,7 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        isStateFp32_ = sTP_->isStateFp32;
-        if (isStateFp32_) {
+        if constexpr (kIsFp32) {
             curDkF32_ = Ceil(Dk_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
         }
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
@@ -81,7 +83,7 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        if (isStateFp32_) {
+        if constexpr (kIsFp32) {
             uint64_t inSize = Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDkF32_ * sizeof(float);
             uint64_t deltaSize = Dv_ * curDk_ * sizeof(bfloat16_t);
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, deltaSize));
@@ -130,13 +132,13 @@ public:
                     curChunkSize_ = lastChunkSize;
                 }
                 if ASCEND_IS_AIV {
-                    if (isStateFp32_) {
+                    if constexpr (kIsFp32) {
                         if (GetSubBlockIdx() == 0) {
                             CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDkF32_);
                             inQueue_.FreeTensor(stateIn);
-                            CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
+                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
@@ -168,7 +170,7 @@ public:
                     }
                 }
                 if ASCEND_IS_AIC {
-                    if (isStateFp32_) {
+                    if constexpr (kIsFp32) {
                         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                         auto bf16In = sTP_->curState[nvId * Dv_ * Dk_];
@@ -178,7 +180,7 @@ public:
                                      sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
-                        CalStateNewOverwrite(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut);
+                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut);
                         SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
@@ -203,7 +205,6 @@ public:
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
         if (gOptional_) {
-            // 刷新cache
             DataCacheCleanAndInvalid<float,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
@@ -216,38 +217,24 @@ public:
             lastGCum_.SetValue(0, 1.0f);
         }
         float tmpFloat = lastGCum_.GetValue(0);
-        auto stateIn = inQueue_.DeQue<bfloat16_t>();
-        auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
-        SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
-        SetFlag<HardEvent::S_V>(S_V_EVENT);
-        WaitFlag<HardEvent::S_V>(S_V_EVENT);
-        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
-        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
-        SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-        WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-        outQueue_.EnQue(stateOut);
-        inQueue_.FreeTensor(stateIn);
-    }
-
-    __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
-    {
-        if (gOptional_) {
-            DataCacheCleanAndInvalid<float,
-                                     CacheLine::SINGLE_CACHE_LINE,
-                                     DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, tmpFloat);
+        if constexpr (kIsFp32) {
+            Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * Dk_);
+            PipeBarrier<PIPE_V>();
+        } else {
+            auto stateIn = inQueue_.DeQue<bfloat16_t>();
+            auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
-            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-        } else {
-            lastGCum_.SetValue(0, 1.0f);
+            Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
+            Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
+            SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+            outQueue_.EnQue(stateOut);
+            inQueue_.FreeTensor(stateIn);
         }
-        float tmpFloat = lastGCum_.GetValue(0);
-        Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * Dk_);
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
@@ -285,19 +272,11 @@ public:
         sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
         sTP_->mm1->SetTensorA(vInner, true);
         sTP_->mm1->SetTensorB(kg, false);
-        sTP_->mm1->IterateAll(state, 1);
-        sTP_->mm1->End();
-    }
-
-    __aicore__ inline void CalStateNewOverwrite(GlobalTensor<bfloat16_t> vInner,
-                                                GlobalTensor<bfloat16_t> kg,
-                                                GlobalTensor<bfloat16_t> state)
-    {
-        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);
-        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_);
-        sTP_->mm1->SetTensorA(vInner, true);
-        sTP_->mm1->SetTensorB(kg, false);
-        sTP_->mm1->IterateAll(state, 0);
+        if constexpr (kIsFp32) {
+            sTP_->mm1->IterateAll(state, 0);
+        } else {
+            sTP_->mm1->IterateAll(state, 1);
+        }
         sTP_->mm1->End();
     }
 
@@ -306,7 +285,7 @@ public:
     {
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
         DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)), // 非对齐情况需要补0
+                                   static_cast<uint32_t>(col * sizeof(inType)),
                                    static_cast<uint32_t>(0),
                                    0, 0};
         int padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
@@ -362,7 +341,6 @@ private:
     int32_t chunkNum_;
     int32_t coreNum_;
     bool gOptional_;
-    bool isStateFp32_;
 };
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE2_H
