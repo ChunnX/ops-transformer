@@ -599,28 +599,29 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
-    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= 8) {
+    const size_t maxLength = 7UL;
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'', 'ai_cpu', 'ccu'");
-        return ge::GRAPH_FAILED;
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -649,22 +650,15 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
-    
-    auto platformInfo = context->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint8_t commMode = 0;
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "CommMode is %u.", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(), "HCCL init tiling config failed, expected success."),
