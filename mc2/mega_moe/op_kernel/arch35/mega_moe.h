@@ -408,7 +408,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     // workSpace swigluToGmm2Flag 清零（含 dispatch->gmm1 wave-grain 槽位区）。
     // 总数 = SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)。
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
-    int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
+    // 只清理路由专家的 flag，共享专家的 flag 由 ProcessSharedExpert 自行管理
+    int32_t flagNum = static_cast<int32_t>(moeExpertPerRank_) *
         (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
