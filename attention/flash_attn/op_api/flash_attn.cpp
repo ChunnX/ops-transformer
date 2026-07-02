@@ -19,9 +19,7 @@ namespace l0op {
 OP_TYPE_REGISTER(FlashAttn);
 
 const std::array<const aclTensor *, 2> FlashAttn(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,
