@@ -247,7 +247,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
                     DataCopyPad(this->expandedXGm_[j * this->cols_],
                                 xOutLocal[localRow * inFactor], copyParams);
                 } else {
-                    DataCopyPad(this->expandedXGm_[j * this->cols_], zeroLocal, copyParams);
+                    DataCopyPad(this->expandedXGm_[j * this->cols_], zeroLocal.ReinterpretCast<T>(), copyParams);
                 }
             }
             xCopyInQueue_.FreeTensor(xOutLocal);
