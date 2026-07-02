@@ -43,12 +43,17 @@ private:
     aclnnStatus CheckDimNumAndFormat(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckTransposeStatus() const;
     aclnnStatus CheckDimValue(size_t xIdx, size_t yIdx, size_t wIdx) const;
+    aclnnStatus CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckV1GroupList(size_t idx) const;
 
     aclnnStatus CheckAntiQuantDtype(size_t idx) const;
     aclnnStatus CheckAntiQuantShape(size_t idx) const;
     aclnnStatus CheckAntiQuantTranspose(size_t idx) const;
     aclnnStatus CheckScaleAndPerTokenScaleShape() const;
+    aclnnStatus CheckS8S4NZScaleShape() const;
+    static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
+                                             const char *optionalName, const char *referenceName,
+                                             const char *opName);
     aclnnStatus CheckGroupSize(size_t idx) const;
     aclnnStatus CheckDimValueAllOne(const aclTensorList *tensorList, const size_t idx,
                                     const std::string &paramName) const;

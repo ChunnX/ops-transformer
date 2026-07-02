@@ -1076,7 +1076,15 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow() const
                 "untransposed and FRACTAL_NZ-format "
                 "(In weight quant, when x-weight is bf16/fp16-fp4/fp16)"),
             return false);
-    } else if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
+    } else {
+        return CheckUnsupportedRemainingCases();
+    }
+    return true;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportedRemainingCases() const
+{
+    if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
         OP_CHECK_IF(!(weightNzFlag_ && !transB_),
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
