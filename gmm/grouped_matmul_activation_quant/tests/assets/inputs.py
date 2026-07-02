@@ -30,11 +30,11 @@ def grouped_matmul_activation_quant_inputs(x, group_list, weight, weight_scale, 
     del activation_type, tuning_config, y_dtype
     del round_mode, scale_alg, dst_type_max
     if quant_mode in (None, ""):
-        quant_mode = "MX"
-    if quant_mode != "MX":
-        raise ValueError("quant_mode 参数当前仅支持为 MX")
+        quant_mode = "mx"
+    if quant_mode != "mx":
+        raise ValueError("quant_mode 参数当前仅支持为 mx")
     if x_scale is None:
-        raise ValueError("x_scale is required for MX quant mode.")
+        raise ValueError("x_scale is required for mx quant mode.")
 
     group_list_dtype = group_list.dtype
     if "group_list_expect" in kwargs:
