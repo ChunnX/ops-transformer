@@ -72,7 +72,7 @@ ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum,
         if (inputShape.GetDim(index) == 1) { // dim=1时步长不影响连续性
             continue;
         }
-        uint64_t currentStride = static_cast<uint64_t>(std::max(Strides->GetStride(index), static_cast<int64_t>(0)))
+        uint64_t currentStride = static_cast<uint64_t>(std::max(Strides->GetStride(index), static_cast<int64_t>(0)));
         if (preStride != currentStride) {
             return ge::GRAPH_FAILED;
         }
