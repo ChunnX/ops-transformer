@@ -550,7 +550,6 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
     uint32_t weightsShapeDim = opParamInfo_.weights.shape->GetStorageShape().GetDimNum();
     uint32_t outShapeDim = opParamInfo_.attenOut.shape->GetStorageShape().GetDimNum();
-    uint32_t sparseValuesShapeDim = opParamInfo_.sparseValues.shape->GetStorageShape().GetDimNum();
     uint32_t expectShapeDim = DIM_NUM_FOUR;
     if (qLayout_ == DataLayout::TND) {
         expectShapeDim = DIM_NUM_THREE;

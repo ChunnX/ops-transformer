@@ -456,7 +456,6 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
     uint32_t weightsShapeDim = opParamInfo_.weights.shape->GetStorageShape().GetDimNum();
     uint32_t outShapeDim = opParamInfo_.attenOut.shape->GetStorageShape().GetDimNum();
-    uint32_t sparseValuesShapeDim = opParamInfo_.valuesOut.shape->GetStorageShape().GetDimNum();
     uint32_t qExpectShapeDim = DIM_NUM_FOUR;
     uint32_t kExpectShapeDim = DIM_NUM_FOUR;
     if (qLayout_ == DataLayout::TND) {
@@ -482,6 +481,7 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                 return ge::GRAPH_FAILED);
         }
         if (*opParamInfo_.returnValue == 1) {
+            uint32_t sparseValuesShapeDim = opParamInfo_.valuesOut.shape->GetStorageShape().GetDimNum();
             OP_CHECK_IF(sparseValuesShapeDim != qExpectShapeDim,
                 OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
                     qExpectShapeDim, sparseValuesShapeDim),
