@@ -83,8 +83,6 @@ private:
     GlobalTensor<SFTMAX_OUT_T> attnScoreFp16Gm;
     GlobalTensor<T> scoreFp32Gm;
     GlobalTensor<int32_t> topkWorkspaceGm;
-
-    // Output tensor pointers for the 4 new outputs
 };
 
 template <typename BSAT>
