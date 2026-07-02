@@ -1480,7 +1480,6 @@ private:
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
-            uint64_t idx = 0;
             expandedRowIdx = params.ptrWorkspace;
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
@@ -1518,15 +1517,6 @@ private:
 
             ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
             workspaceOffset += params.EP * sizeof(int32_t) * 16;
-            // if ASCEND_IS_AIV {
-            //     uint64_t KB_SIZE = 1024;
-            //     uint64_t MMB_SIZE = 1024 * 1024;
-            //     if (get_block_idx() + get_subblockid() * get_block_num() == 0)
-            //         AscendC::PRINTF("[HELLO WORLD][%d] workspaceOffset=%luB-%luKB-%luMB.\n", idx++, 
-            //             workspaceOffset, (workspaceOffset + KB_SIZE - 1) / KB_SIZE,
-            //             (workspaceOffset + MMB_SIZE - 1) / MMB_SIZE);
-            // }
-            // ElementA:1-ElementC:2
         }
     };
 

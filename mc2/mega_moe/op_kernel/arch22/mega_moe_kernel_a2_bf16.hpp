@@ -1481,19 +1481,6 @@ private:
             workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
 
             ptrSoftFlagBase = reinterpret_cast<__gm__ float*>(params.ptrWorkspace + workspaceOffset);
-            // if ASCEND_IS_AIV {
-            //     uint64_t KB_SIZE = 1024;
-            //     uint64_t MMB_SIZE = 1024 * 1024;
-            //     if (get_block_idx() + get_subblockid() * get_block_num() == 0) {
-            //         uint32_t idx = 0;
-            //         workspaceOffset += params.EP * sizeof(int32_t) * 16;
-            //         AscendC::PRINTF("[HELLO WORLD][%d] workspaceOffset=%luB-%luKB-%luMB.\n", idx++, 
-            //             workspaceOffset, (workspaceOffset + KB_SIZE - 1) / KB_SIZE,
-            //             (workspaceOffset + MMB_SIZE - 1) / MMB_SIZE);
-            //         AscendC::PRINTF("ElementA:%d-ElementC:%d\n", sizeof(ElementA), sizeof(ElementC));
-            //     }
-            // }
-            // ElementA:2-ElementC:2
         }
     };
 

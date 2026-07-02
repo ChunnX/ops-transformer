@@ -190,9 +190,10 @@ public:
 
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
+            LayoutC layoutGmC{1, blockN, gmmOutPreRowStride};
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);

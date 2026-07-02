@@ -1253,45 +1253,22 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
         auto w1Desc = context->GetDynamicInputDesc(WEIGHT1_INDEX, 0);
         ge::DataType w1DataType = w1Desc->GetDataType();
         uint64_t swigluSize = 1UL;
-        uint64_t gmmOutSize = 1UL;
+        uint64_t gmmOutNum = 1UL;
         if (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) {
             swigluSize = 2UL;
         }
         if (w1DataType == ge::DT_INT4) {
-            gmmOutSize = 2UL;
+            gmmOutNum = 2UL;
         }
 
         uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                                    // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine + tokenPerExpert
+                                    // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
                                     paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
                                     info.maxRecvTokenNum * sizeof(float) * 2UL + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * gmmOutSize + // GMM1&2 Out
+                                    info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * gmmOutNum + // GMM1&2 Out
                                     info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
                                     info.worldSize * sizeof(int32_t) * 16UL; // sync
-        // uint64_t megeMoeWorkspaceKb = (megeMoeWorkspace + 1024 - 1) / 1024;
-        // uint64_t megeMoeWorkspaceMb = (megeMoeWorkspace + 1024 * 1024 - 1) / (1024 * 1024);
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD] megeMoeWorkspace=%luB-%luKB-%luMB.",
-        //     megeMoeWorkspace, megeMoeWorkspaceKb, megeMoeWorkspaceMb);
-        // uint64_t workspaceOffset = 0;
-        // uint64_t idx = 0;
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t); // expandedRowIdx
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += paddedExpertNumAligned * info.worldSize * sizeof(int32_t); // cumsum
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += info.maxRecvTokenNum * sizeof(float) * 2; // perTokenScale GMM1&2
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) * gmmOutSize; // GMM1&2 Out
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize; // swiglu out & quantizedToken
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += paddedExpertNumAligned * sizeof(int32_t); // ptrSumBeforeRankForDispatch
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += info.worldSize * sizeof(int32_t) * info.expertPerRank; // ptrSumBeforeRankForCombine
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
-        // workspaceOffset += info.worldSize * sizeof(int32_t) * 16; // sync
-        // OP_LOGE(K_INNER_DEBUG, "[HELLO WORLD][%d] megeMoeWorkspace=%luB.", idx++, workspaceOffset);
     }
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
 
