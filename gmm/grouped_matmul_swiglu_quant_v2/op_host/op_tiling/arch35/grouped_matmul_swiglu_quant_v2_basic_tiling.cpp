@@ -438,35 +438,36 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
     }
 
     if (IsMxFp4WeightNz()) {
-        OP_CHECK_IF(inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                inputParams_.opType, "weight", ShapeToString(wShape),
-                "when using the weightNZ format with FP4 data type, n axis element number of weight must be an integer multiple of 128"),
+        OP_CHECK_IF(
+            inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                  "when using the weightNZ format with FP4 data type, n axis element "
+                                                  "number of weight must be an integer multiple of 128"),
             return false);
     }
 
     if (IsMxFp8WeightNz()) {
         OP_CHECK_IF(inputParams_.nSize % GmmConstant::WEIGHTNZ_64 != 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                inputParams_.opType, "weight", ShapeToString(wShape),
-                "when using the weightNZ format with FP8 data type, n axis element number of weight must be an integer multiple of 64"),
-            return false);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                          "when using the weightNZ format with FP8 data type, n axis "
+                                                          "element number of weight must be an integer multiple of 64"),
+                    return false);
     }
 
     if (IsFp4Input() || IsFp4(inputParams_.outDataDtype)) {
         OP_CHECK_IF(inputParams_.nSize % ALIGN_4 != 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                inputParams_.opType, "weight", ShapeToString(wShape),
-                "when inputs or output are FLOAT4, n value must be an integer multiple of 4"),
-            return false);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        "when inputs or output are FLOAT4, n value must be an integer multiple of 4"),
+                    return false);
     }
 
     // MX量化场景下，N为2对齐
-    OP_CHECK_IF(inputParams_.nSize % EVEN_FACTOR != 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    inputParams_.opType, "weight", ShapeToString(wShape),
-                    "n axis element number of weight must be an integer multiple of 2"),
-                return false);
+    OP_CHECK_IF(
+        inputParams_.nSize % EVEN_FACTOR != 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                              "n axis element number of weight must be an integer multiple of 2"),
+        return false);
     return true;
 }
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()

@@ -272,11 +272,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     ub2GmParams.dstStride = (n_ - singleN_) * sizeof(int8_t);
 
     if (singleN_ % SINGLEN_ALIGN_64 != 0) {
-        uint64_t singleNAlign64 = CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(SINGLEN_ALIGN_64)) * SINGLEN_ALIGN_64;
+        uint64_t singleNAlign64 =
+            CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(SINGLEN_ALIGN_64)) * SINGLEN_ALIGN_64;
         uint64_t singleNblockSize = CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(SINGLEN_ALIGN_32));
-        uint64_t singleN64blockSize = CeilDiv(static_cast<uint64_t>(singleNAlign64), static_cast<uint64_t>(SINGLEN_ALIGN_32));
+        uint64_t singleN64blockSize =
+            CeilDiv(static_cast<uint64_t>(singleNAlign64), static_cast<uint64_t>(SINGLEN_ALIGN_32));
         ub2GmParams.srcStride = (singleN64blockSize - singleNblockSize);
-        if (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+        if (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
+            AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
             ub2GmParams.srcStride = ub2GmParams.srcStride >> 1;
         }
     }
