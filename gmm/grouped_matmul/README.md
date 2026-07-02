@@ -7,13 +7,13 @@ abbr {
 }
 </style>
 
-## 1. GroupedMatmul 简介
+## GroupedMatmul 简介
 
 GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量进行分组，分别对各组执行矩阵乘法。涵盖非量化、伪量化和全量化三种计算场景，广泛应用于 MoE 等大模型推理加速。
 
 ---
 
-## 2. 产品支持情况
+## 产品支持情况
 
 | 产品 | 是否支持 |
 |:----------------------------|:-----------:|
@@ -28,7 +28,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ---
 
-## 3. 专业术语
+## 专业术语
 
 | 术语 | 简要说明 |
 |------|----------|
@@ -49,9 +49,9 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 | ND | 常规连续排布 |
 | NZ | FRACTAL_NZ 格式（亲核排布） |
 
-## 4. 功能说明
+## 功能说明
 
-### 4.1 分组方式
+### 分组方式
 
 算子功能：实现分组矩阵乘计算，公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
@@ -61,15 +61,15 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 <a id="42-计算公式"></a>
 
-### 4.2 计算公式
+### 计算公式
 
-#### 4.2.1 <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
+#### <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
 
 | x dtype | weight dtype | bias | 计算公式 | 说明 |
 |:---:|:---:|:---:|:---|------|
 | FP16, BF16, FLOAT32 | FP16, BF16, FLOAT32 | 可选 | $y_i = x_i \times weight_i + bias_i$ | 常规矩阵乘，不涉及任何缩放/偏移 |
 
-#### 4.2.2 <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
+#### <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
 
 > weight 以低精度存储，计算时反量化为浮点。
 
@@ -79,7 +79,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 | A8W4 (S8S4) | INT8 | INT4 | **必选** (FLOAT32) | $y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i$ | 仅支持单 Tensor；$bias_i = 8 \times weight_i \times scale_i$ 沿 K 轴规约 |
 | A16F8 | FP16, BF16 | FLOAT8_E5M2, FLOAT8_E4M3FN, HIFLOAT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 Ascend 950PR/950DT |
 
-#### 4.2.3 <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
+#### <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
 
 ##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化
 
@@ -106,7 +106,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 > 其中 $xSlice_i$ 为 $x_i$ 第 $m$ 行长度为 gsK 的向量，$weightSlice_i$ 为 $weight_i$ 第 $n$ 列长度为 gsK 的向量，$kLoops = \lceil K_i / gsK \rceil$，支持末尾切片长度不足 gsK。
 
-### 4.3 版本演进
+### 版本演进
 
 | 版本变化 | Ascend 950PR/Ascend 950DT | Atlas A3/A2 训练系列产品 |
 |---------|----------------|----------|
@@ -117,7 +117,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ---
 
-## 5. 参数说明
+## 参数说明
 
 > 标注规则：
 > - <sup>1</sup>：仅 <term>Ascend 950PR/950DT</term> 不支持
@@ -161,13 +161,13 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ---
 
-## 6. 约束说明
+## 约束说明
 
 **确定性计算**：GroupedMatmul 默认提供确定性实现。
 
 > 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#7-%E7%BA%A6%E6%9D%9F%E8%AF%B4%E6%98%8E)。
 
-### 6.1 公共约束
+### 公共约束
 
 - x/weight 中每组 Tensor 的最后一维 < 65536。
   - $x_i$ 最后一维：x 不转置时为 K 轴，x 转置时为 M 轴。
@@ -182,7 +182,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ---
 
-## 7. 接口调用
+## 接口调用
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|

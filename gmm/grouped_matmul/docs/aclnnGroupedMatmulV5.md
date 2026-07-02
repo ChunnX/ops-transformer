@@ -15,7 +15,7 @@ abbr {
 
 <a id="1-产品支持情况"></a>
 
-## 1. 产品支持情况
+## 产品支持情况
 
 | 产品 | 是否支持 |
 |:----------------------------|:-----------:|
@@ -30,7 +30,7 @@ abbr {
 
 <a id="2-专业术语"></a>
 
-## 2. 专业术语
+## 专业术语
 
 | 术语 | 简要说明 |
 |------|----------|
@@ -57,7 +57,7 @@ abbr {
 
 <a id="3-功能说明"></a>
 
-## 3. 功能说明
+## 功能说明
 
 接口功能：实现分组矩阵乘计算。公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
@@ -76,7 +76,7 @@ $$
 ---
 <a id="4-函数原型"></a>
 
-## 4. 函数原型
+## 函数原型
 
 每个算子分为两段式接口，必须先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用 `aclnnGroupedMatmulV5` 接口执行计算。
 
@@ -122,7 +122,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="5-aclnngroupedmatmulv5getworkspacesize"></a>
 
-## 5. aclnnGroupedMatmulV5GetWorkspaceSize
+## aclnnGroupedMatmulV5GetWorkspaceSize
 
 - **参数说明：**
 
@@ -221,7 +221,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="6-aclnngroupedmatmulv5"></a>
 
-## 6. aclnnGroupedMatmulV5
+## aclnnGroupedMatmulV5
 
 - **参数说明：**
 
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="7-约束说明"></a>
 
-## 7. 约束说明
+## 约束说明
 
 **确定性计算**：aclnnGroupedMatmulV5 默认确定性实现。
 
@@ -251,7 +251,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="71-公共约束"></a>
 
-### 7.1 公共约束
+### 公共约束
 
 每一个场景约束中，只关注该场景需要用到的参数，其余参数均视为该场景不涉及，可以填 nullptr。
 
@@ -270,7 +270,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="72-ascend-950prascend-950dt"></a>
 
-### 7.2 Ascend 950PR/Ascend 950DT
+### Ascend 950PR/Ascend 950DT
 
 - groupType：支持 M 轴分组（0）和不分组（-1）。非量化/全量化额外支持 K 轴分组（2）。
 - groupListType：支持 0、1、2。仅全量化 groupType=0 时支持 groupListType=2。
@@ -281,7 +281,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="721-场景速查表"></a>
 
-#### 7.2.1 场景速查表
+#### 场景速查表
 
 | 场景名 | x | weight | out | 约束说明 |
 |--------|:---:|:---:|:---|------|
@@ -461,11 +461,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="73-atlas-a3a2-训练系列产品"></a>
 
-### 7.3 Atlas A3/A2 训练系列产品
+### Atlas A3/A2 训练系列产品
 
 <a id="731-场景速查表"></a>
 
-#### 7.3.1 场景速查表
+#### 场景速查表
 
 | 场景名 | x | weight | out | 约束说明 |
 |--------|:---:|:---:|:---:|------|
@@ -653,11 +653,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="8-接口调用"></a>
 
-## 8. 接口调用
+## 接口调用
 
 <a id="81-调用流程"></a>
 
-### 8.1 调用流程
+### 调用流程
 
 1. 根据场景准备输入（x/weight 及各场景所需的量化/伪量化参数）。
 2. 调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor。
@@ -668,11 +668,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="82-配置示例"></a>
 
-### 8.2 配置示例
+### 配置示例
 
 <a id="821-grouplistoptional-配置示例"></a>
 
-#### 8.2.1 groupListOptional 配置示例
+#### groupListOptional 配置示例
 
 以 shape：$M=789$、$K=4096$、$N=7168$、$E=9$（其中第 0 组 123 token，第 2/5 组各 333 token，其余为空）为例：
 
@@ -684,7 +684,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="822-tuningconfigoptional-配置示例"></a>
 
-#### 8.2.2 tuningConfigOptional 配置示例
+#### tuningConfigOptional 配置示例
 
 仅 <term>Atlas A3/A2 训练系列产品</term> 支持，Ascend 950PR/950DT 不支持此参数。
 tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
@@ -697,7 +697,7 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
 
 <a id="83-示例代码索引"></a>
 
-### 8.3 示例代码索引
+### 示例代码索引
 
 以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
