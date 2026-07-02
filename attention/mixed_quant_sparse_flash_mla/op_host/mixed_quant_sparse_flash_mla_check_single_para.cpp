@@ -327,11 +327,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
                 expectDimNumList, CMP_RESIDUAL_KV_NAME)) {
             return ge::GRAPH_FAILED;
         }
-
-        OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetShapeSize() != bSize_,
-            OP_LOGE(opName_, "cmpResidualKv's shapeSize(%ld) should be equal to B(%u).",
-                opParamInfo_.cmpResidualKv.tensor->GetShapeSize(), bSize_),
-            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
