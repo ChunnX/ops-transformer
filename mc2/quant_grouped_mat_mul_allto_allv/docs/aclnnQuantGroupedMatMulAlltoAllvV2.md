@@ -35,7 +35,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 ## 函数原型
 
 该算子分为两段式接口，必须先调用`aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantGroupedMatMulAlltoAllvV2`接口执行计算。
@@ -323,7 +323,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
                 <td>commMode</td>
                 <td>输入</td>
                 <td>指定当前通信类型。</td>
-                <td>支持输入""、"ai_cpu"和"ccu"。</td>
+                <td>支持输入"ai_cpu"和"ccu"。</td>
                 <td>char*</td>
                 <td>-</td>
                 <td>-</td>
