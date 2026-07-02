@@ -2581,10 +2581,8 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            if (!IsWeightNzSingleMultiSingleMxScaleNoE(params)) {
-                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
-            }
+            gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
