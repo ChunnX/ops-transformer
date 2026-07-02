@@ -29,17 +29,14 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
         OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
-                        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream"));
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
         if (commModeStr == nullptr) {
-            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU CalcParamFunc");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
-            OPS_LOG_D(context->GetNodeName(), "CommMode is ccu. Do A5 CCU CalcParamFunc");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-        } else if (std::strcmp(commModeStr, "") == 0) {
-            OPS_LOG_D(context->GetNodeName(), "CommMode is empty string. Do A5 CCU CalcParamFunc");
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
     }
@@ -53,17 +50,14 @@ ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *conte
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
         OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
-                        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks););
+            return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks););
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
         if (commModeStr == nullptr) {
-            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
+            return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks);
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
-            OPS_LOG_D(context->GetNodeName(), "CommMode is ccu. Do A5 CCU GenTaskFunc");
-            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-        } else if (std::strcmp(commModeStr, "") == 0) {
-            OPS_LOG_D(context->GetNodeName(), "CommMode is empty string. Do A5 CCU GenTaskFunc");
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
         }
     }
