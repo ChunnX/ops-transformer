@@ -1021,8 +1021,8 @@ public:
         event_t vToMte2 = static_cast<event_t>(tPipe->FetchEventID(HardEvent::V_MTE2));
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
-            int32_t mIdx = mOIdx * subMBase;
             uint32_t subMRealsize = subMBase;
+            int32_t mIdx = mOIdx * subMBase;
             if (mOIdx == vec2LoopLimit - 1) {
                 subMRealsize = runInfo.actVecMSize - mIdx;
             }
