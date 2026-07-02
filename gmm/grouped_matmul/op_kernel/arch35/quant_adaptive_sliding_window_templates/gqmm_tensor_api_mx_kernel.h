@@ -29,8 +29,8 @@ template <class xType, class wType, class biasType, class scaleType, class ptSca
           class wLayout, class yLayout, class l0cType>
 __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                             GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-                                            const GMMQuantParams* gmmBaseParamsIn,
-                                            const QuantBasicApiMMTiling* mmTilingDataIn, AscendC::TPipe* que)
+                                            const GMMQuantParams *gmmBaseParamsIn,
+                                            const QuantBasicApiMMTiling *mmTilingDataIn, AscendC::TPipe *que)
 {
     (void)workspace;
     (void)que;
@@ -46,9 +46,8 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutC = yLayout;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
-    using QgmmBlockMmad =
-        Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
-                                      LayoutC>;
+    using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
+                                                        BiasType, LayoutC>;
     using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using QgmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
@@ -72,24 +71,22 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                         static_cast<uint8_t>(gmmBaseParamsIn->groupListType)};
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
-    GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1
-                            ? reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight))
-                            : weight;
+    GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
+                            reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight)) :
+                            weight;
     GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    GM_ADDR biasDataAddr =
-        mmTilingDataIn->isBias == 1 ? reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias))
-                                    : nullptr;
+    GM_ADDR biasDataAddr = mmTilingDataIn->isBias == 1 ?
+                               reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias)) :
+                               nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr =
-        reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
+    GM_ADDR scaleDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
     GM_ADDR groupListDataAddr = groupList;
 
-    Params params = {
-        {gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
-        {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
-        {},
-        groupListDataAddr,
-        gmmParams};
+    Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
+                     {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
+                     {},
+                     groupListDataAddr,
+                     gmmParams};
 
     QgmmKernel gmm;
     gmm(params);
