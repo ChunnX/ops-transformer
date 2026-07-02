@@ -229,14 +229,12 @@ template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
           bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
-private:
     // 如果是 FP8 或 HIF8，输出 float；如果是 int8，输出 int32_t；否则输出 bfloat16_t
     template <typename T>
     using GetMatmulOutType_t = typename std::conditional<
         std::is_same<T, FP8E4M3>::value || std::is_same<T, HIF8>::value, float,
         typename std::conditional<std::is_same<T, int8_t>::value, int32_t, bfloat16_t>::type>::type;
 
-public:
     using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
     using mmQnInputType = bfloat16_t;                  // matmul计算Qn的输入类型
