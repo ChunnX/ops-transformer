@@ -110,7 +110,7 @@ bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && inputParams_.hasBias);
+    return IsWeightNzSingleMultiSingleCandidate() && !inputParams_.hasBias;
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -124,9 +124,9 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
-    OP_CHECK_IF(IsWeightNzSingleMultiSingleCandidate() && IsMxfp4() && inputParams_.hasBias,
+    OP_CHECK_IF(IsWeightNzSingleMultiSingleCandidate() && inputParams_.hasBias,
                 OP_LOGE(inputParams_.opName,
-                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
+                        "In weightNz single-multi-single case, bias is not supported."),
                 return false);
     if (!IsWeightNzSingleMultiSingleScenario()) {
         return true;

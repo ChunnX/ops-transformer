@@ -96,7 +96,7 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleCandidate()
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && gmmParams_.biasOptional != nullptr);
+    return IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional == nullptr;
 }
 
 template <typename T>
@@ -347,9 +347,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
             "FLOAT16, BFLOAT16, FLOAT32, INT32"));
 
     auto weightTensorNum = GetInputTensorSize(gmmParams_.weight);
-    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && isInputFp4 && gmmParams_.biasOptional != nullptr),
+    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "biasOptional", "not nullptr",
-            "in weightNz single-multi-single MXFP4 case, biasOptional must be nullptr"));
+            "in weightNz single-multi-single case, biasOptional must be nullptr"));
     if (IsWeightNzSingleMultiSingleScenario()) {
         GMM_CHECK_REPORT(weightTensorNum ==
                 static_cast<size_t>(gmmParams_.groupTensorOptional->GetViewShape().GetDim(0)),
