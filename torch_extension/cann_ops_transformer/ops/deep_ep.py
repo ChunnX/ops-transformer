@@ -17,6 +17,37 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from .comm_context import CommContextManager
 
 
+TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
+    0: torch.uint8,
+    1: torch.int8,
+    2: torch.int16,
+    3: torch.int32,
+    4: torch.int64,
+    5: torch.float16,
+    6: torch.float32,
+    7: torch.float64,
+    8: torch.complex32,
+    9: torch.complex64,
+    10: torch.complex128,
+    11: torch.bool,
+    12: torch.qint8,
+    13: torch.quint8,
+    14: torch.qint32,
+    15: torch.bfloat16,
+    16: torch.quint4x2,
+    21: torch.bits8,
+    23: torch.float8_e5m2,
+    24: torch.float8_e4m3fn,
+    285: torch.uint8,  # torch_npu.int4 use torch.uint8
+    290: torch.uint8,  # torch_npu.hifloat8 use torch.uint8
+    291: torch.float8_e5m2,
+    292: torch.float8_e4m3fn,
+    293: torch.uint8,  # torch_npu.float8_e8m0 use torch.uint8
+    296: torch.uint8,  # torch_npu.float4_e2m1fn_x2 use torch.uint8
+    297: torch.uint8,  # torch_npu.float4_e1m2fn_x2 use torch.uint8
+}
+
+
 class MoeDistributeDispatchOpBuilder(OpBuilder):
     def __init__(self):
         super(MoeDistributeDispatchOpBuilder, self).__init__("npu_moe_distribute_dispatch")
@@ -42,11 +73,26 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        def get_dispatch_dynamic_scales_dtype(x, scales, quant_mode):
+        def has_tensor(tensor):
+            return tensor is not None
+
+        def get_dtype_from_enum(dtype):
+            return TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP[dtype]
+
+        def is_packed_float4(dtype):
+            return dtype in (296, 297)
+
+        def is_ascend950():
+            try:
+                return "Ascend950" in torch_npu.npu.get_device_name()
+            except Exception:
+                return False
+
+        def get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode):
             dynamic_scales_dtype = torch.float32
             if quant_mode == 0:
                 if x.dtype != torch.bfloat16 and x.dtype != torch.float16 and scales is not None:
-                    dynamic_scales_dtype = scales.dtype
+                    dynamic_scales_dtype = get_dtype_from_enum(scales_dtype) if scales_dtype is not None else scales.dtype
             elif quant_mode == 4:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
             return dynamic_scales_dtype
@@ -56,7 +102,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             if quant_mode == 0 and scales is not None:
                 if scales.dim() < 2:
                     raise RuntimeError(f"Expected scales to be at least 2-d, but got {scales.dim()}-d.")
-                shape = tuple([a * scales.shape[1]])
+                shape = tuple([a, scales.shape[1]])
             elif quant_mode == 2:
                 shape = tuple([a])
             elif quant_mode == 3:
@@ -154,27 +200,34 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num
             if quant_mode == 0:
                 out_dtype = x.dtype
+            if y_dtype is not None:
+                out_dtype = get_dtype_from_enum(y_dtype)
 
             assist_info_for_combine_shape = max(bs * k, a * 128)
-            expand_x = x.new_empty(tuple([max(a, a * tp_world_size), h]), dtype=out_dtype)
-            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, quant_mode)
-            if tp_world_size == 0:
-                dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
-            elif tp_world_size == 1:
-                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, a, h)
+            expand_x_shape = tuple([max(a, a * tp_world_size), h])
+            if y_dtype is not None and is_packed_float4(y_dtype) and scales is None:
+                torch._check((h % 2) == 0, lambda: "h must be divisible by 2 when y_dtype is packed float4.")
+                expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
+            expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
+            dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode)
+            if is_ascend950():
+                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, max(a, a * tp_world_size), h)
                 dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
+            elif tp_world_size == 0:
+                dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
             else:
                 dynamic_scales = x.new_empty((a * tp_world_size), dtype=dynamic_scales_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int64)
             ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
             tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
             expand_scales = x.new_empty((0), dtype=torch.float32)
-            if expert_scales is not None:
-                ep_recv_cnt_num = ep_world_size * local_moe_expert_num + global_bs_real * 2 * k * (ep_world_size // 8)
-                ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+            if has_tensor(expert_scales):
+                if not is_ascend950():
+                    expert_scales_recv_extra = global_bs_real * 2 * k * (ep_world_size // 8)
+                    ep_recv_cnt_num = ep_world_size * local_moe_expert_num + expert_scales_recv_extra
+                    ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+                    assist_info_for_combine_shape = max(assist_info_for_combine_shape, expert_scales_recv_extra)
                 expand_scales = x.new_empty((a), dtype=torch.float32)
-                assist_info_for_combine_shape = max(assist_info_for_combine_shape,
-                                                    global_bs_real * 2 * k * (ep_world_size // 8))
             expand_idx = x.new_empty(assist_info_for_combine_shape, dtype=torch.int32)
             return (expand_x, dynamic_scales, expand_idx, expert_token_nums,
                     ep_recv_counts, tp_recv_counts, expand_scales)
