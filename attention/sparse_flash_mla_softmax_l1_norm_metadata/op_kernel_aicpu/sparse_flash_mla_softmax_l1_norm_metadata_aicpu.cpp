@@ -140,14 +140,37 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cu_seqlens_q must be provided for TND layout.");
         return false;
     }
-    if (layoutType_ == SmlaLayout::TND && IsTensorValid(cuSeqLensQuery_) &&
+    if (IsTensorValid(cuSeqLensQuery_) &&
         cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) < bSize_ + 1) {
-        KERNEL_LOG_ERROR("cu_seqlens_q length must be at least batch_size + 1.");
+        KERNEL_LOG_ERROR("cu_seqlens_q length must be at least batch_size + 1, but got %ld and batch_size=%ld.",
+                         cuSeqLensQuery_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    if (IsTensorValid(cuSeqLensKey_) &&
+        cuSeqLensKey_->GetTensorShape()->GetDimSize(0) < bSize_ + 1) {
+        KERNEL_LOG_ERROR("cu_seqlens_k length must be at least batch_size + 1, but got %ld and batch_size=%ld.",
+                         cuSeqLensKey_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    if (IsTensorValid(seqUsedQuery_) &&
+        seqUsedQuery_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("seqused_q length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         seqUsedQuery_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    if (IsTensorValid(seqUsedKey_) &&
+        seqUsedKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("seqused_k length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         seqUsedKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
     if (IsTensorValid(cmpResidualKey_) && cmpResidualKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
         KERNEL_LOG_ERROR("cmp_residual_k length must be at least batch_size, but got %ld and batch_size=%ld.",
                          cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    if (IsTensorValid(topkLength_) && topkLength_->GetTensorShape()->GetDimNum() < 1) {
+        KERNEL_LOG_ERROR("topk_length must be at least 1-dimensional.");
         return false;
     }
     return true;
