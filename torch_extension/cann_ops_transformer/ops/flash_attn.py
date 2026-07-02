@@ -58,7 +58,7 @@ class FlashAttenOpBuilder(OpBuilder):
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1,"
             "int max_seqlen_q=-1, int max_seqlen_kv=-1,"
             "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\","
-            "int return_softmax_lse=0) -> (Tensor, Tensor)"
+            "bool return_softmax_lse=False) -> (Tensor, Tensor)"
         ]
 
     def register_meta(self):
@@ -92,7 +92,7 @@ class FlashAttenOpBuilder(OpBuilder):
             mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
             layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
-            return_softmax_lse: Optional[int] = 0
+            return_softmax_lse: Optional[bool] = False
         ):
             if layout_q == "TND":
                 t_size = q.size(0)
@@ -208,7 +208,7 @@ def flash_attn(
         mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
         max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
         layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
-        return_softmax_lse: Optional[int] = 0
+        return_softmax_lse: Optional[bool] = False
     ):
     """
     dispatcher implementation for NPU.
