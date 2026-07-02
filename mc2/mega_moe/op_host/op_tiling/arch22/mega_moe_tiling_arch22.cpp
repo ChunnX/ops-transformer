@@ -111,7 +111,7 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
 {
     // ccl buff的承载的数据块 1（winIn）：
     // TPE = epWorldSize × CeilAlign(epWorldSize × expertPerRank + 1, 128) × 4B
-    int64_t offsetTokenPerExpert = epWorldSize * 
+    int64_t offsetTokenPerExpert = epWorldSize *
                                    ops::CeilAlign(epWorldSize * expertPerRank + 1, ALIGN_128) *
                                    static_cast<int64_t>(sizeof(int32_t));
 

@@ -1107,7 +1107,8 @@ private:
 
         ApplyXActiveMask(params);
 
-        moe_init_routing_v2<ElementA>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx, shmem.windowsOutAddr() + peermemInfo.offsetWinOutA,
+        moe_init_routing_v2<ElementA>(reinterpret_cast<GM_ADDR> (params.ptrA),
+        params.expertIdx, shmem.windowsOutAddr() + peermemInfo.offsetWinOutA,
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
         params.ptrWorkspace + expandedRowIdxOffset,
         &params.moeInitRoutingV2TilingData, params.initRoutingQuantTilingKey);

@@ -742,7 +742,7 @@ private:
         for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
-            int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert + 
+            int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
                                                     tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
             srcAddress.SetGlobalBuffer(
                 reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset));
@@ -1120,12 +1120,12 @@ private:
     void DispatchAndCombine(Params const &params)
     {
         icache_preload(8);
-        int64_t localTokenPerExpertOffset =
-            peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
-        int64_t localTokenPerExpertWinOutOffset =
-            peermemInfo.offsetWinOutPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
+        int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert +
+                                            tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
+        int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
+                                            tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
         GM_ADDR localTokenPerExpert =
-            shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset;  // Place the entire communication matrix in peermem
+            shmem.windowsOutAddr() + localTokenPerExpertWinOutOffset;
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
         ApplyXActiveMask(params);
