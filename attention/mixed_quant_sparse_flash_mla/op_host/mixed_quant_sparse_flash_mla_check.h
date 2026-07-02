@@ -161,6 +161,7 @@ constexpr uint32_t KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO = 584;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
+constexpr uint32_t METADATA_SIZE = 1024;
 constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;
 constexpr uint32_t NUM_BYTES_FLOAT = 4;
 constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
@@ -528,6 +529,7 @@ private:
     ge::graphStatus CheckSparseIndicesShapeMatchQ() const;
     ge::graphStatus CheckTopkLengthConsistency() const;
     ge::graphStatus CheckN2Consistency() const;
+    ge::graphStatus CheckBConsistency() const;
     ge::graphStatus CheckFeatureWinKV() const;
     ge::graphStatus CheckFeatureAntiquantShape() const;
     ge::graphStatus CheckFeatureAntiquantLayout() const;
