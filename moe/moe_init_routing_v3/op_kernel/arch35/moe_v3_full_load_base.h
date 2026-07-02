@@ -140,6 +140,8 @@ protected:
     TBuf<TPosition::VECCALC> tempBuffer_;
     TBuf<TPosition::VECCALC> sortedBuffer_;
     TBuf<TPosition::VECCALC> expertCountBuf_;
+    TBuf<TPosition::VECCALC> reverseMapBuf_;
+    int64_t validCount_ = 0;
 
     GlobalTensor<int32_t> expertIdxGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
@@ -234,6 +236,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitQueBuffers()
     pipe_->InitBuffer(tempBuffer_, buffSize * kvFactor_);
     pipe_->InitBuffer(sortedBuffer_, buffSize * kvFactor_);
     pipe_->InitBuffer(expertCountBuf_, AlignBytes(actualExpertNum_, sizeof(int32_t)));
+    pipe_->InitBuffer(reverseMapBuf_, AlignBytes(outputRows_ * sizeof(int32_t), sizeof(int32_t)));
 }
 
 template <typename T>
@@ -394,12 +397,14 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdxWithCapacity()
 {
     LocalTensor<int32_t> sortedRowIdx = sortedRowIdxQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> sortedExpertIdx = sortedExpertIdxQueue_.DeQue<int32_t>();
-    LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.AllocTensor<int32_t>();
-    Duplicate(expandedRowIdx, static_cast<int32_t>(-1), static_cast<int32_t>(this->totalLength_));
+
+    LocalTensor<int32_t> reverseMap = reverseMapBuf_.Get<int32_t>(this->outputRows_);
+    Duplicate(reverseMap, static_cast<int32_t>(-1), static_cast<int32_t>(this->outputRows_));
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
 
     int32_t lastExpertId = -1;
     int64_t tokenCount = 0;
+    this->validCount_ = 0;
     for (int64_t i = 0; i < this->actualExpertIdxNum_; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
         if (curExpertId < this->expertStart_) {
@@ -415,12 +420,12 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdxWithCapacity()
         if (tokenCount < this->expertCapacity_) {
             int32_t srcIndex = sortedRowIdx.GetValue(i);
             int32_t dstIndex = static_cast<int32_t>(curExpertId * this->expertCapacity_ + tokenCount);
-            expandedRowIdx.SetValue(srcIndex, dstIndex);
+            reverseMap.SetValue(dstIndex, srcIndex);
+            this->validCount_++;
         }
         tokenCount++;
     }
 
-    expandedRowIdxQueue_.EnQue<int32_t>(expandedRowIdx);
     sortedRowIdxQueue_.EnQue<int32_t>(sortedRowIdx);
     sortedExpertIdxQueue_.EnQue<int32_t>(sortedExpertIdx);
 }
@@ -551,8 +556,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::FreeLocalTensor()
     sortedExpertIdxQueue_.FreeTensor(sortedExpertIdx);
     sortedRowIdxQueue_.FreeTensor(sortedRowIdx);
 
-    LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.DeQue<int32_t>();
-    expandedRowIdxQueue_.FreeTensor(expandedRowIdx);
+    if (this->dropPadMode_ != DROP_PAD_MODE) {
+        LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.DeQue<int32_t>();
+        expandedRowIdxQueue_.FreeTensor(expandedRowIdx);
+    }
 }
 
 } // namespace MoeInitRoutingV3
