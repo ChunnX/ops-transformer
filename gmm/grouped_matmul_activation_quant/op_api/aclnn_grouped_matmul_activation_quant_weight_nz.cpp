@@ -397,9 +397,12 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     int64_t e = groupList->GetViewShape().GetDim(DIM_0);
     int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(DIM_1) :
                                            weightScale->GetViewShape().GetDim(DIM_2);
-    GMMAQ_CHECK_WITH_LOG(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
+    bool emptyOutput = y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty();
+    GMMAQ_CHECK_WITH_LOG((e >= 1 && e <= MAX_GROUP_NUM) || (e == 0 && emptyOutput),
+        ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupList dim 0", std::to_string(e),
-                                             "groupList dim 0 must be in range [1, 1024]"));
+                                             "groupList dim 0 must be in range [1, 1024], "
+                                             "or be 0 in empty tensor scenario"));
     GMMAQ_CHECK_WITH_LOG(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "K", std::to_string(k),
                                              "K must be greater than 0 unless M or N is 0"));
@@ -698,7 +701,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                           y, yScale, uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode,
                           effectiveYDtype) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    if (x->IsEmpty() || y->IsEmpty() || yScale->IsEmpty()) {
+    if (y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;

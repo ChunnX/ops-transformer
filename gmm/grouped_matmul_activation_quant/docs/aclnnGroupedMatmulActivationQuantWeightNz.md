@@ -373,6 +373,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - 空Tensor处理规则：
         - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
         - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；当M或N为0时允许K为0，该场景下第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
+        - 支持groupList为空的空Tensor场景：当groupList为空，且输出y或yScale为空时，第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
         - 当M和N均不为0时，不支持K为0。
       - roundMode仅支持"rint"。
       - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
@@ -461,7 +462,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   - 确定性计算：
       - aclnnGroupedMatmulActivationQuantWeightNz默认确定性实现。
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    - groupList第1维最小为1，最大为1024。
+    - 非空Tensor场景下，groupList第1维最小为1，最大为1024。
     - 当前仅支持MXFP8量化场景，激活函数仅支持gelu_tanh。
     - MXFP8量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
