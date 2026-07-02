@@ -709,7 +709,6 @@ class GeneralizedQLIV2:
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
-            layout_key_scale = "TN"
             k_scale_shape = [k_t_size, k_head_num]
             self.cu_seqlens_k = torch.tensor(self.trans_tnd_actseq(cu_seqlens_k[1:]))
             actualSeqLengths_k = self.cu_seqlens_k
@@ -718,7 +717,6 @@ class GeneralizedQLIV2:
                 self.has_seqused_k = True
                 actualSeqLengths_k = self.seqused_k
         elif layout_key == "BSND":
-            layout_key_scale = "BSN"
             k_scale_shape = [batch_size, k_seq, k_head_num]
             if seqused_k is not None:
                 self.seqused_k = seqused_k
