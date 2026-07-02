@@ -18,20 +18,14 @@
 
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
-#if __has_include("../../moe_distribute_dispatch_setup/moe_distribute_base.h")
-#include "../../moe_distribute_dispatch_setup/moe_distribute_base.h"
-#else
-#include "../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
-#endif
 #include "../moe_distribute_dispatch_teardown_tiling.h"
-#if __has_include("../../moe_distribute_dispatch_setup/common.h")
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../moe_distribute_dispatch_setup/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_setup/common.h"
+#include "../../common/mc2_kernel_utils.h"
 #else
-#include "../../moe_distribute_dispatch_setup/op_kernel/common.h"
-#endif
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#else
+#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/common.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 

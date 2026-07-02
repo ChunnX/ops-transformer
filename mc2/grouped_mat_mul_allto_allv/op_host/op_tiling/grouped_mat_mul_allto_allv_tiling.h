@@ -14,7 +14,7 @@
 #ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_STRUCT_H
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_STRUCT_H
 
-#include "../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.h"
+#include "../../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.h"
 
 namespace optiling {
 class GroupedMatmulAllToAllvTiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
