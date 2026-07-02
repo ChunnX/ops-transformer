@@ -356,10 +356,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyPadExtParams<int32_t> counterPadParams{false, 0U, 0U, 0};
     DataCopyPad(hitCountGm_, ubCounter_, counterCopyParams, counterPadParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    // [DEBUG] 计数器初值
-    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        printf("[DBG][InitCounter] e=%u base=%d\n", e, ubCounter_.GetValue(e));
-    }
 }
 
 // AtomicAdd 行号抢占路径: flatten 单趟(rank × slot × topk), 无 targetExpert 外层。
@@ -403,9 +399,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 // 原子抢占该专家段内的行号(返回旧值即写入行)。
                 int32_t row = AscendC::AtomicAdd<int32_t>(counterBase + localExpertId, 1);
                 uint32_t globalRow = static_cast<uint32_t>(row);
-                // [DEBUG] 命中行号抢占
-                printf("[DBG][Hit] aiv=%u rank=%u slot=%u topk=%u expertId=%d localExp=%u row=%d\n",
-                       aivId_, rankId, slotStart + localSlot, topkIdx, expertId, localExpertId, row);
                 // AtomicAdd 在 S 管线产出 globalRow, 后续 MTE3 用其作 GM 地址,
                 // 需 S→MTE2 屏障保证 globalRow 就绪后再放行 MTE2/MTE3, 否则写到错误行。
                 SyncFunc<AscendC::HardEvent::S_MTE2>();
