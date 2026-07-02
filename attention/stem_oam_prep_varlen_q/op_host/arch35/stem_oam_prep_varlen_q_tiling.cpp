@@ -141,34 +141,42 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
 {
     const char* nodeName = context->GetNodeName();
     
-    auto qSeqLensTensor = context->GetInputTensor(1);
-    if (qSeqLensTensor == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens");
-        return ge::GRAPH_FAILED;
-    }
-    int32_t* qSeqLensData = const_cast<int32_t*>(qSeqLensTensor->GetData<int32_t>());
-    if (qSeqLensData == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens data");
-        return ge::GRAPH_FAILED;
-    }
-
-    uint32_t max_q_len = 0;
-    totalBlocks = 0;
     uint32_t H_q = tiling->num_q_heads;
     uint32_t batchU32 = tiling->batch_size;
 
-    for (uint32_t b = 0; b < batchU32; b++) {
-        uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
-        uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
-        uint32_t num_Qb_b = q_padded_b / B;
-        totalBlocks += H_q * num_Qb_b;
-        if (q_len_b > max_q_len) {
-            max_q_len = q_len_b;
-        }
+    auto qSeqLensTensor = context->GetInputTensor(1);
+    int32_t* qSeqLensData = nullptr;
+    if (qSeqLensTensor != nullptr) {
+        qSeqLensData = const_cast<int32_t*>(qSeqLensTensor->GetData<int32_t>());
     }
 
-    uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
-    tiling->max_Qb = max_q_padded / B;
+    if (qSeqLensData != nullptr) {
+        uint32_t max_q_len = 0;
+        totalBlocks = 0;
+
+        for (uint32_t b = 0; b < batchU32; b++) {
+            uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
+            uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
+            uint32_t num_Qb_b = q_padded_b / B;
+            totalBlocks += H_q * num_Qb_b;
+            if (q_len_b > max_q_len) {
+                max_q_len = q_len_b;
+            }
+        }
+
+        uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
+        tiling->max_Qb = max_q_padded / B;
+    } else {
+        auto qShape = context->GetInputShape(0);
+        uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
+        uint32_t max_q_len = (batchU32 > 0) ? (totalTokens + batchU32 - 1) / batchU32 : totalTokens;
+        uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
+        tiling->max_Qb = max_q_padded / B;
+        uint32_t num_Qb_per_batch = max_q_padded / B;
+        totalBlocks = H_q * num_Qb_per_batch * batchU32;
+        OP_LOGI(nodeName, "qSeqLens data unavailable, using shape-based estimate: max_q_len=%u, totalBlocks=%u",
+                max_q_len, totalBlocks);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
