@@ -230,7 +230,7 @@ private:
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
         serverId_ = static_cast<int32_t>(RuntimeRank(params) / SERVER_RANK_SIZE_A2);
 
-        workspaceInfo = WorkspaceInfo(params, shmem);
+        workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
 
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrcumsumMM));
@@ -1475,7 +1475,7 @@ private:
         WorkspaceInfo() {}
 
         CATLASS_DEVICE
-        WorkspaceInfo(const Params &params, const HcclShmem<true> &shmem)
+        WorkspaceInfo(const Params &params)
         {
             uint32_t k2 = params.problemShape.n() / 2;
             uint32_t n2 = params.problemShape.k();
