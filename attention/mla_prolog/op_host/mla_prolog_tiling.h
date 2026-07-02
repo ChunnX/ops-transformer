@@ -287,10 +287,16 @@ enum class QUANT_SCALE_REPO_MODE : uint8_t {
     COMBINE = 1
 };
 
+enum class SPLIT_MODE : uint8_t {
+    SPLIT_N  = 0,
+    SPLIT_M  = 1,
+    SPLIT_KN = 2,
+};
+
 struct MlaPrologScenarioInfo {
     bool isV1Flag_;
     bool batchSeqFusedFlag_;
-    uint8_t splitMFlag_;
+    uint8_t splitMode_;
     QUANT_MODE quantMode_;
     CACHE_MODE cacheMode_;
     EMPTY_TENSOR_MODE emptyTensorMode_;
@@ -429,6 +435,11 @@ private:
     uint32_t singlecoreHeadSizeQcQr_ = 0;
     uint32_t singlecoreHeadSizeCkvKr_ = 0;
     uint32_t singlecoreNumHeadSize_ = 0;
+
+    uint32_t mm1KnNGroupSize_ = 0;
+    uint32_t mm1KnKGroupSize_ = 0;
+    uint32_t mm2KnNGroupSize_ = 0;
+    uint32_t mm2KnKGroupSize_ = 0;
 
     float reciprocalCq_ = 0.00001f;
     float epsilonCq_ = 1.0f;

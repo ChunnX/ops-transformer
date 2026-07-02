@@ -35,7 +35,7 @@ using namespace MlaProlog;
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,
          bool EnableDequantOpt, bool EnableGroupComputeOpt, uint8_t EmptyTensorMode,
-         uint8_t ActualSeqLenMode, uint8_t SplitMMode, uint8_t CvMode>
+         uint8_t ActualSeqLenMode, uint8_t SplitModeParam, uint8_t CvMode>
 __global__ __aicore__ void mla_prolog_v3(
     __gm__ uint8_t *tokenX,
     __gm__ uint8_t *weightDq,
@@ -81,7 +81,7 @@ __global__ __aicore__ void mla_prolog_v3(
     }
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     constexpr auto actualSeqLenMode = static_cast<ACTUAL_SEQ_MODE>(ActualSeqLenMode);
-    constexpr auto splitMMode = static_cast<SPLIT_M_MODE>(SplitMMode);
+    constexpr auto splitMode = static_cast<SPLIT_MODE>(SplitModeParam);
     constexpr uint32_t cvRatio = CvMode == ASCENDC_TPL_MIX_AIC_1_1 ? 1 : 2;
 
     GET_TILING_DATA_WITH_STRUCT(optiling::MlaPrologTilingData, tilingDataIn, tiling);
@@ -165,7 +165,7 @@ __global__ __aicore__ void mla_prolog_v3(
 #if __CCE_AICORE__ == 310
     else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
-        if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
+        if constexpr (splitMode == SPLIT_MODE::SPLIT_M) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode,
                 EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
@@ -186,7 +186,7 @@ __global__ __aicore__ void mla_prolog_v3(
         }
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
-        if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
+        if constexpr (splitMode == SPLIT_MODE::SPLIT_M) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
                 EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
@@ -207,7 +207,7 @@ __global__ __aicore__ void mla_prolog_v3(
         }
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
-        if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
+        if constexpr (splitMode == SPLIT_MODE::SPLIT_M) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
                 EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, true, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);

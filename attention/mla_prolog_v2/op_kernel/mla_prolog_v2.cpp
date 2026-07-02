@@ -32,7 +32,7 @@ using namespace MlaProlog;
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,
          bool EnableDequantOpt, bool EnableGroupComputeOpt, uint8_t EmptyTensorMode,
-         uint8_t ActualSeqLenMode, uint8_t SplitMMode, uint8_t CvMode>
+         uint8_t ActualSeqLenMode, uint8_t SplitModeParam, uint8_t CvMode>
 __global__ __aicore__ void
 mla_prolog_v2(
     __gm__ uint8_t *tokenX,
@@ -71,7 +71,7 @@ mla_prolog_v2(
     }
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     constexpr auto actualSeqLenMode = static_cast<ACTUAL_SEQ_MODE>(ActualSeqLenMode);
-    constexpr auto splitMMode = static_cast<SPLIT_M_MODE>(SplitMMode);
+    constexpr auto splitMode = static_cast<SPLIT_MODE>(SplitModeParam);
     constexpr uint32_t cvRatio = CvMode == ASCENDC_TPL_MIX_AIC_1_1 ? 1 : 2;
 
     GET_TILING_DATA_WITH_STRUCT(optiling::MlaPrologTilingData, tilingDataIn, tiling);

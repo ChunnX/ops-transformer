@@ -270,13 +270,29 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
     uint32_t cvRatio = aivNum_ / aicNum_;
-    // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
-    scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
-        if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
-            baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
-            scenarioInfo_.splitMFlag_ = 1U;
+    // 切分模式判定优先级：切KN > 切M > 切N(默认)
+    scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_N);
+    
+    // 切KN条件：Ascend950 + 24核以上 + CV1:2 + D=128 + Hcq=1536
+    // 仅非量化和MXFP8全量化场景支持；优先走切KN，强制关闭dequant/group compute opt
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 &&
+        cvRatio == 2 && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536 &&
+        (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE)) {
+        scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN);
+        enableDequantOpt_ = false;
+        enableGroupComputeOpt_ = false;
+    }
+    // 切M条件：MXFP8 + BS>=8K + CV1:2 + He=7168/7680 + N=128
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_N)) {
+        if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
+            baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+            if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
+                baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
+                scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_M);
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -325,7 +341,7 @@ uint32_t MlaPrologTiling::CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t
 // mm1.baseK = 256
 ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
 {
-    if (scenarioInfo_.splitMFlag_ == 1U) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         singlecoreHeadSizeCq_ = baseShapeInfo_.hcqSize;
         mm1BlockNum_ = aicNum_;
     } else {
@@ -334,6 +350,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
             CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
         mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+        if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+            mm1KnNGroupSize_ = 8;
+            mm1KnKGroupSize_ = aicNum_ / mm1KnNGroupSize_;
+        } else {
+            mm1KnNGroupSize_ = mm1BlockNum_;
+            mm1KnKGroupSize_ = 1;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -349,7 +372,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
         return ge::GRAPH_SUCCESS;
     }
-    if (scenarioInfo_.splitMFlag_ == 1U) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         singlecoreHeadSizeCkvKr_ = baseShapeInfo_.hckvSize + baseShapeInfo_.drSize;
         mm2BlockNum_ = aicNum_;
     } else if (aicNum_ >= 9U) { // 9是经验值
@@ -361,6 +384,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
         singlecoreHeadSizeCkvKr_ = CalcSingleCoreN(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, aicNum_,
                                                    BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
+    }
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+        mm2KnNGroupSize_ = 3;
+        mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
+    } else {
+        mm2KnNGroupSize_ = mm2BlockNum_;
+        mm2KnKGroupSize_ = 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -375,7 +405,15 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
 {
     auto dataType = context_->weightUqQr.desc->GetDataType();
     auto oriM = baseShapeInfo_.nSize * (baseShapeInfo_.dSize + baseShapeInfo_.drSize);
-    if (enableGroupComputeOpt_) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+        // SPLIT_KN: 每个CV核组处理 core_n * (D+Dr), 循环按192为单位
+        // N轴 = N * (D+Dr), 核内循环 core_n 次, 每次192
+        uint32_t headUnit = baseShapeInfo_.dSize + baseShapeInfo_.drSize; // 192
+        singlecoreNumHeadSize_ = CeilDiv(baseShapeInfo_.nSize, aicNum_);
+        singlecoreHeadSizeQcQr_ = singlecoreNumHeadSize_ * headUnit;
+    } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
+        singlecoreHeadSizeQcQr_ = oriM;
+    } else if (enableGroupComputeOpt_) {
         // 算力分组场景下G=8，dimHeadSizeQc跨8核切，dimHeadSizeQr跨4核切；matmulQc和matmulQr的singleN都取128
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(baseShapeInfo_.nSize * baseShapeInfo_.dSize,
                                                   GROUP_COMPUTE_CUBE_NUM_PER_GROUP, baseShapeInfo_.dSize);
@@ -386,11 +424,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         // headnum * (dimHeadSizeQc + dimHeadRope) 合轴切
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     }
-    mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
-
-    if (scenarioInfo_.splitMFlag_ == 1U) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+        mm3BlockNum_ = std::min(baseShapeInfo_.nSize, aicNum_);
+    } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         singlecoreHeadSizeQcQr_ = oriM;
         mm3BlockNum_ = aicNum_;
+    } else {
+        mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -404,13 +444,16 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
 // mm4.Kstride = dimHeadSizeQc + dimHeadRope
 ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
 {
-    if (scenarioInfo_.splitMFlag_ == 1U) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         singlecoreNumHeadSize_ = baseShapeInfo_.nSize;
         mm4BlockNum_ = aicNum_;
+    } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+        mm4BlockNum_ = mm3BlockNum_;
     } else {
         singlecoreNumHeadSize_ = CeilDiv(baseShapeInfo_.nSize, aicNum_);
         mm4BlockNum_ = CeilDiv(baseShapeInfo_.nSize, singlecoreNumHeadSize_);
     }
+
 
     return ge::GRAPH_SUCCESS;
 }
@@ -418,7 +461,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
 ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
 {
     stepBatchSize_ = std::min(128U, baseShapeInfo_.tSize);
-    if (scenarioInfo_.splitMFlag_ == 1U && (stepBatchSize_ > 0U) && (aicNum_ > 0U) && (baseShapeInfo_.tSize > 0U)) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M) && (stepBatchSize_ > 0U) && (aicNum_ > 0U) && (baseShapeInfo_.tSize > 0U)) {
         mSubSize_ = (baseShapeInfo_.tSize + aicNum_ - 1U) / aicNum_;
         // idx为[0, mSubCoreNum_]的核分到mSubSize_，其余核分到mSubSize_ - 1
         mSubCoreNum_ = baseShapeInfo_.tSize - (mSubSize_ - 1U) * aicNum_;
@@ -521,11 +564,11 @@ void MlaPrologTiling::FillTilingCoreParams()
 ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 {
     workspaceSize_ = libapiSize_;
-    uint32_t mm1Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm1BlockNum_ : 1U;
-    uint32_t mm2Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm2BlockNum_ : 1U;
-    uint32_t mm3Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm3BlockNum_ : 1U;
-    uint32_t mm4Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm4BlockNum_ : 1U;
-    uint32_t dequantScaleMult = (scenarioInfo_.splitMFlag_ == 1U) ? static_cast<uint32_t>(aicNum_) : 1U;
+    uint32_t mm1Mult = (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) ? mm1BlockNum_ : 1U;
+    uint32_t mm2Mult = (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) ? mm2BlockNum_ : 1U;
+    uint32_t mm3Mult = (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) ? mm3BlockNum_ : 1U;
+    uint32_t mm4Mult = (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) ? mm4BlockNum_ : 1U;
+    uint32_t dequantScaleMult = (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) ? static_cast<uint32_t>(aicNum_) : 1U;
     // 全量化场景：weightQuantMode 为 FULL/MXFP8/FP8/HIF8（即非 NO_QUANT 且非 PARTIAL）
     if (scenarioInfo_.weightQuantMode_ != WEIGHT_QUANT_MODE::NO_QUANT &&
         scenarioInfo_.weightQuantMode_ != WEIGHT_QUANT_MODE::PARTIAL_QUANT) {
@@ -555,7 +598,7 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
                       static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
     // SplitM非pertile量化场景下 mmQcQrResDequant使用两份workspace
-    if (scenarioInfo_.splitMFlag_ == 1U &&
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M) &&
         (scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
@@ -611,15 +654,15 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMode_), cvMode);
         OP_LOGI(
             context_->opName,
             "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
-            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_MODE:%u, CV_MODE:%u",
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMode_), cvMode);
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
     return ge::GRAPH_SUCCESS;

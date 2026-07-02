@@ -20,9 +20,6 @@
 
 namespace MlaProlog {
 
-constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
-constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
-constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
 
 
 /**
@@ -403,6 +400,60 @@ __aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalT
     Fixpipe(tensorCGm, cL0, fixParams);
 }
 
+template <typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToUb(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+    fixParams.nSize = nSize;
+    fixParams.mSize = Align(mSize, 2U);
+    fixParams.srcStride = srcStride;
+    fixParams.dstStride = dstStride;
+    fixParams.params.ndNum = 1;
+    fixParams.params.srcNdStride = 0;
+    fixParams.params.dstNdStride = 0;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, MLA_PROLOG_CFG_ROW_MAJOR_UB>(tensorCGm, cL0, fixParams);
+}
+
+template <typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToL1(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::NZ> fixParams;
+    fixParams.nSize = nSize;
+    fixParams.mSize = mSize;
+    fixParams.srcStride = srcStride;
+    fixParams.dstStride = dstStride * 16;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, MLA_PROLOG_CFG_NZ_L1>(tensorCGm, cL0, fixParams);
+}
+
 /**
  * @brief 将AB矩阵从GM加载到L1缓存以进行矩阵乘法运算
  * @tparam T 张量的数据类型
@@ -467,7 +518,7 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
  * @param kOffesetUnit K维度寻址的偏移单位
  * @param bufParam L1缓冲区管理的参数对象
  */
-template <typename T, typename S, bool hasL1ALoaded, bool scaleSrcPadFlag = false>
+template <typename T, typename S, bool hasL1ALoaded, bool scaleSrcPadFlag = false, bool IsSplitKn = false>
 __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm,
                                         const GlobalTensor<S> &tensorAScaleGm, const GlobalTensor<S> &tensorBScaleGm,
                                         uint32_t kL1, uint32_t kL1Loops, const MMParams &para, uint32_t nL1Offset,
@@ -544,7 +595,7 @@ __aicore__ inline void LoadL1BGroupCompute(LocalTensor<T> &bL1, const GlobalTens
  * @param aOffset A矩阵计算的起始偏移
  * @param bOffset B矩阵计算的起始偏移
  */
-template <typename T, typename O, typename S, typename O_L0C, bool enUnitFlag>
+template <typename T, typename O, typename S, typename O_L0C, bool IsSplitKn = false, bool enUnitFlag = false>
 __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor<T> &aL1, const LocalTensor<T> &bL1,
                                 const mmLocalTensors<T, O_L0C> &localTensors, MMBufParams &bufParam,
                                 const MMParams &para, uint32_t kL1, uint32_t kL1Loops, MmadParams &mmadParams,
@@ -595,7 +646,8 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
  * @param tensorBScaleGm BScale矩阵在GM的位置
  */
 template <typename T, typename O, typename S, bool hasL1ALoaded = false, bool scaleSrcPadFlag = false,
-          bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ>
+          bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ, bool enableFixPipe = true,
+          bool IsSplitKn = false>
 __aicore__ inline void
 MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm,
              const MMParams &para, MMBufParams &bufParam, const uint32_t nL1Offset, const uint32_t nL1Size,
@@ -647,7 +699,7 @@ MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
         }
 
         // Perform core K L0 loops computation
-        MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, mmadParams,
+        MatmulL1<T, O, S, O_L0C, IsSplitKn, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, mmadParams,
                                              aOffset);
 
         SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
@@ -660,9 +712,11 @@ MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
     if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
         SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
     }
-    GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
-    SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-    bufParam.cL0BufIter++;
+    if constexpr (enableFixPipe) {
+        GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
+        SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        bufParam.cL0BufIter++;
+    }
 }
 
 /**
@@ -778,7 +832,7 @@ __aicore__ inline void MatmulGroupComputeAFullLoad(const GlobalTensor<O> &tensor
             WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
 
             // Perform core K L0 loops computation using shared function
-            MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, mmadParams,
+            MatmulL1<T, O, S, O_L0C, false, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, mmadParams,
                                                  aOffset);
             SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
             bufParam.bL1BufIter++;
