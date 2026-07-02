@@ -1156,12 +1156,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         }
         // 共享专家结果累加（直接加，不乘 topk_weight）
         if (sharedExpertNum_ > 0) {
-            // Wait for shared expert GMM2 completion (only wait once per token batch)
+            // Wait for all AIC blocks to complete shared expert GMM2
             if (tokenIdx == coreOffset) {
-                __gm__ int32_t* doneFlag = (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr;
-                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-                    doneFlag[blockIdx_]);
-                while (ReadGmByPassDCache(doneFlag + blockIdx_) != int32_t(1)) {
+                GlobalTensor<int32_t> doneFlagTensor;
+                doneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
+                __gm__ int32_t* doneFlagAddr = (__gm__ int32_t*)doneFlagTensor.GetPhyAddr();
+                while (AscendC::ReadGmByPassDCache(doneFlagAddr) != int32_t(aicNum_)) {
                     AscendC::Nop<200>();
                 }
             }
@@ -1340,9 +1340,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
             b2Addr, b2ScaleAddr, resultAddr, nullptr, startBlockIdx_);
     }
 
-    // 通知 AIV GMM2 完成
-    __gm__ int32_t* doneFlag = (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr;
-    WriteGmByPassDCache(doneFlag + blockIdx_, int32_t(1));
+    // 通知 AIV GMM2 完成（全局计数器累加）
+    GlobalTensor<int32_t> doneFlagTensor;
+    doneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
+    __gm__ int32_t* doneFlagAddr = (__gm__ int32_t*)doneFlagTensor.GetPhyAddr();
+    AscendC::AtomicAdd(doneFlagAddr, int32_t(1));
 }
 
 // ===============================================================
@@ -1424,8 +1426,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             PipeBarrier<PIPE_ALL>();
             SyncAll<true>();
             if (aivCoreIdx_ == 0) {
-                __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
-                WriteGmByPassDCache(quantDoneFlag, int32_t(1));
+                GlobalTensor<int32_t> quantDoneFlagTensor;
+                quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
+                __gm__ int32_t* quantDoneFlagAddr = (__gm__ int32_t*)quantDoneFlagTensor.GetPhyAddr();
+                WriteGmByPassDCache(quantDoneFlagAddr, int32_t(1));
             }
         }
         SendMaskCal();
@@ -1434,8 +1438,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if (sharedExpertNum_ > 0) {
         if constexpr (g_coreType == AIC) {
             // 等待所有 AIV 量化完成
-            __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
-            while (ReadGmByPassDCache(quantDoneFlag) != int32_t(1)) {
+            GlobalTensor<int32_t> quantDoneFlagTensor;
+            quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
+            __gm__ int32_t* quantDoneFlagAddr = (__gm__ int32_t*)quantDoneFlagTensor.GetPhyAddr();
+            while (AscendC::ReadGmByPassDCache(quantDoneFlagAddr) != int32_t(1)) {
                 AscendC::Nop<200>();
             }
             SharedExpertGmm1();

@@ -924,8 +924,6 @@ __aicore__ inline void GroupMatmul2CombineA8W4(
 }
 
 // =================================================================================================
-// SharedExpertGmm2Kernel：共享专家 GMM2，仅 AIC 执行，直接写 GM，无 Combine
-// =================================================================================================
 // SharedExpertGmm1Kernel：共享专家 GMM1，纯 AIC 执行，仅矩阵乘无 SwiGLU，输出到 GM
 //   输入: quantTokenScalePtr (本卡量化 token)
 //   权重: shared expert weight (gate + up, 共 hiddenDim)
