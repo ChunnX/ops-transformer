@@ -21,10 +21,12 @@
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
+#include "../utils/attenmask_gs1.h"
 
 #include "flash_attn_block_cube_noquant_gqa_dn.h"
 #include "flash_attn_block_vec_noquant_gqa_dn.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "../../../common/op_kernel/vector_common.h"
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -334,7 +336,7 @@ public:
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
         constInfo.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
-        
+
         constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
@@ -505,7 +507,11 @@ public:
             if constexpr (!HAS_MASK) {
                 CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
             } else {
-                CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+                if (constInfo.sparseMode == static_cast<uint8_t>(BAND)) {
+                    CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+                } else {
+                    CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
+                }
             }
             prevBN2Idx = bN2Cur;
             prevGS1Idx = gS1Cur;
@@ -535,14 +541,10 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
-        if (constInfo.sparseMode == fa_base_vector::BAND) {
+        if (constInfo.sparseMode == static_cast<uint8_t>(BAND)) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
-        }
-
-        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
+            nextTokenLeftUp =
+                static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
 
@@ -564,12 +566,10 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
 
-        // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
@@ -581,47 +581,40 @@ public:
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
         } else {
             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
-                // start and end locate in one G
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ);
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
             } else {
-                // start and end locate in tow or more G, but working same as crossing one complete block
                 s1FirstToken = 0;
                 s1LastToken = static_cast<int64_t>(actSeqLensQ);
             }
         }
 
-        // 3. trans index of token to index of block
-        uint32_t s2StartWithSparse = 0U;
-        uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
-        // no valid token
+        uint32_t s2StartWithSparse = 0U;
+        uint32_t s2EndWithSparse = 0U;
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
         }
-        // get valid range
         s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
         s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
 
         s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
         s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
 
-        // 4. Calc curS2Start, curS2End
         curS2Start = s2StartWithSparse;
         curS2End = s2EndWithSparse;
 
-        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
+        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) {
             headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
             curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
-        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
+        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) {
             tailS2Split = s2OEnd_ > 0U ? true : false;
             curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
-        return;
     }
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
@@ -814,15 +807,6 @@ public:
         GetFDSectionInfo(sectionIdx);
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
-        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
-        // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
-        // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
-        // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                vecFaBlock.DrainMaskReverseSync();
-            }
-        }
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
@@ -835,24 +819,22 @@ public:
                 SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::stage2OutBufFreeEventId);
                 AscendC::PipeBarrier<PIPE_MTE3>();
                 AscendC::PipeBarrier<PIPE_V>();
+                if constexpr (HAS_MASK) {
+                    vecFaBlock.DrainMaskReverseSync();
+                }
             }
         }
-        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
-        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-        //   不会触发 aicore subErrType 0x4 timeout-trap。
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
         AscendC::SyncAll();
-        vecFdBlock.FreeEventID();
-        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
-        // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
-                vecFaBlock.PresetMaskReverseSync();
+                if constexpr (HAS_MASK) {
+                    vecFaBlock.PresetMaskReverseSync();
+                }
             }
         }
+        vecFdBlock.FreeEventID();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)

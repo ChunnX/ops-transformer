@@ -17,8 +17,6 @@
 
 #include "kernel_operator.h"
 
-#include "../utils/attenmask_gs1.h"
-
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -31,6 +29,7 @@
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "fa_static_init_output.h"  // 静态Tensor版 InitOutput，替代 matmul::InitOutput（其内部用 TPipe 动态分配 eventId，与静态 eventId 冲突）
+#include "../utils/attenmask_gs1.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -64,6 +63,17 @@ public:
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
+
+    static constexpr MaskFormat MASK_LAYOUT =
+        (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
+         layout == LayOutTypeEnum::LAYOUT_SBH) ?
+            MaskFormat::SG :
+            MaskFormat::GS;
+
+    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
+    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+
+    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
     // =============================================================================
     // 静态 event ID 常量 —— 全部按守护的 buff 命名（不再以通路 MTE3/V/MTE2 命名）
@@ -107,14 +117,14 @@ public:
     // ----- vec2ResGm slot：splitD 子块 D 上的 UB→GM→UB 回写 -----
     static constexpr uint32_t vec2ResGmRecycleEventId    = 2U; // MTE3_MTE2, 出 GM → 下轮入 GM
 
-    // ----- attenMaskBuf[2]：mask GM→UB ping/pong -----
-    static constexpr uint32_t attenMaskBufReadyEventId0  = 0U; // MTE2_V, ping 已搬入
-    static constexpr uint32_t attenMaskBufReadyEventId1  = 1U; // MTE2_V, pong 已搬入
-    static constexpr uint32_t attenMaskBufFreeEventId0   = 0U; // V_MTE2, ping V 读完
-    static constexpr uint32_t attenMaskBufFreeEventId1   = 1U; // V_MTE2, pong V 读完
-
     // ----- sinkBuf：learnable sink GM→UB -----
     static constexpr uint32_t sinkBufReadyEventId        = 4U; // MTE2_V, sinkBuf 已搬入
+
+    // ----- attenMaskBuf[2]：attention mask ping/pong GM→UB -----
+    static constexpr uint32_t attenMaskBufReadyEventId0  = 0U; // MTE2_V, attenMaskBuf[0] 搬入完成
+    static constexpr uint32_t attenMaskBufReadyEventId1  = 1U; // MTE2_V, attenMaskBuf[1] 搬入完成
+    static constexpr uint32_t attenMaskBufFreeEventId0   = 0U; // V_MTE2, attenMaskBuf[0] V 读完
+    static constexpr uint32_t attenMaskBufFreeEventId1   = 1U; // V_MTE2, attenMaskBuf[1] V 读完
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -123,16 +133,6 @@ public:
     // 与上面的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子的标准做法。
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
-    static constexpr MaskFormat MASK_LAYOUT =
-        (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-         layout == LayOutTypeEnum::LAYOUT_SBH) ?
-            MaskFormat::SG :
-            MaskFormat::GS;
-
-    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
-
-    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
 
@@ -168,12 +168,12 @@ public:
     // ub
     LocalTensor<uint8_t> vec1ApiTmpBuf; // ProcessVec1Vf API 的 sharedTmpBuffer（vec1 计算临时区，仅特定模板分支需要）
     LocalTensor<INPUT_T> stage1OutBuf[2];
-    LocalTensor<uint8_t> attenMaskBuf[2];
     LocalTensor<T> stage2OutBuf;
     LocalTensor<float> softmaxMaxBuf[PRELOAD_N + 1];
     LocalTensor<float> softmaxSumBuf[PRELOAD_N + 1];
     LocalTensor<T> softmaxExpBuf[PRELOAD_N + 1];
     LocalTensor<uint8_t> vselrIndexesBuf[4]; // 静态Tensor编程：LocalTensor 直接替代 TBuf<>
+    LocalTensor<uint8_t> attenMaskBuf[2];
     LocalTensor<T> mm2InBuf;
     LocalTensor<float> maxBrdcstBuf;
     LocalTensor<float> sumBrdcstBuf;
@@ -472,15 +472,12 @@ public:
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
-        LocalTensor<uint8_t> attenMaskUbPre;
+
         if constexpr (hasAtten == true) {
             const uint32_t maskBufIdx = runInfo.loop & (DB - 1);
             attenMaskUb = this->attenMaskBuf[maskBufIdx];
-            // V → MTE2 反向同步：等上一轮 V 读完该 ping/pong 槽后，本轮 MTE2 才能覆写
-            // (AllocEventID 预置过 V_MTE2 ping/pong，使首轮 Wait 能立即通过)
             WaitFlag<HardEvent::V_MTE2>(attenMaskBufFreeEventId0 + maskBufIdx);
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-            // AttenMaskCopyIn 内部已通过 MTE2_V 事件保证 mask 数据 V 可见
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -568,7 +565,6 @@ public:
             }
         }
         if constexpr (hasAtten) {
-            // V → MTE2 反向同步：V 读完 mask 后释放该 ping/pong 槽，下一轮 MTE2 可覆写
             const uint32_t maskBufIdx = runInfo.loop & (DB - 1);
             SetFlag<HardEvent::V_MTE2>(attenMaskBufFreeEventId0 + maskBufIdx);
         }
@@ -798,21 +794,17 @@ public:
         bool ret = false;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_SBH ||
                       layout == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
             s1StartTdx = vecMStartIdx / constInfo.gSize;
             s1EndTdx = vecMEndIdx / constInfo.gSize;
             ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
         } else {
-            // GS1 layout
             s1StartTdx = vecMStartIdx % runInfo.actS1Size;
             s1EndTdx = vecMEndIdx % runInfo.actS1Size;
             int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
             int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
             if (gStartIdx == gEndIdx) {
-                // 只跨1个G
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
-                // 跨多个G
                 ret = (s1FirstValidToken > 0) || (s1LastValidToken < (runInfo.actS1Size - 1));
             }
         }
@@ -824,12 +816,13 @@ public:
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (hasAtten) {
-            int64_t s1FirstValidToken = AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
-            int64_t s1LastValidToken = AttentionCommon::Min(AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            int64_t s1FirstValidToken =
+                AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(
+                AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
             s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
-            bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
-                                        hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
+            bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
             if (!batchNeedRowInvalid) {
                 return;
             }
@@ -837,8 +830,7 @@ public:
             bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
 
             if (blockNeedRowInvalid) {
-                LocalTensor<float> maxTensor =
-                    softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)][mStartVec];
+                LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)][mStartVec];
                 RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
                                           static_cast<uint32_t>(dSizeAligned64));
             }
@@ -1092,9 +1084,10 @@ public:
         constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
         constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
 
-        // attenMask ping/pong（各 8192 bytes）
-        attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE,          8192U);
-        attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 8192U,  8192U);
+        // attenMask ping/pong（各 8192 bytes，与 FD 共享 UB 布局对齐）
+        attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE, 8192U);
+        attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 8192U, 8192U);
+
         // stage2 输出（32768 bytes）
         stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U).template ReinterpretCast<T>();
         // stage1 输出 ping/pong（各 33024 bytes）
@@ -1151,11 +1144,6 @@ public:
         }
     }
 
-    // FD 兼容：进入 FlashDecode 前排干 mask V→MTE2 ping/pong 反向同步预置。
-    // FA 的 AllocEventID 预置了 V_MTE2[0]/[1] 且这两个 flag 会一直挂到所有 section 结束才由
-    // FreeEventID 排干，因此 FD 运行时 FA 仍残留 2 个 V_MTE2 pending flag。FD 自身的 V_MTE2 同步
-    // （SYNC_* = 8~13）在物理 flag 空间上与 FA 的 [0]/[1] 冲突，导致 FD 的 WaitFlag<V_MTE2> 卡死。
-    // 进入 FD 前先 Wait 排干，使 FD 期间 FA 无任何残留 V_MTE2 flag。
     __aicore__ inline void DrainMaskReverseSync()
     {
         if constexpr (HAS_MASK) {
@@ -1164,8 +1152,6 @@ public:
         }
     }
 
-    // FD 结束后恢复 mask V→MTE2 ping/pong 预置，供下一 section 的 FA ProcessVec1Nd 首轮 Wait 使用，
-    // 并保证 kernel 退出时 FreeEventID 的 WaitFlag 配平。与 DrainMaskReverseSync 成对调用。
     __aicore__ inline void PresetMaskReverseSync()
     {
         if constexpr (HAS_MASK) {
@@ -1177,7 +1163,6 @@ public:
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            RunInfoX &runInfo)
     {
-        const uint32_t bufIdx = runInfo.loop & (DB - 1);
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         maskInfo.gs1dealNum = mDealSize;
@@ -1198,34 +1183,31 @@ public:
         maskInfo.s1LeftPaddingSize = 0;
         maskInfo.s2LeftPaddingSize = 0;
         maskInfo.maskFormat = MASK_LAYOUT;
-        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
+        maskInfo.attenMaskType = MASK_BOOL;
+
+        const uint32_t bufIdx = runInfo.loop & (DB - 1);
+        const uint32_t mte2ToVId = attenMaskBufReadyEventId0 + bufIdx;
+        const uint32_t preMte2ToVId = attenMaskBufReadyEventId0 + (bufIdx ^ 1U);
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
 
-        // ping/pong 直接通过 BASE + bufIdx 数学公式得到（参考 quant_flash_attn 的 SYNC_xxx + buffIdx 风格）
-        const uint32_t mte2ToVId    = attenMaskBufReadyEventId0 + bufIdx;
-        const uint32_t preMte2ToVId = attenMaskBufReadyEventId0 + (bufIdx ^ 1U);
-
-        // 回归主线风格：跳过 mask 的场景才显式 Duplicate 0；否则 AttentionmaskCopyIn 自身完成 DMA 覆盖。
-        // 入口处 V→MTE2 反向同步已保证 ping/pong slot 此时可以安全覆写。
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
-            return; // 全不屏蔽
+            return;
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
-                attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo,
+                                                                        mte2ToVId);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
 
         if (!IsSkipMaskForPre) {
-            const uint32_t preBufIdx = bufIdx ^ 1U;
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
-                attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[1 - bufIdx];
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo,
+                                                                        preMte2ToVId, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
         }
     }
@@ -1269,6 +1251,8 @@ public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
     __aicore__ inline FANoQuantGqaBlockVecDummyNd(ConstInfoX &constInfo){};
+    __aicore__ inline void DrainMaskReverseSync() {}
+    __aicore__ inline void PresetMaskReverseSync() {}
 };
 
 } // namespace BaseApi

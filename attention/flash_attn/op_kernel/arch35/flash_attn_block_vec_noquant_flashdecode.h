@@ -24,8 +24,10 @@
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/fia_public_define.h"
+#include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/memory_copy.h"
+#include "../utils/attenmask_gs1.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -434,15 +436,15 @@ protected:
 
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
 
-        if (constInfo.sparseMode == BAND) {
+        if (constInfo.sparseMode == static_cast<uint8_t>(BAND)) {
             preTokensPerBatch = safePreToken;
             nextTokensPerBatch = actSeqLensKv - actSeqLensQ + safeNextToken;
-        } else if ((constInfo.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
+        } else if (attenMaskFlag) {
             nextTokensPerBatch = safeNextToken;
             preTokensPerBatch = actSeqLensKv - actSeqLensQ + safePreToken;
         } else {
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
             preTokensPerBatch = 0;
+            nextTokensPerBatch = 0;
         }
     }
     __aicore__ inline void CopySinkIn(uint32_t cntM)
@@ -476,7 +478,8 @@ protected:
             return;
         }
 
-        if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
+        if (constInfo.sparseMode == static_cast<uint8_t>(ALL_MASK) ||
+            constInfo.sparseMode == static_cast<uint8_t>(LEFT_UP_CAUSAL)) {
             return;
         }
 
@@ -501,7 +504,8 @@ protected:
         if (!attenMaskFlag) {
             return;
         }
-        if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
+        if (constInfo.sparseMode != static_cast<uint8_t>(DEFAULT_MASK) &&
+            constInfo.sparseMode != static_cast<uint8_t>(ALL_MASK)) {
             return;
         }
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
