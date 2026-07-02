@@ -40,9 +40,7 @@
 struct Args {
     uint32_t rankId;
     uint32_t epRankId;
-    uint32_t tpRankId;
     HcclComm hcclEpComm;
-    HcclComm hcclTpComm;
     aclrtStream dispatchStream;
     aclrtStream combineStream;
     aclrtContext context;
@@ -54,7 +52,6 @@ const char* first_rank_id = std::getenv("FIRST_RANK_ID");
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
 uint32_t EP_WORLD_SIZE = 0;
-uint32_t TP_WORLD_SIZE = 0;
 uint32_t DEV_NUM = 0;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -94,14 +91,9 @@ int launchOneThreadDispatchAndCombine(Args &args)
     char hcomEpName[128] = {0};
     ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
-    char hcomTpName[128] = {0};
-    if (!rank_table_file && !first_rank_id) {
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-    }
     LOG_PRINT(
-        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchStream = %p, combineStream = %p, context = %p\n",
-        args.rankId, hcomEpName, hcomTpName, args.dispatchStream, args.combineStream, args.context
+        "[INFO] rank = %d, hcomEpName = %s, dispatchStream = %p, combineStream = %p, context = %p\n",
+        args.rankId, hcomEpName, args.dispatchStream, args.combineStream, args.context
     );
 
     // 设置场景
@@ -169,12 +161,12 @@ int launchOneThreadDispatchAndCombine(Args &args)
     std::vector<int64_t> expertIdsShape{BS, K};
     std::vector<int64_t> scalesShape{(sharedExpertRankNum > 0) ? 1 + moeExpertNum : moeExpertNum, H};
     std::vector<int64_t> expertScalesShape{BS, K};
-    std::vector<int64_t> expandXShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A, H};
-    std::vector<int64_t> dynamicScalesShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A};
+    std::vector<int64_t> expandXShape{A, H};
+    std::vector<int64_t> dynamicScalesShape{A};
     std::vector<int64_t> expandIdxShape{BS * K};
     std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-    std::vector<int64_t> epRecvCountsShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * localExpertNum * EP_WORLD_SIZE};
-    std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1};
+    std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
+    std::vector<int64_t> tpRecvCountsShape{1};
     std::vector<int64_t> expandScalesShape{A};
 
     long long xShapeSize = GetShapeSize(xShape);
@@ -229,7 +221,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);             
+    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
     /* 声明算子执行必需变量 */
@@ -248,8 +240,8 @@ int launchOneThreadDispatchAndCombine(Args &args)
         (quantMode > 0 ? scales : nullptr), nullptr, 
         expertScales, 
         hcomEpName, EP_WORLD_SIZE, args.epRankId,
-        moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-        args.tpRankId, expertShardType, sharedExpertNum,
+        moeExpertNum, "", 0,
+        0, expertShardType, sharedExpertNum,
         sharedExpertRankNum, quantMode, globalBS,
         expertTokenNumsType,
         expandX, dynamicScales,
@@ -340,7 +332,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
     }
     if (tpRecvCounts != nullptr) {
         aclDestroyTensor(tpRecvCounts);
-    }   
+    }
     if (expandScales != nullptr) {         
         aclDestroyTensor(expandScales);
     }
@@ -371,15 +363,14 @@ int launchOneThreadDispatchAndCombine(Args &args)
     if (epRecvCountsDeviceAddr != nullptr) {
         aclrtFree(epRecvCountsDeviceAddr);
     }
-    if (expandScalesDeviceAddr != nullptr) {
-        aclrtFree(expandScalesDeviceAddr);
-    }
     if (tpRecvCountsDeviceAddr != nullptr) {
         aclrtFree(tpRecvCountsDeviceAddr);
     }
+    if (expandScalesDeviceAddr != nullptr) {
+        aclrtFree(expandScalesDeviceAddr);
+    }
 
     HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
     aclrtDestroyStream(args.dispatchStream);
     aclrtDestroyStream(args.combineStream);
     aclrtDestroyContext(args.context);
@@ -414,12 +405,10 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     }
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
               << ", hcclComm:" << hcclComm << std::endl;
-    uint32_t epRankId = rank_id / TP_WORLD_SIZE;
-    uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
+    uint32_t epRankId = rank_id;
 
     args.rankId = rankId;
     args.epRankId = epRankId;
-    args.tpRankId = tpRankId;
     args.hcclEpComm = hcclComm;
     args.dispatchStream = dispatchStream;
     args.combineStream = combineStream;
@@ -448,50 +437,27 @@ int run_example_on_A3A5()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
     }
 
-    int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
-        }
-    }
-    // 初始化ep通信域，ep = 8 {0,2,4,6,8,10,12,14} {1,3,5,7,9,11,13,15}.
-    HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll ep world %d failed. ret = %d\n", tpId, ret); return ret
-        );
-    }
-
-    int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
+    int32_t devicesEp[EP_WORLD_SIZE];
     for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
-        }
+        devicesEp[epId] = epId;
     }
-    // 初始化tp通信域，tp = 2 {0,1} {2,3} {4,5} {6,7} {8,9} {10,11} {12,13} {14,15}.
-    HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll tp world %d failed. ret = %d\n", epId, ret); return ret
-        );
-    }
+    // 初始化ep通信域.
+    HcclComm commsEp[EP_WORLD_SIZE];
+    ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp, commsEp);
+    CHECK_RET(
+        ret == ACL_SUCCESS,
+        LOG_PRINT("[ERROR] HcclCommInitAll ep failed. ret = %d\n", ret); return ret
+    );
 
     Args args[DEV_NUM];
     // 各线程调用各卡执行算子
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        uint32_t epRankId = rankId / TP_WORLD_SIZE;
-        uint32_t tpRankId = rankId % TP_WORLD_SIZE;
+        uint32_t epRankId = rankId;
 
         args[rankId].rankId = rankId;
         args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
-        args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
-        args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
+        args[rankId].hcclEpComm = commsEp[epRankId];
         args[rankId].dispatchStream = dispatchStream[rankId];
         args[rankId].combineStream = combineStream[rankId];
         args[rankId].context = context[rankId];
@@ -521,21 +487,18 @@ int main(int argc, char *argv[])
     }
     if (!rank_table_file && !first_rank_id) {
         EP_WORLD_SIZE = 8;
-        TP_WORLD_SIZE = 1;
-        DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+        DEV_NUM = EP_WORLD_SIZE;
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && !first_rank_id) {
         EP_WORLD_SIZE = 2;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = 2;
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && first_rank_id) {
         EP_WORLD_SIZE = 16;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE;
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
