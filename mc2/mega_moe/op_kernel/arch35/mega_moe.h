@@ -115,6 +115,7 @@ private:
     uint64_t maxOutputSize_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
+    uint32_t shareBlockIdx_ = 0;  // 共享专家专用 block 索引，与 MoE 专家隔离
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
     int32_t maxWavesPerExpert_ = 0;
@@ -1236,12 +1237,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
         GM_ADDR cAddr = params_.workspaceInfo.sharedExpertGmm1OutPtr +
             sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
 
-        uint32_t localStartBlockIdx = startBlockIdx_;
         MegaMoeImpl::SharedExpertGmm1Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             m_, hiddenDim_, k_,
             params_.peermemInfo.quantTokenScalePtr, params_.peermemInfo.quantTokenScalePtr,
-            bAddr, bScaleAddr, cAddr, localStartBlockIdx);
+            bAddr, bScaleAddr, cAddr, shareBlockIdx_);
     }
 }
 
@@ -1330,17 +1330,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
 
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
         GM_ADDR b2Addr = params_.b2GmAddr + sharedIdx * b2StridePerExpert * sizeof(ActivationType);
-        GM_ADDR b2ScaleAddr = params_.b2ScaleGmAddr + sharedIdx * b2ScaleStridePerExpert * sizeof(QuantScaleOutType);
+        GM_ADDR b2ScaleAddr = params_.b2ScaleGmAddr + sharedIdx * b2StridePerExpert * sizeof(QuantScaleOutType);
         GM_ADDR resultAddr = params_.workspaceInfo.sharedExpertResultPtr +
             sharedIdx * m_ * k_ * sizeof(bfloat16_t);
 
-        uint32_t localStartBlockIdx = startBlockIdx_;
         MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, m_, k_, hiddenDim_ / SWIGLU_N_HALF,
             params_.workspaceInfo.sharedExpertSwigluDataPtr,
             params_.workspaceInfo.sharedExpertSwigluScalePtr,
-            b2Addr, b2ScaleAddr, resultAddr, nullptr, localStartBlockIdx);
+            b2Addr, b2ScaleAddr, resultAddr, nullptr, shareBlockIdx_);
     }
 
     // 通知 AIV GMM2 完成（全局计数器累加）

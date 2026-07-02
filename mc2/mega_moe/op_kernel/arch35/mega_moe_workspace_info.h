@@ -113,6 +113,7 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertGmm1OutPtr;
     GM_ADDR sharedExpertSwigluDataPtr;
     GM_ADDR sharedExpertSwigluScalePtr;
+    GM_ADDR sharedExpertSwigluFlagPtr;
     GM_ADDR quantDoneFlagPtr;
     GM_ADDR sharedExpertGmm2DoneFlagPtr;
 
