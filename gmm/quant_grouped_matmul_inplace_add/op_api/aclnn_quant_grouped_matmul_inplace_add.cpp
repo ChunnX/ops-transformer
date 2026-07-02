@@ -43,7 +43,7 @@ extern "C" {
 #endif
 
 namespace {
-constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAdd";
+constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
 
 std::string ShapeToStringWithoutBracket(const op::Shape &shape)
 {

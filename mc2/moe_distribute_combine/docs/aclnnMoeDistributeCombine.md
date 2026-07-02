@@ -15,20 +15,11 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 - 计算公式：
-    - 不存在TP域通信时：
 
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -112,7 +103,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>要求为2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>(max(tpWorldSize, 1) * A , H)</td>
+    <td>(A , H)</td>
     <td>√</td>
     </tr>
     <tr>
@@ -159,7 +150,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>tpSendCounts</td>
     <td>输入</td>
     <td>对应aclnnMoeDistributeDispatch中的tpRecvCounts输出。</td>
-    <td>有TP域通信需传参，无TP域通信传空指针。</td>
+    <td>预留参数，TP域通信不再支持，传空指针即可。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -400,14 +391,14 @@ aclnnStatus aclnnMoeDistributeCombine(
         - 各rank BS一致时，`globalBS` = BS * epWorldSize或0；各rank BS不一致时，globalBS = maxBS * epWorldSize或256 * epWorldSize（maxBS为单rank BS最大值，建议按maxBS * epWorldSize传入）。
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-        - 有TP域通信时`tpSendCounts`为1D Tensor，shape为(tpWorldSize, )。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+        - `epSendCounts`的shape为(epWorldSize * localExpertNum, )。
+        - `tpSendCounts`为预留参数，TP域通信不再支持，传空指针即可。
         - `expandScales`为预留参数，当前版本不支持，传空指针即可。
         - `epWorldSize`取值支持8、16、32、64、128、144、256、288。
-        - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-        - `tpWorldSize`取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+        - `groupTp`预留参数，TP域通信不再支持，仅在无TP域通信时支持传空。
+        - `tpWorldSize`预留参数，TP域通信不再支持，仅允许0或1。
+        - `tpRankId`预留参数，TP域通信不再支持，传0即可。
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
         - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
@@ -415,7 +406,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
 
     - <term>Ascend 950DT</term>：
-        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+        - `epSendCounts`的shape为(epWorldSize * localExpertNum, )。
         - 当前不支持TP域通信。
         - `expandScales`为预留参数，当前版本不支持，传空指针即可。
         - `epWorldSize`取值支持2、4、8、16、32、64、128、144、256、288。
@@ -1144,7 +1135,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         if (!rank_table_file && !first_rank_id) {
             EP_WORLD_SIZE = 8;
-            TP_WORLD_SIZE = 2;
+            TP_WORLD_SIZE = 1;
             DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
             LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
             int ret = run_example_on_A3A5();

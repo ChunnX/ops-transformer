@@ -72,9 +72,9 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    constexpr int64_t lse_dim = 256;
-    constexpr int64_t local_out_batch = 256;
-    constexpr int64_t local_out_feat = 128;
+    constexpr int64_t lse_dim = 32;
+    constexpr int64_t local_out_batch = 32;
+    constexpr int64_t local_out_feat = 16;
     constexpr int64_t update_type = 0;
     constexpr int32_t deviceId = 0;
 
@@ -143,7 +143,8 @@ int main() {
                       out_size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
-    for (int64_t i = 0; i < out_size && i < out_size; i++) {
+    constexpr int64_t printLen = 16;
+    for (int64_t i = 0; i < printLen && i < out_size; i++) {
         LOG_PRINT("out[%ld]: %f\n", i, outData[i]);
     }
 
@@ -153,10 +154,6 @@ int main() {
     if (localOutList != nullptr) {
         aclDestroyTensorList(localOutList);
     }
-    aclDestroyTensor(lse[0]);
-    aclDestroyTensor(lse[1]);
-    aclDestroyTensor(localOut[0]);
-    aclDestroyTensor(localOut[1]);
     aclDestroyTensor(out);
 
     aclrtFree(lseDeviceAddr[0]);

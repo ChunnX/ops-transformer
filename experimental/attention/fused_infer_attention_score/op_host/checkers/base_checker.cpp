@@ -53,6 +53,31 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     return ge::GRAPH_SUCCESS;
 }
 
+// 判断tensor是否连续
+ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+        const gert::Stride *Strides, int32_t &index) const
+{
+    // 根据kv kvscale krope算出连续场景的strides，如果存在某一维不相等则表示不连续
+    if (Strides == nullptr || Strides->GetDimNum() == 0){
+        return ge::GRAPH_SUCCESS;
+    }
+    // 维度为1的tensor始终连续
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1; // 连续场景最后一维的stride默认为1
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (inputShape.GetDim(index) == 1) { // dim=1时步长不影响连续性
+            continue;
+        }
+        if (preStride != Strides->GetStride(index)) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride *= inputShape.GetDim(index);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 template <typename T>
 ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<T> &expectValList) const
 {
@@ -63,13 +88,13 @@ ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
-std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
+std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
         return "UNDEFINED";
     }
 }

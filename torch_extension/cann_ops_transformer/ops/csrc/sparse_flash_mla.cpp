@@ -16,16 +16,11 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using namespace at_npu::native;
-using npu_preparation = at_npu::native::OpPreparation;
-
-// npu tensor max size
-const int SIZE = 8;
-const int DIM_0 = 0;
-const int DIM_1 = 1;
-const int DIM_2 = 2;
-const int DIM_3 = 3;
-const int DIM_4 = 4;
+constexpr int64_t DIM_0 = 0;
+constexpr int64_t DIM_1 = 1;
+constexpr int64_t DIM_2 = 2;
+constexpr int64_t DIM_3 = 3;
+constexpr int64_t DIM_4 = 4;
 
 constexpr int64_t SMLA_METADATA_SIZE = 1024;
 
@@ -90,62 +85,60 @@ at::Tensor sparse_flash_mla_metadata(
     return output;
 }
 
-std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
-    const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
-    std::string layout_kv_str, const uint64_t &rope_head_dim, bool return_softmax_lse)
+void CheckQueryShape(const at::Tensor &q, const std::string &layout_q_str)
 {
     TORCH_CHECK(layout_q_str == "BSND" || layout_q_str == "TND",
                 "The layout of query only support BSND and TND, but got ", layout_q_str);
-    for (auto i = 0; i < q.sizes().size(); i++) {
+    TORCH_CHECK(q.numel() > 0, "Tensor query is empty.");
+    for (int64_t i = 0; i < q.dim(); i++) {
         TORCH_CHECK(q.size(i) > 0, "All values within query's shape should be greater "
             "than 0, but shape[", i, "] is ", q.size(i));
     }
-    at::SmallVector<int64_t, SIZE> atten_out_size;
-    at::SmallVector<int64_t, SIZE> softmax_lse_size;
     if (layout_q_str == "BSND") {
         TORCH_CHECK(q.dim() == DIM_4,
                     "When the layout of query is BSND, the query dimension must be 4, but got ", q.dim());
-        atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2), q.size(DIM_3)};
     } else {
         TORCH_CHECK(q.dim() == DIM_3,
                     "When the layout of query is TND, the query dimension must be 3, but got ", q.dim());
-        atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
-    at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(q.dtype()));
+}
+
+int64_t GetKvHeadNum(const c10::optional<at::Tensor> &ori_kv, const c10::optional<at::Tensor> &cmp_kv,
+                     const std::string &layout_kv_str)
+{
+    TORCH_CHECK(ori_kv.has_value() || cmp_kv.has_value(),
+                "ori_kv or cmp_kv is required when return_softmax_lse is true.");
+    const at::Tensor &kv = ori_kv.has_value() ? ori_kv.value() : cmp_kv.value();
+    if (layout_kv_str == "TND") {
+        return kv.size(DIM_1);
+    }
+    return kv.size(DIM_2);
+}
+
+std::tuple<at::Tensor, at::Tensor> MakeSparseFlashMlaOutputs(const at::Tensor &q,
+                                                             const c10::optional<at::Tensor> &ori_kv,
+                                                             const c10::optional<at::Tensor> &cmp_kv,
+                                                             const std::string &layout_q_str,
+                                                             const std::string &layout_kv_str,
+                                                             bool return_softmax_lse)
+{
+    CheckQueryShape(q, layout_q_str);
+    at::Tensor atten_out = at::empty_like(q);
     at::Tensor softmax_lse;
-
-    if (return_softmax_lse) {
-        if (layout_q_str == "BSND") {
-            // 对齐 Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
-            softmax_lse_size = {
-                q.size(DIM_0),
-                ori_kv.size(DIM_2),
-                q.size(DIM_1),
-                q.size(DIM_2) / ori_kv.size(DIM_2)
-            };
-        } else {
-            // 对齐 Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
-            if (layout_kv_str == "PA_BBND") {
-                softmax_lse_size = {
-                    ori_kv.size(DIM_2),
-                    q.size(DIM_0),
-                    q.size(DIM_1) / ori_kv.size(DIM_2)
-                };
-            } else {
-                softmax_lse_size = {
-                    ori_kv.size(DIM_1),
-                    q.size(DIM_0),
-                    q.size(DIM_1) / ori_kv.size(DIM_1)
-                };
-            }
-        }
-    } else {
-        // 不返回时tensor传空
-        softmax_lse_size = {};
+    if (!return_softmax_lse) {
+        softmax_lse = at::empty({}, q.options().dtype(torch::kFloat32));
+        return {atten_out, softmax_lse};
     }
-    softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
 
-    return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
+    int64_t kv_head_num = GetKvHeadNum(ori_kv, cmp_kv, layout_kv_str);
+    if (layout_q_str == "BSND") {
+        softmax_lse = at::empty({q.size(DIM_0), kv_head_num, q.size(DIM_1), q.size(DIM_2) / kv_head_num},
+                                q.options().dtype(torch::kFloat32));
+    } else {
+        softmax_lse = at::empty({kv_head_num, q.size(DIM_0), q.size(DIM_1) / kv_head_num},
+                                q.options().dtype(torch::kFloat32));
+    }
+    return {atten_out, softmax_lse};
 }
 
 std::tuple<at::Tensor, at::Tensor> sparse_flash_mla(
@@ -165,18 +158,15 @@ std::tuple<at::Tensor, at::Tensor> sparse_flash_mla(
     c10::string_view layout_q, c10::string_view layout_kv,
     int64_t topk_value_mode, bool return_softmax_lse)
 {
-    TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
-
     std::string layout_q_str = std::string(layout_q);
     std::string layout_kv_str = std::string(layout_kv);
-    const at::Tensor& ori_kv_val = *ori_kv;
     // convert str
     char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
     char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
- 
+
     // construct the atten_out tensor
-    std::tuple<at::Tensor, at::Tensor> sparse_flash_mla_atten_out = op_api::construct_sparse_flash_mla_atten_out_tensor(
-        q, ori_kv_val, layout_q_str, layout_kv_str, 64, return_softmax_lse);
+    std::tuple<at::Tensor, at::Tensor> sparse_flash_mla_atten_out = op_api::MakeSparseFlashMlaOutputs(
+        q, ori_kv, cmp_kv, layout_q_str, layout_kv_str, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(sparse_flash_mla_atten_out);
 

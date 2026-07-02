@@ -755,13 +755,13 @@ int main() {
   std::vector<float> qIndexHostData(1*32*128, 1);
   std::vector<float> kIndexHostData(1*1*128, 1);
   std::vector<float> weightHostData(1*32, 1);
-  std::vector<float> sparseIndicesHostData(2048, 1);
+  std::vector<int32_t> sparseIndicesHostData(2048, 1);
   std::vector<float> softmaxMaxHostData(1*64, 1);
   std::vector<float> softmaxSumHostData(1*64, 1);
 
   std::vector<float> dQIndexHostData(1*32*128, 1);
   std::vector<float> dKIndexHostData(1*1*128, 1);
-  std::vector<float> dWeightHostData(1*1*32, 1);
+  std::vector<float> dWeightHostData(1*32, 1);
   std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);

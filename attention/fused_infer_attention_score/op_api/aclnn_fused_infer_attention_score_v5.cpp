@@ -249,6 +249,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
 
     aclnnStatus ret = CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
         return ret;
     }
 

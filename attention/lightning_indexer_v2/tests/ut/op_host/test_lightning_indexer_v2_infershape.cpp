@@ -71,7 +71,7 @@ TEST_F(LightningIndexerV2Proto, LightningIndexerV2_infershape_0)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// TND/PA_BSND, return_value=false, topk=2048, mask_mode=0, cmp_ratio=1
+// TND/PA_BBND, return_value=false, topk=2048, mask_mode=0, cmp_ratio=1
 TEST_F(LightningIndexerV2Proto, LightningIndexerV2_infershape_1)
 {
     int64_t cu_seqlens_q_list[] = {0, 64};
@@ -102,7 +102,7 @@ TEST_F(LightningIndexerV2Proto, LightningIndexerV2_infershape_1)
             {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
             {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}

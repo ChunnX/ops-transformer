@@ -55,6 +55,15 @@ REGISTER_TILING_DATA_CLASS(RotateMatrixParamsOp, RotateMatrixParams)
 
 BEGIN_TILING_DATA_DEF(RotateHalfParams)
 TILING_DATA_FIELD_DEF(uint64_t, tilingMode); // layout code
+// Record Exact origin Axes length by their index
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX1);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX2);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX3);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR1);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR2);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR3);        // Condition axis decides availability of RotateHalfRoPEFullLoadXD
+TILING_DATA_FIELD_DEF(uint64_t, tailAxesFLBoost);  // enable RotateHalfRoPEFullLoadXD
+// Labeled axis lengths variate according to the Layout
 TILING_DATA_FIELD_DEF(uint64_t, gmLength);
 TILING_DATA_FIELD_DEF(uint64_t, broadcastFirstDim);  // B
 TILING_DATA_FIELD_DEF(uint64_t, broadcastSecondDim); // N
@@ -87,6 +96,7 @@ TILING_DATA_FIELD_DEF(uint64_t, tailXDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailRDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailUbLastDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailUbLastPadDataLength);
+TILING_DATA_FIELD_DEF(uint8_t, isThreeOneDim);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RotateHalfParamsOp, RotateHalfParams)
 
@@ -261,6 +271,8 @@ private:
     ge::graphStatus CheckDtypeAndAttr();
     ge::graphStatus CheckParam();
     ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
+    bool Is3dBsdBroadcastLayout(const gert::Shape &xShape, const gert::Shape &cosShape) const;
+    void Set3dBsdShapeAttrs(const gert::Shape &xShape);
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t d);
     ge::graphStatus CheckShapeAllPositive(const int64_t idx) const;
     ge::graphStatus CheckShapeAllPositive() const;
@@ -312,6 +324,8 @@ protected:
     int64_t dSplitCoef_;
     bool is1snd_ = false;
     bool isTndLayout_ = false;
+    // 3D BSD: x=(B,S,D), cos/sin=(1,S,D), mapped to BSND with N=1.
+    bool is3dBsdLayout_ = false;
 };
 
 } // namespace optiling

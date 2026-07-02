@@ -236,7 +236,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dScaleVOptional</td>
         <td>输入</td>
         <td>value的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
+        <td>输入shape为[B,N2,Ceil(Skv/512),1]。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>

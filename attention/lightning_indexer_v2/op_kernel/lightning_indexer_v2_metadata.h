@@ -21,9 +21,9 @@
 namespace optiling {
 
 // Constants
-inline constexpr uint32_t AIC_MAX_CORE_NUM = 36;
-inline constexpr uint32_t AIV_MAX_CORE_NUM = 72;
-constexpr uint32_t LI_V2_META_SIZE = 1024;
+inline constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 1024;
 using LI_V2_METADATA_T = int32_t;
 
 inline constexpr uint32_t LI_V2_METADATA_SIZE = 8;
@@ -59,7 +59,7 @@ inline constexpr uint32_t LD_V2_M_NUM_INDEX = 6;
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
-        return LI_V2_METADATA_SIZE * AIC_MAX_CORE_NUM + LD_V2_METADATA_SIZE * coreIdx + metaIdx;
+        return LI_V2_METADATA_SIZE * AIC_CORE_MAX_NUM + LD_V2_METADATA_SIZE * coreIdx + metaIdx;
     } else {
         return LI_V2_METADATA_SIZE * coreIdx + metaIdx;
     }
@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct liV2MetaData {
-        uint32_t liV2Metadata[AIC_MAX_CORE_NUM][LI_V2_METADATA_SIZE];
-        uint32_t ldV2Metadata[AIV_MAX_CORE_NUM][LD_V2_METADATA_SIZE];
+    struct LiV2Metadata {
+        uint32_t liV2Metadata[AIC_CORE_MAX_NUM][LI_V2_METADATA_SIZE];
+        uint32_t ldV2Metadata[AIV_CORE_MAX_NUM][LD_V2_METADATA_SIZE];
     };
 };
 
-static_assert(LI_V2_META_SIZE * sizeof(LI_V2_METADATA_T) >= sizeof(detail::liV2MetaData));
+static_assert(LI_V2_METADATA_TOTAL_SIZE * sizeof(LI_V2_METADATA_T) >= sizeof(detail::LiV2Metadata));
 };
 
 #endif

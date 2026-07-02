@@ -47,17 +47,22 @@ private:
     ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFP8GQAFullQuant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
+    ge::graphStatus CheckAndProcessTreeMask(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
+    ge::graphStatus CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+                                          MaskInfo &maskInfo) const;
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo) const;
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;
     bool enableMXFP8 = false;
+    bool enableFP8GQAFullQuant = false;
 };
 
 }  // namespace optiling
