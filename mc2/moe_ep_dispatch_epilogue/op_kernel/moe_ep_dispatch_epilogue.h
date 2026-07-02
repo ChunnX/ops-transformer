@@ -407,12 +407,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 }
                 SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
                 DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
-
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                     DataCopyParams scalesCopyParams{1U,
                         static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
                     DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                 }
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
 
                 // 权重 + 4元组元数据: 标量 GM 写(S pipe), 行号离散故无法段内突发, 改为 per-hit 直写。
                 if constexpr (HasTopkWeights) {
@@ -427,7 +427,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     static_cast<int32_t>(topkIdx));
                 recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 3,
                     static_cast<int32_t>(slotIdx));
-
+                SyncFunc<AscendC::HardEvent::S_MTE2>();
                 SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
             }
         }
