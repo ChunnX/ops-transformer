@@ -161,8 +161,13 @@ public:
         }
 
         dataSize = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-        initState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.initState), dataSize);
-        finalState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.finalState), dataSize);
+        if (tiling_->stateIsFp32) {
+            initStateFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.initState), dataSize);
+            finalStateFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.finalState), dataSize);
+        } else {
+            initState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.initState), dataSize);
+            finalState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.finalState), dataSize);
+        }
 
         actualSeqLens_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams.seqlens), tiling_->b);
 
@@ -188,8 +193,16 @@ public:
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
+        highStateAddr_ = user + offset;
         highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
+
+        if (tiling_->stateIsFp32) {
+            uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
+            stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_), stateWkElemCnt);
+            stateDeltaWk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_) + stateWkElemCnt,
+                                          stateWkElemCnt);
+        }
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->chunkSize * tiling_->chunkSize * tiling_->aiCoreNum * TASK_RATIO;
@@ -214,6 +227,12 @@ public:
             int32_t length = actualSeqLens_.GetValue(bid);
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
+            if (tiling_->stateIsFp32) {
+                CopyCast<highType, lowType>(initStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                                            stateBf16Wk_, pipe_,
+                                            tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
+            }
+
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
                 // set chunk group
                 cg.startPos = pos;
@@ -222,19 +241,38 @@ public:
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
-                auto curState = (pos == seqStart) ?
-                                initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                                finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                // compute this chunk group
-                RunStage1(cg);
-                SyncAll<false>();
+                if (tiling_->stateIsFp32) {
+                    auto curStateFp32 = (pos == seqStart) ?
+                        initStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                        finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                    auto finalStateFp32 = finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                    RunStage1(cg);
+                    SyncAll<false>();
+                    RunStage2Fp32(cg, curStateFp32, finalStateFp32);
+                    SyncAll<false>();
+                    RunStage3(cg);
+                    SyncAll<false>();
+                } else {
+                    auto curState = (pos == seqStart) ?
+                                    initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                    // compute this chunk group
+                    RunStage1(cg);
+                    SyncAll<false>();
 
-                RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
-                SyncAll<false>();
+                    RunStage2(cg, curState,
+                              finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                    SyncAll<false>();
 
-                RunStage3(cg);
-                SyncAll<false>();
+                    RunStage3(cg);
+                    SyncAll<false>();
+                }
+            }
+            if (tiling_->stateIsFp32) {
+                CopyCast<lowType, highType>(stateBf16Wk_,
+                                            finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                                            pipe_,
+                                            tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
             }
         }
     }
@@ -258,6 +296,22 @@ private:
             qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
             out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+        stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
+        stageTwoOp.Process();
+        pipe_->Reset();
+    }
+
+    __aicore__ inline void RunStage2Fp32(const ChunkGroup& cg,
+                                          GlobalTensor<highType> stateFp32In,
+                                          GlobalTensor<highType> stateFp32Out)
+    {
+        Stage2 stageTwoOp;
+        StageTwoParams initStageTwoParams{
+            qPrime_, vInner_, gCum_, kCumDecay_,
+            stateBf16Wk_, stateDeltaWk_, kg_,
+            out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
+            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_,
+            true, stateFp32In, stateFp32Out};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
@@ -290,6 +344,12 @@ private:
     GlobalTensor<lowType> finalState_;
     GlobalTensor<lowType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
+
+    GlobalTensor<highType> initStateFp32_;
+    GlobalTensor<highType> finalStateFp32_;
+    GlobalTensor<lowType> stateBf16Wk_;
+    GlobalTensor<lowType> stateDeltaWk_;
+    GM_ADDR highStateAddr_;
 
     GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
