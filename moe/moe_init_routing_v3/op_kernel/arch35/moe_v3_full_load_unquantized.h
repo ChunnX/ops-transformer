@@ -72,7 +72,7 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
-    if (this->epFullload_ && this->dropPadMode_ != DROP_PAD_MODE) {
+    if (this->epFullload_) {
         if constexpr (IsSameType<T, hifloat8_t>::value) {
             this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
         } else {
@@ -227,54 +227,52 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
 
         if constexpr (IsSameType<T, hifloat8_t>::value) {
             LocalTensor<uint8_t> zeroLocal =
-                this->sortedBuffer_.template Get<uint8_t>(Align(this->cols_, sizeof(uint8_t)));
+                this->sortedBuffer_.template Get<uint8_t>(0);
             Duplicate(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                       static_cast<int32_t>(Align(this->cols_, sizeof(uint8_t)) / sizeof(int32_t)));
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-            DataCopyExtParams hif8CopyParams{static_cast<uint16_t>(rowLength),
+            LocalTensor<uint8_t> tempRow =
+                this->sortedBuffer_.template Get<uint8_t>(Align(this->cols_, sizeof(uint8_t)));
+            DataCopyExtParams hif8CopyParams{static_cast<uint16_t>(1),
                                              static_cast<uint32_t>(this->cols_ * sizeof(uint8_t)), 0, 0, 0};
             DataCopyPadExtParams<uint8_t> padParams{false, 0, 0, 0};
-            LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
-            DataCopyPad(xLocal, this->xUint8tGm_[this->startXRow_ * this->cols_], hif8CopyParams, padParams);
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-            xCopyInQueue_.EnQue(xLocal);
-            LocalTensor<T> xOutLocal = xCopyInQueue_.DeQue<T>();
             for (int64_t j = myStartRow; j < myEndRow; j++) {
                 int32_t srcRow = reverseMap.GetValue(j);
                 if (srcRow >= 0) {
-                    int64_t localRow = srcRow / this->k_ - this->startXRow_;
-                    DataCopyPad(this->expandedXGm_[j * this->cols_],
-                                xOutLocal[localRow * inFactor], copyParams);
+                    int64_t srcRowIdx = srcRow / this->k_;
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    DataCopyPad(tempRow, this->xUint8tGm_[srcRowIdx * this->cols_], hif8CopyParams, padParams);
+                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                    DataCopyPad(this->expandedXGm_[j * this->cols_], tempRow.ReinterpretCast<T>(), copyParams);
                 } else {
                     DataCopyPad(this->expandedXGm_[j * this->cols_], zeroLocal.ReinterpretCast<T>(), copyParams);
                 }
             }
-            xCopyInQueue_.FreeTensor(xOutLocal);
         } else {
             LocalTensor<T> zeroLocal =
-                this->sortedBuffer_.template Get<T>(Align(this->cols_, sizeof(T)));
+                this->sortedBuffer_.template Get<T>(0);
             Duplicate(zeroLocal, static_cast<T>(0),
                       static_cast<int32_t>(Align(this->cols_, sizeof(T)) / sizeof(T)));
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-            DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(rowLength),
-                                              static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
+            LocalTensor<T> tempRow =
+                this->sortedBuffer_.template Get<T>(Align(this->cols_, sizeof(T)));
+            DataCopyExtParams singleCopyParams{static_cast<uint16_t>(1),
+                                               static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
             DataCopyPadExtParams<T> xPadParams{false, 0, 0, 0};
-            LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
-            DataCopyPad(xLocal, this->xGm_[this->startXRow_ * this->cols_], dataXCopyParams, xPadParams);
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
             for (int64_t j = myStartRow; j < myEndRow; j++) {
                 int32_t srcRow = reverseMap.GetValue(j);
                 if (srcRow >= 0) {
-                    int64_t localRow = srcRow / this->k_ - this->startXRow_;
-                    DataCopyPad(this->expandedXGm_[j * this->cols_],
-                                xLocal[localRow * inFactor], copyParams);
+                    int64_t srcRowIdx = srcRow / this->k_;
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    DataCopyPad(tempRow, this->xGm_[srcRowIdx * this->cols_], singleCopyParams, xPadParams);
+                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                    DataCopyPad(this->expandedXGm_[j * this->cols_], tempRow, copyParams);
                 } else {
                     DataCopyPad(this->expandedXGm_[j * this->cols_], zeroLocal, copyParams);
                 }
             }
-            xCopyInQueue_.FreeTensor(xLocal);
         }
         return;
     }
