@@ -73,22 +73,6 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT8})
             .FormatList({ge::FORMAT_ND});
-        this->Output("q_comp_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("k_comp_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("score_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("softmax_out")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND});
         this->Attr("q_input_layout").AttrType(OPTIONAL).String("BNSD");
         this->Attr("kv_input_layout").AttrType(OPTIONAL).String("BNSD");
         this->Attr("num_key_value_heads").AttrType(OPTIONAL).Int(1);

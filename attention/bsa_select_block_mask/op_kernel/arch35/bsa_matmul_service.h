@@ -88,8 +88,7 @@ public:
      * @param attnScoreGm 输出注意力分数 GM 张量 [xBlocks, yBlocks] (float)
      */
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                   GlobalTensor<MM_OUT_T> &attnScoreGm,
-                                   GlobalTensor<MM_OUT_T> &attnScoreOutGm);
+                                   GlobalTensor<MM_OUT_T> &attnScoreGm);
 
     /// @brief 分配硬件同步事件（MTE1↔MTE2, M↔MTE1, FIX↔M）
     __aicore__ inline void AllocEventID();
@@ -215,8 +214,7 @@ private:
      * @param dstStride   GM 中行 stride（= yBlocks，即全量 K 维度）
      * @param l0PingPongFlag L0C 乒乓旗标
      */
-    __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, GlobalTensor<MM_OUT_T> &outGm,
-                                       uint32_t mSize, uint32_t nSize,
+    __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, uint32_t mSize, uint32_t nSize,
                                        uint32_t dstStride, uint8_t l0PingPongFlag);
 
     /// L0A Ping-Pong 缓冲区大小: 32KB
@@ -241,7 +239,6 @@ private:
     GlobalTensor<IN_T> qCmpGmLocal;        ///< Query 压缩矩阵 [xBlocks, dSize] (float)
     GlobalTensor<IN_T> kCmpGmLocal;        ///< Key 压缩矩阵 [yBlocks, dSize] (float)
     GlobalTensor<MM_OUT_T> scoreGmLocal;///< 输出注意力分数 [xBlocks, yBlocks] (float)
-    GlobalTensor<MM_OUT_T> scoreOutGmLocal;
     // ---- L1 缓冲区 ----
     TBuf<TPosition::A1> qBuf;           ///< Q L1 单缓冲 [CUBE_BASE_BLOCK * dSize]
     TBuf<TPosition::B1> kBuf[2];        ///< K L1 双缓冲 [2][CUBE_BASE_BLOCK * dSize]
@@ -300,13 +297,11 @@ __aicore__ inline void BSAMatmulService<BSAT>::InitBuffers(TPipe *pipe)
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::InitGM(GlobalTensor<IN_T> &qCmpGm,
                                                         GlobalTensor<IN_T> &kCmpGm,
-                                                        GlobalTensor<MM_OUT_T> &attnScoreGm,
-                                                        GlobalTensor<MM_OUT_T> &attnScoreOutGm)
+                                                        GlobalTensor<MM_OUT_T> &attnScoreGm)
 {
     this->qCmpGmLocal = qCmpGm;
     this->kCmpGmLocal = kCmpGm;
     this->scoreGmLocal = attnScoreGm;
-    this->scoreOutGmLocal = attnScoreOutGm;
 }
 
 template <typename BSAT>
@@ -470,7 +465,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_
 
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T> &resGm,
-                                                            GlobalTensor<MM_OUT_T> &outGm,
                                                             uint32_t mSize, uint32_t nSize,
                                                             uint32_t dstStride, uint8_t l0PingPongFlag)
 {
@@ -494,7 +488,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T>
 
     LocalTensor<MM_OUT_T> l0cTensor = cL0TensorPingPong[flagVal];
     Fixpipe<MM_OUT_T, MM_OUT_T>(resGm, l0cTensor, fixpipeParams);
-    Fixpipe<MM_OUT_T, MM_OUT_T>(outGm, l0cTensor, fixpipeParams);
     // Step 4: 通知 Cube L0C 已释放
     SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[flagVal]);
 }
@@ -561,13 +554,9 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
         // ---- 2d: Fixpipe 写回 attnScoreGm ----
         // GM 偏移: attnScore[qChunkStart, kBlockStart]
         uint32_t scoreGmOffset = kBlockStart + constInfo.aicIdx * dstStride * Q_CHUNK_SIZE;
-        uint64_t scoreOutOffset = static_cast<uint64_t>(batch) * perBatch +
-                                  static_cast<uint64_t>(head) * perHead +
-                                  static_cast<uint64_t>(qChunkStart) * dstStride + kBlockStart;
         auto dstScoreGm = scoreGmLocal[scoreGmOffset];
-        auto dstScoreOutGm = scoreOutGmLocal[scoreOutOffset];
 
-        FixCopyOut(dstScoreGm, dstScoreOutGm, singleM, curN, dstStride, l0PingPongFlag);
+        FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag);
 
         // ---- 2e: 翻转pingpong ----
         l0PingPongFlag = (l0PingPongFlag + 1) & 1;
