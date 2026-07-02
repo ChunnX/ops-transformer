@@ -338,6 +338,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer/README.md">lightning_indexer</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>LightningIndexer算子是稀疏attention前处理的计算，目的是选出关键的稀疏token位置。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
     <td>✓</td>
     <td>✓</td>
