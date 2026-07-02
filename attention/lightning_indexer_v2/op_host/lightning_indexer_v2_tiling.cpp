@@ -225,7 +225,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -812,11 +811,13 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                OP_LOGE(opName_, "input query and output sparse_indices shape n2 dim must be same,"),
                return ge::GRAPH_FAILED);
     // -----------------------check cmp_residual_k-------------------
-    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
-        OP_CHECK_IF((opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
-            OP_LOGE(opName_, "input cmp_residual_k's shape size (%u) must be equal to batch_size (%u).",
-                    opParamInfo_.cmpResidualK.tensor->GetShapeSize(), bSize_),
-            return ge::GRAPH_FAILED);
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+            OP_CHECK_IF((opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
+                OP_LOGE(opName_, "input cmp_residual_k's shape size (%u) must be equal to batch_size (%u).",
+                        opParamInfo_.cmpResidualK.tensor->GetShapeSize(), bSize_),
+                return ge::GRAPH_FAILED);
+        }
     }
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
