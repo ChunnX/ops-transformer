@@ -27,7 +27,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
-                return_softmax_lse, deterministic):
+                return_softmax_lse):
         out, lse_out = flash_attn(
             q, k, v,
             block_table=block_table,
@@ -48,7 +48,6 @@ class FlashAttnGraphNetwork(torch.nn.Module):
             layout_kv=layout_kv,
             layout_out=layout_out,
             return_softmax_lse=return_softmax_lse,
-            deterministic=deterministic,
         )
         return out, lse_out
 
@@ -202,8 +201,7 @@ class NPUBackend(Backend):
                 kernel_kwargs.get("layout_q", "BNSD"),
                 kernel_kwargs.get("layout_kv", "BNSD"),
                 kernel_kwargs.get("layout_out", "BNSD"),
-                kernel_kwargs.get("return_softmax_lse", 0),
-                0,
+                kernel_kwargs.get("return_softmax_lse", False),
             )
         else:
             out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
