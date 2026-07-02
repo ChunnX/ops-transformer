@@ -36,6 +36,13 @@ static const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
 static const std::string SINKS_NAME = "sinks";
 static const std::string METADATA_NAME = "metadata";
 static const std::string ATTEN_OUT_NAME = "attn_out";
+static const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
+static const std::string SEQUSED_Q_NAME = "seqused_q";
+static const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
+static const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
+static const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
+static const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
+static const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 static const std::string A2_A3_PLATFORM_LOG = "A2/A3";
 static const std::string A5_PLATFORM_LOG = "A5";
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
@@ -73,7 +80,14 @@ static const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP 
     {ORI_BLOCK_TABLE_NAME,         {ge::DT_INT32}},
     {CMP_BLOCK_TABLE_NAME,            {ge::DT_INT32}},
     {SINKS_NAME,                    {ge::DT_FLOAT}},
-    {METADATA_NAME,                    {ge::DT_INT32}}
+    {METADATA_NAME,                    {ge::DT_INT32}},
+    {CU_SEQLENS_Q_NAME,              {ge::DT_INT32}},
+    {SEQUSED_Q_NAME,                 {ge::DT_INT32}},
+    {SEQUSED_ORI_KV_NAME,            {ge::DT_INT32}},
+    {SEQUSED_CMP_KV_NAME,            {ge::DT_INT32}},
+    {CMP_RESIDUAL_KV_NAME,           {ge::DT_INT32}},
+    {ORI_TOPK_LENGTH_NAME,           {ge::DT_INT32}},
+    {CMP_TOPK_LENGTH_NAME,           {ge::DT_INT32}}
 };
 
 static const std::map<std::string, std::vector<SMLALayout>> LAYOUT_SUPPORT_MAP = {
@@ -1234,12 +1248,35 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensQ() const
+{
+    if (opParamInfo_.cuSeqLensQ.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensQ.desc, CU_SEQLENS_Q_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.cuSeqLensQ.tensor->GetShape(), dimNumList, CU_SEQLENS_Q_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() != bSize_ + 1,
+        OP_LOGE(opName_, "Input cuSeqLensQ's shapeSize is not equal to B + 1: %u, it is %ld", bSize_ + 1,
+            opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensOriKv() const
 {
     if (opParamInfo_.cuSeqLensOriKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensOriKv.desc, CU_SEQLENS_ORI_KV_NAME)) {
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensOriKv.desc, CU_SEQLENS_ORI_KV_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.cuSeqLensOriKv.tensor->GetShape(), dimNumList, CU_SEQLENS_ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.cuSeqLensOriKv.tensor->GetShapeSize() != bSize_ + 1,
@@ -1254,7 +1291,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensCmpKv() const
     if (opParamInfo_.cuSeqLensCmpKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensCmpKv.desc, CU_SEQLENS_CMP_KV_NAME)) {
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensCmpKv.desc, CU_SEQLENS_CMP_KV_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.cuSeqLensCmpKv.tensor->GetShape(), dimNumList, CU_SEQLENS_CMP_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize() != bSize_ + 1,
@@ -1390,6 +1431,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
         OP_LOGE(opName_, "%s must be provided!", METADATA_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.metadata.tensor->GetShape(), dimNumList, METADATA_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT),
                 OP_LOGE(opName_, "input metadata dim 0 must be %u.", METADATA_LIMIT),
                 return ge::GRAPH_FAILED);
@@ -1452,12 +1498,40 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
             OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
             return ge::GRAPH_FAILED);
     }
+    if (opParamInfo_.cmpResidualKv.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpResidualKv.desc, CMP_RESIDUAL_KV_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.cmpResidualKv.tensor->GetShape(), dimNumList, CMP_RESIDUAL_KV_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
 {
     if (IsA5Arch(npuArch_)) {
+        if (opParamInfo_.oriTopkLength.tensor != nullptr) {
+            const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+            if (
+                ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriTopkLength.desc, ORI_TOPK_LENGTH_NAME) ||
+                ge::GRAPH_SUCCESS != CheckDimNumSupport(
+                    &opParamInfo_.oriTopkLength.tensor->GetShape(), dimNumList, ORI_TOPK_LENGTH_NAME)) {
+                return ge::GRAPH_FAILED;
+            }
+        }
+        if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
+            const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+            if (
+                ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpTopkLength.desc, CMP_TOPK_LENGTH_NAME) ||
+                ge::GRAPH_SUCCESS != CheckDimNumSupport(
+                    &opParamInfo_.cmpTopkLength.tensor->GetShape(), dimNumList, CMP_TOPK_LENGTH_NAME)) {
+                return ge::GRAPH_FAILED;
+            }
+        }
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor),
@@ -1477,6 +1551,7 @@ ge::graphStatus SMLATilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensOriKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensCmpKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
@@ -1749,16 +1824,56 @@ ge::graphStatus SMLATilingCheck::CheckOriAndCmpKv() const
 
 ge::graphStatus SMLATilingCheck::CheckAttenOut() const
 {
+    if (opParamInfo_.attnOut.desc == nullptr) {
+        OP_LOGE(opName_, "%s must be provided!", ATTEN_OUT_NAME.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    const std::vector<size_t> dimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.attnOut.desc, ATTEN_OUT_NAME) ||
+        ge::GRAPH_SUCCESS != CheckLayoutSupport(outLayout_, ATTEN_OUT_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.attnOut.shape, dimNumList, ATTEN_OUT_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(outLayout_, opParamInfo_.attnOut.shape, ATTEN_OUT_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckActualSeqLensQ() const
 {
+    if (opParamInfo_.seqUsedQ.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.seqUsedQ.desc, SEQUSED_Q_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(
+            &opParamInfo_.seqUsedQ.tensor->GetShape(), dimNumList, SEQUSED_Q_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckActualSeqLens() const
 {
+    if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
+        const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+        if (
+            ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME) ||
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(
+                &opParamInfo_.sequsedOriKv.tensor->GetShape(), dimNumList, SEQUSED_ORI_KV_NAME)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (opParamInfo_.sequsedCmpKv.tensor != nullptr) {
+        const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
+        if (
+            ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedCmpKv.desc, SEQUSED_CMP_KV_NAME) ||
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(
+                &opParamInfo_.sequsedCmpKv.tensor->GetShape(), dimNumList, SEQUSED_CMP_KV_NAME)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus SMLATilingCheck::CheckBlockTable() const
