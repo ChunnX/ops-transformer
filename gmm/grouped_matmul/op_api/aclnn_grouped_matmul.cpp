@@ -1906,6 +1906,10 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
         return ACLNN_SUCCESS;
     }
     if (xSize == 1UL && weightSize > 1UL && ySize == 1UL) {
+        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, [%s] is "
+                   "not supported.",
+                   opName, "bias");
         CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
                    "check failed.",
@@ -2567,6 +2571,21 @@ static bool IsPerTileQuantMode(gmm::GroupedMatmulParams &params)
     return false;
 }
 
+static bool IsWeightNzSingleMultiSingle(const gmm::GroupedMatmulParams &params)
+{
+    return params.groupType == gmm::SPLIT_M && params.x->Size() == 1 && params.weight->Size() > 1 &&
+           params.y->Size() == 1 && params.apiVersion == gmm::GMMApiVersion::WeightNz;
+}
+
+static bool IsWeightNzSingleMultiSingleMxScaleNoE(const gmm::GroupedMatmulParams &params)
+{
+    if (!IsWeightNzSingleMultiSingle(params) || params.scaleOptional == nullptr || (*params.scaleOptional)[0] == nullptr) {
+        return false;
+    }
+    return (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+           (*params.scaleOptional)[0]->GetViewShape().GetDimNum() == gmm::MX_SPLIT_K_SCALE_DIM;
+}
+
 static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr,
                                                    const bool &isPerTileQuantMode)
 {
@@ -2574,8 +2593,10 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            if (!IsWeightNzSingleMultiSingleMxScaleNoE(params)) {
+                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
