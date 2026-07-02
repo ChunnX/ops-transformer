@@ -1419,24 +1419,40 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // Phase 1: 量化 + 共享专家 GMM1 (AIC) + mask/reset (AIV)
     if constexpr (g_coreType == AIV) {
         QuantProcessInRank();
+        // 通知 AIC 量化完成：所有 AIV 先同步确保量化全部完成，再由一个核写 flag
+        if (sharedExpertNum_ > 0) {
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();
+            if (aivCoreIdx_ == 0) {
+                __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
+                WriteGmByPassDCache(quantDoneFlag, int32_t(1));
+            }
+        }
         SendMaskCal();
         ResetFlagList();
     }
     if (sharedExpertNum_ > 0) {
         if constexpr (g_coreType == AIC) {
+            // 等待所有 AIV 量化完成
+            __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
+            while (ReadGmByPassDCache(quantDoneFlag) != int32_t(1)) {
+                AscendC::Nop<200>();
+            }
             SharedExpertGmm1();
         }
     }
 
-    // Sync after Phase 1
+    // 同步所有核（AIC + AIV），共享专家场景下 AIC 也在工作
     if (sharedExpertNum_ > 0) {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    } else if constexpr(g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<false>();  // MIXCore sync
+    } else {
+        if constexpr(g_coreType == AIV) {
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();  // V-only sync
+        }
     }
-    CrossRankSyncInWorldSize();
+    CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
@@ -1491,10 +1507,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // Shared expert SwiGLU: AIV processes GMM1 output after MoE GMM1
     if (sharedExpertNum_ > 0) {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<false>();  // MIXCore sync
         SharedExpertSwiglu();
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<false>();  // MIXCore sync
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
@@ -1517,15 +1533,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // Shared expert GMM2: AIC processes after MoE GMM2
     if (sharedExpertNum_ > 0) {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<false>();  // MIXCore sync
         if constexpr (g_coreType == AIC) {
             SharedExpertGmm2();
         }
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<false>();  // MIXCore sync
     } else {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        SyncAll<true>();  // V-only sync
     }
 
     // 4. 本卡数据Unpermute
