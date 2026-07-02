@@ -164,7 +164,6 @@ private:
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckParam();
     ge::graphStatus CheckShapeLimit();
-    ge::graphStatus CheckOptionalInput() const;
     ge::graphStatus CheckShapeDim() const;
     ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t sliceLen);

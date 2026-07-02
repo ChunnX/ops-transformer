@@ -168,7 +168,7 @@
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
-    const aclTensor  *dyRef,
+    aclTensor  *dyRef,
     const aclTensor  *cos,
     const aclTensor  *sin,
     const aclTensor  *xOptional,

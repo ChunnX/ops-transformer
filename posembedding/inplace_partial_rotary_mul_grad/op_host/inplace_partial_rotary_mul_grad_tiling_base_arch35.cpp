@@ -14,6 +14,7 @@
  */
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -24,10 +25,7 @@ namespace {
 constexpr int64_t DY_INPUT_INDEX = 0;
 constexpr int64_t COS_INDEX = 1;
 constexpr int64_t SIN_INDEX = 2;
-constexpr int64_t X_INDEX = 3;
 constexpr int64_t DY_OUTPUT_INDEX = 0;
-constexpr int64_t DCOS_INDEX = 1;
-constexpr int64_t DSIN_INDEX = 2;
 constexpr int64_t DIM_NUM = 4;
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
@@ -59,12 +57,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::GetPlatformInfo()
 
 ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckNullptr()
 {
-    int64_t checkInputIndexRange = X_INDEX;
-    int64_t checkOutputIndexRange = DSIN_INDEX;
-    if (context_->GetInputShape(X_INDEX) == nullptr) {
-        checkInputIndexRange = SIN_INDEX;
-        checkOutputIndexRange = DY_OUTPUT_INDEX;
-    }
+    int64_t checkInputIndexRange = SIN_INDEX;
+    int64_t checkOutputIndexRange = DY_OUTPUT_INDEX;
 
     for (int64_t i = 0; i <= checkInputIndexRange; i++) {
         auto desc = context_->GetInputDesc(i);
@@ -144,15 +138,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckShapeAllPositive(
                 OP_LOGE(context_, "the sin input has non positive shape."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckOutPutShapeAllPositive(DY_OUTPUT_INDEX) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "the dy output has non positive shape."), return ge::GRAPH_FAILED);
-    if (context_->GetInputShape(X_INDEX) != nullptr) {
-        OP_CHECK_IF(CheckInPutShapeAllPositive(X_INDEX) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context_, "the x input has non positive shape."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(CheckOutPutShapeAllPositive(DCOS_INDEX) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context_, "the dcos output has non positive shape."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(CheckOutPutShapeAllPositive(DSIN_INDEX) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context_, "the dsin output has non positive shape."), return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
+}
+return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::JudgeLayoutByShape(const gert::Shape &xShape,
@@ -202,26 +189,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckShapeDim() const
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dy", dimNumStr.c_str(), "4D");
         return ge::GRAPH_FAILED;
     }
-    if (context_->GetInputShape(X_INDEX) != nullptr) {
-        auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
-        auto &dcosShape = context_->GetOutputShape(DCOS_INDEX)->GetStorageShape();
-        auto &dsinShape = context_->GetOutputShape(DSIN_INDEX)->GetStorageShape();
-        if (xShape.GetDimNum() != DIM_NUM) {
-            std::string dimNumStr = std::to_string(xShape.GetDimNum());
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "4D");
-            return ge::GRAPH_FAILED;
-        }
-        if (dcosShape.GetDimNum() != DIM_NUM) {
-            std::string dimNumStr = std::to_string(dcosShape.GetDimNum());
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dcos", dimNumStr.c_str(), "4D");
-            return ge::GRAPH_FAILED;
-        }
-        if (dsinShape.GetDimNum() != DIM_NUM) {
-            std::string dimNumStr = std::to_string(dsinShape.GetDimNum());
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dsin", dimNumStr.c_str(), "4D");
-            return ge::GRAPH_FAILED;
-        }
-    }
     if (cosShape.GetDimNum() != DIM_NUM) {
         std::string dimNumStr = std::to_string(cosShape.GetDimNum());
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "4D");
@@ -257,40 +224,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckShapeLimit()
         std::string shapeMsg = ToString(dyInputShape) + " and " + ToString(dyOutputShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "dy", shapeMsg.c_str(),
                                                "The shapes of input dy and output dy should be the same");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (context_->GetInputShape(X_INDEX) != nullptr) {
-        return CheckOptionalInput();
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckOptionalInput() const
-{
-    auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
-    auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
-    auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
-    auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
-    auto &dcosShape = context_->GetOutputShape(DCOS_INDEX)->GetStorageShape();
-    auto &dsinShape = context_->GetOutputShape(DSIN_INDEX)->GetStorageShape();
-
-    if (xShape != dyShape) {
-        std::string shapeMsg = ToString(xShape) + " and " + ToString(dyShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and dy", shapeMsg.c_str(),
-                                               "The shapes of input x and input dy should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (cosShape != dcosShape) {
-        std::string shapeMsg = ToString(cosShape) + " and " + ToString(dcosShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and dcos", shapeMsg.c_str(),
-                                               "The shapes of input cos and output dcos should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (sinShape != dsinShape) {
-        std::string shapeMsg = ToString(sinShape) + " and " + ToString(dsinShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "sin and dsin", shapeMsg.c_str(),
-                                               "The shapes of input sin and output dsin should be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -336,18 +269,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckDtypeDyGroup()
         return ge::GRAPH_FAILED;
     }
 
-    if (context_->GetInputShape(X_INDEX) != nullptr) {
-        auto xDtype = context_->GetInputDesc(X_INDEX)->GetDataType();
-        if (xDtype != dtype_) {
-            std::string paramMsg = "x and dy";
-            std::string dtypeMsg = ToString(xDtype) + " and " + ToString(dtype_);
-            std::string reasonMsg = "The dtypes of input x and input dy should be the same";
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(), dtypeMsg.c_str(),
-                                                   reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -370,29 +291,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckDtypeCosGroup()
                                                reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-
-    if (context_->GetInputShape(X_INDEX) != nullptr) {
-        auto dcosDtype = context_->GetOutputDesc(DCOS_INDEX)->GetDataType();
-        if (dcosDtype != cosDtype) {
-            std::string paramMsg = "dcos and cos";
-            std::string dtypeMsg = ToString(dcosDtype) + " and " + ToString(cosDtype);
-            std::string reasonMsg = "The dtypes of output dcos and input cos should be the same";
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(), dtypeMsg.c_str(),
-                                                   reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-
-        auto dsinDtype = context_->GetOutputDesc(DSIN_INDEX)->GetDataType();
-        if (dsinDtype != cosDtype) {
-            std::string paramMsg = "dsin and cos";
-            std::string dtypeMsg = ToString(dsinDtype) + " and " + ToString(cosDtype);
-            std::string reasonMsg = "The dtypes of output dsin and input cos should be the same";
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(), dtypeMsg.c_str(),
-                                                   reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
