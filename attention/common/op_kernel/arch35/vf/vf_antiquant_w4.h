@@ -607,7 +607,7 @@ __simd_vf__ void AntiquantVFImplW4PerTokenD256(__ubuf__ uint8_t* ubSrcAddr, __ub
   MicroAPI::MaskReg kvMaskAll = MicroAPI::CreateMask<KV_T, MicroAPI::MaskPattern::ALL>();
   MicroAPI::MaskReg qMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
 
-  uint32_t blockStride = dealRowCount + 1;
+  uint32_t blockStride = 1 + dealRowCount;
   uint32_t repeatStride = 1;
   MicroAPI::UnalignRegForLoad u0;
   MicroAPI::UnalignRegForLoad u1;
@@ -667,8 +667,8 @@ __simd_vf__ void AntiquantVFImplW4PerTokenD512(__ubuf__ uint8_t* ubSrcAddr, __ub
 
   uint32_t blockStride = dealRowCount + 1;
   uint32_t repeatStride = 1;
-  MicroAPI::UnalignRegForLoad u0;
   MicroAPI::UnalignRegForLoad u1;
+  MicroAPI::UnalignRegForLoad u0;
   MicroAPI::LoadUnAlignPre(u0, ubScaleAddr);
   if constexpr (hasOffset) {
     MicroAPI::LoadUnAlignPre(u1, ubOffsetAddr);
