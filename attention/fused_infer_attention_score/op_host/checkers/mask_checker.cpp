@@ -227,7 +227,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName,
                 "query_padding_size and kv_padding_size",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
@@ -235,14 +235,14 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
         // 不支持PSE
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pse_shift",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", pse_shift must be empty").c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", key_shared_prefix and value_shared_prefix must be empty").c_str()),

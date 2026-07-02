@@ -32,28 +32,28 @@ namespace optiling {
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "shape of query cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query", "shape of query cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "desc of query cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query", "desc of query cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "shape of key cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "key", "shape of key cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "desc of key cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "key", "desc of key cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "shape of value cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "value", "shape of value cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "desc of value cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "value", "desc of value cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "output", "shape of output cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "output", "shape of output cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "output", "desc of output cannot be empty"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "output", "desc of output cannot be empty"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -198,7 +198,7 @@ ge::graphStatus FiaInfoParser::GetLegacyIfaFlag()
 ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actualSeqLengths",
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "actualSeqLengths",
             "When inputLayout is " + LayoutToSerialString(qLayout_) + ", actualSeqLengths cannot be empty");
         return ge::GRAPH_FAILED;
     }
@@ -680,7 +680,7 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
         kvLayout_ = qLayout_;
     } else {
         OP_CHECK_IF(kCache_.empty() || kCache_[0] == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "kCache", "kCache cannot be empty"),
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "kCache", "kCache cannot be empty"),
             return ge::GRAPH_FAILED);
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
         if (keyDimNum == 3U) {
@@ -810,7 +810,7 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
 ge::graphStatus FiaInfoParser::GetBlockSize()
 {
     if (opParamInfo_.blockSize == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_size", "block_size cannot be empty");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "block_size", "block_size cannot be empty");
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);

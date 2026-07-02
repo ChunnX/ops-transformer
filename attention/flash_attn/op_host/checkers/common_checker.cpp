@@ -381,7 +381,7 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
         }
         std::string reason = "block_table cannot be empty when layout_kv is " +
             LayoutToSerialString(faInfo.kvLayout);
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }
 

@@ -174,14 +174,14 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // pseType为2或3时，使能alibi，pseShift必须传
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.tensor == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pseShift",
                         "pseShift cannot be empty when pseType is 2 or 3"),
                     return ge::GRAPH_FAILED);
     }
     // 校验pseShift的desc的存在性，若pseShift存在，其desc也必须存在
     if (fiaInfo.opParamInfo.pseShift.tensor != nullptr) {
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.desc == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName,
                         "pseShift", "dtype of pseShift cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
@@ -219,7 +219,7 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
     if (fiaInfo.enableAlibiPse || fiaInfo.pseShiftFlag) {
         // D不等长时，不支持pse
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pseShift",
                         "pseShift must be empty when D of query and key is not equal to D of value"),
                     return ge::GRAPH_FAILED);
     }
@@ -227,7 +227,7 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         // 使能alibi时，MLA不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pseShift",
                         "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
     } else if (fiaInfo.pseShiftFlag) {
         if (fiaInfo.isMaxWorkspace) {
@@ -236,12 +236,12 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         // 非alibi时，MLA，不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pseShift",
                         "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
         // pse使能时，若inputLayout为BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD，不支持pse
         OP_CHECK_IF(layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD" || layoutStr == "TND" || layoutStr == "NTD" ||
                         layoutStr == "NTD_TND" || layoutStr == "TND_NTD",
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pseShift",
                         "pseShift must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD"),
                     return ge::GRAPH_FAILED);
     }

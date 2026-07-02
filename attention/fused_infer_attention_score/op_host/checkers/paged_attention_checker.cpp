@@ -88,7 +88,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
 ge::graphStatus PagedAttentionChecker::CheckBlockTableExistence(const FiaTilingInfo &fiaInfo) const
 {
     OP_CHECK_IF(fiaInfo.opParamInfo.blockTable.tensor == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "block_table",
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "block_table",
             "When page attention is enabled, block_table cannot be empty"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -98,12 +98,12 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
 {
     OP_CHECK_IF((fiaInfo.opParamInfo.queryPaddingSize.tensor != nullptr) ||
         (fiaInfo.opParamInfo.kvPaddingSize.tensor != nullptr),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_padding_size",
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "query_padding_size",
             "When page attention is enabled, query_padding_size must be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.opParamInfo.keySharedPrefix.tensor != nullptr) ||
         (fiaInfo.opParamInfo.valueSharedPrefix.tensor != nullptr),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
             "When page attention is enabled, key_shared_prefix must be empty"),
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {

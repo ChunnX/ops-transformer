@@ -49,7 +49,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     if (fiaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseShape = fiaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseShape == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "softmax_lse",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "softmax_lse",
                 "When softmaxLseFlag is true, softmaxLse cannot be empty"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,

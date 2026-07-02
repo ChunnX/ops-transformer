@@ -138,7 +138,7 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     }
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::BAND)) {
         OP_CHECK_IF(attnMaskTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "attn_mask",
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "attn_mask",
                         "The value of attn_mask cannot be nullptr when the mask_mode=4 (band mode)"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.winLeft < -1,
