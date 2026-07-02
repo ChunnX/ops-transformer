@@ -43,10 +43,23 @@ else:
 
 print("files:", locals()["testcase_files"])
 
+def _get_testcase_name(test_data, fallback):
+    if not isinstance(test_data, dict):
+        return fallback
+    params = test_data.get("params", {})
+    return (
+        test_data.get("testcase_name")
+        or test_data.get("Testcase_Name")
+        or params.get("testcase_name")
+        or params.get("Testcase_Name")
+        or fallback
+    )
+
 def call_smla_npu(testcase_files):   # 初始化参数和tensor
     print("执行文件: ", testcase_files)
     torch_npu.npu.set_device(0)
     test_data = torch.load(testcase_files, map_location="cpu")
+    testcase_name = _get_testcase_name(test_data, os.path.splitext(os.path.basename(testcase_files))[0])
     npu_result = None
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(test_data)
@@ -59,9 +72,13 @@ def call_smla_npu(testcase_files):   # 初始化参数和tensor
         result = "Failed"
         fulfill_percent = 0
     utils.save_result(result, fulfill_percent, test_data['params'], result_path)
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{testcase_name} 精度:{fulfill_percent:.2f}%")
+
+testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]]
 
 @pytest.mark.ci
-@pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
+@pytest.mark.parametrize("testcase_files", locals()["testcase_files"], ids=testcase_ids)
 def test_sparse_flash_mla(testcase_files):   # 初始化参数和tensor
     with ThreadPoolExecutor(max_workers=1) as executor:
         # 创建当前用例子线程
