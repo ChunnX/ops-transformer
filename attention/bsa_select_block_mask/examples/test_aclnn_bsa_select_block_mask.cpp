@@ -172,7 +172,7 @@ int main() {
         static_cast<int64_t>(numKHeads),
         scaleValue, 
         sparsity, 
-        maskTensor, 
+        maskTensor,
         &workspaceSize, 
         &executor
     );

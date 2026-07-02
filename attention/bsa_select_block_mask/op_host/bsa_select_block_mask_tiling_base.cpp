@@ -17,6 +17,35 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
+bool BSASelectBlockMaskTilingBase::IsA5Platform() const
+{
+    return socVersion == platform_ascendc::SocVersion::ASCEND950;
+}
+
+uint32_t BSASelectBlockMaskTilingBase::GetAivRatio() const
+{
+    if (aicNum == 0 || aivNum == 0 || aicNum > aivNum) {
+        return AIC_AIV_RATIO;
+    }
+    return std::max(1U, aivNum / aicNum);
+}
+
+uint32_t BSASelectBlockMaskTilingBase::CalcTschBlockDim(
+    uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const
+{
+    if (aicCoreNum == 0 || aivCoreNum == 0 || aicCoreNum > aivCoreNum) {
+        return sliceNum;
+    }
+    uint32_t ratio = aivCoreNum / aicCoreNum;
+    return (sliceNum + ratio - 1) / ratio;
+}
+
+uint32_t BSASelectBlockMaskTilingBase::CalcLaunchAivNum(uint32_t activeCoreNum) const
+{
+    uint64_t launchAivNum = static_cast<uint64_t>(activeCoreNum) * GetAivRatio();
+    return static_cast<uint32_t>(std::min<uint64_t>(launchAivNum, aivNum));
+}
+
 ge::graphStatus BSASelectBlockMaskTilingBase::CheckContext()
 {
     auto attrs = context_->GetAttrs();
@@ -215,9 +244,7 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     // yBlocks 分核（用于 Key 池化阶段）
     // uint32_t activeYVecCoreNum = std::min(yBlocks, coreNum);
     
-    // A2:A3 vec : cube = 2:1
-    uint32_t cv_radio = aivNum / aicNum; // cv配比
-    uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * cv_radio);
+    uint32_t activeYVecCoreNum = std::min(yBlocks, CalcLaunchAivNum(activeCoreNum));
     uint32_t baseYRows = yBlocks / activeYVecCoreNum;
     uint32_t extraYCores = yBlocks % activeYVecCoreNum;
     uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
@@ -236,15 +263,16 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * (sizeof(float) / 2);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
-    // FP16: 2 bytes per element
     uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
     uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
 
     uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;
     uint64_t tileLen = std::min(static_cast<uint64_t>(7168), std::max(static_cast<uint64_t>(128), sortLen));
     uint64_t totalTileNum = (sortLen + tileLen - 1) / tileLen;
-    uint64_t topkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * aivNum + aivNum + aivNum) * sizeof(int32_t);
-    uint64_t topkTileDataSize = static_cast<uint64_t>(totalTileNum) * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
+    uint32_t launchAivNum = IsA5Platform() ? CalcLaunchAivNum(multiCoreParams_->get_activeCoreNum()) : aivNum;
+    uint64_t topkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * launchAivNum + launchAivNum +
+        launchAivNum) * sizeof(int32_t);
+    uint64_t topkTileDataSize = totalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
     uint64_t topkWorkspaceSize = topkHeaderSize + topkTileDataSize;
 
     outputParams_->set_qCmpSize(qCmpSize);
@@ -313,17 +341,23 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetPlatformInfo()
         l1Size = compileInfoPtr->l1Size;
         l0cSize = compileInfoPtr->l0cSize;
         l2CacheSize = compileInfoPtr->l2CacheSize;
+        socVersion = compileInfoPtr->socVersion;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
+        socVersion = ascendcPlatform.GetSocVersion();
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0cSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
-    OP_LOGD(opName, "get platform from compileInfo. aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
-            aivNum, aicNum, ubSize, l1Size, l0cSize);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0,
+        OP_LOGE(opName, "invalid platform core num, aivNum[%u] aicNum[%u].", aivNum, aicNum),
+        return ge::GRAPH_FAILED);
+    OP_LOGD(opName, "platform info: socVersion(%d) aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) "
+            "l0cSize(%lu) l2CacheSize(%lu).",
+            static_cast<int32_t>(socVersion), aivNum, aicNum, ubSize, l1Size, l0cSize, l2CacheSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -331,14 +365,21 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetPlatformInfo()
 ge::graphStatus BSASelectBlockMaskTilingBase::DoOpTiling()
 {
     CalcMultiCoreParams();
-    context_->SetBlockDim(multiCoreParams_->get_activeCoreNum());
+    uint32_t launchAivNum = CalcLaunchAivNum(multiCoreParams_->get_activeCoreNum());
+    uint32_t blockDim = IsA5Platform()
+        ? CalcTschBlockDim(launchAivNum, aicNum, aivNum)
+        : multiCoreParams_->get_activeCoreNum();
+    context_->SetBlockDim(blockDim);
     context_->SetScheduleMode(SCHEDULE_MODE_ALL_CORE);
 
     CalcOutputParams();
 
-    OP_LOGD(opName, "DoOpTiling: activeCoreNum[%u] rowsPerCore[%u] xBlocks[%u].",
-            multiCoreParams_->get_activeCoreNum(), multiCoreParams_->get_rowsPerCore(),
-            multiCoreParams_->get_totalRows());
+    OP_LOGD(opName, "DoOpTiling: socVersion[%d] blockDim[%u] activeCoreNum[%u] activeYVecCoreNum[%u] "
+            "launchAivNum[%u] rowsPerCore[%u] yBlocksPerCore[%u] xBlocks[%u] yBlocks[%u].",
+            static_cast<int32_t>(socVersion), blockDim,
+            multiCoreParams_->get_activeCoreNum(), multiCoreParams_->get_activeYCoreNum(), launchAivNum,
+            multiCoreParams_->get_rowsPerCore(),
+            multiCoreParams_->get_yBlocksPerCore(), multiCoreParams_->get_totalRows(), yBlocks);
     return ge::GRAPH_SUCCESS;
 }
 
