@@ -35,7 +35,7 @@ constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2L;
 constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr size_t FIRST_TENSOR_INDEX = 0UL;
-constexpr size_t MIN_WEIGHT_SCALE_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
 } // namespace
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const aclTensor *x,
@@ -58,10 +58,10 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
 
     int64_t m = x->GetViewShape().GetDim(X_M_DIM_INDEX);
     const auto &weightScaleShape = (*weightScale)[FIRST_TENSOR_INDEX]->GetViewShape();
-    if (weightScaleShape.GetDimNum() < MIN_WEIGHT_SCALE_DIM_NUM) {
+    if (weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulActivationQuant", "weightScale",
             std::to_string(weightScaleShape.GetDimNum()),
-            "the shape dim of weightScale must be at least 3");
+            "the shape dim of weightScale must be 4");
         return std::tuple(nullptr, nullptr);
     }
     int64_t n = transposeWeight ? weightScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
