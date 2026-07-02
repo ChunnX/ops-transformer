@@ -1504,11 +1504,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    // Shared expert SwiGLU: AIV processes GMM1 output after MoE GMM1
+    // Shared expert SwiGLU: AIV 处理共享专家 GMM1 输出（GMM1 在 Phase 1 已完成，数据就绪）
     if (sharedExpertNum_ > 0) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<false>();  // MIXCore sync
-        SharedExpertSwiglu();
+        if constexpr(g_coreType == AIV) {
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();  // V-only sync，确保所有 AIV 完成 ExpertTokenNumCopyOut
+            SharedExpertSwiglu();
+        }
+        // 同步所有核，确保 SwiGLU 完成后进入 MoE GMM2
         PipeBarrier<PIPE_ALL>();
         SyncAll<false>();  // MIXCore sync
     }
