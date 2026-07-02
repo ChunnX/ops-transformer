@@ -43,9 +43,9 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def qliv2(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
+    cpu_result, npu_result, topk_value, output_idx_offset, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
     if npu_result != None:
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
+        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
     else:
         result = "Failed"
         fulfill_percent = 0
@@ -81,6 +81,7 @@ def qliv2(testcase_files):   # 初始化参数和tensor
         "q_scale_datarange":params[26],
         "k_scale_datarange":params[27],
         "cmp_ratio":params[28],
+        "output_idx_offset": params[29],
         "result":result,
         "fulfill_percent":fulfill_percent
     }
