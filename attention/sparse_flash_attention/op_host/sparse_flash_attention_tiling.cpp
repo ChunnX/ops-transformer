@@ -1400,6 +1400,25 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ropeHeadDim_",
             std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
+    
+    if (isA5_) {            
+        OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == SFALayout::BSND),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "query",
+                std::to_string(s1Size_).c_str(),
+                "BSND case input query dim 1 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(s2Size_ <= 0 && (kvLayout_ == SFALayout::BSND),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key",
+                std::to_string(s2Size_).c_str(),
+                "BSND case input key dim 1 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(kvTSize_ <= 0 && (kvLayout_ == SFALayout::TND),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of key", std::to_string(kvTSize_).c_str(),
+                "T_size of key should be greater than 0"),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
