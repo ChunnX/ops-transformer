@@ -26,8 +26,8 @@
 #include <string>
 #include <vector>
 
-#include "../../distribute_barrier/op_kernel/distribute_barrier_tiling.h"
-#include "../../distribute_barrier/op_host/op_tiling/distribute_barrier_tiling_helper.h"
+#include "../../../distribute_barrier/op_kernel/distribute_barrier_tiling.h"
+#include "../../../distribute_barrier/op_host/op_tiling/distribute_barrier_tiling_helper.h"
 // #include "graph/utils/op_desc_utils.h"   // 依赖 ge
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
