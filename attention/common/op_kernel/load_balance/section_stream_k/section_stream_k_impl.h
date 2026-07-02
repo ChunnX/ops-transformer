@@ -770,7 +770,7 @@ inline void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContex
     result.fdTaskNum++;
 }
 
-inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult &noFd,
+inline bool SectionStreamKImpl::CheckChooseWithFd(uint32_t sectionNum, const SectionStreamKImplResult &noFd,
     const SectionStreamKImplResult &withFd)
 {
     if (!m_param.fdOn) {
