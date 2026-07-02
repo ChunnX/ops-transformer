@@ -16,7 +16,7 @@
 #define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_AICPU_ARCH35_H
 
 #include "../dense_lightning_indexer_softmax_lse_metadata_aicpu.h"
-#include "../../dense_lightning_indexer_softmax_lse/op_kernel/dense_lightning_indexer_softmax_lse_metadata.h"
+#include "../../../dense_lightning_indexer_softmax_lse/op_kernel/dense_lightning_indexer_softmax_lse_metadata.h"
 
 #include <algorithm>
 
