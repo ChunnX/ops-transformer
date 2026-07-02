@@ -17,8 +17,8 @@ import pytest
 import random
 import torch
 
-DATA_RANGE_LEFT = 1
-DATA_RANGE_RIGHT = 1
+DATA_RANGE_LEFT = -10
+DATA_RANGE_RIGHT = 10
 
 # 三种运行模式
 # 0 不切S2

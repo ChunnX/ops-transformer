@@ -232,9 +232,9 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"] if not is_save_pt else "full"),
             "actlen_mode": params.get("actlen_mode", ["full"] if not is_save_pt else "full"),
             "template_mode": params.get("template_mode", [None] if not is_save_pt else None),
-            "q_datarange": params.get("q_datarange", ["[-1000, 1000]"] if not is_save_pt else "[-1000, 1000]"),
-            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-1000, 1000]"] if not is_save_pt else "[-1000, 1000]"),
-            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-1000, 1000]"] if not is_save_pt else "[-1000, 1000]"),
+            "q_datarange": params.get("q_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
+            "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
+            "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False),
             "return_softmax_lse": params.get("return_softmax_lse", ["full"] if not is_save_pt else "full")
         }
