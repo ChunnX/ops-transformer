@@ -87,6 +87,9 @@ protected:
 
     static constexpr uint32_t KSCALE_S_MTE2_EVENT = EVENT_ID7;
     static constexpr uint32_t MTE3_MTE2_EVENT = EVENT_ID0;
+    // scoreGm 读写跨轮同步：topK 的 MTE2 读 scoreGm 完成后 Set，vec1 的 MTE3 写 scoreGm 前 Wait
+    // 防止双 bn2 同核场景下 vec1(B) 写覆盖 topK(A) 未读完的 scoreGm
+    static constexpr uint32_t MTE2_MTE3_EVENT = EVENT_ID0;
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
@@ -290,6 +293,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    // 预置一次，使第一轮 vec1 写 scoreGm 前不阻塞
+    SetFlag<HardEvent::MTE2_MTE3>(MTE2_MTE3_EVENT);
 }
 
 template <typename QLIV2T>
@@ -309,6 +314,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    WaitFlag<HardEvent::MTE2_MTE3>(MTE2_MTE3_EVENT);
 }
 
 template <typename QLIV2T>
@@ -522,6 +528,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     }
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+    // 等待上一轮 topK 的 MTE2 读 scoreGm 完成，防止双 bn2 同核时 MTE3 写覆盖未读数据
+    WaitFlag<HardEvent::MTE2_MTE3>(MTE2_MTE3_EVENT);
     // outUB_ --->  scoreGm
     int64_t vec1OutGmOffset = blockId_ % CVRATIO == 0 ? curS2Idx :
                             s1BaseSizePerAIV
@@ -848,6 +856,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
         }
     }
+    // 通知下一轮 vec1：本轮 topK 的 MTE2 读 scoreGm 已完成，可以安全写入
+    SetFlag<HardEvent::MTE2_MTE3>(MTE2_MTE3_EVENT);
 }
 
 template <typename QLIV2T>
