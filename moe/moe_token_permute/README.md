@@ -62,7 +62,7 @@
     <tr>
       <td>indices</td>
       <td>输入</td>
-      <td>输入indices，对应公式中的`indices`。</td>
+      <td>输入indices，对应公式中的`Indices`。tokens数据类型为INT8时，元素个数不大于`10240`。</td>
       <td>INT32、INT64</td>
       <td>ND</td>
     </tr>
