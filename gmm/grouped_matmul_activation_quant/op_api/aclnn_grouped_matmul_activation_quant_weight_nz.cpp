@@ -277,45 +277,6 @@ bool IsTransposeForMxShape(const aclTensor *tensor)
            strides[secondLastDim] == expectedSecondLastStride;
 }
 
-bool TryInferTransposeByShape(const aclTensor *x, const aclTensor *groupList, const aclTensor *weight,
-                              const aclTensor *weightScale, bool inputTransposeWeight, bool &transposeWeight)
-{
-    const auto &weightShape = weight->GetViewShape();
-    const auto &weightScaleShape = weightScale->GetViewShape();
-    if (weightShape.GetDimNum() != WEIGHT_LOGICAL_DIM_NUM ||
-        weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM) {
-        return false;
-    }
-    int64_t e = groupList->GetViewShape().GetDim(DIM_0);
-    int64_t k = x->GetViewShape().GetDim(DIM_1);
-
-    int64_t nonTransN = weightScaleShape.GetDim(DIM_2);
-    bool nonTransMatched = weightShape.GetDim(DIM_0) == e &&
-                           weightShape.GetDim(DIM_1) == k &&
-                           weightShape.GetDim(DIM_2) == nonTransN &&
-                           weightScaleShape.GetDim(DIM_0) == e &&
-                           weightScaleShape.GetDim(DIM_1) == CeilDivInt64(k, MX_GROUP_SIZE) &&
-                           weightScaleShape.GetDim(DIM_3) == MX_SCALE_PAIR;
-
-    int64_t transN = weightScaleShape.GetDim(DIM_1);
-    bool transMatched = weightShape.GetDim(DIM_0) == e &&
-                        weightShape.GetDim(DIM_1) == transN &&
-                        weightShape.GetDim(DIM_2) == k &&
-                        weightScaleShape.GetDim(DIM_0) == e &&
-                        weightScaleShape.GetDim(DIM_2) == CeilDivInt64(k, MX_GROUP_SIZE) &&
-                        weightScaleShape.GetDim(DIM_3) == MX_SCALE_PAIR;
-
-    if (!nonTransMatched && !transMatched) {
-        return false;
-    }
-    if (nonTransMatched && transMatched) {
-        transposeWeight = inputTransposeWeight;
-        return true;
-    }
-    transposeWeight = transMatched;
-    return true;
-}
-
 aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
                                                       const aclTensorList *&newTensorList,
                                                       aclOpExecutor *executor)
@@ -376,9 +337,8 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, const aclTensor *xScaleOptional,
-                             const aclTensorList *&weight, const aclTensorList *&weightScale, bool &transposeWeight,
-                             aclOpExecutor *executor)
+aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional, const aclTensorList *&weight,
+                             const aclTensorList *&weightScale, bool &transposeWeight, aclOpExecutor *executor)
 {
     const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
@@ -401,11 +361,6 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, con
                   ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
-    }
-
-    bool shapeTransposeWeight = transposeWeight;
-    if (TryInferTransposeByShape(x, groupList, w, wScale, transposeWeight, shapeTransposeWeight)) {
-        transposeWeight = shapeTransposeWeight;
     }
     return ACLNN_SUCCESS;
 }
@@ -644,7 +599,7 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
             op::ToString(groupList->GetDataType()).GetString(), "the dtype of groupList must be INT64"));
     checkRet = CheckMxQuantFormat(x, groupList, w, wScale, xScaleOptional, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    checkRet = CheckMXTranspose(x, groupList, xScaleOptional, weight, weightScale, transposeWeight, executor);
+    checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight, executor);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     w = (*weight)[FIRST_TENSOR_INDEX];
     wScale = (*weightScale)[FIRST_TENSOR_INDEX];
