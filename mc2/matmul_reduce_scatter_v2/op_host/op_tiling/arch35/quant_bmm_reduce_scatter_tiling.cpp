@@ -386,6 +386,9 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     );
     if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        const uint64_t dataCount = (args_.rankDim == 0U) ? 0U :
+            (static_cast<uint64_t>(args_.orgMValue) / args_.rankDim) * args_.orgNValue;
+        mc2CcTilingConfig.SetDataCount(dataCount);
         OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
     } else {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);

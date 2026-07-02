@@ -203,6 +203,10 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.args_.geAType,
                             contextInfo_.args_.geAType)
             .build();
+    if (hcclServerEngine == Mc2Comm::ENGINE_AICPU) {
+        const uint64_t commM = (inferredInfo_.tailM > inferredInfo_.tileM) ? inferredInfo_.tailM : inferredInfo_.tileM;
+        allToAllTilingConfig.SetDataCount(commM * contextInfo_.args_.orgKValue);
+    }
     if (!allToAllBuilder.isSuccess()) {
         return ge::GRAPH_FAILED;
     }

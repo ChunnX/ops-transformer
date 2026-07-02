@@ -49,6 +49,7 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
             return ge::GRAPH_FAILED);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        mc2CcTilingConfig.SetDataCount(static_cast<uint64_t>(args_.orgMValue) * args_.orgNValue);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
@@ -78,6 +79,9 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
             return ge::GRAPH_FAILED);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        const uint64_t dataCount = (args_.rankDim == 0U) ? 0U :
+            static_cast<uint64_t>(args_.orgMValue) * (args_.orgNValue / args_.rankDim);
+        mc2CcTilingConfig.SetDataCount(dataCount);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }

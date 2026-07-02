@@ -219,6 +219,9 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     mc2CcTilingConfig.SetCommEngine(commEngine);
+    if (commEngine == Mc2Comm::ENGINE_AICPU) {
+        mc2CcTilingConfig.SetDataCount(static_cast<uint64_t>(args_.orgMValue) * args_.orgKValue);
+    }
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);

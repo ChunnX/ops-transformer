@@ -246,6 +246,10 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
                             contextInfo_.hcclGeType)
             .withCommEngine(hcclServerEngine)
             .build();
+    if (hcclServerEngine == Mc2Comm::ENGINE_AICPU) {
+        const uint64_t commM = (inferredInfo_.tailM > inferredInfo_.tileM) ? inferredInfo_.tailM : inferredInfo_.tileM;
+        allToAllTilingConfig.SetDataCount(commM * contextInfo_.args_.orgKValue);
+    }
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
