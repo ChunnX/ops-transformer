@@ -38,6 +38,8 @@ constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
@@ -70,11 +72,13 @@ ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataT
         case QUANT_MODE_INT4_DYNAMIC:
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
         case QUANT_MODE_FP8_GROUP_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
         case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
         case QUANT_MODE_FP8_GROUP_E4M3FN:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
         case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
@@ -165,6 +169,8 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
             return MakePerTokenScaleDesc(totalLength);
         case QUANT_MODE_MXFP8_E5M2:
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
             return MakeMxfp8ScaleDesc(totalLength, cols);
         case QUANT_MODE_MXFP4_E2M1:
             return MakeMxfp4ScaleDesc(totalLength, cols);
@@ -310,14 +316,15 @@ void RunArch35ExtendedTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCa
                                ge::DataType xDataType, std::vector<int64_t> aciveExpertRange, int64_t rowIdxType,
                                const std::vector<int64_t> &scaleShape, ge::DataType scaleDtype,
                                const std::vector<int64_t> &offsetShape, ge::DataType offsetDtype,
-                               ge::DataType expandedXDtypeOverride, ge::graphStatus expectResult)
+                               ge::DataType expandedXDtypeOverride, ge::graphStatus expectResult,
+                               uint64_t expectTilingKey = SKIP_TILING_KEY_VALIDATION)
 {
     optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
     gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
         N, H, K, expertCapacity, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, xDataType,
         aciveExpertRange, rowIdxType, scaleShape, scaleDtype, offsetShape, offsetDtype, expandedXDtypeOverride,
         &compileInfo);
-    ExecuteTestCase(tilingContextPara, expectResult, SKIP_TILING_KEY_VALIDATION, "", {});
+    ExecuteTestCase(tilingContextPara, expectResult, expectTilingKey, "", {});
 }
 } // namespace
 
@@ -673,6 +680,26 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_e4m3)
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP8_E4M3FN, ge::DT_BF16,
                               {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
                               ge::GRAPH_SUCCESS);
+}
+
+// MXFP8 RoundScale + Amax E5M2 fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_roundscale_amax_e5m2)
+{
+    int64_t h = 65;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true,
+                              QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2, ge::DT_FLOAT16, {180, 192},
+                              ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS, 10170000);
+}
+
+// MXFP8 RoundScale + Amax E4M3FN fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_roundscale_amax_e4m3)
+{
+    int64_t h = 97;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true,
+                              QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN, ge::DT_BF16, {180, 192},
+                              ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS, 10171000);
 }
 
 // MXFP4 E2M1 fullload

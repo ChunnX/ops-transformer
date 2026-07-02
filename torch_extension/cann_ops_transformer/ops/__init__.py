@@ -10,10 +10,11 @@
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
+from .moe_token_permute import moe_token_permute
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
+    get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
@@ -35,4 +36,4 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
-from .elastic_buffer import ElasticBuffer
+from .elastic_buffer import ElasticBuffer, EPHandle
