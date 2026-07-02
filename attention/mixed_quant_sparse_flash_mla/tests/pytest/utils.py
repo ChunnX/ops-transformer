@@ -299,9 +299,9 @@ def fill_none_params(params_dict):
         if seqused_cmp_kv is None:
             seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
         if cu_seqlens_cmp_kv is None:
-            cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
+            cu_seqlens_cmp_kv = gen_cu_seqlens_from_seqused(seqused_cmp_kv)
         if cmp_residual_kv is None:
-            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
+            cmp_residual_kv = [0] * B
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
             if slot_len < seqused_cmp_kv[i]:

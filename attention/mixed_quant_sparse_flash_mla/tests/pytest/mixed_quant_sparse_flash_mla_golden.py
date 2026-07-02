@@ -144,6 +144,7 @@ class GeneralizedSFAQuant:
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
             cur_cmp_residual = cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            cur_virtual_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G:(i_N2 + 1) * G]
@@ -170,9 +171,9 @@ class GeneralizedSFAQuant:
 
                     if self.template_run_mode == "CSA" and cmp_sparse_indices_bnsd is not None:
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-                        empty_flag, cur_cmp_k = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
+                        empty_flag, cur_cmp_k = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_virtual_restored, cur_act_q)
                     elif self.template_run_mode == "HCA":
-                        empty_flag, cur_cmp_k = self.mask_cmp_kv(cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
+                        empty_flag, cur_cmp_k = self.mask_cmp_kv(cmp_k_bnsd, i_B, i_N2, i_S1, cur_virtual_restored, cur_act_q)
                     else:
                         empty_flag = True
                         cur_cmp_k = []
@@ -415,17 +416,17 @@ def get_max_adjacent_diff(cu_seqlens_q):
 
     return max_diff
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, virtual_restored_len, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
-    # 参数：seqused_ori_kv为原始KV真实长度列表（压缩前的长度）
+    # 参数：virtual_restored_len为cmp还原后的虚拟ori长度列表（seqused_cmp_kv * cmp_ratio + cmp_residual）
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_ori_kv = seqused_ori_kv[i_B]  # 原始KV真实长度
+        cur_restored = virtual_restored_len[i_B]  # cmp还原后的虚拟ori长度
         for i_N2 in range(N2):
             for i_S1 in range(S1):
                 if cmp_mask_mode == 3:
-                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
-                    cur_valid_s2_max = math.floor((cur_ori_kv - S1 + i_S1 + 1) / cmp_ratio)
+                    # causal mask计算：虚拟ori长度中的可见长度转换为压缩block数量
+                    cur_valid_s2_max = math.floor((cur_restored - S1 + i_S1 + 1) / cmp_ratio)
                 else:
                     raise ValueError(f"cmp_mask_mode only support 3, which is {cmp_mask_mode}")
 
@@ -435,17 +436,17 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mas
                 cmp_sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, virtual_restored_len, cmp_mask_mode):
     cmp_sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
         cur_act_q = seqused_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        cur_ori_kv = seqused_ori_kv[i_B]
+        cur_restored = virtual_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 if cmp_mask_mode == 3:
-                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
-                    cur_valid_s2_max = math.floor((cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+                    # causal mask计算：虚拟ori长度中的可见长度转换为压缩block数量
+                    cur_valid_s2_max = math.floor((cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio)
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
@@ -861,7 +862,7 @@ def gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_d
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
 def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_head_dim, tile_size,
                quant_scale_head_dim, d_combined_quant_2, pad_d, block_num2, block_size2, cmp_max_s2,
-               cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_ori_kv,
+               cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_cmp_kv, cmp_residual_kv,
                cmp_ratio, cmp_mask_mode, template_run_mode,
                quant_param_range_left, quant_param_range_right):
     if cmp_max_s2 == 0:
@@ -964,12 +965,13 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_hea
     # --- 4. 生成 Sparse Indices ---
     cmp_sparse_indices = None
     if template_run_mode == "CSA" and cmp_max_s2 != 0:
+        virtual_restored_len = [seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)]
         if layout_q == "BSND":
             S1 = int(seqused_q[0]) if isinstance(seqused_q, list) else int(seqused_q)
-            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, virtual_restored_len, cmp_mask_mode)
         elif layout_q == "TND":
             T1 = int(cu_seqlens_q[-1])
-            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, virtual_restored_len, cmp_mask_mode)
 
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
 
@@ -977,7 +979,7 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_hea
 
 def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size,
                quant_scale_head_dim, d_aligned_32, pad_d, block_num2, block_size2, cmp_max_s2,
-               cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
+               cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
                quant_param_range_left, quant_param_range_right, quant_mode, layout_kv="PA_BBND"):
     if cmp_max_s2 == 0:
         return None, None, None, None
@@ -1063,10 +1065,11 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     # generate cmp_sparse_indices
     cmp_sparse_indices = None
     if template_run_mode == "CSA" and cmp_max_s2 != 0:
+        virtual_restored_len = [seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)]
         if layout_q == "BSND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, virtual_restored_len, cmp_mask_mode)
         elif layout_q == "TND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, virtual_restored_len, cmp_mask_mode)
 
     return cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices
 
@@ -1187,13 +1190,13 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if quant_mode == 1:
             cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv(q_type, layout_q, cmp_kv_type,
                 B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_32, pad_d,
-                block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv,
+                block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_residual_kv,
                 cmp_ratio, cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, quant_mode, layout_kv)
         else:
             cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv_quant_2_pa(
                 q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_head_dim, tile_size,
                 quant_scale_head_dim, d_combined_quant_2, pad_d, block_num, block_size2, cmp_max_s2,
-                cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_ori_kv,
+                cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_cmp_kv, cmp_residual_kv,
                 cmp_ratio, cmp_mask_mode, template_run_mode,
                 quant_param_range_left, quant_param_range_right)
     else:
