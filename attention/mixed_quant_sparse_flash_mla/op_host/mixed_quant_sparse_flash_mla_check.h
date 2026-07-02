@@ -486,7 +486,7 @@ private:
     ge::graphStatus CheckSingleParaSequsedQ() const;
     ge::graphStatus CheckSingleParaSequsedCmpKv() const;
     ge::graphStatus CheckSingleParaOriTopkLength() const;
- 	ge::graphStatus CheckSingleParaCmpTopkLength() const;
+    ge::graphStatus CheckSingleParaCmpTopkLength() const;
     ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSingleParaMetadata() const;
     ge::graphStatus CheckSingleParaTopkValueMode() const;
