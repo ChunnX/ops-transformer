@@ -28,9 +28,9 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
                                            LocalTensor<T> &kLocal, LocalTensor<C> &ropeShareUB,
                                            LocalTensor<C> &kFp32OutputLocal, int64_t cnt)
 {
-    int64_t baseOffset;
     kLocal = shareTmpUb.ReinterpretCast<T>();
 
+    int64_t baseOffset;
     if constexpr (std::is_same<T, int32_t>::value) {
         baseOffset = cnt;
     } else {
@@ -39,8 +39,8 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
     kFp32Local = shareTmpUb.ReinterpretCast<C>()[baseOffset];
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(ropeParams.row),
-                                 static_cast<uint32_t>(ropeParams.col * sizeof(T)),
-                                 static_cast<uint32_t>((ropeParams.stride - ropeParams.col) * sizeof(T)), 0, 0};
+                                 static_cast<uint32_t>(sizeof(T) * ropeParams.col),
+                                 static_cast<uint32_t>(sizeof(T) * (ropeParams.stride - ropeParams.col)), 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
     if constexpr (std::is_same<T, float>::value) {
@@ -135,7 +135,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
                                            LocalTensor<float> deQuantScale = LocalTensor<float>())
 {
     // 在 BS = 1 场景可能存在有row为零的情况，提前返回减少运算
-    if (ropeParams.row == 0) {
+    if (ropeParams.row == 0U) {
         return;
     }
 
