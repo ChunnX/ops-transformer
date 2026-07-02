@@ -45,6 +45,7 @@ public:
         DLIKGradRunInfo &runInfo);
     __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
         DLIKGradRunInfo &runInfo);
+    __aicore__ inline void ProcessSoftmaxReduceSum(DLIKGradRunInfo &runInfo);
     __aicore__ inline void ProcessVector6(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, DLIKGradRunInfo &runInfo);
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf,
@@ -157,7 +158,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ke
 {
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     weightGm.SetGlobalBuffer((__gm__ T *)weight);
-    topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    // topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     attnSoftmaxL1Gm.SetGlobalBuffer((__gm__ T *)attnSoftmaxL1);
 
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKey);
@@ -623,7 +624,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector2(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessSoftmaxReduceSum(DLIKGradRunInfo &runInfo)
 {
-    auto softmaxTensor = attnSoftmaxL1Que.template AllocTensor<T>();
+    auto softmaxTensor = this->attnSoftmaxL1Que.template AllocTensor<T>();
     auto softmaxReduceSumTensor = softmaxReduceSumOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
     event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
@@ -665,9 +666,9 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     LocalTensor<T> reluUb = bmm1ResBuf.template GetTensor<T>();
     auto reluGradUb = reluGradQue[runInfo.taskIdMod3].template AllocTensor<INPUT_T>();
     LocalTensor<T> weightInUb = weightInQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
-    auto dwTensor = this->dwQue[runInfo.staskIdMod3].template AllocTensor<T>();
+    auto dwTensor = this->dwQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     auto softmaxReduceSumTensor = softmaxReduceSumOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
-    LocalTensor<T> attnSoftmaxL1Tensor = attnSoftmaxL1Que.template AllocTensor<T>();
+    LocalTensor<T> attnSoftmaxL1Tensor = this->attnSoftmaxL1Que.template AllocTensor<T>();
     LocalTensor<T> softmaxTensor = attnSoftmaxL1Tensor[runInfo.taskIdMod3 * VEC_SY_BASESIZE];
 
     DataCopyExtParams dataCopyParams;
@@ -1096,6 +1097,7 @@ public:
         DLIKGradRunInfo &runInfo){};
     __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
         DLIKGradRunInfo &runInfo){};
+    __aicore__ inline void ProcessSoftmaxReduceSum(DLIKGradRunInfo &runInfo);
     __aicore__ inline void ProcessVector6(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, DLIKGradRunInfo &runInfo){};
     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf,

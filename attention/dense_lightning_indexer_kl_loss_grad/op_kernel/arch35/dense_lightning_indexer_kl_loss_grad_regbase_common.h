@@ -166,6 +166,7 @@ struct DLIKGradRunInfo {
     int64_t queryTensorOffset = 0;
     int64_t queryRopeTensorOffset = 0;
     int64_t queryIndexTensorOffset = 0;
+    int64_t keyIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
     bool isLastK = false;
 

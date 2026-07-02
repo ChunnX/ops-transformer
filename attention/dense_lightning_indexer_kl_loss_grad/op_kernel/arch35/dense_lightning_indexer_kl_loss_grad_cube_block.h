@@ -199,7 +199,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     if (runInfo.s2Offset == 0) { // 首次搬运query_index
         sYQL1Buffer[runInfo.sTaskIdMod3] = sYQueryL1Buf.Get();
         sYQL1Buffer[runInfo.sTaskIdMod3].Wait<HardEvent::MTE1_MTE2>();
-        sYQL1Tensor[runInfo.sTaskIdMod3] = sYQL1Buffer.GetTensor<INPUT_T>();
+        sYQL1Tensor[runInfo.sTaskIdMod3] = sYQL1Buffer[runInfo.sTaskIdMod3].GetTensor<INPUT_T>();
         CopyInMm2AToL1(sYQL1Tensor[runInfo.sTaskIdMod3], runInfo, constInfo);
         sYQL1Buffer[runInfo.sTaskIdMod3].Set<HardEvent::MTE2_MTE1>();
         sYQL1Buffer[runInfo.sTaskIdMod3].Wait<HardEvent::MTE2_MTE1>();
@@ -261,7 +261,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
-    uint32_t kSize = pRunInfo.kProcessSize;                             // 2048
+    uint32_t kSize = runInfo.kProcessSize;                             // 2048
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
     uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE; // 尾块大小
     LocalTensor<INPUT_T> reluGradL1Tensor;
@@ -286,21 +286,21 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
         // fix2ub
         if constexpr (!Deterministic) {
-            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
-            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
-            fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
-            fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
-            fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
-            // mmResUb上两行之间的间隔，单位：element。
-            fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
-            // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-            fixpipe2UbParams.dualDstCtl = 1;
-            fixpipe2UbParams.params.ndNum = 1;
-            fixpipe2UbParams.params.srcNdStride = 0;
-            fixpipe2UbParams.params.dstNdStride = 0;
-            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
-            mm3L0CBuffer.Set<HardEvent::FIX_M>();
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+            // CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+            // FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
+            // fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
+            // fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
+            // fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
+            // // mmResUb上两行之间的间隔，单位：element。
+            // fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
+            // // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+            // fixpipe2UbParams.dualDstCtl = 1;
+            // fixpipe2UbParams.params.ndNum = 1;
+            // fixpipe2UbParams.params.srcNdStride = 0;
+            // fixpipe2UbParams.params.dstNdStride = 0;
+            // Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
+            // mm3L0CBuffer.Set<HardEvent::FIX_M>();
+            // CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
         } else {
             int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize + pRunInfo.kTaskId * constInfo.pKBaseSize +
                 kIdx * VEC_P_BASESIZE) *

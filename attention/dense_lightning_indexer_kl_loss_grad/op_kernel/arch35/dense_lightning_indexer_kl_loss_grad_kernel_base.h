@@ -337,10 +337,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
     if constexpr (Deterministic) {
-        ProcessDeter();
+        // ProcessDeter();
     } else {
         printf("!!!!! wenyu check Process Normal !!!!!");
-        ProcessNormal();
+        // ProcessNormal();
     }
 }
 
