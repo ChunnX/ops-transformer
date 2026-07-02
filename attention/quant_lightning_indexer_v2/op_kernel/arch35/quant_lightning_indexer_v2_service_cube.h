@@ -548,17 +548,16 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gGmOffset,
         uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QSCALE_L1_PINGPONG_SIZE;
         LocalTensor<fp8_e8m0_t> scaleL1 = qScaleL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
-        LoadData2DMxParams loadAScaleParam;
-        loadAScaleParam.xStartPosition = 0;
-        loadAScaleParam.yStartPosition = 0;
-        loadAScaleParam.xStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-        loadAScaleParam.yStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
-        // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
-        loadAScaleParam.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
-        loadAScaleParam.dstStride = loadAScaleParam.yStep;
+        LoadData2DMxParams loadDataMxParams;
+        loadDataMxParams.xStartPosition = 0;
+        loadDataMxParams.yStartPosition = 0;
+        loadDataMxParams.xStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+        loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
+        loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
+        loadDataMxParams.dstStride = loadDataMxParams.yStep;
         LoadData(dstTensor,
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
-                 scaleL1, loadData2DParams, loadAScaleParam);
+                 scaleL1, loadData2DParams, loadDataMxParams);
     } else {
         LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParams);
@@ -593,7 +592,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0b(uint64_t s2L1Offset, ui
         loadDataMxParams.yStartPosition = 0;
         loadDataMxParams.xStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
         loadDataMxParams.yStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
-        // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
         loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
         LoadData(dstTensor,
