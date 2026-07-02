@@ -44,23 +44,23 @@
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize(
-    const aclTensor *x, 
-    const aclTensor *finishedOptional, 
-    int64_t          k, 
-    int64_t          renorm, 
-    bool             outputSoftmaxResultFlag, 
-    const aclTensor *yOut, 
-    const aclTensor *expertIdxOut, 
+    const aclTensor *x,
+    const aclTensor *finishedOptional,
+    int64_t          k,
+    int64_t          renorm,
+    bool             outputSoftmaxResultFlag,
+    const aclTensor *yOut,
+    const aclTensor *expertIdxOut,
     const aclTensor *softmaxResultOutOptional,
-    uint64_t        *workspaceSize, 
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -265,7 +265,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
   </table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
