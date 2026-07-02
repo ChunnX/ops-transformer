@@ -1441,7 +1441,7 @@ mc2:
         - mc2/mega_moe/op_kernel
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mega_moe
 
