@@ -88,8 +88,13 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsMxfp4() const
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingle() const
 {
+    const auto *weightTensor = GetInputTensor(gmmParams_.weight);
+    const bool separatedWeightShape = weightTensor != nullptr &&
+        (weightTensor->GetViewShape().GetDimNum() == MIN_FM_DIM ||
+         weightTensor->GetStorageShape().GetDimNum() == QUANT_WEIGHTNZ_STORAGE_DIM - 1);
     return gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 &&
-           GetInputTensorSize(gmmParams_.y) == 1 && GetInputTensorSize(gmmParams_.weight) > 1 &&
+           GetInputTensorSize(gmmParams_.y) == 1 &&
+           (GetInputTensorSize(gmmParams_.weight) > 1 || separatedWeightShape) &&
            GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
 }
 
