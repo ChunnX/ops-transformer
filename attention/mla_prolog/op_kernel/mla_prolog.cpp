@@ -21,8 +21,14 @@
 #endif
 using namespace MlaProlog;
 
+#if __CCE_AICORE__ == 310
+#define MLA_IS_SPLIT_KN , isSplitKn
+#else
+#define MLA_IS_SPLIT_KN
+#endif
+
 template <uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode, bool EnableDequantOpt, bool EnableGroupComputeOpt,
-          uint8_t EmptyTensorMode, uint8_t ActualSeqLenMode, uint8_t SplitMMode, uint8_t CvMode>
+          uint8_t EmptyTensorMode, uint8_t ActualSeqLenMode, uint8_t SplitModeParam, uint8_t CvMode>
 __global__ __aicore__ void
 mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk,
            __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
@@ -42,8 +48,11 @@ mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *wei
     }
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     constexpr auto actualSeqLenMode = static_cast<ACTUAL_SEQ_MODE>(ActualSeqLenMode);
-    constexpr auto splitMMode = static_cast<SPLIT_M_MODE>(SplitMMode);
+    constexpr auto splitMode = static_cast<SPLIT_MODE>(SplitModeParam);
     constexpr uint32_t cvRatio = CvMode == ASCENDC_TPL_MIX_AIC_1_1 ? 1 : 2;
+#if __CCE_AICORE__ == 310
+    constexpr bool isSplitKn = (splitMode == SPLIT_MODE::SPLIT_KN);
+#endif
 
 
     GET_TILING_DATA_WITH_STRUCT(optiling::MlaPrologTilingData, tilingDataIn, tiling);
@@ -54,7 +63,7 @@ mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *wei
 
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, float, cacheMode, EnableDequantOpt,
-                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio>>
+                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio MLA_IS_SPLIT_KN>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -65,7 +74,7 @@ mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *wei
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, float, cacheMode, EnableDequantOpt,
-                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio>>
+                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio MLA_IS_SPLIT_KN>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -76,7 +85,7 @@ mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *wei
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt,
-                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio>>
+                                     EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio MLA_IS_SPLIT_KN>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
