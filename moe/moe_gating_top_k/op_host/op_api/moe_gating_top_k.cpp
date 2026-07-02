@@ -46,13 +46,23 @@ MoeGatingTopKResult MoeGatingTopK(
     if (!y->IsEmpty()) {
         float routedScalingFactorFloat = static_cast<float>(routed_scaling_factor);
         float epsFloat = static_cast<float>(eps);
-        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
+        if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+            auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
             OP_INPUT(x, bias, input_ids, tid2eid),
             OP_OUTPUT(y, expert_idx, out_out_alloc),
             OP_ATTR(k, k_group, group_count, group_select_mode, renorm, norm_type,
                    out_flag, routedScalingFactorFloat, epsFloat));
-        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
-                                            "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
+            OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
+                                                "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        } else {
+            auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
+            OP_INPUT(x, bias),
+            OP_OUTPUT(y, expert_idx, out_out_alloc),
+            OP_ATTR(k, k_group, group_count, group_select_mode, renorm, norm_type,
+                   out_flag, routedScalingFactorFloat, epsFloat));
+            OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
+                                                "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        }
     }
     MoeGatingTopKResult result = {y, expert_idx, out_out_alloc};
     return result;
