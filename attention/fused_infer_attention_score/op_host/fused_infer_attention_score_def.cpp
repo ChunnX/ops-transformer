@@ -2142,7 +2142,7 @@ public:
                         ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16,
                         ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                         ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16,
-                        ge::DT_INT8})
+                        ge::DT_INT8}) //
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
