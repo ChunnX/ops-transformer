@@ -110,7 +110,10 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
     GM_ADDR sharedExpertResultPtr;
+    GM_ADDR sharedExpertSwigluDataPtr;
+    GM_ADDR sharedExpertSwigluScalePtr;
     GM_ADDR quantDoneFlagPtr;
+    GM_ADDR sharedExpertGmm2DoneFlagPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -188,14 +191,25 @@ struct WorkspaceInfo {
 
         // Shared expert workspace buffers
         sharedExpertResultPtr = nullptr;
+        sharedExpertSwigluDataPtr = nullptr;
+        sharedExpertSwigluScalePtr = nullptr;
         quantDoneFlagPtr = nullptr;
         if (tilingData->sharedExpertNum > 0) {
             // sharedExpertResult: GMM2 output for shared experts [bs × sharedExpertNum × h]
-            // 临时存储，Unpermute 阶段读取后累加到最终输出
             sharedExpertResultPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h;
+            // sharedExpertSwigluData: SwiGLU output [bs × hiddenDim/2] bf16
+            sharedExpertSwigluDataPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->bs * tilingData->hiddenDim / SWIGLU_N_HALF;
+            // sharedExpertSwigluScale: SwiGLU scale [bs × hiddenDim/2/32]
+            sharedExpertSwigluScalePtr = base + workspaceSize;
+            workspaceSize += SIZE_INT_8 * tilingData->bs * tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM;
             // quantDoneFlag: AIV writes (AtomicAdd, 2 per block), AIC polls [aicNum × sizeof(int32_t)]
             quantDoneFlagPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
+            // sharedExpertGmm2DoneFlag: AIC writes after GMM2, AIV polls in Unpermute
+            sharedExpertGmm2DoneFlagPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
         }

@@ -85,10 +85,9 @@ private:
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void QuantProcessInRank();
-    __aicore__ inline void ProcessSharedExpert();
-    __aicore__ inline void SharedExpertGMM2(GM_ADDR b2Addr, GM_ADDR b2ScaleAddr,
-        GM_ADDR swigluDataAddr, GM_ADDR swigluScaleAddr, GM_ADDR resultAddr,
-        __gm__ int32_t* swigluToGmm2Flag, uint32_t sharedIdx);
+    __aicore__ inline void SharedExpertGmm1();
+    __aicore__ inline void SharedExpertSwiglu();
+    __aicore__ inline void SharedExpertGmm2();
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
         uint32_t expertIdx);
@@ -1157,6 +1156,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         }
         // 共享专家结果累加（直接加，不乘 topk_weight）
         if (sharedExpertNum_ > 0) {
+            // Wait for shared expert GMM2 completion (only wait once per token batch)
+            if (tokenIdx == coreOffset) {
+                __gm__ int32_t* doneFlag = (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr;
+                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
+                    doneFlag[blockIdx_]);
+                while (ReadGmByPassDCache(doneFlag + blockIdx_) != int32_t(1)) {
+                    AscendC::Nop<200>();
+                }
+            }
             GlobalTensor<bfloat16_t> sharedResult;
             sharedResult.SetGlobalBuffer((__gm__ bfloat16_t*)params_.workspaceInfo.sharedExpertResultPtr);
             for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
@@ -1210,80 +1218,131 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 }
 
 // ===============================================================
-// ProcessSharedExpert：共享专家本地计算（AIC 主导，AIV 辅助 GMM1 后处理）
-//   AIC: 轮询 quantDoneFlag → GMM1+SwigluQuant → GMM2 → 写 sharedExpertResultPtr
-//   AIV: 参与 GMM1 的 SwiGLU+Quant 后处理（复用现有机制）
+// SharedExpertGmm1：共享专家 GMM1，纯 AIC 执行，仅矩阵乘无 SwiGLU
+//   输出 gate+up 到 gmm1MmadResPtr，与 AIV 的 SendMaskCal 流水并行
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpert()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
 {
-    // GMM1 维度: A(m×k) × B(hiddenDim×k)^T → C(m×hiddenDim) → SwiGLU → (m×hiddenDim/2)
-    // GMM2 维度: A(m×hiddenDim/2) × B(k×hiddenDim/2)^T → C(m×k)
+    if constexpr (g_coreType != AIC) { return; }
+
     uint64_t bStridePerExpert = static_cast<uint64_t>(hiddenDim_) * k_ / B_ELEMS_PER_BYTE;
     uint64_t bScaleStridePerExpert = static_cast<uint64_t>(hiddenDim_) *
         Ops::Base::CeilDiv(static_cast<uint64_t>(k_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+    for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
+        GM_ADDR bAddr = params_.bGmAddr + sharedIdx * bStridePerExpert * sizeof(ActivationType);
+        GM_ADDR bScaleAddr = params_.bScaleGmAddr + sharedIdx * bScaleStridePerExpert * sizeof(QuantScaleOutType);
+        GM_ADDR cAddr = params_.workspaceInfo.gmm1MmadResPtr +
+            sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
+
+        MegaMoeImpl::SharedExpertGmm1Kernel<QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleOutType, QuantScaleOutType>(
+            m_, hiddenDim_, k_,
+            params_.peermemInfo.quantTokenScalePtr, params_.peermemInfo.quantTokenScalePtr,
+            bAddr, bScaleAddr, cAddr, startBlockIdx_);
+    }
+}
+
+// ===============================================================
+// SharedExpertSwiglu：共享专家 SwiGLU+Quant，AIV 执行
+//   读取 GMM1 输出 (gate+up)，执行 SwiGLU+Quant，写入 sharedExpertSwigluDataPtr
+//   在 MoE GMM1 结束后、MoE GMM2 开始前调用
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertSwiglu()
+{
+    if constexpr (g_coreType != AIV) { return; }
+
+    uint32_t outputN = hiddenDim_ / SWIGLU_N_HALF;
+
+    for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
+        // Re-init epilogue with shared expert output addresses
+        epilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
+            params_.workspaceInfo.sharedExpertSwigluScalePtr,
+            nullptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
+            params_.tilingData->clampLimit});
+        epilogueOp_.UpdateNextProblem({static_cast<int64_t>(m_), static_cast<int64_t>(outputN),
+            static_cast<int64_t>(k_), 0});
+
+        GM_ADDR gmm1OutAddr = params_.workspaceInfo.gmm1MmadResPtr +
+            sharedIdx * m_ * hiddenDim_ * sizeof(bfloat16_t);
+
+        // Process tile by tile
+        uint32_t tileM = L1_TILE_M_256;
+        uint32_t tileN = L1_TILE_N;
+        for (uint32_t mLoc = 0; mLoc < m_; mLoc += tileM) {
+            uint32_t curM = (mLoc + tileM > m_) ? (m_ - mLoc) : tileM;
+            for (uint32_t nLoc = 0; nLoc < outputN; nLoc += tileN) {
+                uint32_t curN = (nLoc + tileN > outputN) ? (outputN - nLoc) : tileN;
+
+                // Copy gate and up tiles from GM to UB
+                GlobalTensor<bfloat16_t> gateGm, upGm;
+                gateGm.SetGlobalBuffer((__gm__ bfloat16_t*)(gmm1OutAddr +
+                    (mLoc * hiddenDim_ + nLoc) * sizeof(bfloat16_t)));
+                upGm.SetGlobalBuffer((__gm__ bfloat16_t*)(gmm1OutAddr +
+                    (mLoc * hiddenDim_ + nLoc + outputN) * sizeof(bfloat16_t)));
+
+                LocalTensor<bfloat16_t> gateUb = dataResTensor_;
+                LocalTensor<bfloat16_t> upUb = dataResTensor_[tileM * tileN];
+
+                DataCopy(gateUb, gateGm, curM * curN);
+                DataCopy(upUb, upGm, curM * curN);
+                PipeBarrier<PIPE_MTE2>();
+
+                // Call epilogue (SwiGLU + Quant)
+                AscendC::SetCtrlSpr<60, 60>(0);
+                Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
+                    static_cast<int64_t>(curM), static_cast<int64_t>(curN), 0, 0};
+                Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                    static_cast<int64_t>(mLoc * outputN + nLoc),
+                    static_cast<int64_t>(mLoc * Ops::Base::CeilDiv(outputN, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE +
+                        Ops::Base::CeilDiv(nLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+                    0, 0, 0, 0};
+                epilogueOp_(epilogueShape, epilogueOffset);
+            }
+        }
+    }
+
+    // Restore epilogue for MoE experts
+    epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr,
+        params_.workspaceInfo.swigluQuantScalePtr,
+        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
+        params_.tilingData->clampLimit});
+}
+
+// ===============================================================
+// SharedExpertGmm2：共享专家 GMM2，纯 AIC 执行
+//   读取 SwiGLU 输出，执行 GMM2，写入 sharedExpertResultPtr
+//   在 MoE GMM2 结束后调用
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
+{
+    if constexpr (g_coreType != AIC) { return; }
+
     uint64_t b2StridePerExpert = static_cast<uint64_t>(k_) * hiddenDim_ / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
     uint64_t b2ScaleStridePerExpert = static_cast<uint64_t>(k_) *
         Ops::Base::CeilDiv(static_cast<uint64_t>(hiddenDim_ / SWIGLU_N_HALF), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
         * MXFP_MULTI_BASE_SIZE;
 
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        // ---- GMM1: 复用 GroupMatmulWithSwigluQuant ----
-        GMMAddrInfo gmm1AddrInfo;
-        gmm1AddrInfo.aGlobal = params_.peermemInfo.quantTokenScalePtr;
-        gmm1AddrInfo.aScaleGlobal = params_.peermemInfo.quantTokenScalePtr;
-        gmm1AddrInfo.bGlobal = params_.bGmAddr + sharedIdx * bStridePerExpert * sizeof(ActivationType);
-        gmm1AddrInfo.bScaleGlobal = params_.bScaleGmAddr + sharedIdx * bScaleStridePerExpert * sizeof(QuantScaleOutType);
-        gmm1AddrInfo.gmm1OutGlobal = params_.workspaceInfo.gmm1MmadResPtr;
-        gmm1AddrInfo.gmm2OutGlobal = nullptr;
-        gmm1AddrInfo.swigluToGmm2Flag = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-            sharedIdx * INT_CACHELINE;
-        gmm1AddrInfo.dispatchToGmm1Flag = nullptr;
-
-        TupleShape gmm1Shape;
-        Get<M_VALUE>(gmm1Shape) = m_;
-        Get<N_VALUE>(gmm1Shape) = hiddenDim_;
-        Get<K_VALUE>(gmm1Shape) = k_;
-        BlockOffset gmm1Offset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        ExpertLoopState gmm1State{gmm1Shape, gmm1Offset, 0};
-
-        if constexpr(g_coreType == AIV) {
-            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-                0, 0, static_cast<int64_t>(sharedIdx), 0L, 0L, 0L};
-            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
-        }
-
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-
-        // ---- GMM2: AIC 直接写 sharedExpertResultPtr ----
-        GM_ADDR swigluDataAddr = params_.workspaceInfo.swigluQuantDataPtr;
-        GM_ADDR swigluScaleAddr = params_.workspaceInfo.swigluQuantScalePtr;
         GM_ADDR b2Addr = params_.b2GmAddr + sharedIdx * b2StridePerExpert * sizeof(ActivationType);
         GM_ADDR b2ScaleAddr = params_.b2ScaleGmAddr + sharedIdx * b2ScaleStridePerExpert * sizeof(QuantScaleOutType);
         GM_ADDR resultAddr = params_.workspaceInfo.sharedExpertResultPtr +
             sharedIdx * m_ * k_ * sizeof(bfloat16_t);
 
-        SharedExpertGMM2(b2Addr, b2ScaleAddr, swigluDataAddr, swigluScaleAddr, resultAddr,
-            gmm1AddrInfo.swigluToGmm2Flag, sharedIdx);
-    }
-}
-
-// ===============================================================
-// SharedExpertGMM2：共享专家 GMM2，AIC 计算并直接写 sharedExpertResultPtr，无 Combine
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGMM2(
-    GM_ADDR b2Addr, GM_ADDR b2ScaleAddr,
-    GM_ADDR swigluDataAddr, GM_ADDR swigluScaleAddr,
-    GM_ADDR resultAddr, __gm__ int32_t* swigluToGmm2Flag, uint32_t sharedIdx)
-{
-    if constexpr (g_coreType == AIC) {
         MegaMoeImpl::SharedExpertGmm2Kernel<QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, m_, k_, hiddenDim_ / SWIGLU_N_HALF,
-            swigluDataAddr, swigluScaleAddr,
-            b2Addr, b2ScaleAddr, resultAddr, swigluToGmm2Flag, startBlockIdx_);
+            params_.workspaceInfo.sharedExpertSwigluDataPtr,
+            params_.workspaceInfo.sharedExpertSwigluScalePtr,
+            b2Addr, b2ScaleAddr, resultAddr, nullptr, startBlockIdx_);
     }
+
+    // 通知 AIV GMM2 完成
+    __gm__ int32_t* doneFlag = (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr;
+    WriteGmByPassDCache(doneFlag + blockIdx_, int32_t(1));
 }
 
 // ===============================================================
@@ -1357,54 +1416,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
 
+    // Phase 1: 量化 + 共享专家 GMM1 (AIC) + mask/reset (AIV)
+    if constexpr (g_coreType == AIV) {
+        QuantProcessInRank();
+        SendMaskCal();
+        ResetFlagList();
+    }
     if (sharedExpertNum_ > 0) {
-        // 共享专家场景：所有 AIV 先做量化，然后 sub=1 做 mask+reset，sub=0+AIC 做共享专家计算
-        if constexpr (g_coreType == AIV) {
-            QuantProcessInRank();
-            PipeBarrier<PIPE_ALL>();
-            __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
-            AscendC::AtomicAdd(quantDoneFlag + blockIdx_, int32_t(1));
-        }
-        
-        // AIC: 等待量化完成，执行共享专家 GMM1+GMM2
         if constexpr (g_coreType == AIC) {
-            GlobalTensor<int32_t> quantDoneFlagTensor;
-            quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-                quantDoneFlagTensor[blockIdx_]);
-            while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
-                AscendC::Nop<200>();
-            }
-            ProcessSharedExpert();
-        }
-        
-        // sub=0: 等待量化完成，执行共享专家 SwiGLU+Quant，然后 SendMaskCal + ResetFlagList
-        // sub=1: 直接执行 SendMaskCal + ResetFlagList（与共享专家计算并行）
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 0) {
-                GlobalTensor<int32_t> quantDoneFlagTensor;
-                quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
-                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-                    quantDoneFlagTensor[blockIdx_]);
-                while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
-                    AscendC::Nop<200>();
-                }
-                ProcessSharedExpert();
-            }
-            SendMaskCal();
-            ResetFlagList();
-        }
-    } else {
-        // 无共享专家：所有 AIV 执行量化+mask+reset
-        if constexpr (g_coreType == AIV) {
-            QuantProcessInRank();
-            SendMaskCal();
-            ResetFlagList();
+            SharedExpertGmm1();
         }
     }
 
-    // 共享专家场景：AIC 执行了 ProcessSharedExpert，需要与 AIV 一起同步
-    // 无共享专家场景：仅 AIV 同步（AIC 未参与 Phase 1，跳过）
+    // Sync after Phase 1
     if (sharedExpertNum_ > 0) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
@@ -1412,7 +1436,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
-    CrossRankSyncInWorldSize();  // 全卡同步
+    CrossRankSyncInWorldSize();
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
@@ -1425,14 +1449,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState dispatchState{initShape, initOffset, 0};
     ExpertLoopState gmm1State{initShape, initOffset, 0};
 
-    // Dispatch-prefetch count forwarding（无成员变量耦合）：
-    //   SendCntCal 将 expert token 数写入 nextSendCnt；
-    //   循环顶部 nextSendCnt → curSendCnt 显式转发；
-    //   GMM1 consumer 始终读 curSendCnt。
-    uint64_t curSendCnt = 0;    // 当前 expert 的 sendCnt（GMM1 consumer 使用）
-    uint64_t nextSendCnt = 0;   // 下一 expert 的 sendCnt（dispatch prefetch 算出）
+    uint64_t curSendCnt = 0;
+    uint64_t nextSendCnt = 0;
 
-    // 预调度 expert 0。
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             SendCntCal(0, nextSendCnt);
@@ -1444,9 +1463,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     for (int localExpertId = 0; localExpertId < static_cast<int>(moeExpertPerRank_); localExpertId++) {
-        curSendCnt = nextSendCnt;  // forward: dispatch(e) → GMM1(e)
+        curSendCnt = nextSendCnt;
 
-        // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < static_cast<int>(moeExpertPerRank_)) {
                 SendCntCal(localExpertId + 1, nextSendCnt);
@@ -1457,7 +1475,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // GMM1 consumer 消费 expert e。
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
             continue;
         }
@@ -1467,8 +1484,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+            ExpertTokenNumCopyOut();
         }
+    }
+
+    // Shared expert SwiGLU: AIV processes GMM1 output after MoE GMM1
+    if (sharedExpertNum_ > 0) {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        SharedExpertSwiglu();
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
@@ -1487,13 +1513,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     }
-    PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
+
+    // Shared expert GMM2: AIC processes after MoE GMM2
+    if (sharedExpertNum_ > 0) {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        if constexpr (g_coreType == AIC) {
+            SharedExpertGmm2();
+        }
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    } else {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    }
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
         UnpermuteBuffInit();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        CrossRankSyncInWorldSize();
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
