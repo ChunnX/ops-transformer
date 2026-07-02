@@ -155,7 +155,7 @@ class GeneralizedSFAQuant:
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
                     if (
-                        self.template_run_mode == "SCFA"
+                        self.template_run_mode == "CSA"
                         and cmp_sparse_indices_bnsd is not None
                     ):
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
@@ -168,7 +168,7 @@ class GeneralizedSFAQuant:
                             cur_cmp_restored,
                             cur_act_q,
                         )
-                    elif self.template_run_mode == "CFA":
+                    elif self.template_run_mode == "HCA":
                         empty_flag, cur_cmp_k = self.mask_cmp_kv(
                             cmp_k_bnsd, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q
                         )
@@ -383,7 +383,7 @@ class GeneralizedSFAQuant:
         )
         cmp_sparse_indices_bnsd = None
         cmp_sparse_indices_bnsd_shape = None
-        if self.template_run_mode == "SCFA" and cmp_sparse_indices is not None:
+        if self.template_run_mode == "CSA" and cmp_sparse_indices is not None:
             cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = (
                 self.trans_shape_to_bnsd(
                     cmp_sparse_indices,
@@ -719,7 +719,7 @@ def gen_cmp_kv(
 
     # generate cmp_sparse_indices
     cmp_sparse_indices = None
-    if template_run_mode == "SCFA" and cmp_max_s2 != 0:
+    if template_run_mode == "CSA" and cmp_max_s2 != 0:
         cmp_restored_len = [seqused_cmp_kv[i] * cmp_ratio + cmp_residual_kv[i] for i in range(B)]
         if layout_q == "BSND":
             cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(
@@ -874,7 +874,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     )
 
     # generate cmp_kv and sparse_indices
-    if template_run_mode == "CFA" or template_run_mode == "SCFA":
+    if template_run_mode == "HCA" or template_run_mode == "CSA":
         (
             cmp_k_bnsd,
             cmp_k_in_pa_shape,
@@ -904,6 +904,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             template_run_mode,
             layout_kv,
         )
+        if cmp_k_bnsd is None: # 带压缩场景，但是不够一个压缩块
+            cmp_mask_mode = 0 # cmp_mask_mode 设置为0，防止拦截
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_indices = None
@@ -912,8 +914,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_kv_descale = None
 
     if layout_kv == "PA_BBND" and (
-        template_run_mode == "CFA" or template_run_mode == "SCFA"
-    ):
+        template_run_mode == "HCA" or template_run_mode == "CSA"
+    ) and cmp_k_in_pa_shape is not None:
         total_block = block_size1 + block_size2
         fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
         fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
@@ -1027,7 +1029,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_ori_kv": max_seqlen_ori_kv,
             "max_seqlen_cmp_kv": max_seqlen_cmp_kv,
-            "topk": K if template_run_mode == "SCFA" else 0,
+            "topk": K if template_run_mode == "CSA" else 0,
             "cmp_ratio": cmp_ratio if template_run_mode != "SWA" else 1,
             "qkv_quant_mode": qkv_quant_mode,
             "ori_mask_mode": ori_mask_mode,
