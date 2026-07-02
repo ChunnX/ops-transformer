@@ -29,8 +29,8 @@ public:
     constexpr static uint32_t MM4_GATHER_BUFFER_SIZE = 128 * 128 * 2;
     constexpr static uint32_t L0C_SINGLE_BUFFER_SIZE = 64 * 1024;
     constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
-    Buffer<BufferType::L1> sYQL1Buffer;
-    LocalTensor<INPUT_T> sYQL1Tensor;
+    Buffer<BufferType::L1> sYQL1Buffer[3];
+    LocalTensor<INPUT_T> sYQL1Tensor[3];
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;    // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;    // n方向切分
@@ -53,7 +53,7 @@ public:
     /* =====================LocalBuffer变量==================== */
 
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
-    BuffersPolicySingleBuffer<BufferType::L1> sYQueryL1Buf;
+    BuffersPolicy3buff<BufferType::L1> sYQueryL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1> sYGatherResBuf; // mm4右矩阵用
 
     BufferManager<BufferType::L0A> l0aBufferManager;
@@ -73,11 +73,11 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res);
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
-        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo);
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo);
     __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
-        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo);
+        DLIKGradConstInfo &constInfo);
     __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut);
 
@@ -163,8 +163,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm2BToL1(LocalTensor<INPUT_T> &l1Tensor,
     const DLIKGradRunInfo &info, DLIKGradConstInfo &constInfo)
 {
-    auto srcGm = keyIndexGm[info.keyIndexTensorOffset];
-    CopyGmToL1(l1Tensor, srcGm, constInfo.gSizeQueryIndex, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
+    auto srcGm = keyIndexGm[info.keyIndexTensorOffset + info.s2Offset * constInfo.dSizeQueryIndex];
+    CopyGmToL1(l1Tensor, srcGm, info.kProcessSize, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -178,17 +178,17 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
-    DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo)
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+    DLIKGradConstInfo &constInfo)
 {
     uint32_t dSize = constInfo.dSizeQueryIndex;                          // 128
-    uint32_t kSize = syRunInfo.kProcessSize;                             // 2048 / 256
+    uint32_t kSize = runInfo.kProcessSize;                             // 128
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_SY_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
     uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_SY_BASESIZE; // 尾块大小
     LocalTensor<T> outTensor = bmm2ResBuf.template GetTensor<T>();
     MMParam mmParam = {
         constInfo.gSizeQueryIndex,
-        VEC_SY_BASESIZE,
+        kSize,
         constInfo.dSizeQueryIndex,
         false,
         true,
@@ -196,13 +196,13 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
         true,
         UNITFLAG_DISABLE
     };
-    if (syRunInfo.kTaskId == 0) { // 首次搬运query_index
-        sYQL1Buffer = sYQueryL1Buf.Get();
-        sYQL1Buffer.Wait<HardEvent::MTE1_MTE2>();
-        sYQL1Tensor = sYQL1Buffer.GetTensor<INPUT_T>();
-        CopyInMm2AToL1(sYQL1Tensor, runInfo, constInfo);
-        sYQL1Buffer.Set<HardEvent::MTE2_MTE1>();
-        sYQL1Buffer.Wait<HardEvent::MTE2_MTE1>();
+    if (runInfo.s2Offset == 0) { // 首次搬运query_index
+        sYQL1Buffer[runInfo.sTaskIdMod3] = sYQueryL1Buf.Get();
+        sYQL1Buffer[runInfo.sTaskIdMod3].Wait<HardEvent::MTE1_MTE2>();
+        sYQL1Tensor[runInfo.sTaskIdMod3] = sYQL1Buffer.GetTensor<INPUT_T>();
+        CopyInMm2AToL1(sYQL1Tensor[runInfo.sTaskIdMod3], runInfo, constInfo);
+        sYQL1Buffer[runInfo.sTaskIdMod3].Set<HardEvent::MTE2_MTE1>();
+        sYQL1Buffer[runInfo.sTaskIdMod3].Wait<HardEvent::MTE2_MTE1>();
     }
 
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> kIndexL1Buf = sYL1Buf.Get();
@@ -215,18 +215,18 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Buffer<BufferType::L0C> mm2L0CBuffer = commonL0CBuf.Get();
     LocalTensor<T> mm2L0CTensor = mm2L0CBuffer.GetTensor<T>();
 
-    uint64_t gmOffset = syRunInfo.kTaskId * constInfo.syKBaseSize;
+    uint64_t gmOffset = 0;
     mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
         // 右矩阵
         uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
-            sYQL1Tensor, gatherL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
+            sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
     }
     mm2L0CBuffer.Set<HardEvent::M_FIX>();
     mm2L0CBuffer.Wait<HardEvent::M_FIX>();
     // fix2ub
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskIdMod2]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
     fixpipe2UbParams.nSize = (kSize + 7) >> 3 << 3;
     fixpipe2UbParams.mSize = (constInfo.gSizeQueryIndex + 1) >> 1 << 1;
@@ -239,27 +239,27 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     fixpipe2UbParams.params.srcNdStride = 0;
     fixpipe2UbParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm2L0CTensor, fixpipe2UbParams);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskIdMod2]);
-    // fix2gm
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
-    fixpipe2GmParams.nSize = kSize;
-    fixpipe2GmParams.mSize = constInfo.gSizeQueryIndex;
-    fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
-    fixpipe2GmParams.dstStride = AlignTo(constInfo.kSizeAlign128, static_cast<uint32_t>(C0_SIZE));
-    fixpipe2GmParams.reluEn = true;
-    fixpipe2GmParams.dualDstCtl = 0;
-    fixpipe2GmParams.params.ndNum = 1;
-    fixpipe2GmParams.params.srcNdStride = 0;
-    fixpipe2GmParams.params.dstNdStride = 0;
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm2ResGm[gmOffset], mm2L0CTensor, fixpipe2GmParams);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
     mm2L0CBuffer.Set<HardEvent::FIX_M>();
+    // fix2gm
+    // FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
+    // fixpipe2GmParams.nSize = kSize;
+    // fixpipe2GmParams.mSize = constInfo.gSizeQueryIndex;
+    // fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
+    // fixpipe2GmParams.dstStride = AlignTo(constInfo.kSizeAlign128, static_cast<uint32_t>(C0_SIZE));
+    // fixpipe2GmParams.reluEn = true;
+    // fixpipe2GmParams.dualDstCtl = 0;
+    // fixpipe2GmParams.params.ndNum = 1;
+    // fixpipe2GmParams.params.srcNdStride = 0;
+    // fixpipe2GmParams.params.dstNdStride = 0;
+    // Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm2ResGm[gmOffset], mm2L0CTensor, fixpipe2GmParams);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
-    DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo)
+    DLIKGradConstInfo &constInfo)
 {
     uint32_t kSize = pRunInfo.kProcessSize;                             // 2048
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
@@ -267,7 +267,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     LocalTensor<INPUT_T> reluGradL1Tensor;
     MMParam mmParam = { M_SPLIT_SIZE, constInfo.dSizeQueryIndex, constInfo.gSizeQueryIndex, true, false, true,
         true,         UNITFLAG_DISABLE };
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
         if (kIdx == kLoopTimes - 1) {
             mmParam.singleM = tailLoopKSize;
@@ -366,7 +366,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
     }
     mm4L0CBuffer.Set<HardEvent::M_FIX>();
     mm4L0CBuffer.Wait<HardEvent::M_FIX>();
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
     if (isFixOut) {
         // fix2gm
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
@@ -397,11 +397,11 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GlobalTensor<T> &bmm2Res,
         GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res){};
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
-        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &syRunInfo){};
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
+        DLIKGradConstInfo &constInfo){};
     __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
-        DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo){};
+        DLIKGradConstInfo &constInfo){};
     __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, DLIKGradKRunInfo &pRunInfo, bool isFixOut){};
 };

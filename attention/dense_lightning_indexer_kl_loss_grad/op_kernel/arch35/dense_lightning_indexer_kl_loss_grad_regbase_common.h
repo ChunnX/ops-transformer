@@ -21,6 +21,12 @@ using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
+static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
+// task step
+constexpr int8_t TASK_INIT = 0;
+constexpr int8_t TASK_C1 = 1;
+constexpr int8_t TASK_V1 = 2;
+
 enum class DLILayout { BSND = 0, TND = 1 };
 
 enum class DLISparseMode { DefaultMask = 0, RightDown = 3 };
@@ -88,6 +94,7 @@ struct DLIKGradConstInfo {
     uint32_t kSize;               // 现阶段只支持2048
     uint32_t kSizeAlign128;
     uint32_t cmpRatio;
+    uint32_t maxSeqlenK;
     int64_t totalCost;
     DLISparseMode sparseMode; // 0或者3
     float scaleValue;
@@ -111,6 +118,9 @@ struct DLIKGradConstInfo {
 struct DLIKGradRunInfo {
     uint32_t taskId;
     uint32_t taskIdMod2;
+    uint32_t taskIdMod3;
+    uint32_t sTaskId;
+    uint32_t sTaskIdMod3;
     uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t t1Index;
@@ -126,6 +136,10 @@ struct DLIKGradRunInfo {
     uint32_t kTailSize;    // k切分之后的尾块大小，在P和阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和阶段
+    uint64_t s2Offset;
+    int64_t kProcessSize;
+    bool isLastBlock;
+    bool isAlign64;
 
     uint32_t nBaseSizeP;
     uint32_t nRealSizeP;
@@ -154,11 +168,14 @@ struct DLIKGradRunInfo {
     int64_t queryIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
     bool isLastK = false;
+
+    int8_t taskStep = TASK_INIT;
 };
 
 struct DLIKGradKRunInfo {
     uint32_t kTaskId;
     uint32_t kTaskIdMod2;
+    uint32_t kTaskIdMod3;
     uint32_t s2RealBaseSize;
     int32_t kProcessSize;
     int32_t s2Idx;
@@ -171,10 +188,9 @@ struct DLIKGradKRunInfo {
     int32_t dRopeValue;
 };
 
-constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
-constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {0, 1, 2};
+constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {8, 9, 10};
 
-constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
 constexpr uint8_t SYNC_V7_TO_C3_FLAG[2] = {3, 4};
 

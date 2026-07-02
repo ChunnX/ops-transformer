@@ -262,6 +262,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     sparseMode = *sparseModePtr;
     cmpRatio = *cmpRatioPtr;
     deterministic = (context_->GetDeterministic() == 1);
+    deterministic = 0;
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
         OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutQuery), return false);
     OP_CHECK_IF(strcmp(layoutKey, "TND") != 0 && strcmp(layoutKey, "BSND") != 0,

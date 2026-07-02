@@ -22,6 +22,7 @@ using namespace MicroAPI;
 
 template <typename T, bool isAlign>
 __simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb, __ubuf__ T *srcOtherUb,
+    __ubuf__ T *weightUb, __ubuf__ T *softmaxReduceUb, __ubuf__ T *dwUb,  __ubuf__ T *reluUb,
     const uint32_t alignCnt, uint32_t tailSize, float minValue)
 {
     RegTensor<float> vreg_input_other;
@@ -93,17 +94,22 @@ __simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
 
 template <typename T, bool isAlign>
 __aicore__ inline void ProcessVec2Vf(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
-    const LocalTensor<T> &srcOtherTensor, const uint32_t m)
+    const LocalTensor<T> &srcOtherTensor, const LocalTensor<T> &weightTensor, const LocalTensor<T> &softmaxReduceSumTensor,
+    const LocalTensor<T> &dwTensor, const LocalTensor<T> &reluResTensor, const uint32_t m)
 {
     __ubuf__ T *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ T *srcOtherUb = (__ubuf__ T *)srcOtherTensor.GetPhyAddr();
+    __ubuf__ T *weightUb = (__ubuf__ T *)weightTensor.GetPhyAddr();
+    __ubuf__ T *softmaxReduceUb = (__ubuf__ T *)softmaxReduceSumTensor.GetPhyAddr();
+    __ubuf__ T *dwUb = (__ubuf__ T *)dwTensor.GetPhyAddr();
+    __ubuf__ T *reluUb = (__ubuf__ T *)reluResTensor.GetPhyAddr();
     uint32_t alignCnt = m >> 6;
     uint32_t tailSize = m - (m >> 6 << 6);
     constexpr uint32_t tmpMin = 0xFF7FFFFF;
     float minValue = *((float *)&tmpMin);
 
-    ProcessVec2BasicVF<T, isAlign>(dstUb, srcUb, srcOtherUb, alignCnt, tailSize, minValue);
+    ProcessVec2BasicVF<T, isAlign>(dstUb, srcUb, srcOtherUb, weightUb, softmaxReduceUb, dwUb, reluUb, alignCnt, tailSize, minValue);
 }
 } // namespace
 
