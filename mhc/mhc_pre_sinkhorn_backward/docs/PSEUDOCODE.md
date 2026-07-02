@@ -2,6 +2,75 @@
 
 > 原则: 不局限于 golden 10 步, 按数据依赖 + UB 容量 + C 大小分场景
 
+## ★★★ 核心约束（所有实现必须遵守）★★★
+
+### 1. VReg 对齐 — VF 计算天然对齐
+
+n/k 维度对齐到 `GetVRegSize()`（通常 256B = 64 个 fp32）。
+
+```
+nAlign  = CeilAlign(n, vRegElem)           // n 对齐到 VReg (n≤8 时 nAlign=64)
+nnAlign = n × nAlign                        // sinkhorn: n 行 × nAlign
+kAlign  = (2 + n) × nAlign                  // k 总行数 × nAlign
+```
+
+### 2. K 维 Reshape 搬运 — (2+n) 行 × n 列
+
+**这是最关键的设计决策。** GM 中 hcBeforeNorm 按 `[B*S, kDim_]` 连续排布（kDim_ = 2n + n²），搬入 UB 时 reshape 为 `(2+n) 行 × n 列` 矩阵，每行 pad 到 nAlign。
+
+```
+GM:  [bs0: kDim_ 连续 | bs1: kDim_ 连续 | ...]
+      ← 2n + n² 个元素, 连续 1D →
+
+UB:  [bs0: (2+n) 行 × nAlign | bs1: (2+n) 行 × nAlign | ...]
+      行 0:     hPre     (n 有效, pad 到 nAlign)
+      行 1:     hPost    (n 有效, pad 到 nAlign)
+      行 2..1+n: sinkhorn (n 行, 每行 n 有效, pad 到 nAlign)
+```
+
+搬入方式:
+```cpp
+CopyInQue(que, gm[offset], bsLen * (2 + n), n, 0, nAlign);
+//                              ^行数        ^每行元素 ^UB对齐
+```
+
+**效果**: VF 内 DataCopy 全部对齐，无需 mask 处理尾部。计算直接用 ALL mask。
+
+### 3. UB 复用 — 两阶段 Buffer 生命周期
+
+PhaseA (C 维) 和 PhaseB (K 维) 使用不同 Buffer 集合，通过 pipe Reset 切换：
+- PhaseA: xQue, gradHinQue, xFp32Que, gradXFromHinQue, hPreAndGradHPostQue, gradHPreBuf
+- PhaseB: hcBeforeNormQue, invRmsQue, gradHResQue, zBuf, normOutForwardBuf, gradZBuf, biasBuf, gradCalcBuf, tmpBufs, sumOutBufs, normOutBuf
+
+### 4. Broadcast 消除 — 用 Muls 替代
+
+- `hPre[B,S,N,1] × gradHin[B,S,N,C]` → 逐 N 行 Muls(gradHin, hPre[nK])
+- `invRms[B,S,1] × hcBeforeNorm[B,S,K]` → 逐 BS 行 Duplicate + Mul
+- `alpha[scalar] × gradZ[B,S,K]` → Muls(gradZ, alpha)
+
+### 5. PR 6896 功能修复（同事已验证）
+
+- **ComputeGNormOutAndGHcBeforeNorm**: 逐 BS 算 gradNormOut + gradHcBeforeNorm，解决 bsLen>1 搬运问题
+- **ComputeGradXFromRms 上提**: 移到 MatMul 前的 BS 循环内，减少一轮 BS 循环
+- **ComputeMulScalar**: 用 VF 循环+UpdateMask 替代全 mask UnalignReg
+
+### 6. 计算流程（2 轮 BS 循环）
+
+```
+BS 循环 #1: PhaseA(C) + PhaseB(K) + PhaseRms(C)
+  PhaseA: x/gradHin → gradHPre + gradXFromHin→WS + xFp32→WS
+  PhaseB: hcBeforeNorm → z + gradZ + gradNormOut→WS + gradHcBeforeNorm→WS + gradInvRms→UB
+          gradBias/gradAlpha 累加 → WS
+  PhaseRms: xFp32 + gradInvRms → gradXFromRms→WS (逐 BS)
+
+SyncAll → CrossCore → AIC MatMul → CrossCore → SyncAll
+
+BS 循环 #2: PhaseE(C)
+  gradXFromHin + gradXFromRms + gradXFromMatmul → gradX → GM
+
+blockIdx==0: ReduceBiasAlpha → GM
+```
+
 ## 一、Shape 约束
 
 | 维度 | 范围 | 特点 |

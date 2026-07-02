@@ -299,7 +299,6 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
         AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
         MicroAPI::Duplicate(onesReg, U(1), allMaskReg);
         MicroAPI::Duplicate(alphaReg, alpha, allMaskReg);
-        MicroAPI::Duplicate(onesReg, U(1), allMaskReg);
         uint32_t maskLen = static_cast<uint32_t>(colLen);
         for (uint16_t i = 0; i < loopCnt; i++) {
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
