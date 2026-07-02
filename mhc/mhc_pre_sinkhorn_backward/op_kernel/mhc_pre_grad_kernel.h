@@ -762,7 +762,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradX1
                           {1, 1, 0, blkStride2, blkStride2, 1});
             }
         }
-
+        PipeBarrier<PIPE_V>();
         Add(gradXCastLocal_, gradXCubeLocal_, gradXCastLocal_, ubAlignC * n_ * tileTaskCount);
         PipeBarrier<PIPE_V>();
         inputXInQueue.FreeTensor(xLocal_);
