@@ -140,12 +140,20 @@ def run_case(params: dict,
         nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
         del nc_dev_inputs, nc_raw
         primary.clear_cache()
-        print(f"  [nc_check] NC vs Contiguous")
-        nc_attn_result = check_result("NC_vs_Contiguous",
-                                      primary_out["out"].float(),
-                                      nc_cpu.float(),
-                                      except_label="Contiguous", comp_label="NC",
-                                      verbose_diff=verbose_diff)
+        contig_f = primary_out["out"].float()
+        nc_f = nc_cpu.float()
+        exact_match = torch.equal(contig_f, nc_f)
+        diff = (contig_f - nc_f).abs()
+        max_abs = diff.max().item()
+        print(f"  [nc_check] NC vs Contiguous  exact_match={exact_match}  max_abs={max_abs:.8e}")
+        nc_attn_result = {
+            "passed": exact_match,
+            "max_abs": max_abs,
+            "mean_abs": diff.mean().item(),
+            "fail_cnt": 0 if exact_match else int((diff > 0).sum().item()),
+            "total": contig_f.numel(),
+            "fail_ratio": 0.0 if exact_match else float((diff > 0).sum().item()) / contig_f.numel(),
+        }
         del nc_cpu
 
     dev_raw = primary_out["out"]
