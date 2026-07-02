@@ -541,7 +541,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat)); // 一行需要循环的次数，等于n/64
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE); // out 1B
-    uint32_t nDstUbAligned64 = CeilAlign(nSize, 64); // out 1B
+    uint32_t nDstUbAligned64 = CeilAlign(nSize, SINGLEN_ALIGN_64); // 64 对齐
     
     const float scalarOne = 1.0;
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
