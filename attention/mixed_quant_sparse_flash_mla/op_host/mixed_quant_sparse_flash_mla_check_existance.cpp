@@ -34,7 +34,7 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, actualSeqLengthsKv must not be null"),
+                    OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF((opParamInfo_.oriBlockTable.tensor == nullptr) && (opParamInfo_.cmpBlockTable.tensor == nullptr),
                     OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable and cmpBlockTable must be one "),
