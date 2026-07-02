@@ -81,7 +81,6 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
-    
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
 
