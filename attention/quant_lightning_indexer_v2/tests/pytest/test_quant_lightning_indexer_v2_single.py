@@ -120,11 +120,11 @@ def test_qliv2(param_combinations):   # 初始化参数和tensor
                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset_enable, output_idx_offset_datarange
 
     # 获得cpu结果(真值)和算子结果（测试值）
-    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
+    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
     print("npu_result", npu_result)
     print("cpu_result:", cpu_result)
     # 结果精度对比
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data, output_idx_offset)
     print("result", result)
     print("result", fulfill_percent)
     if return_value:

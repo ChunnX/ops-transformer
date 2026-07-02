@@ -1374,7 +1374,7 @@ def qliv2_output_single(params, is_batch = False):
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
 
         torch.npu.synchronize()
-        return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
+        return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     if exponent == HIF8_EXP_ZERO_THRESHOLD:

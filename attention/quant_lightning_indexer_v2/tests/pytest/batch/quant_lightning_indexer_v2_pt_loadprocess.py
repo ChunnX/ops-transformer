@@ -94,5 +94,5 @@ def test_qliv2_process(filepath, device_id=0):
     
     torch.npu.synchronize()
 
-    return cpu_result, npu_result, topk_value, params
+    return cpu_result, npu_result, topk_value, params, output_idx_offset
 
