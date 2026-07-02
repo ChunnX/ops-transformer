@@ -19,7 +19,6 @@ Interleave mode: dx[2k]=cos[2k]*dy[2k]+sin[2k+1]*dy[2k+1]
 """
 
 import sys
-import struct
 import numpy as np
 
 
@@ -27,10 +26,10 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
     """Reference implementation of interleave rotary grad with partial slice."""
     cosD = slice_end - slice_start
 
-    if layout in ('NO_BROADCAST', 'BROADCAST_BSN'):
+    if layout in ("NO_BROADCAST", "BROADCAST_BSN"):
         # Both use [B,N,S,D] layout after possible broadcast
         for bi in range(b):
-            if layout == 'BROADCAST_BSN':
+            if layout == "BROADCAST_BSN":
                 ci = 0  # cos broadcast on all dims
             else:
                 ci = bi
@@ -38,7 +37,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                 for si in range(s):
                     # After reshape: flat index
                     base = (bi * n * s + ni * s + si) * d
-                    cos_base = ci * s * cosD + si * cosD if layout == 'NO_BROADCAST' else si * cosD
+                    cos_base = ci * s * cosD + si * cosD if layout == "NO_BROADCAST" else si * cosD
                     for di in range(d):
                         dx[base + di] = dy[base + di]
                     for k in range(cosD // 2):
@@ -49,7 +48,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx0] = cos[c0] * dy[idx0] + sin[c1] * dy[idx1]
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
-    elif layout == 'BSND':
+    elif layout == "BSND":
         for bi in range(b):
             for si in range(s):
                 cos_base = si * cosD
@@ -65,7 +64,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx0] = cos[c0] * dy[idx0] + sin[c1] * dy[idx1]
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
-    elif layout == 'SBND':
+    elif layout == "SBND":
         for si in range(s):
             for bi in range(b):
                 cos_base = si * cosD
@@ -81,7 +80,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx0] = cos[c0] * dy[idx0] + sin[c1] * dy[idx1]
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
-    elif layout == 'BNSD':
+    elif layout == "BNSD":
         for bi in range(b):
             cos_base = bi * s * cosD
             for ni in range(n):
@@ -97,7 +96,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx0] = cos[c0] * dy[idx0] + sin[c1] * dy[idx1]
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
-    elif layout == 'BNSD_BA':
+    elif layout == "BNSD_BA":
         # BNSD with cosb_==1 — cos broadcast on B
         for bi in range(b):
             for ni in range(n):
@@ -115,13 +114,13 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
                         dx[idx1] = cos[c1] * dy[idx1] - sin[c0] * dy[idx0]
 
 
-def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout='NO_BROADCAST',
+def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout="NO_BROADCAST",
                   slice_start=0, slice_end=None):
     """Generate random test data for InplacePartialRotaryMulGrad."""
     dtype_map = {
-        'float16': np.float16,
-        'bfloat16': np.float32,
-        'float32': np.float32,
+        "float16": np.float16,
+        "bfloat16": np.float32,
+        "float32": np.float32,
     }
     if dy_dtype not in dtype_map or cos_dtype not in dtype_map:
         print(f"Error: unsupported dtype", file=sys.stderr)
@@ -137,21 +136,21 @@ def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout='NO_BROADCAST',
     assert cosD % 2 == 0, f"cosD={cosD} must be multiple of 2 for interleave mode"
 
     # Build shapes based on layout
-    if layout in ('NO_BROADCAST', 'BROADCAST_BSN'):
+    if layout in ("NO_BROADCAST", "BROADCAST_BSN"):
         dy_shape = [b, n, s, d]
-        if layout == 'NO_BROADCAST':
+        if layout == "NO_BROADCAST":
             cos_shape = [b, n, s, cosD]
         else:
             cos_shape = [1, 1, 1, cosD]
-    elif layout == 'BSND':
+    elif layout == "BSND":
         dy_shape = [b, s, n, d]
         cos_shape = [1, s, 1, cosD]
-    elif layout == 'SBND':
+    elif layout == "SBND":
         dy_shape = [s, b, n, d]
         cos_shape = [s, 1, 1, cosD]
-    elif layout in ('BNSD', 'BNSD_BA'):
+    elif layout in ("BNSD", "BNSD_BA"):
         dy_shape = [b, n, s, d]
-        if layout == 'BNSD_BA':
+        if layout == "BNSD_BA":
             cos_shape = [1, 1, s, cosD]
         else:
             cos_shape = [b, 1, s, cosD]
@@ -173,26 +172,26 @@ def generate_data(b, s, n, d, dy_dtype, cos_dtype, layout='NO_BROADCAST',
                         slice_start, slice_end, b, s, n, d)
 
     # Write binaries
-    dy.astype(np_dy).tofile('dy.bin')
-    cos.astype(np_cos).tofile('cos.bin')
-    sin.astype(np_cos).tofile('sin.bin')
-    dx_ref.astype(np.float32).tofile('dx_ref.bin')
+    dy.astype(np_dy).tofile("dy.bin")
+    cos.astype(np_cos).tofile("cos.bin")
+    sin.astype(np_cos).tofile("sin.bin")
+    dx_ref.astype(np.float32).tofile("dx_ref.bin")
 
     # Write params file
-    with open('params.txt', 'w') as f:
+    with open("params.txt", "w") as f:
         f.write(f"B={b} S={s} N={n} D={d}\n")
         f.write(f"dy_dtype={dy_dtype} cos_dtype={cos_dtype}\n")
         f.write(f"layout={layout}\n")
         f.write(f"slice=[{slice_start},{slice_end}]\n")
-        f.write(f"dy_shape={'x'.join(str(x) for x in dy_shape)}\n")
-        f.write(f"cos_shape={'x'.join(str(x) for x in cos_shape)}\n")
+        f.write(f"dy_shape={"x".join(str(x) for x in dy_shape)}\n")
+        f.write(f"cos_shape={"x".join(str(x) for x in cos_shape)}\n")
 
     print(f"Generated: dy{dy.shape} cos{cos.shape} sin{sin.shape} "
           f"dy_dtype={dy_dtype} cos_dtype={cos_dtype} layout={layout} "
           f"slice=[{slice_start},{slice_end}]")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) < 7:
         print("Usage: python3 gen_data.py <B> <S> <N> <D> <dy_dtype> <cos_dtype> "
               "[layout] [slice_start] [slice_end]", file=sys.stderr)
@@ -203,7 +202,7 @@ if __name__ == '__main__':
     b, s, n, d = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
     dy_dtype = sys.argv[5]
     cos_dtype = sys.argv[6]
-    layout = sys.argv[7] if len(sys.argv) > 7 else 'NO_BROADCAST'
+    layout = sys.argv[7] if len(sys.argv) > 7 else "NO_BROADCAST"
     slice_start = int(sys.argv[8]) if len(sys.argv) > 8 else 0
     slice_end = int(sys.argv[9]) if len(sys.argv) > 9 else d
     generate_data(b, s, n, d, dy_dtype, cos_dtype, layout, slice_start, slice_end)

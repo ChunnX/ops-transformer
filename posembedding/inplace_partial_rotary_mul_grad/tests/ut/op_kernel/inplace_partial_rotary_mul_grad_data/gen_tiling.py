@@ -54,5 +54,5 @@ def main():
           f"slice=[{slice_start},{slice_end}], size={len(params)} int64")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
