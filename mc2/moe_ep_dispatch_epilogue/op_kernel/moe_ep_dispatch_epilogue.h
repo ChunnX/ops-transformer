@@ -388,6 +388,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 // 原子抢占该专家段内的行号(返回旧值即写入行)。
                 int32_t row = AscendC::AtomicAdd<int32_t>(counterBase + localExpertId, 1);
                 uint32_t globalRow = static_cast<uint32_t>(row);
+                // AtomicAdd 在 S 管线产出 globalRow, 后续 MTE3 用其作 GM 地址,
+                // 需 S→MTE2 屏障保证 globalRow 就绪后再放行 MTE2/MTE3, 否则写到错误行。
+                SyncFunc<AscendC::HardEvent::S_MTE2>();
 
                 uint32_t slotIdx = slotStart + localSlot;
                 GM_ADDR slotAddr = srcRankBase + (int64_t)slotIdx * perSlotBytes_;
