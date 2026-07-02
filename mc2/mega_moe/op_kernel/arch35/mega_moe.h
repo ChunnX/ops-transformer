@@ -1382,8 +1382,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // sub=1: 直接执行 SendMaskCal + ResetFlagList（与共享专家计算并行）
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 0) {
-                __gm__ int32_t* quantDoneFlag = (__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr;
-                while (ReadGmByPassDCache(quantDoneFlag + blockIdx_) != int32_t(2)) {
+                GlobalTensor<int32_t> quantDoneFlagTensor;
+                quantDoneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr);
+                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
+                    quantDoneFlagTensor[blockIdx_]);
+                while (ReadGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.quantDoneFlagPtr + blockIdx_) != int32_t(2)) {
                     AscendC::Nop<200>();
                 }
                 ProcessSharedExpert();
