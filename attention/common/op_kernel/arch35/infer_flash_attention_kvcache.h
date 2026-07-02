@@ -663,7 +663,7 @@ __aicore__ inline void CalcAIVSoftmaxLseOffset(RunParamStr<isInfer>& runParam,
                     runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
             } else {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset +
-                    runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+                    runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset / constInfo.gSize;
             }
         } else if (constInfo.isGqa) {
             runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
