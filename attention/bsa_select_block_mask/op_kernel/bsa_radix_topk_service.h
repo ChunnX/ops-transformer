@@ -236,19 +236,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     uint32_t headerSize = (numValue_ * coreNum + coreNum + coreNum);
     this->globalHistGm_.SetGlobalBuffer((__gm__ int32_t *)topkWorkspaceGm.GetPhyAddr());
     this->boundaryBinCumSumGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + numValue_ * coreNum * sizeof(int32_t)));
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + numValue_ * coreNum));
     this->coreTopKGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + (numValue_ * coreNum + coreNum) * sizeof(int32_t)));
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + numValue_ * coreNum + coreNum));
 
     uint64_t tileTopKOffset = tileStartId_;
     uint64_t tileHistOffset = numValue_ * tileTopKOffset;
 
     this->tileTopKGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) +
-                           tileTopKOffset * sizeof(int32_t)));
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize + tileTopKOffset));
     this->tileHistGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) +
-                           totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize + totalTileNum_ + tileHistOffset));
 }
 
 template <typename BSAT>
