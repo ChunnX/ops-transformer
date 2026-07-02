@@ -28,7 +28,21 @@ public:
         Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
     {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
-        commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
+        // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5；GetDataTypeSize对该dtype返回0，
+        // 会导致公式化性能模型出现×0/÷0(CommTime恒为常数、InverseCommTime/GetLinearThresholdLen除零)。
+        // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
+        // (复用HCCL现成子字节机制，CommTime/InverseCommTime/GetLinearThresholdLen均经GetRealDtypeSizes()取0.5)；
+        // matmul侧inMatrixADtypeSize置1(L2占用按2x高估，避免0导致memUsage/kLength退化为0)。
+        if (args.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+            commPerf_.SetCommDTypeSize(1);
+            commPerf_.SetCommDtypeSizeExpansionFraction(2);
+            matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+            matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+            mmInfo_.inMatrixADtypeSize = 1;
+            mmInfo_.inMatrixBDtypeSize = 1;
+        } else {
+            commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
+        }
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
     }
