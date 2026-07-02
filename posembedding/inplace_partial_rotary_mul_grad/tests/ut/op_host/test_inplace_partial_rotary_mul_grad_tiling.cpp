@@ -33,8 +33,8 @@ using namespace std;
 class InplacePartialRotaryMulGradTilingTest : public testing::Test {
 protected:
     static constexpr uint64_t k950CoreNum = 64;
-    static constexpr uint64_t k950UbSize = 253952;  // 248KB
-    static constexpr const char* kSocVersion = "Ascend950";
+    static constexpr uint64_t k950UbSize = 253952; // 248KB
+    static constexpr const char *kSocVersion = "Ascend950";
 
     static void SetUpTestCase()
     {
@@ -49,14 +49,15 @@ protected:
 // ==================== BAB (203): BSND, cosb_==1 ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_BSND_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // cos
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy
+            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos
+            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy out
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy out
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -71,16 +72,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_BSND_fp32)
 
 TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_BSND_fp16_fp32_mixed)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}},  ge::DT_FLOAT,   ge::FORMAT_ND},
-            {{{1, 2, 1, 4}, {1, 2, 1, 4}},  ge::DT_FLOAT,   ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 4}, {1, 2, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT,   ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT,   ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -96,11 +98,12 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, BAB_BSND_fp16_fp32_mixed)
 // ==================== AB (204): SBND ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, AB_SBND_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},     // dy [S,B,N,D]
-            {{{2, 1, 1, 4}, {2, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // cos [S,1,1,cosD]
-            {{{2, 1, 1, 4}, {2, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [S,B,N,D]
+            {{{2, 1, 1, 4}, {2, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos [S,1,1,cosD]
+            {{{2, 1, 1, 4}, {2, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
             {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -121,16 +124,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, AB_SBND_fp32)
 // ==================== ABA (201): BNSD, cosb_!=1 ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, ABA_BNSD_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},     // dy [B,N,S,D]
-            {{{2, 1, 2, 4}, {2, 1, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // cos [B,1,S,cosD]
-            {{{2, 1, 2, 4}, {2, 1, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [B,N,S,D]
+            {{{2, 1, 2, 4}, {2, 1, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos [B,1,S,cosD]
+            {{{2, 1, 2, 4}, {2, 1, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 1, 2, 0}, {2, 1, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 1, 2, 0}, {2, 1, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 1, 2, 0}, {2, 1, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 1, 2, 0}, {2, 1, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -146,16 +150,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, ABA_BNSD_fp32)
 // ==================== BA (202): BNSD, cosb_==1 ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, BA_BNSD_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},     // dy [B,N,S,D]
-            {{{1, 1, 2, 4}, {1, 1, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // cos [1,1,S,cosD]
-            {{{1, 1, 2, 4}, {1, 1, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [B,N,S,D]
+            {{{1, 1, 2, 4}, {1, 1, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos [1,1,S,cosD]
+            {{{1, 1, 2, 4}, {1, 1, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 1, 2, 0}, {1, 1, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 1, 2, 0}, {1, 1, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 2, 0}, {1, 1, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 2, 0}, {1, 1, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -171,16 +176,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, BA_BNSD_fp32)
 // ==================== A (205): NO_BROADCAST ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, A_NO_BROADCAST_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // dy [B,N,S,D]
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // cos same shape
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [B,N,S,D]
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos same shape
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 2, 2, 0}, {2, 2, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 2, 2, 0}, {2, 2, 2, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 0}, {2, 2, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 0}, {2, 2, 2, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -196,16 +202,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, A_NO_BROADCAST_fp32)
 // ==================== B (206): BROADCAST_BSN ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, B_BROADCAST_BSN_fp32)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // dy [B,N,S,D]
-            {{{1, 1, 1, 4}, {1, 1, 1, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // cos [1,1,1,D]
-            {{{1, 1, 1, 4}, {1, 1, 1, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},     // sin
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [B,N,S,D]
+            {{{1, 1, 1, 4}, {1, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos [1,1,1,D]
+            {{{1, 1, 1, 4}, {1, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
-            {{{2, 2, 2, 4}, {2, 2, 2, 4}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 1, 1, 0}, {1, 1, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 1, 1, 0}, {1, 1, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 1, 0}, {1, 1, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 1, 0}, {1, 1, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -221,16 +228,17 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, B_BROADCAST_BSN_fp32)
 // ==================== EMPTY slice ====================
 TEST_F(InplacePartialRotaryMulGradTilingTest, EMPTY_slice_zero_length)
 {
-    gert::TilingContextPara tilingPara("InplacePartialRotaryMulGrad",
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{2, 2, 2, 8}, {2, 2, 2, 8}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 2, 1, 0}, {1, 2, 1, 0}},  ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 2, 8}, {2, 2, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 1, 0}, {1, 2, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -238,9 +246,7 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, EMPTY_slice_zero_length)
         },
         nullptr, kSocVersion, k950CoreNum, k950UbSize);
 
-    uint64_t expectTilingKey = 403;  // TILING_KEY_EMPTY
+    uint64_t expectTilingKey = 403; // TILING_KEY_EMPTY
     vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
 }
-
-

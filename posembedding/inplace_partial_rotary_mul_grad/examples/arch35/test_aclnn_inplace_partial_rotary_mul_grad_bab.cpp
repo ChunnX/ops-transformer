@@ -35,16 +35,16 @@
 #include <iostream>
 #include <vector>
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -90,8 +90,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 // Reference: interleave gradient computation with partial slice
 void InterleaveGradRef(const std::vector<float> &dy, const std::vector<float> &cos, const std::vector<float> &sin,
-                       std::vector<float> &dx, int64_t b, int64_t s, int64_t n, int64_t d,
-                       int64_t sliceStart, int64_t sliceEnd)
+                       std::vector<float> &dx, int64_t b, int64_t s, int64_t n, int64_t d, int64_t sliceStart,
+                       int64_t sliceEnd)
 {
     int64_t cosD = sliceEnd - sliceStart;
     for (int64_t bi = 0; bi < b; bi++) {
@@ -131,9 +131,9 @@ int main()
     int64_t D = 8;
 
     std::vector<int64_t> dyShape = {B, S, N, D};
-    std::vector<int64_t> cosShape = {1, S, 1, 4};  // cosb_=1: B dimension broadcast; D_cos=4
+    std::vector<int64_t> cosShape = {1, S, 1, 4}; // cosb_=1: B dimension broadcast; D_cos=4
     std::vector<int64_t> sinShape = {1, S, 1, 4};
-    int64_t rotaryMode = 1;  // interleave
+    int64_t rotaryMode = 1; // interleave
     std::vector<int64_t> partialSliceData = {2, 6};
 
     // Test data
@@ -190,10 +190,11 @@ int main()
     // First stage: get workspace size
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, rotaryMode, partialSlice,
-                                                            &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, rotaryMode, partialSlice, &workspaceSize,
+                                                           &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+              LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
@@ -211,8 +212,8 @@ int main()
     // Read back result (inplace: dyRef was overwritten with dx)
     auto size = GetShapeSize(dyShape);
     std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), dyRefDeviceAddr, size * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), dyRefDeviceAddr,
+                      size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
     // Verify results

@@ -75,9 +75,8 @@ constexpr uint64_t TILING_KEY_EMPTY = 403;
 
 /// BSND layout reference (BAB template)
 inline void InterleaveGradRefBSND(const std::vector<float> &dy, const std::vector<float> &cos,
-                                   const std::vector<float> &sin, std::vector<float> &dx,
-                                   int64_t b, int64_t s, int64_t n, int64_t d,
-                                   int64_t sliceStart, int64_t sliceEnd)
+                                  const std::vector<float> &sin, std::vector<float> &dx, int64_t b, int64_t s,
+                                  int64_t n, int64_t d, int64_t sliceStart, int64_t sliceEnd)
 {
     int64_t cosD = sliceEnd - sliceStart;
     for (int64_t bi = 0; bi < b; bi++) {
@@ -103,9 +102,8 @@ inline void InterleaveGradRefBSND(const std::vector<float> &dy, const std::vecto
 
 /// SBND layout reference (AB template)
 inline void InterleaveGradRefSBND(const std::vector<float> &dy, const std::vector<float> &cos,
-                                   const std::vector<float> &sin, std::vector<float> &dx,
-                                   int64_t s, int64_t b, int64_t n, int64_t d,
-                                   int64_t sliceStart, int64_t sliceEnd)
+                                  const std::vector<float> &sin, std::vector<float> &dx, int64_t s, int64_t b,
+                                  int64_t n, int64_t d, int64_t sliceStart, int64_t sliceEnd)
 {
     int64_t cosD = sliceEnd - sliceStart;
     for (int64_t si = 0; si < s; si++) {
@@ -131,9 +129,8 @@ inline void InterleaveGradRefSBND(const std::vector<float> &dy, const std::vecto
 
 /// BNSD layout reference (ABA&BA template)
 inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vector<float> &cos,
-                                   const std::vector<float> &sin, std::vector<float> &dx,
-                                   int64_t b, int64_t n, int64_t s, int64_t d,
-                                   int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
+                                  const std::vector<float> &sin, std::vector<float> &dx, int64_t b, int64_t n,
+                                  int64_t s, int64_t d, int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
 {
     int64_t cosD = sliceEnd - sliceStart;
     for (int64_t bi = 0; bi < b; bi++) {
@@ -142,7 +139,7 @@ inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vecto
                 int64_t groupOffset = (bi * n * s + ni * s + si) * d;
                 int64_t cosBase;
                 if (isBroadCast) {
-                    cosBase = si * cosD;  // cos broadcast on B
+                    cosBase = si * cosD; // cos broadcast on B
                 } else {
                     cosBase = bi * s * cosD + si * cosD;
                 }
@@ -164,9 +161,8 @@ inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vecto
 
 /// NO_BROADCAST / BROADCAST_BSN reference (A&B template)
 inline void InterleaveGradRefAB(const std::vector<float> &dy, const std::vector<float> &cos,
-                                 const std::vector<float> &sin, std::vector<float> &dx,
-                                 int64_t b, int64_t n, int64_t s, int64_t d,
-                                 int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
+                                const std::vector<float> &sin, std::vector<float> &dx, int64_t b, int64_t n, int64_t s,
+                                int64_t d, int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
 {
     int64_t cosD = sliceEnd - sliceStart;
     int64_t total = b * n * s;

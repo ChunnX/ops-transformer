@@ -32,19 +32,18 @@ TEST_F(InplacePartialRotaryMulGradInferShape, basic_BSND_with_x_fp16)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // dy
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // cos
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // sin
+            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // dy
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // cos
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // sin
         },
         {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // dy out
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // dy out
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1, 64, 2, 64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 64, 2, 64}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -54,9 +53,9 @@ TEST_F(InplacePartialRotaryMulGradInferShape, basic_no_x_fp32)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{2, 32, 4, 128}, {2, 32, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dy
-            {{{1, 32, 1, 64},  {1, 32, 1, 64}},  ge::DT_FLOAT, ge::FORMAT_ND},   // cos
-            {{{1, 32, 1, 64},  {1, 32, 1, 64}},  ge::DT_FLOAT, ge::FORMAT_ND},   // sin
+            {{{2, 32, 4, 128}, {2, 32, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy
+            {{{1, 32, 1, 64}, {1, 32, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // cos
+            {{{1, 32, 1, 64}, {1, 32, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // sin
             // x absent
         },
         {
@@ -68,8 +67,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, basic_no_x_fp32)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({32, 96})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {2, 32, 4, 128}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 32, 4, 128}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -79,9 +77,9 @@ TEST_F(InplacePartialRotaryMulGradInferShape, SBND_fp32)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{4, 2, 8, 128}, {4, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dy [S,B,N,D]
-            {{{4, 1, 1, 64},  {4, 1, 1, 64}},  ge::DT_FLOAT, ge::FORMAT_ND},   // cos [S,1,1,cosD]
-            {{{4, 1, 1, 64},  {4, 1, 1, 64}},  ge::DT_FLOAT, ge::FORMAT_ND},   // sin
+            {{{4, 2, 8, 128}, {4, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy [S,B,N,D]
+            {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // cos [S,1,1,cosD]
+            {{{4, 1, 1, 64}, {4, 1, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // sin
         },
         {
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -92,8 +90,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, SBND_fp32)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {4, 2, 8, 128}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{4, 2, 8, 128}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -103,9 +100,9 @@ TEST_F(InplacePartialRotaryMulGradInferShape, BNSD_fp16)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{2, 8, 4, 128}, {2, 8, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // dy [B,N,S,D]
-            {{{2, 1, 4, 64},  {2, 1, 4, 64}},  ge::DT_FLOAT16, ge::FORMAT_ND},   // cos [B,1,S,cosD]
-            {{{2, 1, 4, 64},  {2, 1, 4, 64}},  ge::DT_FLOAT16, ge::FORMAT_ND},   // sin
+            {{{2, 8, 4, 128}, {2, 8, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // dy [B,N,S,D]
+            {{{2, 1, 4, 64}, {2, 1, 4, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // cos [B,1,S,cosD]
+            {{{2, 1, 4, 64}, {2, 1, 4, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // sin
         },
         {
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -116,8 +113,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, BNSD_fp16)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({32, 96})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {2, 8, 4, 128}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 8, 4, 128}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -127,9 +123,9 @@ TEST_F(InplacePartialRotaryMulGradInferShape, NO_BROADCAST_bf16)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // dy
-            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // cos same shape
-            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // sin
+            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // dy
+            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // cos same shape
+            {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // sin
         },
         {
             {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -140,8 +136,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, NO_BROADCAST_bf16)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {2, 4, 8, 64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 8, 64}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -151,9 +146,9 @@ TEST_F(InplacePartialRotaryMulGradInferShape, BROADCAST_BSN_fp32)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dy
-            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},   // cos [1,1,1,D]
-            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},   // sin
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dy
+            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos [1,1,1,D]
+            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin
         },
         {
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -164,8 +159,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, BROADCAST_BSN_fp32)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 128})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {2, 4, 8, 128}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 8, 128}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -175,21 +169,20 @@ TEST_F(InplacePartialRotaryMulGradInferShape, mixed_fp16_fp32)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // dy
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT,   ge::FORMAT_ND},   // cos
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT,   ge::FORMAT_ND},   // sin
+            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // dy
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // cos
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // sin
         },
         {
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT,   ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT,   ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1, 64, 2, 64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 64, 2, 64}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -199,12 +192,12 @@ TEST_F(InplacePartialRotaryMulGradInferShape, mixed_fp32_fp16)
     gert::InfershapeContextPara ctx(
         "InplacePartialRotaryMulGrad",
         {
-            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT,   ge::FORMAT_ND},   // dy
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // cos
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // sin
+            {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dy
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // cos
+            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // sin
         },
         {
-            {{{}, {}}, ge::DT_FLOAT,   ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
@@ -212,8 +205,7 @@ TEST_F(InplacePartialRotaryMulGradInferShape, mixed_fp32_fp16)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1, 64, 2, 64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 64, 2, 64}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -224,8 +216,8 @@ TEST_F(InplacePartialRotaryMulGradInferShape, empty_slice)
         "InplacePartialRotaryMulGrad",
         {
             {{{2, 32, 4, 128}, {2, 32, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 32, 1, 0},   {2, 32, 1, 0}},   ge::DT_FLOAT, ge::FORMAT_ND},   // cos D=0 (empty)
-            {{{2, 32, 1, 0},   {2, 32, 1, 0}},   ge::DT_FLOAT, ge::FORMAT_ND},   // sin D=0
+            {{{2, 32, 1, 0}, {2, 32, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND}, // cos D=0 (empty)
+            {{{2, 32, 1, 0}, {2, 32, 1, 0}}, ge::DT_FLOAT, ge::FORMAT_ND}, // sin D=0
         },
         {
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -236,7 +228,6 @@ TEST_F(InplacePartialRotaryMulGradInferShape, empty_slice)
             {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({64, 64})},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {2, 32, 4, 128}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 32, 4, 128}};
     ExecuteTestCase(ctx, ge::GRAPH_SUCCESS, expectOutputShape);
 }
