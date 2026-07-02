@@ -15,7 +15,6 @@
 
 #ifndef MEGA_MOE_IMPL_H
 #define MEGA_MOE_IMPL_H
-
 #include "kernel_operator.h"
 
 #include "kernel_tiling/kernel_tiling.h"
@@ -30,24 +29,11 @@
 #include "blaze/gemm/block/block_mmad_mx_fp8fp4.h"
 #include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 
+#include "mega_moe_impl_base.h"
 #include "mega_moe_combine_send.h"
 
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
-constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M_256 = 256;
-constexpr uint32_t L1_TILE_M_128 = 128;
-constexpr uint32_t L1_TILE_N = 256;
-constexpr uint32_t L1_TILE_K = 256;
-constexpr uint32_t L0_TILE_K = 128;
-constexpr uint32_t SCALE_K_L1_RATE = 2;
-constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN_256_256 = 256 * 256;
-constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U) / ALIGN32 * ALIGN32;
-constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
-constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
-constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U;  // triple tensor 在 UB 中的起始地址
-
 // =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
 // =================================================================================================
@@ -308,7 +294,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
 // 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
@@ -492,8 +478,13 @@ __aicore__ inline void GroupMatmul2(
                 tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
                     (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
                 AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
-                MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                    mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                if constexpr (IsLayered) {
+                    MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
+                        mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                } else {
+                    MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                        mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
                 NotifyCube(pingpongIdx);
