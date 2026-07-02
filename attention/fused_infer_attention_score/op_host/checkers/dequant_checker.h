@@ -93,6 +93,7 @@ private:
     ge::graphStatus CheckInputLayoutMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputLayoutMXFP8Fullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputLayoutFP8GQAFullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckStrideFP8GQAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputLayoutFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputAxisFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckN1SizeFullquant(const FiaTilingInfo &fiaInfo) const;
