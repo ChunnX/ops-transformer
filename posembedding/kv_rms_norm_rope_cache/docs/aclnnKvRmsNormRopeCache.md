@@ -19,7 +19,7 @@
 
 - 计算公式：
 
-  (1) interleaveRope:
+  (1) interleaveRope：
 
   $$
   x=kv[...,Dv:]
@@ -45,7 +45,7 @@
   y=x\_part1*cos+x\_part2*sin
   $$
 
-  (2) rmsNorm:
+  (2) rmsNorm：
 
   $$
   x=kv[...,:Dv]
@@ -271,7 +271,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>kRopeOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应interleaveRope计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dk]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -281,7 +281,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>cKvOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应rmsNorm计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dv]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -401,7 +401,9 @@ aclnnStatus aclnnKvRmsNormRopeCache(
 
 ## 约束说明
 
+  * 本算子默认确定性实现。
   * 参数说明里shape格式说明：
+
       * Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和RoPE计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。若cacheModeOptional为NZ场景（cacheModeOptional为PA_NZ、PA_BLK_NZ），Dk、Dv需32B对齐。
@@ -409,62 +411,29 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16或bfloat16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
       * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。
       * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
+      * 输入张量均不支持空Tensor。
+      * 所有输入均不支持无效值，包括且不限于：±inf，nan。
+
   * index相关约束：
+
       * 当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
       * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
       * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+
   * 量化场景的相关约束：
+
       * 量化场景支持的情况1：kCacheRef的数据类型为FLOAT16或BFLOAT16，ckvCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况2：ckvCacheRef的数据类型为FLOAT16或BFLOAT16，kCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况3：kCacheRef与ckvCacheRef的数据类型一致，为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-  * cache的数据类型支持:
-      <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-      <col style="width: 108px">
-      <col style="width: 384px">
-      <col style="width: 384px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>量化模式</th>
-          <th>产品</th>
-          <th>支持类型</th>
-        </tr></thead>
-      <tbody>
-        <tr>
-          <td rowspan="4">非量化模式</td>
-          <td>Ascend 950PR/Ascend 950DT</td>
-          <td rowspan="3">必须与kv保持一致：BFLOAT16、FLOAT16。</td>
-        </tr>
-        <tr>
-          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
-          <td>必须与kv保持一致：FLOAT16。</td>
-        </tr>
-        <tr>
-          <td rowspan="4">量化模式</td>
-          <td>Ascend 950PR/Ascend 950DT</td>
-          <td>INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
-        </tr>
-        <tr>
-          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-          <td rowspan="3">INT8</td>
-        </tr>
-        <tr>
-          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
-        </tr>
-        <tr>
-          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
-        </tr>
-      </tbody>
-      </table>
 
-      - Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 以及 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
+  * cache的数据类型支持：
+
+    * 非量化模式：cache类型必须与kv保持一致。
+      * <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：可支持BFLOAT16、FLOAT16。
+      * <term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持FLOAT16。
+    * 量化模式：
+      * <term>Ascend 950PR/Ascend 950DT</term>：可支持INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+      * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持INT8。
 
 ## 调用示例
 
