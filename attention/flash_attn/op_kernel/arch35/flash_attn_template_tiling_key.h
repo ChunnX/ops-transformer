@@ -65,7 +65,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCEN
                                                           InOutLayoutType_BNSD, InOutLayoutType_TND,
                                                           InOutLayoutType_BNSD_BSND),
                                      ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
-                                     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
+                                     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
                                      ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
                                      ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 

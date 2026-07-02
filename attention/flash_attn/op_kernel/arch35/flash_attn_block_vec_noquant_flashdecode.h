@@ -405,8 +405,6 @@ protected:
     {
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf;
         AscendC::PipeBarrier<PIPE_V>();
-        DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-        DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
@@ -423,27 +421,6 @@ protected:
     }
     __aicore__ inline void CalcPreNextTokens()
     {
-        actSeqLensQ = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-            actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
-        } else {
-            actSeqLensKv = kvActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-        }
-        int64_t safePreToken = constInfo.preTokens;
-        int64_t safeNextToken = constInfo.nextTokens;
-
-        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
-
-        if (constInfo.sparseMode == BAND) {
-            preTokensPerBatch = safePreToken;
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ + safeNextToken;
-        } else if ((constInfo.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
-            nextTokensPerBatch = safeNextToken;
-            preTokensPerBatch = actSeqLensKv - actSeqLensQ + safePreToken;
-        } else {
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
-            preTokensPerBatch = 0;
-        }
     }
     __aicore__ inline void CopySinkIn(uint32_t cntM)
     {
@@ -472,42 +449,12 @@ protected:
     __aicore__ inline void DealInvalidRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t columnCount)
     {
-        if (!attenMaskFlag) {
-            return;
-        }
-
-        if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
-            return;
-        }
-
-        fa_base_vector::InvalidRowParams params{
-            .actS1Size = actSeqLensQ,
-            .gSize = static_cast<uint64_t>(constInfo.gSize),
-            .gS1Idx = taskInfo.gS1Idx + startRow,
-            .dealRowCount = dealRowCount,
-            .columnCount = columnCount,
-            .preTokensPerBatch = preTokensPerBatch,
-            .nextTokensPerBatch = nextTokensPerBatch,
-        };
-
-        fa_base_vector::InvalidRows<UBOUT_T, fa_base_vector::GeInputUbFormat<layout>()> invalidRows;
-        invalidRows(attenOutUb, params);
     }
 
     template <typename UBOUT_T>
     __aicore__ inline void DealInvalidMaskRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow,
                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM)
     {
-        if (!attenMaskFlag) {
-            return;
-        }
-        if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
-            return;
-        }
-        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
-
-        fa_base_vector::InvalidMaskRows<UBOUT_T, T, true>(0, dealRowCount, columnCount, lseMaxUb, negativeIntScalar,
-                                                          attenOutUb);
     }
 
 public:
