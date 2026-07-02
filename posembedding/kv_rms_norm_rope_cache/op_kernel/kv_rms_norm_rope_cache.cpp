@@ -51,103 +51,103 @@ extern "C" __global__ __aicore__ void kv_rms_norm_rope_cache(
     TPipe pipe;
     if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM_MTP)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTP<false, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTPQUANT<false, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_NORM_MTP_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTPQUANT<false, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_MTP)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheB16MTP<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_B1SD_NORM)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16B1SD<false, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_B1SD_PA)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16B1SD<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BLK_NZ)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PABLKNZ<true, DTYPE_KV> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, v, k_rope, c_kv);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_NZ_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PANZQUANT<true, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v, k_rope, c_kv);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BLK_BNSD_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PABLKBNSDQUANT<true, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BNSD_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16BNSDQUANT<true, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_B1SD_NORM_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16BNSDQUANT<false, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BLK_NZ_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheQuantB16PABLKNZ<true, DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_NZ)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PA<true, DTYPE_KV, PA_NZ_NO_QUANT> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BLK_BNSD)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PA<true, DTYPE_KV, PA_BLK_BNSD_NO_QUANT> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, v);
         op.Process();
     } else if (TILING_KEY_IS(KV_RMS_NORM_ROPE_CACHE_B16_PA_BNSD)) {
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
-        const KvRmsNormRopeCacheTilingData *__restrict tilingData = &tiling_data_in;
+        const KvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
         KernelKvRmsNormRopeCacheB16PA<true, DTYPE_KV, PA_BNSD_NO_QUANT> op(&pipe, tilingData);
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, v);
         op.Process();
