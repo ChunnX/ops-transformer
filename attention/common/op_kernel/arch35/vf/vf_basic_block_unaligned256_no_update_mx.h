@@ -666,10 +666,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         Add(vreg_exp_sum_1, vreg_exp_even_1, vreg_exp_odd_1, preg_all);
         Add(vreg_exp_sum_2, vreg_exp_even_2, vreg_exp_odd_2, preg_all);
         Add(vreg_exp_sum_3, vreg_exp_sum_1, vreg_exp_sum_2, preg_all);
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum_3, vreg_exp_sum_3,
-                                                                                          preg_all);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum_3,
-                                                                     ureg_exp_sum, 1);
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum_3,
+            vreg_exp_sum_3, preg_all);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb),
+            vreg_exp_sum_3, ureg_exp_sum, 1);
         // compute dropmask
         if constexpr (hasDrop == 1) {
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_US>(
