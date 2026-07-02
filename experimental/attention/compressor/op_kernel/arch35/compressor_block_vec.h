@@ -254,6 +254,12 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     if (isExistXCache_) {
         xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
         xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+        if (constInfo_.aiCoreIdx == 0) {
+            AscendC::printf("[CompressorXCacheDebug] Init aiCoreIdx=0 xCache=1 xCacheSlotMapping=%u\n",
+                            static_cast<uint32_t>(xCacheSlotMapping != nullptr));
+        }
+    } else if (constInfo_.aiCoreIdx == 0) {
+        AscendC::printf("[CompressorXCacheDebug] Init aiCoreIdx=0 xCache=0\n");
     }
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
@@ -279,23 +285,44 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
 {
     if (!isExistXCache_) {
+        if (constInfo_.aiCoreIdx == 0) {
+            AscendC::printf("[CompressorXCacheDebug] UpdateXCache skip: xCache absent\n");
+        }
         return;
     }
     constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
     uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
     uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * hBlockNum;
+    if (constInfo_.aiCoreIdx == 0) {
+        AscendC::printf("[CompressorXCacheDebug] UpdateXCache enter batch=%u updateBatch=%u hSize=%u xCacheSize=%u "
+                        "hBlockNum=%u totalTaskNum=%u usedCore=%u cmpRatio=%u seqSize=%u xCacheReadSize=%u\n",
+                        constInfo_.batchSize, constInfo_.xCacheUpdateBatchSize, constInfo_.hSize,
+                        constInfo_.xCacheSize, hBlockNum, totalTaskNum, constInfo_.usedCoreNum,
+                        constInfo_.cmpRatio, constInfo_.sSize, constInfo_.xCacheReadSize);
+    }
     for (uint32_t taskIdx = constInfo_.aiCoreIdx; taskIdx < totalTaskNum; taskIdx += constInfo_.usedCoreNum) {
         uint32_t bIdx = taskIdx / hBlockNum;
         uint32_t hBlockIdx = taskIdx % hBlockNum;
         uint32_t hStart = hBlockIdx * COPY_BASE;
         uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
         uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
+        if (taskIdx < 2) {
+            uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
+            uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
+            AscendC::printf("[CompressorXCacheDebug] UpdateXCache task=%u core=%u bIdx=%u hBlockIdx=%u slot=%u "
+                            "hStart=%u hDealSize=%u srcOffset=%lu dstOffset=%lu\n",
+                            taskIdx, constInfo_.aiCoreIdx, bIdx, hBlockIdx, slot, hStart, hDealSize,
+                            srcOffset, dstOffset);
+        }
         LocalTensor<X_T> inputUb = inputQue1.AllocTensor<X_T>();
         DataCopy(inputUb, xGm_[bIdx * constInfo_.hSize + hStart], hDealSize);
         inputQue1.EnQue(inputUb);
         inputQue1.DeQue<X_T>();
         DataCopy(xCacheGm_[static_cast<uint64_t>(slot) * constInfo_.hSize + hStart], inputUb, hDealSize);
         inputQue1.FreeTensor(inputUb);
+    }
+    if (constInfo_.aiCoreIdx == 0) {
+        AscendC::printf("[CompressorXCacheDebug] UpdateXCache exit\n");
     }
 }
 

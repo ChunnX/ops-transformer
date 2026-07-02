@@ -613,9 +613,18 @@ __aicore__ inline void CompressorKernel<COMP>::Process()
 {
     if (isExistXCache_) {
         if ASCEND_IS_AIV {
+            if (constInfo.aiCoreIdx == 0) {
+                AscendC::printf("[CompressorXCacheDebug] Process before UpdateXCache\n");
+            }
             blockVec_.UpdateXCache();
+            if (constInfo.aiCoreIdx == 0) {
+                AscendC::printf("[CompressorXCacheDebug] Process after UpdateXCache\n");
+            }
         }
         SyncAll();
+        if (constInfo.aiCoreIdx == 0) {
+            AscendC::printf("[CompressorXCacheDebug] Process after SyncAll\n");
+        }
     }
     // 所有batch的有效序列都为0时, 直接退出
     if (constInfo.batchSize == 0) {
