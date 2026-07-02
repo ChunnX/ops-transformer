@@ -20,6 +20,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "gmm/common/op_host/log_format_util.h"
 #include "grouped_matmul_activation_quant.h"
+#include "grouped_matmul_activation_quant_common.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
 #include "opdev/make_op_executor.h"
@@ -39,24 +40,6 @@ constexpr char OP_NAME[] = "aclnnGroupedMatmulActivationQuantWeightNzGetWorkspac
 constexpr char GELU_TANH[] = "gelu_tanh";
 constexpr char QUANT_MODE_MX[] = "mx";
 constexpr char ROUND_MODE_RINT[] = "rint";
-constexpr size_t SINGLE_TENSOR_SIZE = 1UL;
-constexpr size_t FIRST_TENSOR_INDEX = 0UL;
-constexpr size_t X_DIM_NUM = 2UL;
-constexpr size_t SCALE_DIM_NUM = 3UL;
-constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
-constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
-constexpr size_t OUT_DIM_NUM = 2UL;
-constexpr size_t OUT_SCALE_DIM_NUM = 3UL;
-constexpr size_t WEIGHT_LOGICAL_DIM_NUM = 3UL;
-constexpr size_t WEIGHT_NZ_DIM_NUM = 5UL;
-constexpr int64_t DIM_0 = 0L;
-constexpr int64_t DIM_1 = 1L;
-constexpr int64_t DIM_2 = 2L;
-constexpr int64_t DIM_3 = 3L;
-constexpr int64_t MX_GROUP_SIZE = 64L;
-constexpr int64_t MX_SCALE_PAIR = 2L;
-constexpr int64_t NZ_C0_DIM = 16L;
-constexpr int64_t NZ_LAST_DIM = 32L;
 constexpr int64_t MAX_GROUP_NUM = 1024L;
 constexpr int64_t FLOAT8_E5M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E5M2);
 constexpr int64_t FLOAT8_E4M3FN_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E4M3FN);
@@ -131,11 +114,11 @@ bool IsEmptyTensorList(const aclTensorList *tensorList)
     if (tensorList == nullptr || tensorList->Size() == 0) {
         return true;
     }
-    if (tensorList->Size() != SINGLE_TENSOR_SIZE || (*tensorList)[FIRST_TENSOR_INDEX] == nullptr) {
+    if (tensorList->Size() != gmaq::SINGLE_TENSOR_SIZE || (*tensorList)[gmaq::FIRST_TENSOR_INDEX] == nullptr) {
         return false;
     }
-    const auto &shape = (*tensorList)[FIRST_TENSOR_INDEX]->GetViewShape();
-    return shape.GetDimNum() == 1 && shape.GetDim(DIM_0) == 0;
+    const auto &shape = (*tensorList)[gmaq::FIRST_TENSOR_INDEX]->GetViewShape();
+    return shape.GetDimNum() == 1 && shape.GetDim(gmaq::DIM_0) == 0;
 }
 
 void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
@@ -150,10 +133,10 @@ aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
     GMMAQ_CHECK_WITH_LOG(tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, name, "nullptr",
                                              "the tensorList can not be nullptr"));
-    GMMAQ_CHECK_WITH_LOG(tensorList->Size() == SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_TENSORNUM(OP_NAME, name, tensorList->Size(), std::to_string(SINGLE_TENSOR_SIZE)));
+    GMMAQ_CHECK_WITH_LOG(tensorList->Size() == gmaq::SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_TENSORNUM(OP_NAME, name, tensorList->Size(), std::to_string(gmaq::SINGLE_TENSOR_SIZE)));
     const std::string tensorName = std::string(name) + "[0]";
-    GMMAQ_CHECK_WITH_LOG((*tensorList)[FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+    GMMAQ_CHECK_WITH_LOG((*tensorList)[gmaq::FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, tensorName.c_str(), "nullptr",
                                              "the tensor in tensorList can not be nullptr"));
     return ACLNN_SUCCESS;
@@ -230,7 +213,7 @@ bool TryMultiplyInt64(int64_t lhs, int64_t rhs, int64_t &result)
 bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
     auto shape = tensor->GetViewShape();
-    if (shape.GetDimNum() < X_DIM_NUM) {
+    if (shape.GetDimNum() < gmaq::X_DIM_NUM) {
         return false;
     }
     int64_t lastDim = static_cast<int64_t>(shape.GetDimNum()) - 1;
@@ -257,7 +240,7 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor)
 bool IsTransposeForMxShape(const aclTensor *tensor)
 {
     auto shape = tensor->GetViewShape();
-    if (shape.GetDimNum() < WEIGHT_SCALE_DIM_NUM) {
+    if (shape.GetDimNum() < gmaq::WEIGHT_SCALE_DIM_NUM) {
         return false;
     }
     auto strides = tensor->GetViewStrides();
@@ -265,10 +248,10 @@ bool IsTransposeForMxShape(const aclTensor *tensor)
     int64_t secondLastDim = static_cast<int64_t>(shape.GetDimNum()) - 2;
     int64_t thirdLastDim = static_cast<int64_t>(shape.GetDimNum()) - 3;
     int64_t expectedSecondLastStride = 0;
-    if (!TryMultiplyInt64(shape.GetDim(thirdLastDim), MX_SCALE_PAIR, expectedSecondLastStride)) {
+    if (!TryMultiplyInt64(shape.GetDim(thirdLastDim), gmaq::MX_SCALE_PAIR, expectedSecondLastStride)) {
         return false;
     }
-    return strides[lastDim] == 1 && strides[thirdLastDim] == MX_SCALE_PAIR &&
+    return strides[lastDim] == 1 && strides[thirdLastDim] == gmaq::MX_SCALE_PAIR &&
            strides[secondLastDim] == expectedSecondLastStride;
 }
 
@@ -284,13 +267,13 @@ aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tenso
         op::Shape viewShape = inputTensor->GetViewShape();
         op::Shape shape;
         shape.SetScalar();
-        GMMAQ_CHECK_WITH_LOG(viewShape.GetDimNum() >= WEIGHT_SCALE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+        GMMAQ_CHECK_WITH_LOG(viewShape.GetDimNum() >= gmaq::WEIGHT_SCALE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weightScale",
                 std::to_string(viewShape.GetDimNum()), "weightScale dim num must be greater than or equal to 4"));
-        shape.AppendDim(viewShape.GetDim(DIM_0));
-        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_2));
-        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_3));
-        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_1));
+        shape.AppendDim(viewShape.GetDim(gmaq::DIM_0));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - gmaq::DIM_2));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - gmaq::DIM_3));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - gmaq::DIM_1));
         aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
         CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -313,10 +296,10 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
         uint32_t viewShapeDimsNum = viewShape.GetDimNum();
         op::Shape shape;
         shape.SetScalar();
-        GMMAQ_CHECK_WITH_LOG(viewShapeDimsNum >= X_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+        GMMAQ_CHECK_WITH_LOG(viewShapeDimsNum >= gmaq::X_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight", std::to_string(viewShapeDimsNum),
                 "weight dim num must be greater than or equal to 2"));
-        for (uint32_t i = 0; i < viewShapeDimsNum - X_DIM_NUM; ++i) {
+        for (uint32_t i = 0; i < viewShapeDimsNum - gmaq::X_DIM_NUM; ++i) {
             shape.AppendDim(viewShape.GetDim(i));
         }
         shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 1));
@@ -335,8 +318,8 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
 aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional, const aclTensorList *&weight,
                              const aclTensorList *&weightScale, bool &transposeWeight, aclOpExecutor *executor)
 {
-    const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
-    const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
+    const aclTensor *w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
+    const aclTensor *wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
     bool transposeWeightScale = IsTransposeForMxShape(wScale);
     bool transposeWeightByStride = IsTransposeLastTwoDims(w);
     bool transposeX = IsTransposeLastTwoDims(x);
@@ -364,11 +347,11 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
                               const aclTensor *weight, const aclTensor *weightScale, bool transposeWeight,
                               const aclTensor *y, const aclTensor *yScale)
 {
-    int64_t m = x->GetViewShape().GetDim(DIM_0);
-    int64_t k = x->GetViewShape().GetDim(DIM_1);
-    int64_t e = groupList->GetViewShape().GetDim(DIM_0);
-    int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(DIM_1) :
-                                           weightScale->GetViewShape().GetDim(DIM_2);
+    int64_t m = x->GetViewShape().GetDim(gmaq::DIM_0);
+    int64_t k = x->GetViewShape().GetDim(gmaq::DIM_1);
+    int64_t e = groupList->GetViewShape().GetDim(gmaq::DIM_0);
+    int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(gmaq::DIM_1) :
+                                           weightScale->GetViewShape().GetDim(gmaq::DIM_2);
     bool emptyOutput = y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty();
     GMMAQ_CHECK_WITH_LOG((e >= 1 && e <= MAX_GROUP_NUM) || (e == 0 && emptyOutput),
         ACLNN_ERR_PARAM_INVALID,
@@ -378,24 +361,24 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     GMMAQ_CHECK_WITH_LOG(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "K", std::to_string(k),
                                              "K must be greater than 0 unless M or N is 0"));
-    GMMAQ_CHECK_WITH_LOG(n % MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(n % gmaq::MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "N", std::to_string(n),
                                              "N must be divisible by 64"));
 
     const auto &weightShape = weight->GetStorageShape();
     const auto &weightViewShape = weight->GetViewShape();
     const auto &weightScaleShape = weightScale->GetViewShape();
-    GMMAQ_CHECK_WITH_LOG(weightShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weight dim 0", std::to_string(weightShape.GetDim(DIM_0)),
+    GMMAQ_CHECK_WITH_LOG(weightShape.GetDim(gmaq::DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weight dim 0", std::to_string(weightShape.GetDim(gmaq::DIM_0)),
                                              "weight dim 0 must be equal to groupList dim 0"));
-    GMMAQ_CHECK_WITH_LOG(weightScaleShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(weightScaleShape.GetDim(gmaq::DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightScale dim 0",
-            std::to_string(weightScaleShape.GetDim(DIM_0)),
+            std::to_string(weightScaleShape.GetDim(gmaq::DIM_0)),
             "weightScale dim 0 must be equal to groupList dim 0"));
 
-    op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
+    op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), gmaq::MX_SCALE_PAIR};
     op::Shape yExpectShape = {m, n};
-    op::Shape yScaleExpectShape = {m, Ops::Base::CeilDiv(n, MX_GROUP_SIZE), MX_SCALE_PAIR};
+    op::Shape yScaleExpectShape = {m, Ops::Base::CeilDiv(n, gmaq::MX_GROUP_SIZE), gmaq::MX_SCALE_PAIR};
     CHECK_RET(CheckTensorShapeEqual(xScaleOptional, "xScaleOptional", xScaleExpectShape) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorShapeEqual(y, "y", yExpectShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -405,15 +388,15 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
     op::Shape weightExpectShape;
     op::Shape weightScaleExpectShape;
     if (transposeWeight) {
-        weightExpectShape = {e, Ops::Base::CeilDiv(k, NZ_LAST_DIM), Ops::Base::CeilDiv(n, NZ_C0_DIM), NZ_C0_DIM,
-                             NZ_LAST_DIM};
-        weightScaleExpectShape = {e, n, Ops::Base::CeilDiv(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
+        weightExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::NZ_LAST_DIM), Ops::Base::CeilDiv(n, gmaq::NZ_C0_DIM), gmaq::NZ_C0_DIM,
+                             gmaq::NZ_LAST_DIM};
+        weightScaleExpectShape = {e, n, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), gmaq::MX_SCALE_PAIR};
     } else {
-        weightExpectShape = {e, Ops::Base::CeilDiv(n, NZ_LAST_DIM), Ops::Base::CeilDiv(k, NZ_C0_DIM), NZ_C0_DIM,
-                             NZ_LAST_DIM};
-        weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, MX_GROUP_SIZE), n, MX_SCALE_PAIR};
+        weightExpectShape = {e, Ops::Base::CeilDiv(n, gmaq::NZ_LAST_DIM), Ops::Base::CeilDiv(k, gmaq::NZ_C0_DIM), gmaq::NZ_C0_DIM,
+                             gmaq::NZ_LAST_DIM};
+        weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), n, gmaq::MX_SCALE_PAIR};
     }
-    if (weightViewShape.GetDimNum() == WEIGHT_LOGICAL_DIM_NUM) {
+    if (weightViewShape.GetDimNum() == gmaq::WEIGHT_LOGICAL_DIM_NUM) {
         op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
         CHECK_RET(CheckTensorShapeEqual(weight, "weight", weightViewExpectShape) == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
@@ -521,19 +504,19 @@ aclnnStatus CheckMxQuantDim(const aclTensor *x, const aclTensor *groupList, cons
                             const aclTensor *weightScale, const aclTensor *xScaleOptional,
                             const aclTensor *y, const aclTensor *yScale)
 {
-    CHECK_RET(CheckTensorDimNum(x, "x", X_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(xScaleOptional, "xScaleOptional", SCALE_DIM_NUM) == ACLNN_SUCCESS,
+    CHECK_RET(CheckTensorDimNum(x, "x", gmaq::X_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(xScaleOptional, "xScaleOptional", gmaq::SCALE_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(weight, "weight", WEIGHT_LOGICAL_DIM_NUM) == ACLNN_SUCCESS,
+    CHECK_RET(CheckTensorDimNum(weight, "weight", gmaq::WEIGHT_LOGICAL_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(weightScale, "weightScale", WEIGHT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
+    CHECK_RET(CheckTensorDimNum(weightScale, "weightScale", gmaq::WEIGHT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(groupList, "groupList", GROUP_LIST_DIM_NUM) == ACLNN_SUCCESS,
+    CHECK_RET(CheckTensorDimNum(groupList, "groupList", gmaq::GROUP_LIST_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(y, "y", OUT_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDimNum(yScale, "yScale", OUT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
+    CHECK_RET(CheckTensorDimNum(y, "y", gmaq::OUT_DIM_NUM) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorDimNum(yScale, "yScale", gmaq::OUT_SCALE_DIM_NUM) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    GMMAQ_CHECK_WITH_LOG(weight->GetStorageShape().GetDimNum() == WEIGHT_NZ_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(weight->GetStorageShape().GetDimNum() == gmaq::WEIGHT_NZ_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight storageShape",
             std::to_string(weight->GetStorageShape().GetDimNum()),
             "the dim num of weight storageShape must be 5"));
@@ -581,8 +564,8 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
     GMMAQ_CHECK_WITH_LOG(xScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "xScaleOptional", "nullptr",
                                              "when the quantization mode is mx, xScaleOptional can not be nullptr"));
-    const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
-    const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
+    const aclTensor *w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
+    const aclTensor *wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
 
     aclnnStatus checkRet = CheckMxQuantAttrs(groupListType, effectiveYDtype, roundMode, effectiveRoundMode, scaleAlg,
                                              dstTypeMax, bias);
@@ -598,8 +581,8 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight, executor);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    w = (*weight)[FIRST_TENSOR_INDEX];
-    wScale = (*weightScale)[FIRST_TENSOR_INDEX];
+    w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
+    wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
     checkRet = CheckMxQuantShape(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     return ACLNN_SUCCESS;
