@@ -1162,7 +1162,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
                 GlobalTensor<int32_t> doneFlagTensor;
                 doneFlagTensor.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr);
                 __gm__ int32_t* doneFlagAddr = (__gm__ int32_t*)doneFlagTensor.GetPhyAddr();
-                while (AscendC::ReadGmByPassDCache(doneFlagAddr) != int32_t(aicNum_)) {
+                while (AscendC::ReadGmByPassDCache(doneFlagAddr) != int32_t(blockNum_)) {
                     AscendC::Nop<200>();
                 }
             }
