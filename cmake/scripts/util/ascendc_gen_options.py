@@ -43,6 +43,8 @@ def gen_compile_options(compile_options_file: str, op_type: str, \
                 opc_debug_config.append("oom")
             else:
                 raise RuntimeError(f"Unknown oom option format {opts}")
+        elif opts == "printf":
+            opc_debug_config.append("printf")
         elif "--save-temp-files" in opts:
             opc_debug_config.append("dump_cce")
         elif opts.startswith("--op_relocatable_kernel_binary"):
