@@ -1169,8 +1169,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     OP_CHECK_IF(!GetSparseInfo(sparseType), OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to get sparse info."),
                return ge::GRAPH_FAILED);
     SetSparseTilingInfo(sparseType);
-    inputParamsRegbase_->set_implMode(static_cast<uint8_t>(implMode));
-    implMode = (hasAttenMask && inputDtypeBytes != DATA_TYPE_FP32) ? implMode : ImplMode::AA_HIGH_PRECISION;
+    inputParamsRegbase_->set_implMode(static_cast<uint8_t>(ImplMode::AA_INVALID_LINE_HIGH_PRECISION));
+    implMode = ImplMode::AA_INVALID_LINE_HIGH_PRECISION;
     if (!isSparseValidSizeAligned) {
         s1SparseValidSize = preTokens;
         s2SparseValidSize = nextTokens;
