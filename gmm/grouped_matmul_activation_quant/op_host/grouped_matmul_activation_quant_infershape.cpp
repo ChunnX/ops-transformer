@@ -16,25 +16,27 @@
 using namespace ge;
 namespace ops {
 namespace {
-constexpr int64_t X_INDEX = 0;
-constexpr int64_t WEIGHT_SCALE_INDEX = 3;
-constexpr int64_t M_DIM_INDEX = 0;
-constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
-constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2;
-constexpr int64_t OUT_Y_INDEX = 0;
-constexpr int64_t OUT_Y_SCALE_INDEX = 1;
-constexpr int64_t OUT_M_DIM_INDEX = 0;
-constexpr int64_t OUT_N_DIM_INDEX = 1;
-constexpr int64_t OUT_SCALE_M_DIM_INDEX = 0;
-constexpr int64_t OUT_SCALE_N_BLOCK_DIM_INDEX = 1;
-constexpr int64_t OUT_SCALE_PAIR_DIM_INDEX = 2;
-constexpr int64_t OUT_DIM_NUM = 2;
-constexpr int64_t OUT_SCALE_DIM_NUM = 3;
-constexpr int64_t MX_GROUP_SIZE = 64;
-constexpr int64_t MX_SCALE_PAIR = 2;
-constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 1;
-constexpr size_t ATTR_INDEX_Y_DTYPE = 5;
-constexpr int64_t DYNAMIC_DIM = -1;
+constexpr int64_t X_INDEX = 0L;
+constexpr int64_t WEIGHT_SCALE_INDEX = 3L;
+constexpr int64_t M_DIM_INDEX = 0L;
+constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1L;
+constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2L;
+constexpr int64_t OUT_Y_INDEX = 0L;
+constexpr int64_t OUT_Y_SCALE_INDEX = 1L;
+constexpr int64_t OUT_M_DIM_INDEX = 0L;
+constexpr int64_t OUT_N_DIM_INDEX = 1L;
+constexpr int64_t OUT_SCALE_M_DIM_INDEX = 0L;
+constexpr int64_t OUT_SCALE_N_BLOCK_DIM_INDEX = 1L;
+constexpr int64_t OUT_SCALE_PAIR_DIM_INDEX = 2L;
+constexpr int64_t OUT_DIM_NUM = 2L;
+constexpr int64_t OUT_SCALE_DIM_NUM = 3L;
+constexpr int64_t MX_GROUP_SIZE = 64L;
+constexpr int64_t MX_SCALE_PAIR = 2L;
+constexpr size_t MIN_X_DIM_NUM = 1UL;
+constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
+constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 1UL;
+constexpr size_t ATTR_INDEX_Y_DTYPE = 5UL;
+constexpr int64_t DYNAMIC_DIM = -1L;
 } // namespace
 
 static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeContext *context)
@@ -48,6 +50,16 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
     const bool *transposeWeightPtr = attrs->GetBool(ATTR_INDEX_TRANSPOSE_WEIGHT);
     bool transposeWeight = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
 
+    OP_CHECK_IF(xShape->GetDimNum() < MIN_X_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
+                                                      std::to_string(xShape->GetDimNum()),
+                                                      "x dim num must be greater than or equal to 1"),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(weightScaleShape->GetDimNum() != WEIGHT_SCALE_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "weightScale",
+                                                      std::to_string(weightScaleShape->GetDimNum()),
+                                                      "weightScale dim num must be 4"),
+                return GRAPH_FAILED);
     int64_t m = xShape->GetDim(M_DIM_INDEX);
     int64_t n =
         transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
