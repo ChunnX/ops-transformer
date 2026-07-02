@@ -292,7 +292,7 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             EXPECT_EQ(workspaceSize, 0U) << "case=" << caseName;
         }
         if (executor != nullptr) {
-            delete executor;
+            aclDestroyAclOpExecutor(executor);
         }
     }
 
