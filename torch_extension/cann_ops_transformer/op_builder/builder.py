@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
@@ -19,6 +20,34 @@ import cann_ops_transformer
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 AS_LIBRARY = Library("cann_ops_transformer", "DEF")
+
+
+class _LazyOpModule:
+    def __init__(self, builder, verbose):
+        self._builder = builder
+        self._verbose = verbose
+        self._module = None
+        self._lock = threading.Lock()
+
+    def _load(self):
+        if self._module is not None:
+            return self._module
+
+        with self._lock:
+            if self._module is not None:
+                return self._module
+
+            cached_module = OpBuilder._loaded_ops.get(self._builder.name)
+            if cached_module is not None and cached_module is not self:
+                self._module = cached_module
+                return self._module
+
+            self._module = self._builder._load_impl(self._verbose)
+            OpBuilder._loaded_ops[self._builder.name] = self._module
+            return self._module
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
 
 
 class OpBuilder(ABC):
@@ -96,12 +125,15 @@ class OpBuilder(ABC):
         if self.name in __class__._loaded_ops:
             return __class__._loaded_ops[self.name]
 
+        op_module = _LazyOpModule(self, verbose)
+        __class__._loaded_ops[self.name] = op_module
+        return op_module
+
+    def _load_impl(self, verbose=True):
         op_module = load(name=self.name,
                          sources=self.get_absolute_paths(self.sources()),
                          extra_include_paths=self.get_absolute_paths(self.include_paths()),
                          extra_cflags=self.cxx_args(),
                          extra_ldflags=self.extra_ldflags(),
                          verbose=verbose)
-        __class__._loaded_ops[self.name] = op_module
-
         return op_module

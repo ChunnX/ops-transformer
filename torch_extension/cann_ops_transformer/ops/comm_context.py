@@ -28,4 +28,21 @@ class CommContextOpBuilder(OpBuilder):
 comm_context_op_builder = CommContextOpBuilder()
 op_module = comm_context_op_builder.load()
 
-CommContextManager = op_module.CommContextManager
+
+class _LazyCommContextManager:
+    def __init__(self):
+        self._manager_cls = None
+
+    def _load(self):
+        if self._manager_cls is None:
+            self._manager_cls = op_module.CommContextManager
+        return self._manager_cls
+
+    def __call__(self, *args, **kwargs):
+        return self._load()(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+CommContextManager = _LazyCommContextManager()

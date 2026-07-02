@@ -12,3 +12,9 @@ import torch
 import torch_npu
 from . import ops
 from .ops import *
+
+
+def __getattr__(name):
+    if name in ("ElasticBuffer", "EPHandle"):
+        return getattr(ops, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
