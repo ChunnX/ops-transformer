@@ -90,6 +90,33 @@ def sparse_flash_mla_softmax_l1_norm_metadata(
     mask_mode=None,
     cmp_ratio=None,
 ):
+    """SparseFlashMlaSoftmaxL1Norm 的前置 metadata 算子，封装 aclnnSparseFlashMlaSoftmaxL1NormMetadata。
+
+    根据主算子的 shape、layout、mask 等信息，计算分核负载均衡 metadata，
+    输出固定 shape (64,) 的 int32 张量，供主算子 metadataOptional 输入使用。
+
+    Args:
+        num_heads_q (int): query 的 head 个数，必须为正数且能被 num_heads_k 整除。
+        num_heads_k (int): key 的 head 个数，必须为正数。
+        head_dim (int): q/k 的 head dimension，必须为正数。
+        cu_seqlens_q (Tensor, optional): TND 场景下 query 的累积序列长度，shape (B+1,)，dtype int32。
+        cu_seqlens_k (Tensor, optional): TND 场景下 key 的累积序列长度，shape (B+1,)，dtype int32。
+        seqused_q (Tensor, optional): 每个 batch 中 query 实际参与运算的序列长度，shape (B,)，dtype int32。
+        seqused_k (Tensor, optional): 预留参数，每个 batch 中 key 实际参与运算的序列长度。
+        cmp_residual_k (Tensor, optional): 预留参数，key 序列长度与 cmpRatio 相关的残差。
+        topk_length (Tensor, optional): 每行 query 对应的 key 实际可选的 topk 长度。
+        batch_size (int, optional): batch 数量，TND 场景可填 None 自动推导。
+        max_seqlen_q (int, optional): query 的最大序列长度，BSND 场景必须为正数。
+        max_seqlen_k (int, optional): key 的最大序列长度，BSND 场景必须为正数。
+        topk (int, optional): 从 key 中筛选的关键 token 个数，0 表示无稀疏。
+        layout_q (str, optional): query 排列格式，支持 "BSND"/"TND"，默认 "BSND"。
+        layout_k (str, optional): key 排列格式，支持 "BSND"/"TND"，默认 "BSND"。
+        mask_mode (int, optional): mask 模式，0=No mask，3=Causal，默认 0。
+        cmp_ratio (int, optional): key 压缩比，取值 [1, 128]，默认 1。
+
+    Returns:
+        Tensor: shape (64,) 的 int32 张量，前 5 个字段为负载均衡信息。
+    """
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_k = 0 if max_seqlen_k is None else max_seqlen_k

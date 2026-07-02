@@ -63,10 +63,23 @@ at::Tensor sparse_flash_mla_softmax_l1_norm_metadata(
     int64_t mask_mode,
     int64_t cmp_ratio)
 {
-    at::Tensor output = at::empty(
-        {SMLA_METADATA_SIZE},
-        at::TensorOptions().dtype(at::kInt).device(get_sparse_flash_mla_softmax_l1_norm_metadata_device(
-            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, topk_length)));
+    TORCH_CHECK((num_heads_q > 0), "The num_heads_q should be greater than 0, current is: ", num_heads_q);
+    TORCH_CHECK((num_heads_k > 0), "The num_heads_k should be greater than 0, current is: ", num_heads_k);
+    TORCH_CHECK((head_dim > 0), "The head_dim should be greater than 0, current is: ", head_dim);
+    TORCH_CHECK((num_heads_q % num_heads_k == 0),
+                "num_heads_q should be divisible by num_heads_k, but got nq=", num_heads_q, " nk=", num_heads_k);
+    TORCH_CHECK((cmp_ratio >= 1 && cmp_ratio <= 128),
+                "cmp_ratio should be in [1, 128], current is: ", cmp_ratio);
+
+    at::Tensor output{nullptr};
+    {
+        auto local_device = get_sparse_flash_mla_softmax_l1_norm_metadata_device(
+            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, topk_length);
+        const c10::OptionalDeviceGuard device_guard(local_device);
+        output = at::empty(
+            {SMLA_METADATA_SIZE},
+            at::TensorOptions().dtype(at::kInt).device(local_device));
+    }
 
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
     char *layout_k_ptr = const_cast<char *>(layout_k.c_str());
