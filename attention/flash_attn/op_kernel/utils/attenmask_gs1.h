@@ -33,8 +33,7 @@ enum SparseMode : uint8_t {
     DEFAULT_MASK = 0,
     ALL_MASK,
     LEFT_UP_CAUSAL,
-    RIGHT_DOWN_CAUSAL,
-    BAND,
+    BAND = 4,
 };
 
 struct MaskInfo {
@@ -169,13 +168,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
-    int64_t nextToken = 0; // sparse2 本身原点就是左上角
-    if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
-        nextToken =
-            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
-    } else if (info.sparseMode == BAND) {                                          // 4
-        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
-    }
+    int64_t nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     uint64_t offset = 0;
     int64_t delta = nextToken + s1StartIdx - info.s2StartIdx;
     uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
@@ -209,11 +202,10 @@ __aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1Sta
     if (isPre) {
         return ComputeAttenMaskOffsetCompressPre(info, s1StartIdx);
     } else {
-        if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
-            return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
-        } else {
+        if (info.sparseMode == BAND) {
             return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
         }
+        return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
     }
 }
 
@@ -242,7 +234,7 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
 
 __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 {
-    if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
+    if (info.sparseMode != BAND) {
         return false;
     }
 
@@ -252,13 +244,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         return false;
     }
 
-    int64_t nextToken = 0; // sparse2 本身原点就在左上角
-    if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
-        nextToken =
-            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算Token
-    } else if (info.sparseMode == BAND) {                                          // 4
-        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
-    }
+    int64_t nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
 
     if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
         return true;

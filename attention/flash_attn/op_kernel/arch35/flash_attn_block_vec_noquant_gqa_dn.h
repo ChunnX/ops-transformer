@@ -742,7 +742,7 @@ public:
             s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
-                                        hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
+                                        hasValidRow); // sparse = 0 or 4，preToekens or nextTokens负数
             if (!batchNeedRowInvalid) {
                 return;
             }

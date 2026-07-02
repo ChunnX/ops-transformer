@@ -437,12 +437,9 @@ protected:
         if (constInfo.sparseMode == BAND) {
             preTokensPerBatch = safePreToken;
             nextTokensPerBatch = actSeqLensKv - actSeqLensQ + safeNextToken;
-        } else if ((constInfo.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
+        } else if (attenMaskFlag) {
             nextTokensPerBatch = safeNextToken;
             preTokensPerBatch = actSeqLensKv - actSeqLensQ + safePreToken;
-        } else {
-            nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
-            preTokensPerBatch = 0;
         }
     }
     __aicore__ inline void CopySinkIn(uint32_t cntM)

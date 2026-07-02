@@ -504,8 +504,10 @@ public:
         if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
             if constexpr (!HAS_MASK) {
                 CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
-            } else {
+            } else if (constInfo.sparseMode == fa_base_vector::BAND) {
                 CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+            } else {
+                CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
             }
             prevBN2Idx = bN2Cur;
             prevGS1Idx = gS1Cur;
@@ -539,9 +541,7 @@ public:
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
-        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
+        if (constInfo.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
