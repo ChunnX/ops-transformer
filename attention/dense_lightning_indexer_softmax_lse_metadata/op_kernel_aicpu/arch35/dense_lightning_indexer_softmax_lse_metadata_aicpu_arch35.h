@@ -20,6 +20,8 @@
 
 #include <algorithm>
 
+using namespace optiling;
+
 namespace aicpu {
 
 template <typename T>
