@@ -218,7 +218,8 @@ private:
         gmPerTokenScale1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
         gmPerTokenScale2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
         tokenPerExpert.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
-        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
+        tokenPerExpertLayout = Layout3D(paddedExpertNumAligned, params.expertPerRank);
         preSumBeforeRankForDispatch.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForDispatch));
         preSumBeforeRankForCombine.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForCombine));
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(params.ptrXActiveMask));
@@ -496,7 +497,7 @@ private:
             tmpBuffer1,
             tokenPerExpert,
             {U16(EP), U16(EP * expertPerRank * sizeof(int32_t)),
-                U16((AlignUp(EP * expertPerRank, 128) - EP * expertPerRank) * sizeof(int32_t)), 0},
+                U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t)), 0},
             {}
         );
 
@@ -515,7 +516,7 @@ private:
             result,
             tmpBuffer1,
             {U16(EP), U16((EP * expertPerRank) * sizeof(int32_t)),
-                0, U16((AlignUp(EP * expertPerRank, 128) - EP * expertPerRank) * sizeof(int32_t))}
+                0, U16((paddedExpertNumAligned - EP * expertPerRank) * sizeof(int32_t))}
         );
     }
 
@@ -743,7 +744,7 @@ private:
     CATLASS_DEVICE
     void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params, int64_t localTokenPerExpertOffset)
     {
-        uint32_t numPerCore = AlignUp(params.EP * params.expertPerRank, 128);
+        uint32_t numPerCore = paddedExpertNumAligned;
         AscendC::LocalTensor<int32_t> tmpBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
         uint64_t ubOffet = 2 * numPerCore * sizeof(uint32_t);
@@ -799,7 +800,7 @@ private:
 
         for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             int32_t intPer512 = CACHE_LINE / sizeof(int);
-            for(int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128); checkIdx += intPer512) {
+            for (int32_t checkIdx = 0; checkIdx < paddedExpertNumAligned; checkIdx += intPer512) {
                 __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert) + tokenPerExpertLayout(dstEpIdx, 0, checkIdx);
                 gm_signal_wait_until_ne(sync_check, 0);
             }
@@ -815,14 +816,15 @@ private:
             // 只有 dstEpIdx == RuntimeRank(params) 的 core 才拥有本 rank 自身的 token 分布，
             // 只允许该 core 写 preSumBeforeRank，避免其他 core 覆盖正确数据（写竞争修复）
             if (static_cast<uint32_t>(dstEpIdx) == RuntimeRank(params)) {
-                for (uint32_t i = 0, currentSum = 0; i < numPerCore; i++) {
+                uint32_t realExpertNum = params.EP * params.expertPerRank;
+                for (uint32_t i = 0, currentSum = 0; i < realExpertNum; i++) {
                     prevSumBuf(i) = currentSum;
                     currentSum += tmpBuffer(i);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::DataCopyPad(preSumBeforeRankForDispatch, prevSumBuf,
-                    AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
+                    AscendC::DataCopyParams{1, static_cast<uint16_t>(realExpertNum * sizeof(int32_t)), 0, 0});
             }
             for (int32_t i = 0, j = 0, prevSum = 0; i < (RuntimeRank(params) + 1) * params.expertPerRank; i++) {
                 if (i >= RuntimeRank(params) * params.expertPerRank) {
@@ -1123,7 +1125,8 @@ private:
             static_cast<int32_t>(L1TileShape::N),
             shmem,
             peermemInfo.offsetD,
-            static_cast<int32_t>(serverId_)
+            static_cast<int32_t>(serverId_),
+            tokenPerExpertLayout
         };
 
         uint32_t n = params.problemShape.n();
@@ -1177,7 +1180,7 @@ private:
 
         AscendC::SyncAll<true>();
 #ifndef __CROSSRANKSYNCANDALLGATHERV1__
-        ResetTokenPerExpert(params, params.EP * AlignUp(params.EP * params.expertPerRank, 128));
+        ResetTokenPerExpert(params, params.EP * paddedExpertNumAligned);
         AscendC::SyncAll<true>();
 #endif
         shmem.InitStatusTargetSum();
@@ -1350,11 +1353,12 @@ private:
             uint32_t n2 = params.problemShape.k();
             uint64_t workspaceOffset = 0;
             expandedRowIdx = params.ptrWorkspace;
+            uint64_t paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
 
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
-            workspaceOffset +=  AlignUp(params.EP * params.expertPerRank, 128) * params.EP * sizeof(int32_t);
+            workspaceOffset += paddedExpertNumAligned * params.EP * sizeof(int32_t);
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
@@ -1380,7 +1384,7 @@ private:
             workspaceOffset += params.maxOutputSize * k2 * sizeof(ElementA);
             ptrSumBeforeRankForDispatch = params.ptrWorkspace + workspaceOffset;
 
-            workspaceOffset += params.EP * sizeof(int32_t) * AlignUp(params.expertPerRank, FLAGSTRIDE);
+            workspaceOffset += paddedExpertNumAligned * sizeof(int32_t);
             ptrSumBeforeRankForCombine = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += params.EP * sizeof(int32_t) * AlignUp(params.expertPerRank, FLAGSTRIDE);
@@ -1437,6 +1441,7 @@ private:
     AscendC::GlobalTensor<int32_t> preSumBeforeRankForDispatch;
     AscendC::GlobalTensor<int32_t> preSumBeforeRankForCombine;
     Layout3D tokenPerExpertLayout;
+    int32_t paddedExpertNumAligned;
     HcclShmem<true> shmem;
 
     __gm__ HcclAiRMAInfo* qp_info_ = nullptr;
