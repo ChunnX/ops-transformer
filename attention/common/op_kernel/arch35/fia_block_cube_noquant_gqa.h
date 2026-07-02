@@ -211,17 +211,15 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
-        }
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
 
         if constexpr (hasRope) {
             InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
@@ -239,8 +237,7 @@ public:
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
-                                            actualLenQDims, constInfo.isQHasLeftPadding,
-                                            constInfo.queryRightPaddingSize);
+                                            actualLenQDims);
         } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, actualSeqLengthsGmQ, actualLenQDims);
         }
@@ -264,8 +261,7 @@ public:
                                              constInfo.maxBlockNumPerBatch,
                                              constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims,
-                                             constInfo.isKVHasLeftPadding, constInfo.kvRightPaddingSize);
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
@@ -362,7 +358,7 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                               .n2Idx = runInfo.n2Idx,
                               .s2Idx = runInfo.s2Idx,
                               .dIdx = dOffset,
@@ -377,7 +373,7 @@ public:
                 FaL1Tensor<KV_T, L1Format::NZ> l1Tensor = {.tensor = dstTensor[offset],
                                                            .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-                GmKvCoord gmCoord = {.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+                GmKvCoord gmCoord = {.bIdx = runInfo.bIdx,
                                      .n2Idx = runInfo.n2Idx,
                                      .s2Idx = runInfo.s2Idx,
                                      .dIdx = dOffset + nopeDealSize - static_cast<uint32_t>(constInfo.dSize),
@@ -395,7 +391,7 @@ public:
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
                                                 .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
@@ -419,35 +415,8 @@ public:
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
 
-    __aicore__ inline void UpdateKeyGmTensor(uint32_t bIdx)
-    {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
-        keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                    constInfo.actualSeqLenKVSize);
-    }
-
-    __aicore__ inline void UpdateValueGmTensor(uint32_t bIdx)
-    {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                      constInfo.actualSeqLenKVSize);
-    }
-
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKeyGmTensor(runInfo.bIdx);
-            }
-        }
-
         if constexpr (dBaseSize > 256) {
             IterateBmm1NdL1SplitK(outputBuf, runInfo);
             return;
@@ -717,12 +686,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValueGmTensor(runInfo.bIdx);
-            }
-        }
-
         if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
             IterateBmm2L1SplitN(outputBuf, inputBuf, runInfo);
         } else {
