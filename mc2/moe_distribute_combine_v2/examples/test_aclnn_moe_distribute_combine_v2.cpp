@@ -41,9 +41,7 @@
 struct Args {
     uint32_t rankId;
     uint32_t epRankId;
-    uint32_t tpRankId;
     HcclComm hcclEpComm;
-    HcclComm hcclTpComm;
     aclrtStream dispatchV2Stream;
     aclrtStream combineV2Stream;
     aclrtContext context;
@@ -53,14 +51,12 @@ const uint32_t MACHINE_NUM = 1;
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
 const uint32_t EP_WORLD_SIZE = 2;
-const uint32_t TP_WORLD_SIZE = 1;
-const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+const uint32_t DEV_NUM = EP_WORLD_SIZE;
 
 const bool IS_TEST_A2 = false;
 const bool IS_TEST_A3A5 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
-const uint32_t TP_WORLD_SIZE_A2 = 1;
-const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
+const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -111,10 +107,9 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     char hcomEpName[128] = {0};
     ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
-    char hcomTpName[128] = {0};
     LOG_PRINT(
-        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
-        args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
+        "[INFO] rank = %d, hcomEpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
+        args.rankId, hcomEpName, args.dispatchV2Stream, args.combineV2Stream, args.context
     );
 
     // 设置场景
@@ -155,7 +150,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     void *expandIdxDeviceAddr = nullptr;
     void *expertTokenNumsDeviceAddr = nullptr;
     void *epRecvCountsDeviceAddr = nullptr;
-    void *tpRecvCountsDeviceAddr = nullptr;
     void *expandScalesDeviceAddr = nullptr;
 
     aclTensor *x = nullptr;
@@ -167,20 +161,18 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclTensor *expandIdx = nullptr;
     aclTensor *expertTokenNums = nullptr;
     aclTensor *epRecvCounts = nullptr;
-    aclTensor *tpRecvCounts = nullptr;
     aclTensor *expandScales = nullptr;
-    
+
     // 定义当前场景下各变量维度
     std::vector<int64_t> xShape{BS, H};
     std::vector<int64_t> expertIdsShape{BS, K};
     std::vector<int64_t> scalesShape{(sharedExpertRankNum > 0) ? 1 + moeExpertNum : moeExpertNum, H};
     std::vector<int64_t> expertScalesShape{BS, K};
-    std::vector<int64_t> expandXShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A, H};
-    std::vector<int64_t> dynamicScalesShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A};
+    std::vector<int64_t> expandXShape{A, H};
+    std::vector<int64_t> dynamicScalesShape{A};
     std::vector<int64_t> expandIdxShape{A * 128};
     std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-    std::vector<int64_t> epRecvCountsShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * localExpertNum * EP_WORLD_SIZE};
-    std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1};
+    std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
     std::vector<int64_t> expandScalesShape{A};
 
     long long xShapeSize = GetShapeSize(xShape);
@@ -192,7 +184,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     long long expandIdxShapeSize = GetShapeSize(expandIdxShape);
     long long expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
     long long epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
-    long long tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
     long long expandScalesShapeSize = GetShapeSize(expandScalesShape);
 
     // 构造host侧变量
@@ -211,7 +202,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int32_t> expandIdxHostData(expandIdxShapeSize, 0);
     std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
     std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
-    std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
     // 构造device侧变量
@@ -219,23 +209,21 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);  
+    ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expertScalesHostData, expertScalesShape, &expertScalesDeviceAddr, aclDataType::ACL_FLOAT, &expertScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandXHostData, expandXShape, &expandXDeviceAddr, (quantMode > 0) ? aclDataType::ACL_INT8 : aclDataType::ACL_BF16, &expandX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT, &dynamicScales);         
+    ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT, &dynamicScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandIdxHostData, expandIdxShape, &expandIdxDeviceAddr, aclDataType::ACL_INT32, &expandIdx);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums); 
+    ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr, aclDataType::ACL_INT64, &expertTokenNums);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);             
+    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
     /* 声明算子执行必需变量 */
@@ -254,13 +242,13 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         (quantMode > 0 ? scales : nullptr), nullptr, 
         expertScales, 
         hcomEpName, EP_WORLD_SIZE, args.epRankId,
-        moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-        args.tpRankId, expertShardType, sharedExpertNum,
+        moeExpertNum, "", 0,
+        0, expertShardType, sharedExpertNum,
         sharedExpertRankNum, quantMode, globalBS,
         expertTokenNumsType, commAlg.c_str(),
         expandX, dynamicScales,
         expandIdx, expertTokenNums,
-        epRecvCounts, tpRecvCounts,
+        epRecvCounts, nullptr,
         expandScales, &dispatchV2WorkspaceSize,
         &dispatchV2Executor
     );
@@ -285,9 +273,9 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     // 调用combineV2算子第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
-        expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
+        expandX, expertIds, expandIdx, epRecvCounts, expertScales, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
+        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0, 0,
         expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
         commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
     CHECK_RET(
@@ -327,7 +315,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     DestroyTensor(expandIdx);
     DestroyTensor(expertTokenNums);
     DestroyTensor(epRecvCounts);
-    DestroyTensor(tpRecvCounts);
     DestroyTensor(expandScales);
 
     FreeDeviceAddr(xDeviceAddr);
@@ -340,10 +327,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     FreeDeviceAddr(expertTokenNumsDeviceAddr);
     FreeDeviceAddr(epRecvCountsDeviceAddr);
     FreeDeviceAddr(expandScalesDeviceAddr);
-    FreeDeviceAddr(tpRecvCountsDeviceAddr);
 
     HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
     aclrtDestroyStream(args.dispatchV2Stream);
     aclrtDestroyStream(args.combineV2Stream);
     aclrtDestroyContext(args.context);
@@ -400,7 +385,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     void *assistInfoForCombineDeviceAddr = nullptr;
     void *expertTokenNumsDeviceAddr = nullptr;
     void *epRecvCountsDeviceAddr = nullptr;
-    void *tpRecvCountsDeviceAddr = nullptr;
     void *expandScalesDeviceAddr = nullptr;
 
     void *xOutDeviceAddr = nullptr;
@@ -417,7 +401,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     aclTensor *assistInfoForCombine = nullptr; // expandIdx
     aclTensor *expertTokenNums = nullptr;
     aclTensor *epRecvCounts = nullptr;
-    aclTensor *tpRecvCounts = nullptr;
     aclTensor *expandScales = nullptr;
 
     aclTensor *activationScale = nullptr; // 预留参数
@@ -435,12 +418,11 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
     std::vector<int64_t> expertScalesShape{Bs, K};
 
-    std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
-    std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
+    std::vector<int64_t> expandXShape{A, H};
+    std::vector<int64_t> dynamicScalesShape{A};
     std::vector<int64_t> assistInfoForCombineShape{A * 128};
     std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-    std::vector<int64_t> epRecvCountsShape{TP_WORLD_SIZE_A2 * localExpertNum * EP_WORLD_SIZE_A2}; // 不分层
-    std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
+    std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE_A2}; // 不分层
     std::vector<int64_t> expandScalesShape{A};
 
     std::vector<int64_t> xOutShape{Bs, H};
@@ -455,7 +437,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     int64_t assistInfoForCombineShapeSize = GetShapeSize(assistInfoForCombineShape);
     int64_t expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
     int64_t epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
-    int64_t tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
     int64_t expandScalesShapeSize = GetShapeSize(expandScalesShape);
 
     int64_t xOutShapeSize = GetShapeSize(xOutShape);
@@ -476,7 +457,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     std::vector<int32_t> assistInfoForCombineHostData(assistInfoForCombineShapeSize, 0);
     std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
     std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
-    std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
     std::vector<int16_t> xOutHostData(xOutShapeSize, 0);
@@ -501,8 +481,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -521,10 +499,10 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     /**************************************** 调用dispatch ********************************************/
     // 调用第一阶段接口
     ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), xActiveMask,
-            expertScales, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", TP_WORLD_SIZE_A2,
-            args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
+            expertScales, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", 0,
+            0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
             expertTokenNumsType, commAlg.c_str(), expandX, dynamicScales, assistInfoForCombine, expertTokenNums, epRecvCounts,
-            tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
+            nullptr, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -546,11 +524,11 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     // 调用第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds,
                                                         assistInfoForCombine, epRecvCounts,
-                                                        expertScales, tpRecvCounts,
+                                                        expertScales, nullptr,
                                                         xActiveMask, activationScale, weightScale,
                                                         groupList, expandScales, sharedExpertX,
                                                         hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum,
-                                                        "", TP_WORLD_SIZE_A2, args.tpRankId, expertShardType,
+                                                        "", 0, 0, expertShardType,
                                                         sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
                                                         commQuantMode, groupList_type, commAlg.c_str(), xOut,
                                                         &combineWorkspaceSize, &combineExecutor);
@@ -590,7 +568,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     DestroyTensor(assistInfoForCombine);
     DestroyTensor(expertTokenNums);
     DestroyTensor(epRecvCounts);
-    DestroyTensor(tpRecvCounts);
     DestroyTensor(expandScales);
     DestroyTensor(activationScale);
     DestroyTensor(weightScale);
@@ -607,7 +584,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     FreeDeviceAddr(assistInfoForCombineDeviceAddr);
     FreeDeviceAddr(expertTokenNumsDeviceAddr);
     FreeDeviceAddr(epRecvCountsDeviceAddr);
-    FreeDeviceAddr(tpRecvCountsDeviceAddr);
     FreeDeviceAddr(expandScalesDeviceAddr);
     FreeDeviceAddr(xOutDeviceAddr);
 
@@ -652,12 +628,10 @@ int run_example_on_A2()
     Args args[DEV_NUM_A2];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM_A2);
     for (uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
-        uint32_t epRankId = rankId / TP_WORLD_SIZE_A2;
-        uint32_t tpRankId = rankId % TP_WORLD_SIZE_A2;
+        uint32_t epRankId = rankId;
 
         args[rankId].rankId = rankId;
         args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
         args[rankId].hcclEpComm = commsEp[epRankId];
         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
         args[rankId].combineV2Stream = combineV2Stream[rankId];
@@ -693,50 +667,27 @@ int run_example_on_A3A5()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
     }
 
-    int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
-        }
-    }
-    // 初始化ep通信域，ep = 8 {0,2,4,6,8,10,12,14} {1,3,5,7,9,11,13,15}.
-    HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll ep world %d failed. ret = %d\n", tpId, ret); return ret
-        );
-    }
-
-    int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
+    int32_t devicesEp[EP_WORLD_SIZE];
     for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
-        }
+        devicesEp[epId] = epId;
     }
-    // 初始化tp通信域，tp = 2 {0,1} {2,3} {4,5} {6,7} {8,9} {10,11} {12,13} {14,15}.
-    HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll tp world %d failed. ret = %d\n", epId, ret); return ret
-        );
-    }
+    // 初始化ep通信域.
+    HcclComm commsEp[EP_WORLD_SIZE];
+    ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp, commsEp);
+    CHECK_RET(
+        ret == ACL_SUCCESS,
+        LOG_PRINT("[ERROR] HcclCommInitAll ep failed. ret = %d\n", ret); return ret
+    );
 
     Args args[DEV_NUM];
     // 各线程调用各卡执行算子
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        uint32_t epRankId = rankId / TP_WORLD_SIZE;
-        uint32_t tpRankId = rankId % TP_WORLD_SIZE;
+        uint32_t epRankId = rankId;
 
         args[rankId].rankId = rankId;
         args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
-        args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
-        args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
+        args[rankId].hcclEpComm = commsEp[epRankId];
         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
