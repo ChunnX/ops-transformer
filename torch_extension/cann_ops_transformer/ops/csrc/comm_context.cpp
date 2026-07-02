@@ -350,9 +350,9 @@ public:
             ASCEND_LOGI("Layer %u all support UB_MEM, rankNumPerUbDomain_: %u",
                         layerList[layerIndex], rankNumPerUbDomain_);
         }
-        // 判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
-        if (rankNumPerUbDomain_ != 0) {
-            TORCH_CHECK(rankNumPerUbDomain_ < rankSize && rankSize % rankNumPerUbDomain_ == 0,
+        // 跨超场景判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
+        if (rankNumPerUbDomain_ != 0 && rankNumPerUbDomain_ < rankSize) {
+            TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
                         "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                         rankNumPerUbDomain_, ", rankSize: ", rankSize);
         }
