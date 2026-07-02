@@ -39,8 +39,6 @@ constexpr uint32_t tokenLenIndex = 4;
 constexpr uint32_t tokenActualLenIndex = 5;
 constexpr uint32_t flagIndex = 7;
 
-
-
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
@@ -73,10 +71,13 @@ __aicore__ inline void CombineTokensLayered(
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
-    //每个 token 含数据+三元组(32B)
-    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, COMBINE_SEND_ADDR, ALIGN_32 / sizeof(int32_t));
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)),
+                                                          (int64_t)ALIGN_32);
+    // 每个 token 含数据+三元组(32B)
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),
+                                                      (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC,
+                                                                 COMBINE_SEND_ADDR, ALIGN_32 / sizeof(int32_t));
     AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
@@ -104,9 +105,11 @@ __aicore__ inline void CombineTokensLayered(
         tripleTempTensor.SetValue(tokenLenIndex, n);
         tripleTempTensor.SetValue(tokenActualLenIndex, actualDataLength);
         tripleTempTensor.SetValue(flagIndex, 1); // 标记为已处理
-        __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr + toRankId * sizeof(int32_t));
+        __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr +
+                                                        toRankId * sizeof(int32_t));
         GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
-                        static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
+                        static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs *
+                        params.tilingData->expertPerRank;
         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
