@@ -36,4 +36,46 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
-from .elastic_buffer import ElasticBuffer, EPHandle
+
+
+def __getattr__(name):
+    if name in ("ElasticBuffer", "EPHandle"):
+        from .elastic_buffer import ElasticBuffer, EPHandle
+        value = {"ElasticBuffer": ElasticBuffer, "EPHandle": EPHandle}[name]
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "sparse_flash_mla_grad",
+    "sparse_flash_mla_grad_metadata",
+    "npu_moe_distribute_dispatch",
+    "npu_moe_distribute_combine",
+    "moe_token_permute",
+    "get_symm_buffer_for_mega_moe",
+    "mega_moe",
+    "get_mega_moe_ccl_buffer_size",
+    "MoeDistributeBuffer",
+    "flash_attn",
+    "flash_attn_metadata",
+    "mixed_quant_sparse_flash_mla",
+    "mixed_quant_sparse_flash_mla_metadata",
+    "scatter_pa_kv_cache_with_k_scale",
+    "sparse_flash_mla",
+    "sparse_flash_mla_metadata",
+    "sparse_lightning_indexer_kl_loss_grad",
+    "sparse_lightning_indexer_kl_loss_grad_metadata",
+    "lightning_indexer",
+    "lightning_indexer_metadata",
+    "quant_lightning_indexer",
+    "quant_lightning_indexer_metadata",
+    "mhc_post",
+    "mhc_pre_sinkhorn",
+    "kv_compress_epilog",
+    "indexer_quant_cache",
+    "compressor",
+    "inplace_partial_rotary_mul",
+    "causal_conv1d_fn",
+    "causal_conv1d_update",
+]
