@@ -281,8 +281,8 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
 
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512,
         cntTensorLength / sizeof(int32_t));
-    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength,
-        cntTensorLength / sizeof(int32_t));
+    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 +
+        cntTensorLength, cntTensorLength / sizeof(int32_t));
     AscendC::Duplicate<int32_t>(sendTokenCnt, 0, processRankNum);
     AscendC::Duplicate<int32_t>(totalTokenCnt, 0, processRankNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();

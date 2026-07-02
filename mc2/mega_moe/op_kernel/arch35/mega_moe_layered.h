@@ -566,8 +566,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
-            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
-                static_cast<int32_t>(rankId_)) * static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * 
+                static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) * static_cast<uint64_t>(maskSlotSize_);
             dstGlobalTensor.SetGlobalBuffer(
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
@@ -579,7 +579,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
+                    localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
@@ -1581,7 +1582,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
             continue;
         }
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
-        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
+        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr,
+            (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }
