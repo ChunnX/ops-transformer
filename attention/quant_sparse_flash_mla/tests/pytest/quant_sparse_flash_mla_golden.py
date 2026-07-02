@@ -475,7 +475,7 @@ def get_max_adjacent_diff(cu_seqlens_q):
     return max_diff
 
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cur_cmp_restored, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cmp_restored_len, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
