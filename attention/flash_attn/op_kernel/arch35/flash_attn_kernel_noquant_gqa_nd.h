@@ -41,16 +41,21 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernelNd {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+    using T = float;
+    using SEQLEN_T = uint32_t;
+    using INPUT_T = typename FA_T::inputType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool BMM2_TOUB = FA_T::bmm2Write2Ub;
+    static constexpr bool HAS_MASK = FA_T::hasMask;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
@@ -61,25 +66,6 @@ public:
                   "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
-
-
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-    static constexpr FA_LAYOUT LAYOUT_T = CubeBlockType::LAYOUT_T;
-    static constexpr FA_LAYOUT LAYOUT_KV = CubeBlockType::LAYOUT_KV;
-
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
-    using SEQLEN_T = uint32_t;
-    SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool;
-    SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool;
-
-    // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
-    LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
-    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
-    LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
-    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
 
     // ===== 静态 cross-core 事件 ID（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -97,41 +83,22 @@ public:
     // 不再使用 CrossCoreSetFlag<0> 自实现 barrier ：手动 mode 0 + PIPE_ALL 在某些时序下会
     // 触发 aicore subErrType 0x4 trap（见 base04_aicore.log），SyncAll 内部封装更稳健。
 
-    GlobalTensor<uint32_t> faMetaDataGm;
-    GlobalTensor<uint32_t> fdMetaDataGm;
-    GlobalTensor<float> softmaxLseGm;
-    GlobalTensor<INPUT_T> sinkGm;
-
+    using ConstInfoX = typename CubeBlockType::ConstInfoX;
     ConstInfoX constInfo;
 
+    SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool;
+    SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool;
+
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+
+    // block define
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
 
-    uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
-    uint32_t totalSize = 0U;
-    uint32_t createdTaskCount = 0U;
-    uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
-
-    // schduler params
-    uint64_t actSeqLensKv = 0;
-    uint64_t actSeqLensQ = 0;
-    int32_t s1SizeCurrBatch = 0;
-    uint32_t curS2Start;
-    uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
-    uint32_t mloop = 0;
-    bool headS2Split = false;
-    bool tailS2Split = false;
-    bool emptyBatch = false;
-    uint32_t dealZerosMSize = 0;
-
+    // 分核信息
+    GlobalTensor<uint32_t> faMetaDataGm;
+    GlobalTensor<uint32_t> fdMetaDataGm;
     // metadata
     uint32_t sectionNum_;
     bool isFd;
@@ -146,14 +113,39 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
+    // input and output global tensor
+    GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<INPUT_T> sinkGm;
+
+    // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
+    LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
+    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
+    LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
+    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
+
+    // schduler params
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t curS2Start;
+    uint32_t curS2End = 0;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
+    uint32_t mloop = 0;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernelNd()
-       : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool), vecFaBlock(constInfo, qSeqLensTool, kvSeqLensTool), vecFdBlock(constInfo, qSeqLensTool, kvSeqLensTool) {};
+    __aicore__ inline FlashAttentionNoQuantGqaKernelNd() :
+        cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+        vecFaBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+        vecFdBlock(constInfo, qSeqLensTool, kvSeqLensTool) {};
+
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
         this->tilingData = tiling;
@@ -173,9 +165,9 @@ public:
 
         if ASCEND_IS_AIV {
             fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
+                (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                    FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             vecFaBlock.InitVecBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
@@ -343,7 +335,7 @@ public:
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
-        createdTaskCount = 0;
+        uint32_t createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
         headS2Split = false;

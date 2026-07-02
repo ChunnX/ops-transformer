@@ -163,13 +163,13 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
         using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyDn<FA_T>;
         using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyDn<FA_T>;
 #ifdef __DAV_C310_CUBE__
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<CubeBlock, VecDummy, VecDummy>;
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeBlock, VecDummy, VecDummy>;
 #else
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<CubeDummy, VecFaBlock, VecFdBlock>;
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
-        op.Init(query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, sinks, softmaxLse, attnOut, user,
-                metadata, sequsedQ, sequsedKv, tilingData);
+        op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
+                attnOut, softmaxLse, user, tilingData);
         op.Process();
     } else {
         using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
@@ -178,13 +178,13 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
         using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
         using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
 #ifdef __DAV_C310_CUBE__
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<CubeBlock, VecDummy, VecDummy>;
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
 #else
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<CubeDummy, VecFaBlock, VecFdBlock>;
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
-        op.Init(query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, sinks, softmaxLse, attnOut, user,
-                metadata, sequsedQ, sequsedKv, tilingData);
+        op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
+                attnOut, softmaxLse, user, tilingData);
         op.Process();
     }
 #endif
