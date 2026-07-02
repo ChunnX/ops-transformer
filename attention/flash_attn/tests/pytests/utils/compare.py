@@ -359,7 +359,14 @@ def data_compare_benchmark_new(params, npu_output, cpu_output, cpu_golden, outpu
     return str1, str2, data
 
 
-def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
+def get_tolerance(output_dtype):
+    # bf16: atol=0.0001, rtol=0.0078125;  fp16(默认): atol=0.000025, rtol=0.005
+    if output_dtype == "bf16":
+        return 0.0001, 0.0078125
+    return 0.000025, 0.005
+
+
+def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False, atol=0.000025, rtol=0.005):
     SEP = "─" * 64
     print(f"\n┌{SEP}┐")
     print(f"│  精度报告: {test_name}  ({except_label} vs {comp_label})")
@@ -377,8 +384,7 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     mean_abs  = diff.mean().item()
     max_rel   = rel_err.max().item()
     mean_rel  = rel_err.mean().item()
-    threshold = torch.max(ref_abs.mul(RATIO_THRESHOLD), torch.full_like(diff, 0.000025))
-    fail_mask = diff > threshold
+    fail_mask = ~torch.isclose(ef, rf, rtol=rtol, atol=atol)
     fail_cnt  = int(fail_mask.sum().item())
     total     = expect.numel()
     fail_ratio = fail_cnt / total
@@ -389,13 +395,13 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     print(f"│  MaxRelErr   : {max_rel:.8f}")
     print(f"│  MeanRelErr  : {mean_rel:.8f}")
     print(f"│  FailElems   : {fail_cnt} / {total}  ({fail_ratio*100:.4f}%)")
-    print(f"│  Threshold   : elemRelErr≤{RATIO_THRESHOLD*100:.2f}%  failRatio≤{FAIL_RATIO_LIMIT*100:.2f}%")
+    print(f"│  Threshold   : atol={atol}  rtol={rtol*100:.2f}%  failRatio≤{FAIL_RATIO_LIMIT*100:.2f}%")
     print(f"│  结论        : {'✓ PASS' if passed else '✗ FAIL'}")
     if fail_cnt > 0:
         print(f"├{SEP}┤")
         if verbose_diff:
             all_idxs = fail_mask.reshape(-1).nonzero(as_tuple=False).squeeze(1).tolist()
-            print(f"│  全部 {len(all_idxs)} 个超阈値元素 (relErr > {RATIO_THRESHOLD * 100:.2f}%):")
+            print(f"│  全部 {len(all_idxs)} 个超阈値元素 (rtol={rtol*100:.2f}%):")
             print(f"│  {'idx':>10}  {except_label:>14}  {comp_label:>14}  {'absErr':>12}  {'relErr':>12}")
             for i in all_idxs:
                 print(f"│  {i:>10}  {ef.reshape(-1)[i].item():>+14.8f}  {rf.reshape(-1)[i].item():>+14.8f}"
@@ -419,13 +425,11 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     return stats
 
 
-def analyze_fail_distribution(test_name, expect, result, dump_dir="./dump_output", **kwargs):
+def analyze_fail_distribution(test_name, expect, result, dump_dir="./dump_output", atol=0.000025, rtol=0.005, **kwargs):
     ef = expect.float()
     rf = result.float()
     diff = torch.abs(ef - rf)
-    ref_abs = torch.abs(ef)
-    threshold = torch.max(ref_abs.mul(RATIO_THRESHOLD), torch.full_like(diff, 0.000025))
-    fail_mask = diff > threshold
+    fail_mask = ~torch.isclose(ef, rf, rtol=rtol, atol=atol)
 
     shape = expect.shape
     ndim = len(shape)
