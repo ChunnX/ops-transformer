@@ -618,7 +618,6 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaOriTopkLength() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpTopkLength() const
 {
-
     if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpTopkLength.tensor->GetShapeSize() == 0,
             OP_LOGE(opName_, "Any dim of input cmpTopkLength cannot be 0 "),
