@@ -320,6 +320,9 @@ bool FlashAttentionScoreGraTilingBasicDet::IsAttenMskCapable()
 
 bool FlashAttentionScoreGraTilingBasicDet::IsDropMskCapable()
 {
+    if (isMaxWorkspace_) {
+        return false;
+    }
     auto dropMask = context_->GetOptionalInputDesc(DROP_MASK);
     auto dropMaskShape = context_->GetOptionalInputShape(DROP_MASK);
     fBaseParams.dropMskEnable = dropMask != nullptr;
