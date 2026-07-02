@@ -1243,10 +1243,10 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     uint64_t megeMoeWorkspace = 0;
     if (archCode == SOC_ASCEND910_93) {
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                                // cumsum + preSumBeforeRank + preSumRankInExpert
-                                info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 2 +
+                                info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) + // cumsum
                                 info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
                                 info.maxRecvTokenNum * std::max(info.K, k2) * sizeof(int16_t) + // GMM1&2 input
+                                info.worldSize * (info.expertPerRank + 16 - 1) / 16 * 16 * sizeof(int32_t) + // SumBeforeRank
                                 info.worldSize * sizeof(int32_t) * 16; // sync
         if (info.isQuantRouting == 1U) {
             megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2; // perTokenScale GMM1&2
