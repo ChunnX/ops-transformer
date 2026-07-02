@@ -35,16 +35,10 @@
 using namespace AscendC;
 using namespace InplacePartialRotaryMulGrad;
 
-extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR x,
-                                                                      GM_ADDR dx, GM_ADDR dcos, GM_ADDR dsin,
+extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx,
                                                                       GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    (void)x;
-    (void)dcos;
-    (void)dsin;
-    (void)workspace;
-
     TPipe pipe;
     if (TILING_KEY_IS(TILING_KEY_EMPTY)) {
         return;

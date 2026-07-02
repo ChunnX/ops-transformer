@@ -30,22 +30,9 @@ namespace ge {
  * @li sin: A 4D tensor which is input "sin" in InplacePartialRotaryMul, format supports ND, data type must be
  * float16, float32 or bfloat16 and must be the same as "cos", and shape must be the same as "cos". The D of "sin"
  * must be equal to the slice length ("partial_slice"'s end - start).
- * @li x: An optional 4D tensor which is input "x" in InplacePartialRotaryMul, format supports ND, data type
- * must be the same as "dy", and shape must be the same as "dy".
- * Currently only nullptr is supported for this input; passing a non-null x will cause an error.
  * @par Outputs:
  * @li dy: A 4D Tensor, in-place updated from input "dy", which is the grad of input "x" in
  * InplacePartialRotaryMul. Format supports ND, data type and shape must be the same as input "dy".
- * @li dcos: A 4D Tensor which is the grad of input "cos" in InplacePartialRotaryMul, format supports ND,
- * data type must be the same as "cos", and shape must be the same as "cos". The D of "dcos" must be equal to
- * the slice length ("partial_slice"'s end - start).
- * NOTE: dcos/dsin gradient computation is not yet implemented; these outputs are currently always
- * meaningless. The x input must be set to nullptr.
- * @li dsin: A 4D Tensor which is the grad of input "sin" in InplacePartialRotaryMul, format supports ND,
- * data type must be the same as "sin", and shape must be the same as "sin". The D of "dsin" must be equal to
- * the slice length ("partial_slice"'s end - start).
- * NOTE: dcos/dsin gradient computation is not yet implemented; these outputs are currently always
- * meaningless. The x input must be set to nullptr.
  * @par Attributes:
  * @li rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be
  * 0-"half", 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0.
@@ -57,9 +44,9 @@ namespace ge {
  * interleave-half=3) are not implemented yet.
  * Let (B, S, N, D) represents the shape of the input "dy". Under this
  * representation, the shape constraints of each parameter can be described as follows:
- * @li The D of "dy" and "x" must be equal and less or equal to 1024. The D of "cos", "sin", "dcos" and "dsin"
+ * @li The D of "dy" must be equal and less or equal to 1024. The D of "cos", "sin"
  * must be equal to the slice length ("partial_slice"'s end - start).
- * @li B, S, N of "cos", "sin", "dcos" and "dsin" must broadcast to match the B, S, N of "dy". The D of these
+ * @li B, S, N of "cos", "sin" must broadcast to match the B, S, N of "dy". The D of these
  * tensors equals ("partial_slice"'s end - start). Specifically, B, S, N must meet one of the following four conditions:
  *  - B, S, N are 1, means the shape is (1, 1, 1, end-start).
  *  - B, S, N are the same as that of "dy", means the shape is (B, S, N, end-start).
@@ -76,10 +63,7 @@ REG_OP(InplacePartialRotaryMulGrad)
     .INPUT(dy, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .INPUT(sin, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
-    .OPTIONAL_INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .OUTPUT(dy, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
-    .OUTPUT(dcos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
-    .OUTPUT(dsin, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .ATTR(rotary_mode, Int, 0)
     .ATTR(partial_slice, ListInt, {0, 0})
     .OP_END_FACTORY_REG(InplacePartialRotaryMulGrad)
