@@ -282,6 +282,11 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
                         "but now return_value is %ld.",
                 *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
+    } else if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
+                OP_LOGE(opName_, "input attr return_value only support 0 or 1, "
+                        "but now return_value is %ld.",
+                *opParamInfo_.returnValue), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
                 OP_LOGE(opName_, "input attr max_seqlens_q must >= -1, "
@@ -831,11 +836,13 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                    return ge::GRAPH_FAILED);
         if (npuArch_ == NpuArch::DAV_3510) {
             if (*opParamInfo_.returnValue == 1 && opParamInfo_.sparseValues.shape != nullptr) {
-                OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0) != qTsize),
-                    OP_LOGE(opName_, "TND case input query and sparse_values dim 0 are %u, %ld "
-                        "respectively, they must be same.", qTsize, 
-                        opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+                if (opParamInfo_.sparseValues.shape != nullptr) {
+                    OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0) != qTsize),
+                        OP_LOGE(opName_, "TND case input query and sparse_values dim 0 are %u, %ld "
+                            "respectively, they must be same.", qTsize, 
+                            opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0)),
+                        return ge::GRAPH_FAILED);
+                }
             }
             if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
                 OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
@@ -929,7 +936,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                 OP_LOGE(opName_, "input query and output sparse_values shape n2 dim must be same."),
                 return ge::GRAPH_FAILED);
-            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
+            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.topk),
                 OP_LOGE(opName_, "input query and output sparse_values last dim must be same as attr topk."),
                 return ge::GRAPH_FAILED);
         }
