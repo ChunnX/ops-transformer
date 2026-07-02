@@ -45,7 +45,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  const aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnMaskedCausalConv1dGetWorkspaceSize
