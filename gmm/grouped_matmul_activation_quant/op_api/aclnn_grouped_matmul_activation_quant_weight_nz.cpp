@@ -396,11 +396,9 @@ aclnnStatus CheckMxQuantShape(const aclTensor *x, const aclTensor *groupList, co
                              gmaq::NZ_LAST_DIM};
         weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, gmaq::MX_GROUP_SIZE), n, gmaq::MX_SCALE_PAIR};
     }
-    if (weightViewShape.GetDimNum() == gmaq::WEIGHT_LOGICAL_DIM_NUM) {
-        op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
-        CHECK_RET(CheckTensorShapeEqual(weight, "weight", weightViewExpectShape) == ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
-    }
+    op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
+    CHECK_RET(CheckTensorShapeEqual(weight, "weight", weightViewExpectShape) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
     GMMAQ_CHECK_WITH_LOG(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight storageShape", op::ToString(weightShape).GetString(),
             FormatString("the storageShape of weight must be %s", op::ToString(weightExpectShape).GetString()).c_str()));
