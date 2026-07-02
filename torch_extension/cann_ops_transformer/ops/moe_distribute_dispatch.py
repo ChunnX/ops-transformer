@@ -94,7 +94,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             if quant_mode == 0 and scales is not None:
                 if scales.dim() < 2:
                     raise RuntimeError(f"Expected scales to be at least 2-d, but got {scales.dim()}-d.")
-                shape = tuple([a * scales.shape[1]])
+                shape = tuple([a, scales.shape[1]])
             elif quant_mode == 2:
                 shape = tuple([a])
             elif quant_mode == 3:
@@ -213,9 +213,6 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
             elif tp_world_size == 0:
                 dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
-            elif tp_world_size == 1:
-                dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, a, h)
-                dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
             else:
                 dynamic_scales = x.new_empty((a * tp_world_size), dtype=dynamic_scales_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int64)
@@ -223,11 +220,12 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
             expand_scales = x.new_empty((0), dtype=torch.float32)
             if has_tensor(expert_scales):
-                ep_recv_cnt_num = ep_world_size * local_moe_expert_num + global_bs_real * 2 * k * (ep_world_size // 8)
-                ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+                if not is_ascend950():
+                    expert_scales_recv_extra = global_bs_real * 2 * k * (ep_world_size // 8)
+                    ep_recv_cnt_num = ep_world_size * local_moe_expert_num + expert_scales_recv_extra
+                    ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
+                    assist_info_for_combine_shape = max(assist_info_for_combine_shape, expert_scales_recv_extra)
                 expand_scales = x.new_empty((a), dtype=torch.float32)
-                assist_info_for_combine_shape = max(assist_info_for_combine_shape, 
-                                                    global_bs_real * 2 * k * (ep_world_size // 8))
             expand_idx = x.new_empty(assist_info_for_combine_shape, dtype=torch.int32)
             return (expand_x, dynamic_scales, expand_idx, expert_token_nums,
                     ep_recv_counts, tp_recv_counts, expand_scales)
