@@ -87,6 +87,7 @@ private:
     LocalTensor<int32_t> ubMeta_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
+    LocalTensor<int32_t> ubCounter_;   // 原子计数器初值暂存(aiv0 经 MTE3 批量写 GM 保证落地)
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
     LocalTensor<ScalesType> ubScales_;
@@ -95,6 +96,7 @@ private:
     TBuf<QuePosition::VECIN> ubMetaBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
+    TBuf<QuePosition::VECIN> ubCounterBuf_;
     TBuf<QuePosition::VECIN> ubStageWeightsBuf_;
     TBuf<QuePosition::VECIN> ubStageMetaBuf_;
     TBuf<QuePosition::VECIN> ubScalesBuf_;
@@ -193,6 +195,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if constexpr (!IsCached) {
         tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
         ubMeta_ = ubMetaBuf_.Get<int32_t>();
+        uint32_t ubCounterBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(ubCounterBuf_, ubCounterBytes);
+        ubCounter_ = ubCounterBuf_.Get<int32_t>();
     }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -336,15 +341,21 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 // aiv0 用专家段基址初始化每专家原子计数器(复用 hitCountGm_ 即 workspace 前 E 个 int32)。
 // 计数器初值 = expertSegmentBase[e] = ComputePrefixSums 后的 ubExpertPfx_[e]。
 // 全核 SyncAll 后, 各核 AtomicAdd(counter[e], 1) 抢占的行号恰落在 [base[e], base[e]+numRecvPerExpert[e])。
+// 注意: 必须用 MTE3(DataCopyPad) 批量写 GM 而非 S 标量 SetValue, 因为后续 AtomicAdd 在 S 管线
+// 读 GM, S 写后仅 SyncAll 不保证 GM 落地可见; MTE3 通道写 + MTE3_S 屏障才能保证计数器初值对后续
+// AtomicAdd 可见, 否则行号全错。
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::InitAtomicCounters()
 {
     if (aivId_ != 0) { return; }
     for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        int32_t base = static_cast<int32_t>(ubExpertPfx_.GetValue(e));
-        hitCountGm_.SetValue(e, base);
+        ubCounter_.SetValue(e, static_cast<int32_t>(ubExpertPfx_.GetValue(e)));
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyExtParams counterCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> counterPadParams{false, 0U, 0U, 0};
+    DataCopyPad(hitCountGm_, ubCounter_, counterCopyParams, counterPadParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 // AtomicAdd 行号抢占路径: flatten 单趟(rank × slot × topk), 无 targetExpert 外层。
