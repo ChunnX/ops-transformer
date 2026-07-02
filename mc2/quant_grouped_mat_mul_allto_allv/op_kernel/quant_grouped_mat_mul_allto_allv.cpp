@@ -16,11 +16,7 @@
 #include "arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_key.h"
 
-#if __has_include("../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
-#include "../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
-#else
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
-#endif
 
 #if defined(CONST_TILING)
 #define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \

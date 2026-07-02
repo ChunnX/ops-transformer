@@ -20,10 +20,10 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../op_kernel/allto_all_all_gather_batch_mat_mul_tiling_struct.h"
-#include "../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
-#include "../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
-#include "../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h"
+#include "../../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
+#include "../../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
+#include "../../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
+#include "../../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h"
 
 namespace optiling {
 struct AlltoAllAllGatherBatchInfo {
