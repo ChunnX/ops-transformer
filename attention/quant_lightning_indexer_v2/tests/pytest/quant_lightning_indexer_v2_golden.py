@@ -1369,6 +1369,8 @@ def qliv2_output_single(params, is_batch = False):
                                                         return_value = return_value)
 
         npu_result = npu_result.cpu()
+        if output_idx_offset != None:
+            output_idx_offset = output_idx_offset.cpu()
         npu_result, _ = torch.sort(npu_result)
         cpu_result, _ = torch.sort(cpu_result)
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
