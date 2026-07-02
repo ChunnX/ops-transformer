@@ -17,6 +17,7 @@ from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
 import quant_lightning_indexer_v2_golden
 import pytest
+import quant_lightning_indexer_v2_acl_graph
 
 param_names = [
     "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim",
