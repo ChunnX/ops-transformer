@@ -43,6 +43,15 @@ bool CheckGroupListType(const optiling::GQmmInputInfo &inputParams)
         return false);
     return true;
 }
+
+bool IsWeightNzFormat(ge::Format format)
+{
+    return format == ge::FORMAT_FRACTAL_NZ ||
+           format == ge::FORMAT_FRACTAL_NZ_C0_2 ||
+           format == ge::FORMAT_FRACTAL_NZ_C0_4 ||
+           format == ge::FORMAT_FRACTAL_NZ_C0_16 ||
+           format == ge::FORMAT_FRACTAL_NZ_C0_32;
+}
 }
 namespace optiling {
 GroupedQmmTiling::GroupedQmmTiling(gert::TilingContext *context)
@@ -104,8 +113,13 @@ bool GroupedQmmTiling::IsMxfp4() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingle() const
 {
-    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
-           inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    const bool separatedWeightShape = weightShape != nullptr &&
+        (weightShape->GetOriginShape().GetDimNum() == SPLIT_K_W_DIMS ||
+         weightShape->GetStorageShape().GetDimNum() == WEIGHTNZ_DIM_NUM - 1);
+    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX &&
+           (!inputParams_.isSingleW || separatedWeightShape) &&
+           inputParams_.isSingleY && IsWeightNzFormat(inputParams_.bFormat);
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -209,12 +223,11 @@ bool GroupedQmmTiling::CheckTransposeAndFormatByGroupType() const
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x2",
                                           inputParams_.transB ? "true" : "false", "false"),
                 return false);
-    OP_CHECK_IF(
-        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-            inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-            "when group type is 2, format of weight must be within the range ND"),
-        return false);
+    OP_CHECK_IF(IsWeightNzFormat(inputParams_.bFormat),
+                OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+                    inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                    "when group type is 2, format of weight must be within the range ND"),
+                return false);
     return true;
 }
 
@@ -367,7 +380,7 @@ bool GroupedQmmTiling::AnalyzeDtype()
     }
     if (inputParams_.aDtype == ge::DT_FLOAT4_E1M2 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(
-            inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
+            !IsWeightNzFormat(inputParams_.bFormat),
             OP_LOGE(inputParams_.opName,
                     "Format of weight only supports FORMAT_FRACTAL_NZ when xDType or weightDtype is "
                     "DT_FLOAT4_E1M2, but got xDType [%s], weightDtype [%s], weight format [%s].",
@@ -392,7 +405,7 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+    if (IsWeightNzFormat(inputParams_.bFormat)) {
         OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
                     OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
     }
@@ -879,7 +892,7 @@ bool GroupedQmmTiling::AnalyzeInputs()
     OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, wScaleShape),
                 OP_LOGE(inputParams_.opName, "CheckQuantParams failed."), return false);
 
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+    if (IsWeightNzFormat(inputParams_.bFormat)) {
         OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."), return false);
     }

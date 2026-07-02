@@ -75,6 +75,19 @@ std::string StorageShapeToString(const aclTensor *tensor)
 {
     return ShapeToStringWithoutBracket(tensor->GetStorageShape());
 }
+
+bool IsWeightNzFormat(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    const auto format = ge::GetPrimaryFormat(tensor->GetStorageFormat());
+    return format == op::Format::FORMAT_FRACTAL_NZ ||
+           format == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
+           format == op::Format::FORMAT_FRACTAL_NZ_C0_4 ||
+           format == op::Format::FORMAT_FRACTAL_NZ_C0_16 ||
+           format == op::Format::FORMAT_FRACTAL_NZ_C0_32;
+}
 } // namespace
 
 template <typename T>
@@ -88,9 +101,14 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsMxfp4() const
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingle() const
 {
+    const auto *weightTensor = GetInputTensor(gmmParams_.weight);
+    const bool separatedWeightShape = weightTensor != nullptr &&
+        (weightTensor->GetViewShape().GetDimNum() == MIN_FM_DIM ||
+         weightTensor->GetStorageShape().GetDimNum() == QUANT_WEIGHTNZ_STORAGE_DIM - 1);
     return gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 &&
-           GetInputTensorSize(gmmParams_.y) == 1 && GetInputTensorSize(gmmParams_.weight) > 1 &&
-           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+           GetInputTensorSize(gmmParams_.y) == 1 &&
+           (GetInputTensorSize(gmmParams_.weight) > 1 || separatedWeightShape) &&
+           IsWeightNzFormat(weightTensor);
 }
 
 template <typename T>
@@ -229,7 +247,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckQuantCasesFormat() const
         GMM_CHECK_REPORT(!op::IsPrivateFormat(xFormat),
             OP_LOGE_FOR_INVALID_FORMAT(GetAclnnOpName(), xName_.c_str(), op::ToString(xFormat).GetString(), "ND"));
         auto weightFormat = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetStorageFormat();
-        GMM_CHECK_REPORT(!op::IsPrivateFormat(weightFormat) || weightFormat == op::Format::FORMAT_FRACTAL_NZ,
+        GMM_CHECK_REPORT(!op::IsPrivateFormat(weightFormat) ||
+                IsWeightNzFormat(GetInputTensor(gmmParams_.weight, tensorIndex.weight)),
             OP_LOGE_FOR_INVALID_FORMAT(GetAclnnOpName(), weightName_.c_str(),
                 op::ToString(weightFormat).GetString(), "ND or FRACTAL_NZ"));
         auto yFormat = GetInputTensor(gmmParams_.y, tensorIndex.y)->GetStorageFormat();
@@ -1322,7 +1341,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(GetAclnnOpName(), "x, weight and y", tensorNums.c_str(),
             "in quant case, only single-single-single or weightNz single-multi-single tensor layout is supported"));
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    if (GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ){
+    if (IsWeightNzFormat(GetInputTensor(gmmParams_.weight))) {
         CHECK_RET(CheckWeightNzSpecialParams() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
