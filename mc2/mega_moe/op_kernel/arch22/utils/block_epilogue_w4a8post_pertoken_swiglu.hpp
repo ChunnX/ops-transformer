@@ -167,9 +167,9 @@ public:
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1, __gm__ float *gmWeightAux,
                     AscendC::GlobalTensor<ElementD> const &gmD, AscendC::GlobalTensor<int32_t> const &cumsumMM,
                     uint32_t MOffset, AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
-                    uint32_t expertPerRank, uint32_t EP, AscendC::GlobalTensor<float> const &gmGMM1, int32_t rank,
-                    int32_t listLen, Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
-                    float swigluLimit = 0.0f, uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
+                    uint32_t expertPerRank, uint32_t EP, int32_t rank, int32_t listLen,
+                    Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f,
+                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
