@@ -692,10 +692,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
             if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_BSH ||
                 layout == LayOutTypeEnum::LAYOUT_TND)) {
                 for (int64_t i = 0; i < runInfo.halfS1RealSize / constInfo.gSize; i++) {
-                    int64_t lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                    int64_t lseGmOffset = 0;
+                    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+                        lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                        intriParams1.dstStride = 0;
+                    } else {
+                        lseGmOffset = i;
+                        intriParams1.dstStride = sizeof(float) * (constInfo.s1Size - 1);
+                    }
                     int64_t lseUboffset = i * constInfo.gSize * 8; // 8：fp32对齐
                     intriParams1.blockCount = constInfo.gSize;
-                    intriParams1.dstStride = 0;
                     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + lseGmOffset],
                         lseUb[lseUboffset], intriParams1);
                 }
