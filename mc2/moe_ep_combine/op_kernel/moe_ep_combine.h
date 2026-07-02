@@ -496,7 +496,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     Duplicate<float>(stateResetTensor_, (float)0.0, static_cast<uint32_t>(topK_ * FLOAT_PER_UB_ALIGN));
     LocalTensor<int32_t> tokenStatusTensor = tokenStatusBuf_.Get<int32_t>();
     Duplicate<int32_t>(tokenStatusTensor, static_cast<int32_t>(0), tPerCore_);
-    
+    SyncFunc<AscendC::HardEvent::V_S>();
     uint32_t CompletedtokenNum = static_cast<uint32_t>(0);
     uint32_t copyCount = topK_ * FLOAT_PER_UB_ALIGN;
     while (CompletedtokenNum != tPerCore_) {
