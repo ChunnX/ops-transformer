@@ -274,7 +274,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Par
         int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
             actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
         int64_t expectQs;
-        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
             expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ,
                 actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
         } else {
