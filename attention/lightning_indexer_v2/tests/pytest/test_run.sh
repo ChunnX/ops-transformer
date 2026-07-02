@@ -34,9 +34,9 @@ run_batch() {
     echo "===== 执行用例批量生成测试 ====="
 
     echo -e "\n===== 第一步：执行lightning_indexer_v2_pt_save.py ====="
-    python3 $QLI_PT_SAVE_SCRIPT $PATH1 $PATH2
+    python3 $LIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
-        echo "quant_lightning_indexer_v2_pt_save.py 执行失败，退出"
+        echo "lightning_indexer_v2_pt_save.py 执行失败，退出"
         exit 1
     fi
 

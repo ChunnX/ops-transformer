@@ -88,7 +88,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     # print("npu_result", npu_result)
     # print("cpu_result:", cpu_result)
     # Compare result accuracy
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, test_data)
     print("result", result)
     print("result", fulfill_percent)
     if return_value:
