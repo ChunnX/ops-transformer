@@ -1032,6 +1032,10 @@ __aicore__ inline void SharedExpertGmm1Kernel(
 
 // =================================================================================================
 // SharedExpertGmm2Kernel：共享专家 GMM2，纯 AIC 执行，输出到 GM
+// =================================================================================================
+template <typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void SharedExpertGmm2Kernel(
     const Params& params, uint32_t m, uint32_t n, uint32_t k,
     GM_ADDR aAddr, GM_ADDR aScaleAddr, GM_ADDR bAddr, GM_ADDR bScaleAddr,
     GM_ADDR cAddr, __gm__ int32_t* swigluToGmm2Flag, uint32_t& startBlockIdx)
