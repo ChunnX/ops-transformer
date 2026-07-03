@@ -1,7 +1,7 @@
-# AscendC vs TileLang-Ascend (0629) 计算流图详细对比
+# AscendC vs TileLang-Ascend (0630) 计算流图详细对比
 
 > 算子: `sparse_lightning_indexer_grad_kl_loss`  
-> 对比对象: 官方 AscendC (arch22, Ascend 910B) vs TileLang-Ascend 0629.py 单核改写
+> 对比对象: 官方 AscendC (arch22, Ascend 910B) vs TileLang-Ascend 0630.py 单核改写（Gather 在核版）
 
 ---
 
@@ -9,7 +9,7 @@
 
 1. [数学公式回顾](#一数学公式回顾)
 2. [官方 AscendC 计算流图](#二官方-ascendc-计算流图)
-3. [TileLang 0629 计算流图](#三tilelang-0629-计算流图)
+3. [TileLang 0630 计算流图](#三tilelang-0630-计算流图)
 4. [逐阶段详细对比](#四逐阶段详细对比)
 5. [核心架构差异总结](#五核心架构差异总结)
 6. [性能差距根因分析](#六性能差距根因分析)
@@ -362,76 +362,84 @@ V0 --(SYNC_V0_TO_C1)--> C1(MM1+MM2) --(SYNC_C1_TO_V1)--> V1 --(SYNC_V1_TO_C2)-->
 
 ---
 
-## 三、TileLang 0629 计算流图
+## 三、TileLang 0630 计算流图
 
 ### 3.1 硬件架构
 
-TileLang-Ascend 0629 使用 **单核架构**（每个 core 包含 Cube + Vector 单元，通过 scope 切换）：
+TileLang-Ascend 0630 使用 **单核架构**（每个 core 包含 Cube + Vector 单元，通过 scope 切换）：
+- `T.Scope("V")`: Vector 单元，执行 DMA gather + 标量计算 + cast
 - `T.Scope("C")`: Cube 单元，执行矩阵乘法
-- `T.Scope("V")`: Vector 单元，执行标量计算和 DMA
 
 **核分解策略**: `block_num = B × ceil(S1/BLOCK_M) × (K // BLOCK_N)`
 - 沿 K 维度并行: 每个 core 处理 BLOCK_N=128 个 K 行
-- 当 K=2048 时，有 16 个 core 并行
+- 当 K=2048, S1=1 时，有 `1 × 1 × 16 = 16` 个 core 并行
+
+**5-Scope 串行架构**:
+```
+V0 (gather) → C1 (MM1+MM2) → V1 (softmax/dW/Loss/reluGrad) → C2 (MM4) → V3 (cast)
+```
 
 ### 3.2 逐步详解
 
-#### Step 0: Host-side Gather (Python)
+#### Step 0: V0 Scope — In-Kernel Gather (Vector)
 
-**这部分在 AscendC 中是 V0 scope，但在 0629 中被移到 host 侧。**
+**0630 将 gather 移入 kernel**，每个 core 只 gather 自己负责的 K-block 行（k_start:k_end）。
 
 ```
 输入:
-  - Key:       (B, S2, 1, DQuery)        FP16
-  - KeyIndex:  (B, S2, 1, DQueryIndex)   FP16
-  - KeyRope:   (B, S2, 1, d_rope)        FP16
-  - SparseIndices: (B, S1, 1, K)         int32
+  - Key:          (B, S2, 1, DQuery)          FP16
+  - KeyRope:      (B, S2, 1, d_rope)          FP16
+  - KeyIndex:     (B, S2, 1, DQueryIndex)     FP16
+  - SparseIndices:(B, S1, 1, K)               int32
 
-处理 (_preprocess_gather):
-  1. key_all = cat([Key, KeyIndex, KeyRope], dim=-1)  → (B, S2, 1, total_dim)
-  2. idx_all = sparse_indices.clamp(min=0).expand(...)
-  3. gather_all = torch.gather(key_all, dim=1, idx_all)
-  4. gather_all *= valid_mask (将无效索引位置清零)
-  5. split:
-     - gather_key       = gather_all[..., :DQuery]
-     - gather_key_index = gather_all[..., DQuery:DQuery+DQueryIndex]
-     - gather_key_rope  = gather_all[..., DQuery+DQueryIndex:]
+处理 (每个 core):
+  for s1_id in T.serial(s1_start, s1_end):
+    for k_id in T.serial(k_start, k_end):           # 仅 gather 本 core 的 K-block (128 行)
+      idx = SparseIndices[bz, s1_id, 0, k_id]
+      if idx >= 0:
+        DMA copy Key[idx, :]       → GatherKey_ws[k_id, :]           # 1×512 FP16
+        DMA copy KeyIndex[idx, :]  → GatherKeyIndex_ws[k_id, :]      # 1×128 FP16
+        if d_rope > 0:
+          DMA copy KeyRope[idx, :] → GatherKeyRope_ws[k_id, :]       # 1×64  FP16
 
-输出 (传入 kernel):
-  - GatherKey:       (B, S1, K, DQuery)        FP16
-  - GatherKeyRope:   (B, S1, K, d_rope)        FP16
-  - GatherKeyIndex:  (B, S1, K, DQueryIndex)   FP16
-  - GatherKeyIndexT: (B, S1, DQueryIndex, K)   FP16  (预转置，供 C2 使用)
+输出 (写入 workspace):
+  - GatherKey_ws:       (B, S1, K, DQuery)        FP16  (各 core 写自己的 k_start:k_end 切片)
+  - GatherKeyRope_ws:   (B, S1, K, d_rope)        FP16
+  - GatherKeyIndex_ws:  (B, S1, K, DQueryIndex)   FP16
 ```
 
-**性能代价**: ~0.04ms (cat + gather + split + permute)
+**与 0629 的区别**:
+- 0629: Host 侧 `torch.cat` + `torch.gather` + split → 3 个 gather workspace 传入 kernel (~0.04ms)
+- 0630: Kernel 内 V0 scope DMA gather → 直接写 workspace（被后续 C1 掩盖，不暴露在关键路径）
+
+**同步**: `T.set_cross_flag("V", 10)` 通知 C1
 
 ---
 
 #### Step 1: C1 Scope — MatMul1 + MatMul2 (Cube)
 
-**与 AscendC C1 对应，但每个 core 只处理自己的 K-block。**
+**与 AscendC C1 对应，从 V0 写入的 gather workspace 中读取。**
 
 ##### MM1: BMM1 = Query||QueryRope @ GatherKey^T
 
 ```
 输入:
-  - Query:          (N1, 128)        FP16  (D 维度分块加载)
-  - QueryRope:      (N1, 128)        FP16  (padded d_rope)
-  - GatherKey_ws:   (128, 128)       FP16  (K-block 切片)
-  - GatherKeyRope_ws:(128, 128)      FP16  (K-block 切片)
+  - Query:                (N1, 128)           FP16  (D 维度分块加载)
+  - QueryRope:            (N1, 128)           FP16  (padded d_rope)
+  - GatherKey_ws:         (128, 128)          FP16  (V0 写入的 K-block 切片)
+  - GatherKeyRope_ws:     (128, 128)          FP16
 
 计算:
-  for s1_row in T.serial(s1_start, s1_end):        # 通常 1 个 row
-    for d_idx in T.Pipelined(5, num_stages=3):      # 5 个 D 分块, 3-stage 流水
-      if d_idx < 4:
-        Q = Query[:, d_idx*128:(d_idx+1)*128]       # DQuery 维度
-        K = GatherKey[k_start:k_end, d_idx*128:(d_idx+1)*128]
-      else:
-        Q = QueryRope[:, 0:128]                     # rope 维度 (padded)
-        K = GatherKeyRope[k_start:k_end, 0:128]
-      gemm_v0(Q, K, C, transpose_B=True, init=(d_idx==0))
-    T.copy(C_L0C → bmm1Res)                          # 输出到 GM workspace
+  for s1_row in T.serial(s1_start, s1_end):          # 通常 1 个 row
+    for d_idx in T.Pipelined(d_num_total, num_stages=3):  # 4+1=5 个 D 分块, 3-stage
+      if d_idx < d_num_query:                        # d_num_query = DQuery/128 = 4
+        Q = Query[:, d_idx*128:(d_idx+1)*128]         # DQuery 维度
+        K = GatherKey_ws[k_start:k_end, d_idx*128:(d_idx+1)*128]
+      else:                                           # rope 维度
+        Q = QueryRope[:, 0:128]                       # padded d_rope
+        K = GatherKeyRope_ws[k_start:k_end, 0:128]
+      gemm_v0(Q, K, C_L0C, transpose_B=True, init=(d_idx==0))
+    T.copy(C_L0C → bmm1Res[...])                      # 输出到 GM workspace
 
 输出:
   - bmm1Res: (N1, 128)  FP32  (每个 core 写自己的 K-block 切片)
@@ -441,110 +449,113 @@ TileLang-Ascend 0629 使用 **单核架构**（每个 core 包含 Cube + Vector 
 
 ```
 输入:
-  - QueryIndex:         (Nidx1, 128)  FP16
-  - GatherKeyIndex_ws:  (128, 128)    FP16
+  - QueryIndex:           (Nidx1, 128)  FP16
+  - GatherKeyIndex_ws:    (128, 128)    FP16  (V0 写入)
 
 计算:
   for s1_row:
-    for k_idx in T.serial(1):                       # DQueryIndex=128, 正好 1 块
-      QI = QueryIndex[:, 0:128]
-      GKI = GatherKeyIndex[k_start:k_end, 0:128]
-      gemm_v0(QI, GKI, C, transpose_B=True, init=True)
-    T.copy(C_L0C → bmm2Res, enable_relu=True)        # 带 ReLU
+    for k_idx in T.serial(d_num_query_index):         # DQueryIndex/128 = 1
+      QI = QueryIndex[:, k_idx*128:(k_idx+1)*128]
+      GKI = GatherKeyIndex_ws[k_start:k_end, k_idx*128:(k_idx+1)*128]
+      gemm_v0(QI, GKI, C2_L0C, transpose_B=True, init=(k_idx==0))
+    T.copy(C2_L0C → bmm2Res, enable_relu=True)        # 硬件 ReLU
 
 输出:
-  - bmm2Res: (Nidx1, 128)  FP32
+  - bmm2Res: (Nidx1, 128)  FP32 (已过 ReLU)
 ```
 
 **同步**: `T.set_cross_flag("FIX", 1)` 通知 V1
 
 ---
 
-#### Step 2: V1 Scope — Vector 计算 (全部标量操作)
+#### Step 2: V1 Scope — Vector 计算 (全部标量操作, barrier 已合并)
 
-**与 AscendC V1 对应，但在单 core 的 Vector 单元上串行执行。**
+**与 AscendC V1 对应，在一个 V scope 内完成所有标量计算。0630 已移除 11 个不必要的 VEC→VEC barrier。**
 
 ```
-输入 (与前一步通过 workspace 传递):
+输入 (通过 workspace 传递):
   - bmm1Res:    (N1, 128)       FP32
-  - bmm2Res:    (Nidx1, 128)    FP32
+  - bmm2Res:    (Nidx1, 128)    FP32 (已过 ReLU)
   - softmaxMax: (G,)            FP32
   - softmaxSum: (G,)            FP32
   - weights:    (Nidx1,)        FP16
 
-处理 (对 s1_id 循环, 通常是 1 次):
-  
-  Step 2a: P = Softmax(BMM1)                       [仅当前 K-block]
-    1. P = bmm1Res * scale_value (T.tile.mul)
-    2. 对每个 head:
+处理 (对 s1_id 循环):
+
+  Step 2a: P_reduced = Softmax(BMM1) · mean over G     [仅当前 K-block]
+    1. P = bmm1Res * scale_value (T.tile.mul, 1 条 VEC)
+    2. for g_id in range(G=128):                        # 标量循环, tracer 展开
        P[g,:] = exp(P[g,:] - softmaxMax[g]) / softmaxSum[g]
-    3. P_reduced = mean(P, axis=G)
+       (sub → exp → div, 3×128=384 条 VEC 指令)
+    3. P_reduced = mean(P, axis=0) over G heads
+       (add 累加 + mul 1/G, 129 条 VEC 指令)
     4. 输出到 PReduced workspace
 
-  Step 2b: ReduceSumY                            [遍历所有 K blocks!]
-    for n_rsy in T.serial(n_num):                  # 16 次遍历 (K=2048)
-      1. 读取 bmm2Res[:, n_rsy*128:(n_rsy+1)*128]
-      2. 按 group 分块, weight * bmm2, reduce_sum
+  Step 2b: ReduceSumY = Σ_i(weights[i] * bmm2Res[i,:])  [遍历所有 K blocks!]
+    for n_rsy in T.serial(n_num):                      # 16 次迭代 (K=2048)
+      1. 读取 bmm2Res[:, n_rsy*128:(n_rsy+1)*128]       # 全量 K 维度!
+      2. for g_id in range(g_num=4):                    # 按 vector_baseg=16 分 4 组
+         weight[0:16] * bmm2Res[g*16:(g+1)*16, :]       # 标量循环 16×mul
+         reduce_sum → rsy_reduce_ub
       3. 输出到 ReduceSumY workspace
 
-  Step 2c: Global SoftmaxI                       [遍历所有 K blocks!]
+  Step 2c: Global SoftmaxI = Softmax(ReduceSumY)       [遍历所有 K blocks!]
     1. 全局 max reduce: 遍历 n_num=16 次
-       - 每次读取 ReduceSumY chunk → 16 路并行 max
-    2. 全局 sum reduce: 遍历 n_num=16 次
-       - exp(chunk - max), 16 路并行 sum
-    3. SoftmaxI = exp_vals / total_sum
-    4. 输出到 SoftmaxI workspace
+       - 每次 16 路并行 max (16×T.tile.mul → T.reduce_max)
+    2. exp(ReduceSumY - max), 输出到 SoftmaxI workspace
+    3. 全局 sum reduce: 遍历 n_num=16 次
+       - 每次 16 路并行 sum (broadcast → T.reduce_sum)
+    4. SoftmaxI = exp_vals / total_sum
 
-  Step 2d: dWeight + reluGrad + Loss             [仅当前 K-block]
-    1. diff = SoftmaxI[my_k] - P_reduced[my_k]
-    2. 对每个 group:
-       - dWeight[g] += diff * bmm2Res[g, :] (reduce_sum)
-       - reluGrad[g,:] = weights * diff * sigmoid_mask(bmm2Res)
-    3. Loss = P_reduced * (log(P_reduced) - log(SoftmaxI))
-    4. 输出到 dWeight_partial, reluGradRes, LossOut workspace
+  Step 2d: dWeight + reluGrad + Loss                  [仅当前 K-block]
+    1. diff = SoftmaxI[my_k] - P_reduced[my_k]        (T.tile.sub, 1 条)
+    2. for g_id in range(g_num=4):                     # 按 group 分块
+       - dWeight[g] += diff * bmm2Res[g*16:(g+1)*16,:] (标量循环, reduce_sum)
+       - reluGrad = weights * diff * sigmoid_mask(bmm2Res)  (标量循环×7 ops)
+    3. Loss = P_reduced * (ln(P_reduced) - ln(SoftmaxI))  (T.tile.ln + T.tile.sub + T.tile.mul)
+    4. Loss: 16 路 broadcast → reduce_sum → LossOut
 
 输出:
-  - PReduced:         (128,)       FP32  (仅当前 K-block)
-  - ReduceSumY:       (K,)         FP32  (全量, 所有 core 冗余计算)
-  - SoftmaxI:         (K,)         FP32  (全量, 所有 core 冗余计算)
-  - dWeight_partial:  (n_num, Nidx1) FP16
-  - reluGradRes:      (Nidx1, 128)  FP16
-  - LossOut:          (n_num*16,)  FP32
+  - PReduced:         (128,)         FP32  (仅当前 K-block)
+  - ReduceSumY:       (K,)           FP32  (全量, 所有 core 冗余计算)
+  - SoftmaxI:         (K,)           FP32  (全量, 所有 core 冗余计算)
+  - dWeight_partial:  (n_num, Nidx1) FP16  (每个 K-block 一份, host 侧 sum)
+  - reluGradRes:      (Nidx1, 128)   FP16
+  - LossOut:          (n_num*16,)    FP32  (每个 K-block 一份)
 ```
 
 **同步**: `T.set_cross_flag("V", 12)` 通知 C2
 
-**⚠️ 关键差异**: 0629 中每个 core **冗余计算** 全量 ReduceSumY 和 SoftmaxI（遍历所有 16 个 K-block），而 AscendC 中这是由 AIV 独立处理的。
+**⚠️ 0630 的 barrier 优化**: 原 0629 有 ~26 个 `T.barrier_all()`，0630 移除了 VEC→VEC 方向连续操作间的 11 个 barrier（只保留 VEC→MTE/DMA 的 barrier），V1 scope 内 barrier 从 26 降至 15 个。
 
 ---
 
 #### Step 3: C2 Scope — MatMul4 (Cube)
 
-**与 AscendC C2 对应。只做 MM4 (dQueryIndex)，不做 MM5 (dKeyIndex)。**
+**与 AscendC C2:MM6 对应。直接读取 GatherKeyIndex_ws（不再需要预转置）。**
 
-##### MM4: dQueryIndex_ws += reluGrad @ GatherKeyIndex
+##### MM4: dQueryIndexAccum += reluGrad @ GatherKeyIndex
 
 ```
 输入:
-  - reluGradRes:      (Nidx1, 128)            FP16
-  - GatherKeyIndexT:  (DQueryIndex, K)        FP16  (预转置!)
+  - reluGradRes:          (Nidx1, 128)            FP16
+  - GatherKeyIndex_ws:    (128, 128)              FP16  (V0 写入, 非转置)
 
 计算:
   for s1_row:
-    for d_idx in T.serial(1):                         # DQueryIndex=128, 1 块
-      RG = reluGradRes[:, :]                          # (Nidx1, 128)
-      GKI_T = GatherKeyIndexT[d_idx*128:, k_start:k_end]  # (128, 128) from transposed
-      gemm_v0(RG, GKI_T, DQ, transpose_B=True, init=True)
-      T.tile.atomic_add(dQueryIndex_ws[:, d_idx*128:], DQ)  # 跨 core 累加!
+    for d_idx in T.serial(d_num_query_index):           # DQueryIndex/128 = 1
+      RG = reluGradRes[:, :]                            # (Nidx1, 128)
+      GKI = GatherKeyIndex_ws[k_start:k_end, d_idx*128:(d_idx+1)*128]  # (128, 128)
+      gemm_v0(RG, GKI, DQ_L0C, transpose_B=False, init=True)
+      T.tile.atomic_add(dQueryIndexAccum[:, d_idx*128:(d_idx+1)*128], DQ_L0C)  # 跨 core FP32 累加
 
 输出:
-  - dQueryIndex_ws: (Nidx1, DQueryIndex)  FP32  (通过 atomic_add 跨 core 累加)
+  - dQueryIndexAccum: (Nidx1, DQueryIndex)  FP32  (跨 core atomic_add 累加)
 ```
 
-**⚠️ 注意**: 0629 的 MM4 等价于 AscendC 的 MM6，但：
-- AscendC: 使用 GatherKeyIndex (非转置) + transpose_B=True
-- 0629: 使用预转置的 GatherKeyIndexT + transpose_B=True（数学等价）
-- 差异原因: 0629 的 GatherKeyIndexT 在 host 侧预计算（一次 permute），省去 kernel 内转置
+**与 0629 的区别**:
+- 0629: 使用 host 预转置的 `GatherKeyIndexT (DQueryIndex, K)` + `transpose_B=True` → 等价于 `reluGrad @ GKI^T`
+- 0630: 直接使用 `GatherKeyIndex_ws (K, DQueryIndex)` + `transpose_B=False` → 数学等价于 `reluGrad @ GKI`（不是转置），省去 host 侧 permute
 
 **同步**: `T.set_cross_flag("FIX", 3)` 通知 V3
 
@@ -552,19 +563,17 @@ TileLang-Ascend 0629 使用 **单核架构**（每个 core 包含 Cube + Vector 
 
 #### Step 4: V3 Scope — Cast FP32→FP16 (Vector)
 
-**这是 0629 独有的 scope（AscendC MM6 自带量化）。**
-
 ```
 输入:
-  - dQueryIndex_ws: (Nidx1, DQueryIndex)  FP32
+  - dQueryIndexAccum: (Nidx1, DQueryIndex)  FP32
 
 处理:
   for s1_row:
-    for g_id in range(Nidx1/4):
-      for d_idx in range(DQueryIndex/128):
-        T.copy(ws[...] → ub)                     # FP32 chunk
-        T.tile.cast(ub → ub_half, "CAST_ROUND")  # FP32→FP16
-        T.copy(ub_half → dQueryIndex)            # 输出
+    for g_id in T.serial(Nidx1/4):                    # Nidx1 分 4 个一组
+      for d_idx in T.serial(DQueryIndex/128):          # D 维度分块
+        T.copy(Accum[g_id*4:(g_id+1)*4, d_idx*128:...] → ub)   # FP32 chunk (4×128)
+        T.tile.cast(ub_half, ub_fp32, "CAST_ROUND", 4*128)      # FP32→FP16
+        T.copy(ub_half → dQueryIndex[...])             # 输出
 
 输出:
   - dQueryIndex: (Nidx1, DQueryIndex)  FP16  (最终输出)
@@ -573,8 +582,6 @@ TileLang-Ascend 0629 使用 **单核架构**（每个 core 包含 Cube + Vector 
 ---
 
 #### Step 5: Host-side Postprocessing
-
-**与 AscendC V2 对应，但在 host 侧完成。**
 
 ```
 dWeight: d_weight = dWeight_partial.sum(dim=2)       # 跨 K-block 求和
@@ -590,40 +597,35 @@ dKeyIndex (scatter_add):
 性能代价: ~0.15ms (bmm) + ~0.05ms (scatter) = ~0.20ms
 ```
 
+**⚠️ dKeyIndex 仍在 host 侧**: 0630 尚未将 dKeyIndex 的 MM5 (transpose_A=True) 移入 kernel，原因是 TileLang `T.gemm_v0(transpose_A=True)` 存在 bug（~100% 误差）。
+
 ---
 
-### 3.3 0629 数据流总结图
+### 3.3 0630 数据流总结图
 
 ```
                       Host Side                    │           Kernel Side (16 cores)
                                                    │
-Key ───────┐                                       │
-KeyRope ───┤                                       │
-KeyIndex ──┤                                       │
-           ├─[torch.cat]→[torch.gather]→[split]───┐│
-SparseIndices┘                     │              ││
-                                   │              ││
-                  ┌────────────────┘              ││
-                  │                               ││
-          GatherKey (B,S1,K,DQuery) ──────────────┼│→ [C1:MM1] Query @ GK^T → bmm1Res
-          GatherKeyRope (B,S1,K,d_rope) ──────────┼│→            (pipelined, num_stages=3)
-          GatherKeyIndex (B,S1,K,DQueryIndex) ────┼│→ [C1:MM2] QI @ GKI^T → bmm2Res [ReLU]
-          GatherKeyIndexT (B,S1,DQueryIndex,K) ────┼│→           (host预转置)
+Key ───────────────────────────────────────────────┼│→ [V0:Gather] per-core DMA gather
+KeyRope ───────────────────────────────────────────┼│→   → GatherKey_ws, GatherKeyRope_ws, GatherKeyIndex_ws
+KeyIndex ──────────────────────────────────────────┼│→   (各 core 只写自己的 k_start:k_end 切片)
+SparseIndices ─────────────────────────────────────┼│→
+                                                   ││      ↓ cross_flag(10)
                                                    ││
-          Query, QueryRope ────────────────────────┼│→ [C1]
-          QueryIndex ──────────────────────────────┼│→ [C1]
+Query, QueryRope ──────────────────────────────────┼│→ [C1:MM1] Q @ GK^T → bmm1Res (pipelined, num_stages=3)
+QueryIndex ────────────────────────────────────────┼│→ [C1:MM2] QI @ GKI^T → bmm2Res [ReLU]
+                                                   ││      ↓ cross_flag(1)
                                                    ││
-          weights ─────────────────────────────────┼│→ [V1:Softmax+dW+Loss+reluGrad]
-          softmaxMax, softmaxSum ──────────────────┼│→
-                                                   ││      ↓ cross_flag
+weights ───────────────────────────────────────────┼│→ [V1:Softmax+dW+Loss+reluGrad]
+softmaxMax, softmaxSum ────────────────────────────┼│→   (15 barrier, VEC→VEC 已合并)
+                                                   ││      ↓ cross_flag(12)
                                                    ││
-          reluGradRes ─────────────────────────────┼│→ [C2:MM4] RG @ GKI^T → [atomic_add] → dQI_ws
+reluGradRes ───────────────────────────────────────┼│→ [C2:MM4] RG @ GKI → [atomic_add] → dQueryIndexAccum (FP32)
+                                                   ││      ↓ cross_flag(3)
                                                    ││
-                                                   ││      ↓ cross_flag
+dQueryIndex ← [V3:Cast] FP32→FP16 ←───────────────┼│── dQueryIndexAccum
                                                    ││
-                                                   ││→ [V3:Cast] FP32→FP16 → dQueryIndex ──→ Output
-                                                   ││
-                                                   ││  reluGradRes ──────────────────────────→ (host)
+                                                   ││  reluGradRes ────────────────────────────→ (host)
                                                    ││      │
 dKeyIndex ← [scatter_add_] ← [torch.bmm] ←────────┼│──────┘
 dWeight   ← [sum over K blocks] ←─────────────────┼│── dWeight_partial
@@ -636,62 +638,63 @@ Loss      ← [sum over K blocks] ←──────────────�
 
 ### 4.1 Gather 阶段
 
-| 维度 | AscendC (V0) | TileLang 0629 |
-|------|:------------:|:-------------:|
-| **执行位置** | 设备侧 AIV core | **Host 侧 Python** |
-| **实现方式** | HW DMA gather with double-buffering | `torch.cat` + `torch.gather` + split |
-| **Key+Rope 布局** | 在 gather 时直接拼接成一行 | 先 cat 后 gather 再 split |
-| **并行度** | 每个 AIV 处理独立 s1, P/SY 两个 ping-pong | 串行 (host 单线程) |
-| **与后续流水** | 与 C1 3-stage pipeline 重叠 | 完全串行, kernel 等待 gather 完成 |
-| **耗时** | 被紧随的 C1 掩盖 | ~0.04ms 暴露在关键路径上 |
+| 维度 | AscendC (V0) | TileLang 0630 (V0) |
+|------|:------------:|:-------------------:|
+| **执行位置** | 设备侧 AIV core | **设备侧 V scope** |
+| **实现方式** | HW DMA gather with double-buffering | `T.serial` + per-element DMA copy |
+| **Key+Rope 布局** | 在 gather 时直接拼接成一行 | 分别 gather 到独立的 workspace |
+| **并行度** | 每个 AIV 处理独立 s1, P/SY 两个 ping-pong | **16 core 并行**, 每 core gather 128 行 |
+| **与后续流水** | 与 C1 3-stage pipeline 重叠 | 串行 (V0→C1), 但同一 core 内 DMA→Cube 切换 |
+| **耗时** | 被紧随的 C1 掩盖 | 在 kernel 内 (~0.02ms), 小于 host 侧 gather |
 
 ### 4.2 MM1/MM2 (Cube MatMul) 阶段
 
-| 维度 | AscendC (C1) | TileLang 0629 (C1) |
+| 维度 | AscendC (C1) | TileLang 0630 (C1) |
 |------|:------------:|:-------------------:|
 | **并行策略** | 沿 S1 维度分 core | **沿 K 维度分 core** |
 | **单 core 工作量** | 全量 K (2048) | BLOCK_N=128 (1/16 K) |
 | **D 维度流水** | 5 次 gemm, 双缓冲 L1 | 5 次 gemm, `T.Pipelined(num_stages=3)` |
 | **L1 缓冲** | 双缓冲 (ping-pong) | 单缓冲 (Pipelined 内部管理) |
-| **输出位置** | 双缓冲 workspace | 直接写 bmm1Res/bmm2Res workspace |
+| **输入数据来源** | V0 双缓冲 workspace | **V0 gather workspace** (同 core, 无 ping-pong) |
 | **transpose_B** | ✅ `isRightTranspose=true` | ✅ `transpose_B=True` |
 | **ReLU** | Fixpipe 硬件 ReLU | `T.copy(enable_relu=True)` |
 
 ### 4.3 Softmax / dWeight / Loss / reluGrad (Vector) 阶段
 
-| 维度 | AscendC (V1) | TileLang 0629 (V1) |
+| 维度 | AscendC (V1) | TileLang 0630 (V1) |
 |------|:------------:|:-------------------:|
 | **执行单元** | 专用 AIV core (独立硬件) | 共享 Vector 单元 (与 Cube 分时) |
 | **ReduceSumY** | AIV 遍历所有 K blocks | **每个 core 冗余遍历所有 16 个 K blocks** |
 | **SoftmaxI** | AIV 冗余计算 (单 core 可见全量) | **每个 core 冗余计算 (16×128 遍历)** |
-| **标量循环** | C++ 编译优化, 部分向量化 | `T.serial` + `for i in range(16)` **标量循环** |
+| **标量循环** | C++ 编译优化, 部分向量化 | `T.serial` + `for g_id in range(G)` **标量循环展开** |
 | **数据类型** | FP32 (中间), FP16 I/O | FP32 (calc_dtype), FP16 I/O |
-| **同步** | CrossCoreSetFlag↔WaitFlag | `T.set_cross_flag` + `T.wait_cross_flag` 同 core 内 |
+| **Barrier 数量** | HW 自动管理 | 15 个 (0630 已合并 VEC→VEC, 原 0629 有 ~26 个) |
+| **同步** | CrossCoreSetFlag↔WaitFlag (跨核) | `T.set_cross_flag`/`T.wait_cross_flag` (同核 scope 间) |
 
-**⚠️ 性能关键**: 0629 的 V1 中 SoftmaxI 计算需要遍历 16 个 K-block，每个 block 的 reduce max/sum 又展开为 16 路并行。由于 `T.tile.broadcast` 不支持 1D→2D 扩展，所有操作都是标量形式，**这是 0629 性能的最大瓶颈**。
+**⚠️ 性能关键**: 0630 的 V1 中 SoftmaxI 仍需要遍历 16 个 K-block，且所有操作都是标量形式（`T.tile.broadcast` 不支持 1D→2D 扩展）。这仍是最大瓶颈，但 barrier 合并已减少 ~10% V1 耗时。
 
-### 4.4 dQueryIndex MatMul (MM6) 阶段
+### 4.4 dQueryIndex MatMul (MM6/MM4) 阶段
 
-| 维度 | AscendC (C2:MM6) | TileLang 0629 (C2:MM4) |
+| 维度 | AscendC (C2:MM6) | TileLang 0630 (C2:MM4) |
 |------|:----------------:|:----------------------:|
-| **输入 B 矩阵** | GatherKeyIndex (非转置) | GatherKeyIndexT (host 预转置) |
-| **gemm 参数** | `transpose_A=False, transpose_B=True` | `transpose_B=True` |
-| **GatherKeyIndexT** | N/A (直接使用 V0 输出) | host 侧 `permute(0,1,3,2).contiguous()` |
-| **输出累加** | Fixpipe 直接写 dQueryIndexGm | `T.tile.atomic_add` 跨 core 累加到 dQueryIndex_ws |
+| **输入 B 矩阵** | GatherKeyIndex (非转置) | **GatherKeyIndex_ws (非转置, V0 写入)** |
+| **gemm 参数** | `transpose_A=False, transpose_B=True` | `transpose_B=False` |
+| **与 0629 的区别** | — | 0629 用预转置 GKI^T + transpose_B=True; 0630 直接读 GKI + transpose_B=False |
+| **输出累加** | Fixpipe 直接写 dQueryIndexGm | `T.tile.atomic_add` 跨 core FP32 累加 |
 | **量化** | Fixpipe F322F16 (硬件) | V3 scope 单独 `T.tile.cast` (软件) |
 
 ### 4.5 dKeyIndex (MM5 + Scatter) 阶段
 
-| 维度 | AscendC (C2:MM5 + V2) | TileLang 0629 |
+| 维度 | AscendC (C2:MM5 + V2) | TileLang 0630 |
 |------|:---------------------:|:-------------:|
 | **MM5 执行位置** | 设备侧 AIC (Cube) | **Host 侧** `torch.bmm` |
 | **MM5 transpose_A** | ✅ `isLeftTranspose=true` | N/A (host bmm 不需要) |
 | **Scatter 执行位置** | 设备侧 AIV (V2 scope) | **Host 侧** `scatter_add_` |
 | **Scatter 实现** | HW DMA scatter + 区间分段并行 | PyTorch `scatter_add_` (CANN 优化) |
 | **Loss reduce** | AIV 遍历所有 core 的 lossRes, cross-core 通信 | Host 侧 `loss_values.sum()` |
-| **总耗时** | 被流水掩盖 | ~0.20ms 暴露在关键路径上 |
+| **总耗时** | 被流水掩盖 | ~0.11ms (host scatter, 比 0629 的 ~0.20ms 优化) |
 
-**⚠️**: 官方 AscendC 的 MM5 使用了 `transpose_A=True` 和 `transpose_B=True`，这证明在原生 AscendC 中 transpose_A 是正常工作的。TileLang 中 `T.gemm_v0(transpose_A=True)` 导致 ~100% 误差是一个 **TileLang 特有的 bug**。
+**⚠️**: 官方 AscendC 的 MM5 使用了 `transpose_A=True` 和 `transpose_B=True`，这证明在原生 AscendC 中 transpose_A 是正常工作的。TileLang 中 `T.gemm_v0(transpose_A=True)` 导致 ~100% 误差是一个 **TileLang 特有的 bug**。这阻止了 dKeyIndex 计算移入 kernel。
 
 ---
 
@@ -713,30 +716,32 @@ AscendC (910B):
 │       └───────┴───────────── 同步 ──────────────────  │
 └──────────────────────────────────────────────────────┘
 
-TileLang 0629:
-┌──────────────────────────────────────┐
-│           Single Core                 │
-│  ┌────┐  ┌────┐  ┌────┐  ┌────┐     │
-│  │ C1 │→│ V1 │→│ C2 │→│ V3 │        │
-│  └────┘  └────┘  └────┘  └────┘     │
-│  严格串行, 无重叠                      │
-└──────────────────────────────────────┘
+TileLang 0630:
+┌─────────────────────────────────────────────────┐
+│                  Single Core                      │
+│  ┌────┐  ┌────┐  ┌────┐  ┌────┐  ┌────┐        │
+│  │ V0 │→│ C1 │→│ V1 │→│ C2 │→│ V3 │           │
+│  │Gath│  │Cube│  │Vec │  │Cube│  │Cast│           │
+│  └────┘  └────┘  └────┘  └────┘  └────┘        │
+│  严格串行, 5 scopes, 无 CV 重叠                   │
+└─────────────────────────────────────────────────┘
 ```
 
 ### 5.2 流水线深度对比
 
-| | AscendC | TileLang 0629 |
+| | AscendC | TileLang 0630 |
 |------|:------:|:------------:|
-| **总 Stage 数** | 5 (V0→C1→V1→C2→V2) | 4 (C1→V1→C2→V3) |
+| **总 Stage 数** | 5 (V0→C1→V1→C2→V2) | 5 (V0→C1→V1→C2→V3) |
 | **流水重叠** | 3-stage software pipeline (3 个 s1 同时进行) | 无 (严格串行) |
 | **D 维度流水** | 5-pass, 双缓冲 MTE1↔MTE2 | 5-pass, `T.Pipelined(num_stages=3)` |
 | **K 维度并行** | 无 (单 core 处理全量 K) | 16 路 (K//128 core 并行) |
+| **Gather 位置** | 在核 V0 (AIV) | **在核 V0 (Vector scope)** ✅ |
 
 ### 5.3 在核 vs 离核
 
-| 操作 | AscendC | TileLang 0629 |
+| 操作 | AscendC | TileLang 0630 |
 |------|:------:|:------------:|
-| **Gather** | ✅ 在核 (V0, 被掩盖) | ❌ 离核 (host, ~0.04ms) |
+| **Gather** | ✅ 在核 (V0, AIV, 被掩盖) | ✅ **在核 (V0 scope)** |
 | **dKeyIndex bmm (MM5)** | ✅ 在核 (C2, 被掩盖) | ❌ 离核 (host, ~0.15ms) |
 | **dKeyIndex scatter** | ✅ 在核 (V2, 被掩盖) | ❌ 离核 (host, ~0.05ms) |
 | **dQueryIndex MM** | ✅ 在核 (C2:MM6) | ✅ 在核 (C2:MM4) |
@@ -744,11 +749,12 @@ TileLang 0629:
 
 ### 5.4 冗余计算对比
 
-| 计算 | AscendC | TileLang 0629 |
+| 计算 | AscendC | TileLang 0630 |
 |------|:------:|:------------:|
-| **ReduceSumY** | 每个 AIV 独立计算各自 s1 的全量 | **16 个 core 各算一遍全量** |
-| **SoftmaxI** | 每个 AIV 独立计算 | **16 个 core 各算一遍全量** |
+| **ReduceSumY** | 每个 AIV 独立计算各自 s1 的全量 | **16 个 core 各算一遍全量** (冗余) |
+| **SoftmaxI** | 每个 AIV 独立计算 | **16 个 core 各算一遍全量** (冗余) |
 | **P_reduced** | 每个 AIV 只算自己的 s1 | 每个 core 只算自己的 K-block ✅ |
+| **Gather** | 每个 AIV gather 全量 K 行 | **16 core 分摊 gather**, 每 core 128 行 ✅ |
 
 ---
 
@@ -756,34 +762,44 @@ TileLang 0629:
 
 以 Case 0 (B=1,S1=1,S2=2048,N1=128,Nidx1=64,K=2048) 为例：
 
-| 项目 | 官方 AscendC | TileLang 0629 | 差距 |
+| 项目 | 官方 AscendC | TileLang 0630 | 差距 |
 |------|:-----------:|:------------:|:---:|
-| **总耗时** | ~0.31ms | ~0.90ms | **0.34x** |
-| Gather | 被掩盖 | ~0.04ms | host 侧 |
+| **总耗时** | ~0.31ms | ~0.88ms | **0.35x** |
+| Gather | 被掩盖 | ✅ 在核 (~0.02ms kernel内) | 已解决 |
 | C1 (MM1+MM2) | 被掩盖 | ~0.25ms | K-block 并行有效 |
-| V1 (Softmax等) | 部分掩盖 | **~0.35ms** | 标量循环 + 16× 冗余 |
-| C2 (MM6→dQI) | 被掩盖 | ~0.05ms | atomic_add |
-| MM5 (dKI bmm) | 被掩盖 | ~0.15ms | host 侧 bmm |
-| Scatter (dKI) | 被掩盖 | ~0.05ms | host 侧 scatter_add_ |
-| Loss reduce | 被掩盖 | ~0.01ms | host 侧 sum |
+| V1 (Softmax等) | 部分掩盖 | **~0.33ms** | 标量循环 + 16× 冗余 (barrier 已优化 ~10%) |
+| C2 (MM4→dQI) | 被掩盖 | ~0.05ms | atomic_add |
+| V3 (cast) | 被掩盖 | ~0.02ms | 软件 cast |
+| MM5 (dKI bmm) | 被掩盖 | ~0.08ms | host 侧 bmm (已优化) |
+| Scatter (dKI) | 被掩盖 | ~0.03ms | host 侧 scatter_add_ |
+| Loss reduce + dWeight sum | 被掩盖 | ~0.02ms | host 侧 sum |
 
-### 根因排序 (影响从大到小)
+### 0630 vs 0629 改进
 
-1. **V1 标量循环** (~0.15ms 损失): SoftmaxI 遍历 + dWeight/reluGrad 循环无法向量化（`T.tile.broadcast` 不支持 1D→2D）
+| 改进项 | 0629 | 0630 | 收益 |
+|--------|:----:|:----:|:----:|
+| Gather 位置 | host (~0.04ms) | 在核 V0 | -0.04ms 从关键路径移除 |
+| Barrier 数量 (V1) | ~26 个 | 15 个 | V1 耗时 -10% |
+| dKeyIndex host 侧 | ~0.20ms | ~0.11ms | bmm+scatter 优化 |
+| **总耗时** | ~0.90ms | **~0.88ms** | -0.02ms |
 
-2. **V1 冗余计算** (~0.10ms 损失): 16 个 core 各算一遍全量 ReduceSumY 和 SoftmaxI
+### 剩余瓶颈 (影响从大到小)
 
-3. **dKeyIndex 离核** (~0.20ms 损失): MM5 (bmm) + scatter 在 host 侧串行执行
+1. **V1 标量循环** (~0.15ms 损失): SoftmaxI + dWeight/reluGrad 循环无法向量化（`T.tile.broadcast` 不支持 1D→2D）
 
-4. **无 3-stage 流水** (~0.10ms 损失): TileLang 的 Scope 模型不支持 C/V 交叉流水
+2. **V1 冗余计算** (~0.10ms 损失): 16 个 core 各算一遍全量 ReduceSumY 和 SoftmaxI（无跨核同步机制）
 
-5. **Gather 离核** (~0.04ms 损失): host 侧 torch.gather
+3. **dKeyIndex 离核** (~0.11ms 损失): MM5 (bmm) + scatter 在 host 侧串行执行，等待 TileLang 修复 `transpose_A` bug
+
+4. **无 CV 流水** (~0.08ms 损失): TileLang Scope 模型不支持 C/V 交叉流水，5 个 scope 严格串行
+
+5. **UB Buffer 压力** (间接): 30+ UB buffer 分配，Memory Planning 有一定开销
 
 ---
 
 ## 附录: 符号对照表
 
-| 符号 | AscendC 变量名 | TileLang 0629 变量名 | 含义 |
+| 符号 | AscendC 变量名 | TileLang 0630 变量名 | 含义 |
 |------|:------------:|:------------------:|------|
 | B | bSize | B | Batch size |
 | S1 | s1Size | S1 | Query 序列长度 |
@@ -797,12 +813,11 @@ TileLang 0629:
 | DQueryIndex | dSizeQueryIndex (128) | DQueryIndex (128) | Index 维度 |
 | d_rope | dSizeQueryRope (64) | d_rope (64) | RoPE 维度 |
 | K | topKSize | K | Top-K 稀疏数 |
-| topKSize | topKSize | K | 同上 |
 | scale_value | scaleValue | scale_value | Attention scale |
-| gatherPRes | gatherPRes | GatherKey + GatherKeyRope | Gather 的 P 部分 |
-| gatherSYRes | gatherSYRes | GatherKeyIndex | Gather 的 SY 部分 |
-| bmm1Res | bmm1Res | bmm1Res (workspace) | MM1 结果 |
-| bmm2Res | bmm2Res | bmm2Res (workspace) | MM2 结果 (带ReLU) |
+| gatherPRes | gatherPRes | GatherKey_ws + GatherKeyRope_ws | Gather 的 Key+Rope (V0 写入) |
+| gatherSYRes | gatherSYRes | GatherKeyIndex_ws | Gather 的 KeyIndex (V0 写入) |
+| bmm1Res | bmm1Res | bmm1Res (workspace) | MM1 结果 (Q@K^T) |
+| bmm2Res | bmm2Res | bmm2Res (workspace) | MM2 结果 (QI@KI^T, 带ReLU) |
 | bmm3Res | bmm5Res (MM5结果) | N/A (host侧) | dKeyIndex 中间结果 |
 | reluGradRes | reluGradRes | reluGradRes | ReLU 梯度 |
-| psySyncGm | P_reduced + SoftmaxI | PReduced + SoftmaxI | Vector→Cube 同步数据 |
+| dQueryIndexAccum | N/A (Fixpipe 直接输出) | dQueryIndexAccum | dQueryIndex FP32 累加器 |
