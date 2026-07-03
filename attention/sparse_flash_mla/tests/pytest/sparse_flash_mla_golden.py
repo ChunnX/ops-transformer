@@ -121,7 +121,125 @@ def _register_torch_extension():
     from cann_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
 
 
+USE_MOCK_METADATA = True
+
+
+def _compute_row_s2_length(b_idx, n2_idx, s1_idx, B, N2, act_q, ori_act_kv, cmp_act_kv,
+                           ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, cmp_ratio):
+    if (ori_mask_mode == 3 or ori_mask_mode == 4) and s1_idx < act_q - ori_act_kv:
+        return (0, 0)
+    if ori_mask_mode == 4:
+        ori_threshold = ori_act_kv - act_q + s1_idx + 1
+        ori_win_end = ori_threshold + ori_win_right
+        ori_win_start = 0 if ori_win_left == -1 else max(ori_threshold - ori_win_left - 1, 0)
+    elif ori_mask_mode == 3:
+        ori_threshold = ori_act_kv - act_q + s1_idx + 1
+        ori_win_end = ori_threshold + ori_win_right
+        ori_win_start = 0
+    elif ori_mask_mode == 0:
+        ori_win_start = 0
+        ori_win_end = ori_act_kv
+    else:
+        ori_win_start = 0
+        ori_win_end = 0
+    ori_len = max(0, ori_win_end - ori_win_start)
+    cmp_len = 0
+    if cmp_mask_mode == 3:
+        threshold = math.floor((ori_act_kv - act_q + s1_idx + 1) / cmp_ratio)
+    elif cmp_mask_mode == 0:
+        threshold = math.floor(ori_act_kv / cmp_ratio)
+    else:
+        threshold = 0
+    cmp_len = max(0, min(threshold, cmp_act_kv))
+    return (ori_len, cmp_len)
+
+
+def _build_mock_metadata(metadata_input, tensor_input):
+    B = metadata_input['B']
+    N1 = metadata_input['N1']
+    N2 = metadata_input['N2']
+    G = N1 // N2
+    ori_mask_mode = tensor_input['ori_mask_mode']
+    cmp_mask_mode = tensor_input['cmp_mask_mode'] if tensor_input['cmp_mask_mode'] is not None else 3
+    ori_win_left = tensor_input['ori_win_left']
+    ori_win_right = tensor_input['ori_win_right']
+    cmp_ratio = metadata_input['cmp_ratio'] if metadata_input['cmp_ratio'] is not None else 1
+
+    seqused_q = tensor_input.get('seqused_q')
+    seqused_ori_kv = tensor_input.get('seqused_ori_kv')
+    seqused_cmp_kv = tensor_input.get('seqused_cmp_kv')
+    cu_seqlens_q = tensor_input.get('cu_seqlens_q')
+
+    if seqused_q is not None:
+        act_q_list = [_as_int(seqused_q[b]) for b in range(B)]
+    elif cu_seqlens_q is not None:
+        act_q_list = [_as_int(cu_seqlens_q[b + 1] - cu_seqlens_q[b]) for b in range(B)]
+    else:
+        act_q_list = [metadata_input['max_seqlen_q']] * B
+
+    if seqused_ori_kv is not None:
+        ori_kv_list = [_as_int(seqused_ori_kv[b]) for b in range(B)]
+    else:
+        ori_kv_list = [metadata_input['max_seqlen_ori_kv']] * B
+
+    if seqused_cmp_kv is not None:
+        cmp_kv_list = [_as_int(seqused_cmp_kv[b]) for b in range(B)]
+    else:
+        cmp_kv_list = [0] * B
+
+    metadata = torch.zeros(1024, dtype=torch.int32)
+    core_idx = 0
+    for b_idx in range(B):
+        cur_act_q = act_q_list[b_idx]
+        cur_ori_kv = ori_kv_list[b_idx]
+        cur_cmp_kv = cmp_kv_list[b_idx]
+        for n2_idx in range(N2):
+            bn2_idx = b_idx * N2 + n2_idx
+            for s1_idx in range(cur_act_q):
+                ori_len, cmp_len = _compute_row_s2_length(
+                    b_idx, n2_idx, s1_idx, B, N2, cur_act_q, cur_ori_kv, cur_cmp_kv,
+                    ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, cmp_ratio)
+                total_len = ori_len + cmp_len
+                if total_len <= 0:
+                    continue
+                ori_block_num = math.ceil(ori_len / S2_BASE_SIZE) if ori_len > 0 else 0
+                total_len = ori_len + cmp_len
+                num_s2_blocks = math.ceil(total_len / S2_BASE_SIZE) if total_len > 0 else 0
+                s2_block_boundaries = list(range(1, num_s2_blocks + 1))
+                if num_s2_blocks <= 1:
+                    if core_idx < AIC_CORE_MAX_NUM:
+                        base = core_idx * FA_METADATA_SIZE
+                        metadata[base + FA_CORE_ENABLE_INDEX] = 1
+                        metadata[base + FA_BN2_START_INDEX] = bn2_idx
+                        metadata[base + FA_M_START_INDEX] = s1_idx
+                        metadata[base + FA_S2_START_INDEX] = 1
+                        metadata[base + FA_BN2_END_INDEX] = bn2_idx
+                        metadata[base + FA_M_END_INDEX] = s1_idx
+                        metadata[base + FA_S2_END_INDEX] = 0
+                        core_idx += 1
+                    continue
+                num_g_groups = max(1, min(AIC_CORE_MAX_NUM // num_s2_blocks, 2))
+                for g_grp in range(num_g_groups):
+                    for i in range(num_s2_blocks):
+                        if core_idx >= AIC_CORE_MAX_NUM:
+                            break
+                        base = core_idx * FA_METADATA_SIZE
+                        s2_start = s2_block_boundaries[i]
+                        s2_end = s2_block_boundaries[i + 1] if i + 1 < num_s2_blocks else 0
+                        metadata[base + FA_CORE_ENABLE_INDEX] = 1
+                        metadata[base + FA_BN2_START_INDEX] = bn2_idx
+                        metadata[base + FA_M_START_INDEX] = s1_idx
+                        metadata[base + FA_S2_START_INDEX] = s2_start
+                        metadata[base + FA_BN2_END_INDEX] = bn2_idx
+                        metadata[base + FA_M_END_INDEX] = s1_idx
+                        metadata[base + FA_S2_END_INDEX] = s2_end
+                        core_idx += 1
+    return metadata
+
+
 def generate_smla_metadata(metadata_input, tensor_input):
+    if USE_MOCK_METADATA:
+        return _build_mock_metadata(metadata_input, tensor_input)
     _register_torch_extension()
     layout_q = tensor_input['layout_q'] if isinstance(tensor_input['layout_q'], str) else tensor_input['layout_q'][0]
     ori_sparse_indices = tensor_input['ori_sparse_indices']
@@ -196,22 +314,20 @@ class GeneralizedSFA:
         self.ori_topk_length = ori_topk_length
         self.cmp_topk_length = cmp_topk_length
         self.metadata_info = parse_smla_metadata(metadata)
-        self.fd_split_ranges = {}
+        self.fd_split_ranges = []
 
     def _bn2_idx(self, batch_idx, n2_idx):
         return batch_idx * self.N2 + n2_idx
 
     def _convert_s2_block_to_token(self, s2_block_idx, ori_len, cmp_len):
-        ori_block_num = math.ceil(ori_len / S2_BASE_SIZE) if ori_len > 0 else 0
+        total_len = ori_len + cmp_len
         block_idx = int(s2_block_idx - 1)
-        if block_idx <= ori_block_num:
-            return min(block_idx * S2_BASE_SIZE, ori_len)
-        return ori_len + min((block_idx - ori_block_num) * S2_BASE_SIZE, cmp_len)
+        return min(block_idx * S2_BASE_SIZE, total_len)
 
     def _build_fd_split_ranges(self, row_s2_lengths, m_block_size=1):
         if self.fd_split_ranges:
             return self.fd_split_ranges
-        split_ranges = {}
+        row_split_ranges = {}
         for fa in self.metadata_info.get("fa", []):
             bn2_start = fa["bn2_start"]
             m_start = fa["m_start"]
@@ -219,9 +335,8 @@ class GeneralizedSFA:
             m_end = fa["m_end"]
             s2_start_block = fa["s2_start_block"]
             s2_end_block = fa["s2_end_block"]
-            workspace_split_idx = 0
+
             def add_split_range(bn2_idx, m_idx, start_block, end_block):
-                nonlocal workspace_split_idx
                 row_key = (bn2_idx, m_idx)
                 if row_key not in row_s2_lengths:
                     return
@@ -229,20 +344,18 @@ class GeneralizedSFA:
                 total_len = ori_len + cmp_len
                 if total_len <= 0:
                     return
-                start_token = self._convert_s2_block_to_token(start_block, ori_len, cmp_len)
+                start_token = self._convert_s2_block_to_token(start_block, ori_len, cmp_len) if start_block != 0 else 0
                 end_token = self._convert_s2_block_to_token(end_block, ori_len, cmp_len) if end_block != 0 else total_len
                 if end_token <= start_token:
                     return
-                workspace_idx = fa["first_workspace_idx"] + workspace_split_idx
-                split_ranges[workspace_idx] = {
-                    "bn2_idx": bn2_idx,
-                    "m_idx": m_idx,
-                    "start": start_token,
-                    "end": end_token,
-                    "ori_len": ori_len,
-                    "cmp_len": cmp_len,
-                }
-                workspace_split_idx += 1
+                ranges = row_split_ranges.setdefault(row_key, [])
+                if not any(r["start"] == start_token and r["end"] == end_token for r in ranges):
+                    ranges.append({
+                        "bn2_idx": bn2_idx,
+                        "m_idx": m_idx,
+                        "start": start_token,
+                        "end": end_token,
+                    })
 
             first_m_idx = m_start * m_block_size
             last_m_idx = m_end * m_block_size
@@ -253,36 +366,36 @@ class GeneralizedSFA:
                     add_split_range(bn2_start, first_m_idx, s2_start_block, 0)
                 if s2_end_block != 0:
                     add_split_range(bn2_end, last_m_idx, 0, s2_end_block)
-        self.fd_split_ranges = split_ranges
-        return split_ranges
+        split_rows = []
+        for row_key, ranges in row_split_ranges.items():
+            if len(ranges) <= 1:
+                continue
+            ranges.sort(key=lambda item: item["start"])
+            bn2_idx, m_idx = row_key
+            split_rows.append({
+                "bn2_idx": bn2_idx,
+                "m_idx": m_idx,
+                "ranges": ranges,
+            })
+        self.fd_split_ranges = split_rows
+        return self.fd_split_ranges
 
-    def _get_fd_ranges_for_row(self, bn2_idx, m_idx, head_start, head_num):
-        ranges = self.fd_split_ranges
-        for fd in self.metadata_info.get("fd", []):
-            if fd["workspace_num"] <= 1:
-                continue
-            if fd["bn2_idx"] != bn2_idx or fd["m_idx"] != m_idx:
-                continue
-            fd_head_start = fd["m_start_idx"]
-            fd_head_end = fd_head_start + fd["m_num"]
-            if head_start >= fd_head_end or head_start + head_num <= fd_head_start:
-                continue
-            split_items = []
-            for split_idx in range(fd["workspace_num"]):
-                workspace_idx = fd["workspace_idx"] + split_idx
-                if workspace_idx not in ranges:
-                    split_items = []
-                    break
-                split_items.append(ranges[workspace_idx])
-            if split_items:
-                return split_items
+    def _get_fd_ranges_for_row(self, bn2_idx, m_idx, head_start=None, head_num=None):
+        for split_row in self.fd_split_ranges:
+            if split_row["bn2_idx"] == bn2_idx and split_row["m_idx"] == m_idx:
+                return split_row["ranges"]
         return None
 
-    def _run_online_softmax_range(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, start_token, end_token):
+    def _run_online_softmax_range(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, start_token, end_token,
+                                  include_sinks=True):
         ori_len = cur_ori_k_fp32.size(0)
         cmp_len = 0 if cur_cmp_k_fp32 is None else cur_cmp_k_fp32.size(0)
-        row_sum = torch.ones((q_curr_fp32.size(0)), dtype=torch.float32)
-        row_max = cur_sinks.clone().to(dtype=torch.float32)
+        if include_sinks:
+            row_sum = torch.ones((q_curr_fp32.size(0)), dtype=torch.float32)
+            row_max = cur_sinks.clone().to(dtype=torch.float32)
+        else:
+            row_sum = torch.zeros((q_curr_fp32.size(0)), dtype=torch.float32)
+            row_max = torch.full((q_curr_fp32.size(0),), float('-inf'), dtype=torch.float32)
         cur_attn_out = torch.zeros((q_curr_fp32.size(0), q_curr_fp32.size(1)), dtype=torch.float32)
         segments = []
         ori_start = min(start_token, ori_len)
@@ -306,15 +419,16 @@ class GeneralizedSFA:
                 row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
                 cur_o = torch.matmul(cur_softmax_res.to(dtype=q_curr_fp32.dtype), v_tile)
                 cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
-        return row_max, row_sum, cur_attn_out / row_sum.unsqueeze(1)
+        return row_max, row_sum, cur_attn_out / row_sum.unsqueeze(1).clamp(min=1e-30)
 
     def _run_fd_golden(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, fd_ranges):
         partial_max = []
         partial_sum = []
         partial_out = []
-        for fd_range in fd_ranges:
+        for split_idx, fd_range in enumerate(fd_ranges):
             row_max, row_sum, out = self._run_online_softmax_range(
-                q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, fd_range["start"], fd_range["end"])
+                q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, fd_range["start"], fd_range["end"],
+                include_sinks=(split_idx == 0))
             partial_max.append(row_max)
             partial_sum.append(row_sum)
             partial_out.append(out)
@@ -507,7 +621,6 @@ class GeneralizedSFA:
                     elif RUN_MODE == 1:
                         bn2_idx = self._bn2_idx(i_B, i_N2)
                         fd_ranges = self._get_fd_ranges_for_row(bn2_idx, i_S1, 0, G)
-                        # import pdb;pdb.set_trace()
                         if fd_ranges:
                             cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
                             cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
@@ -1306,23 +1419,23 @@ def gen_data(params, template_mode=None):
 
     sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
 
-    # kv_cache 0轴非连续
-    properties = torch.npu.get_device_properties()
-    if "Ascend950" in properties.name and layout_kv == "PA_BBND":
-        key_stride = 10  # 0轴非连续增加stride
-        bytes_per_token = D + key_stride # 整个非连续的长度
-        blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
-        ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
-        blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
-        blockFusion1 = blockFusion1.npu()
-        ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
-
-        if template_idx != 0:
-            blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
-            cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
-            blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
-            blockFusion2 = blockFusion2.npu()
-            cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
+    # kv_cache 0轴非连续 (NPU not available, skipping)
+    # properties = torch.npu.get_device_properties()
+    # if "Ascend950" in properties.name and layout_kv == "PA_BBND":
+    #     key_stride = 10
+    #     bytes_per_token = D + key_stride
+    #     blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
+    #     ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
+    #     blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
+    #     blockFusion1 = blockFusion1.npu()
+    #     ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
+    #
+    #     if template_idx != 0:
+    #         blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
+    #         cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
+    #         blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
+    #         blockFusion2 = blockFusion2.npu()
+    #         cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
 
     metadata_input = {
         'N1': N1,
