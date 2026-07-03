@@ -35,7 +35,7 @@ struct MatmulSwigluTilingData {
     uint32_t hasBias;
     uint32_t transposeWeight;
     uint32_t usedCoreNum;
-    uint32_t reserved;
+    uint32_t tileN;  // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
     TCubeTiling mmTiling;
 };
 }  // namespace optiling

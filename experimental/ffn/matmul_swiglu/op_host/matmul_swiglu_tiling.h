@@ -40,7 +40,7 @@ BEGIN_TILING_DATA_DEF(MatmulSwigluTilingData)
     TILING_DATA_FIELD_DEF(uint32_t, hasBias);       // 是否带 bias
     TILING_DATA_FIELD_DEF(uint32_t, transposeWeight);
     TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);   // 参与计算的 cube 核数
-    TILING_DATA_FIELD_DEF(uint32_t, reserved);
+    TILING_DATA_FIELD_DEF(uint32_t, tileN);         // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
     TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling);  // 单边 [M, N, K] 的 cube tiling
 END_TILING_DATA_DEF;
 

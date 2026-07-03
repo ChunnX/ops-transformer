@@ -52,6 +52,7 @@ public:
         hasBias_     = (tilingData->hasBias == 1U);
         transposeW_  = (tilingData->transposeWeight == 1U);
         usedCoreNum_ = tilingData->usedCoreNum;
+        tileN_       = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
 
         xGm_.SetGlobalBuffer((__gm__ xType*)x, m_ * k_);
         wGm_.SetGlobalBuffer((__gm__ xType*)weight, k_ * twoN_);
@@ -61,11 +62,12 @@ public:
         yGm_.SetGlobalBuffer((__gm__ xType*)y, m_ * n_);
         cGm_.SetGlobalBuffer((__gm__ cType*)userWs, m_ * twoN_);  // [M, 2N] fp32 中间
 
-        // 向量阶段每次处理一行的 N 个元素: gate/up/sig(fp32) + y(xType)
-        pipe.InitBuffer(inQueGate_, 2, n_ * sizeof(cType));
-        pipe.InitBuffer(inQueUp_, 2, n_ * sizeof(cType));
-        pipe.InitBuffer(sigBuf_, n_ * sizeof(cType));
-        pipe.InitBuffer(outQueY_, 2, n_ * sizeof(xType));
+        // 向量阶段每次处理一块 tileN 列(而非整行), 避免大 N 时 UB 溢出:
+        // gate/up/sig(fp32) + y(xType), 缓冲按 tileN 开。
+        pipe.InitBuffer(inQueGate_, 2, tileN_ * sizeof(cType));
+        pipe.InitBuffer(inQueUp_, 2, tileN_ * sizeof(cType));
+        pipe.InitBuffer(sigBuf_, tileN_ * sizeof(cType));
+        pipe.InitBuffer(outQueY_, 2, tileN_ * sizeof(xType));
     }
 
     __aicore__ inline void Process()
@@ -94,43 +96,60 @@ public:
     }
 
 private:
-    // 处理第 row 行: gate=cGm[row,0:N], up=cGm[row,N:2N], y=SiLU(gate)*up
+    // 处理第 row 行: 按 tileN 列分块, 逐块做 SwiGLU, 避免大 N 时整行超 UB。
     __aicore__ inline void ComputeRow(int64_t row)
     {
-        DataCopyExtParams copyN{1, static_cast<uint32_t>(n_ * sizeof(cType)), 0, 0, 0};
-        DataCopyPadExtParams<cType> padN{false, 0, 0, 0};
+        const int64_t nRow = static_cast<int64_t>(n_);
+        const int64_t step = static_cast<int64_t>(tileN_);
+        for (int64_t off = 0; off < nRow; off += step) {
+            int64_t len = nRow - off;
+            if (len > step) {
+                len = step;
+            }
+            ComputeTile(row, off, len);
+        }
+    }
+
+    // 处理第 row 行 [colOff, colOff+len) 列: gate=cGm[row,colOff:], up=cGm[row,N+colOff:], y=SiLU(gate)*up
+    __aicore__ inline void ComputeTile(int64_t row, int64_t colOff, int64_t len)
+    {
+        DataCopyExtParams copyIn{1, static_cast<uint32_t>(len * sizeof(cType)), 0, 0, 0};
+        DataCopyPadExtParams<cType> padIn{false, 0, 0, 0};
 
         LocalTensor<cType> gate = inQueGate_.AllocTensor<cType>();
         LocalTensor<cType> up = inQueUp_.AllocTensor<cType>();
-        DataCopyPad(gate, cGm_[row * twoN_], copyN, padN);
-        DataCopyPad(up, cGm_[row * twoN_ + n_], copyN, padN);
+        DataCopyPad(gate, cGm_[row * twoN_ + colOff], copyIn, padIn);
+        DataCopyPad(up, cGm_[row * twoN_ + n_ + colOff], copyIn, padIn);
         inQueGate_.EnQue(gate);
         inQueUp_.EnQue(up);
 
         gate = inQueGate_.DeQue<cType>();
         up = inQueUp_.DeQue<cType>();
         LocalTensor<cType> sig = sigBuf_.Get<cType>();
-        const int32_t len = static_cast<int32_t>(n_);
-        Sigmoid(sig, gate, len);
+        const int32_t n = static_cast<int32_t>(len);
+        Sigmoid(sig, gate, n);
         PipeBarrier<PIPE_V>();
-        Mul(gate, gate, sig, len);   // SiLU(gate) = gate * sigmoid(gate)
+        Mul(gate, gate, sig, n);   // SiLU(gate) = gate * sigmoid(gate)
         PipeBarrier<PIPE_V>();
-        Mul(gate, gate, up, len);    // * up
+        Mul(gate, gate, up, n);    // * up
         PipeBarrier<PIPE_V>();
 
         LocalTensor<xType> yUb = outQueY_.AllocTensor<xType>();
         if constexpr (std::is_same<xType, cType>::value) {
-            DataCopy(yUb, gate, len);
+            // 同类型直拷 UB->UB, 计数需按 32B 对齐上取整(缓冲已按 tileN 分配, 多读的列在块内)
+            constexpr int32_t kBlk = 32 / static_cast<int32_t>(sizeof(cType));
+            int32_t cnt = (n + kBlk - 1) / kBlk * kBlk;
+            DataCopy(yUb, gate, cnt);
         } else {
-            Cast(yUb, gate, RoundMode::CAST_RINT, len);
+            Cast(yUb, gate, RoundMode::CAST_RINT, n);
         }
         inQueGate_.FreeTensor(gate);
         inQueUp_.FreeTensor(up);
         outQueY_.EnQue(yUb);
 
         yUb = outQueY_.DeQue<xType>();
-        DataCopyExtParams copyY{1, static_cast<uint32_t>(n_ * sizeof(xType)), 0, 0, 0};
-        DataCopyPad(yGm_[row * n_], yUb, copyY);
+        DataCopyExtParams copyOut{1, static_cast<uint32_t>(len * sizeof(xType)), 0, 0, 0};
+        DataCopyPad(yGm_[row * n_ + colOff], yUb, copyOut);
         outQueY_.FreeTensor(yUb);
     }
 
@@ -146,7 +165,7 @@ private:
     GlobalTensor<xType> yGm_;
     GlobalTensor<cType> cGm_;
 
-    uint64_t m_ = 0, k_ = 0, n_ = 0, twoN_ = 0;
+    uint64_t m_ = 0, k_ = 0, n_ = 0, twoN_ = 0, tileN_ = 0;
     uint32_t usedCoreNum_ = 0;
     bool hasBias_ = false;
     bool transposeW_ = false;

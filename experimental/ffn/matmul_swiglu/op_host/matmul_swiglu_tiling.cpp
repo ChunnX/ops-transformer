@@ -151,12 +151,19 @@ static void FillTilingData(gert::TilingContext* context, const SgmTilingParams& 
     int64_t baseM = tiling->mmTiling.get_baseM();
     int64_t baseN = tiling->mmTiling.get_baseN();
 
-    // UB 预算校验: gate+up+sig(3*fp32) + y(xType), 单位元素数 = baseM*baseN
+    // 向量 SwiGLU 行内分块 tileN: 每列元素占 UB = gate(2*fp32) + up(2*fp32) + sig(fp32) +
+    // y(2*xType) (in/out 队列双缓冲各 2 份, sig 单份)。留 16KB 余量, 对齐 256 列。
+    constexpr int64_t UB_RESERVE = 16 * 1024;
+    constexpr int64_t TILE_ALIGN = 256;
     int64_t xTypeSize = (p.xDtype == ge::DT_FLOAT) ? 4 : 2;
-    int64_t perBlockUb = (3 * 4 + xTypeSize) * baseM * baseN;
-    if (perBlockUb > static_cast<int64_t>(p.ubSize)) {
-        OP_LOGW(context, "MatmulSwiglu: epilogue UB %ld B per block > UB %lu B (baseM=%ld baseN=%ld)",
-            perBlockUb, p.ubSize, baseM, baseN);  // 仅告警不失败: 可收缩 baseN 后重试。
+    int64_t perColUb = 2 * 4 + 2 * 4 + 4 + 2 * xTypeSize;
+    int64_t ubBudget = static_cast<int64_t>(p.ubSize) - UB_RESERVE;
+    if (ubBudget < perColUb) {
+        ubBudget = perColUb;
+    }
+    int64_t tileN = (ubBudget / perColUb / TILE_ALIGN) * TILE_ALIGN;  // 对齐下取整
+    if (tileN <= 0 || tileN >= p.n) {
+        tileN = p.n;  // 小 N 或一块即可容纳: 整行不切分
     }
 
     int64_t mBlockCnt = Ops::Base::CeilDiv(p.m, baseM);
@@ -176,7 +183,7 @@ static void FillTilingData(gert::TilingContext* context, const SgmTilingParams& 
     tiling->set_hasBias(p.hasBias ? 1U : 0U);
     tiling->set_transposeWeight(p.transposeWeight ? 1U : 0U);
     tiling->set_usedCoreNum(static_cast<uint32_t>(usedCore));
-    tiling->set_reserved(0U);
+    tiling->set_tileN(static_cast<uint32_t>(tileN));
 
     context->SetBlockDim(static_cast<uint32_t>(p.coreNum));
 
