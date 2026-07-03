@@ -2042,6 +2042,9 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
 
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        return false;
+    }
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
         ep_ = 0;
