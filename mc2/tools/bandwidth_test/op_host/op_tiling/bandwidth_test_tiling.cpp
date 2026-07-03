@@ -57,6 +57,8 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_HCCL_BUFFER_INDEX = 4U;       // HCCL缓冲区大小
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 5U;  // 通信模式
 constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;       // AIV核数量
 
 // ============ 其他常量 ============
@@ -94,15 +96,21 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto hcclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX);
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(worldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "worldSize"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "maxBs"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "mode"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hcclBufferSizePtr == nullptr,
+        OP_LOGE(nodeName, "hcclBufferSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModePtr == nullptr,
+        OP_LOGE(nodeName, "commModePtr is null."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -115,6 +123,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
 
     OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
@@ -133,6 +142,10 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
 
+    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urma") != 0),
+        OP_LOGE(nodeName, "commMode is invalid, should be mte or urama, but got commMode=%s.",
+        *commModePtr), return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -142,11 +155,10 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrPointersNotNull(context, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "attr pointers",
-            "null", "not null"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "Check attr pointers not null failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrValuesValid(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr values valid failed."), return ge::GRAPH_FAILED);
@@ -176,44 +188,40 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "xStorageShape is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "x",
-            (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "x dims is invalid, should be 2, but got %zu.",
+        xStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
     const int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     const int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(xDim0 <= 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x dim0 (bs)",
-            std::to_string(xDim0).c_str(), "positive"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "x dim0 (bs) is invalid, should be positive, but got %ld.", xDim0), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xDim1 <= 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x dim1 (data_size)",
-            std::to_string(xDim1).c_str(), "positive"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
+                return ge::GRAPH_FAILED);
 
+    tilingData.maxBs = static_cast<int32_t>(xDim0);
     tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
     OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "dst_rank_id"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "dstRankIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dstRankIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "dst_rank_id",
-            (std::to_string(dstRankIdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "dst_rank_id dims is invalid, should be 1, but got %zu.",
+        dstRankIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
     const int64_t dstRankIdDim0 = dstRankIdStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(dstRankIdDim0 != xDim0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "dst_rank_id",
-            std::to_string(dstRankIdDim0).c_str(),
-            "The dim0 of dst_rank_id must be the same as that of x"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "dst_rank_id dim0 should equal to x dim0, but got dst_rank_id dim0=%ld, x dim0=%ld.",
+        dstRankIdDim0, xDim0), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 // 校验输出tensor shape
-// y: [maxBs * worldSize, dataSize], receive_cnt: [worldSize]
+// y: [max_bs * world_size, data_size], receive_cnt: [world_size]
 static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
@@ -223,40 +231,33 @@ static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, cons
 
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "y"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "yStorageShape is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(yStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "y",
-            (std::to_string(yStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "y dims is invalid, should be 2, but got %zu.",
+        yStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
     const int64_t yDim0 = yStorageShape->GetStorageShape().GetDim(0);
     const int64_t yDim1 = yStorageShape->GetStorageShape().GetDim(1);
     const int64_t expectedYDim0 = maxBs * worldSize;
 
     OP_TILING_CHECK(yDim0 < expectedYDim0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "y dim0",
-            std::to_string(yDim0).c_str(),
-            (std::string(">= ") + std::to_string(expectedYDim0)).c_str()),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "y dim0 should be >= maxBs * worldSize, but got y dim0=%ld, expected=%ld.",
+        yDim0, expectedYDim0), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(yDim1 != dataSize,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "y dim1",
-            std::to_string(yDim1).c_str(), ("=" + std::to_string(dataSize)).c_str()),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "y dim1 should equal to x dim1, but got y dim1=%ld, x dim1=%ld.",
+        yDim1, dataSize), return ge::GRAPH_FAILED);
 
     const gert::StorageShape *receiveCntStorageShape = context->GetOutputShape(OUTPUT_RECEIVE_CNT_INDEX);
     OP_TILING_CHECK(receiveCntStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "receive_cnt"), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "receiveCntStorageShape is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(receiveCntStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "receive_cnt",
-            (std::to_string(receiveCntStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "receive_cnt dims is invalid, should be 1, but got %zu.",
+        receiveCntStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
     const int64_t receiveCntDim0 = receiveCntStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(receiveCntDim0 != worldSize,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "receive_cnt",
-            std::to_string(receiveCntDim0).c_str(),
-            "The dim0 of receive_cnt must be the same as worldSize"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "receive_cnt dim0 should equal to worldSize, but got receive_cnt dim0=%ld, worldSize=%ld.",
+        receiveCntDim0, worldSize), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -274,10 +275,17 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
-static uint64_t CalTilingKey()
+static uint64_t CalTilingKey(const char *nodeName, const std::string & commMode)
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
+    uint8_t commModeByte = TILINGKEY_TPL_MTE;
+    if (commMode =="mte") {
+        commModeByte = TILINGKEY_TPL_MTE;
+    } else if (commMode =="urma") {
+        commModeByte = TILINGKEY_TPL_URAMA;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(commModeByte, archTag);
+    OP_LOGI(nodeName, "tilingKey is %ld", tilingKey);
     return tilingKey;
 }
 
@@ -285,13 +293,20 @@ static uint64_t CalTilingKey()
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
 {
+    auto attrs = context->GetAttrs();
+    int64_t hcclBufferSize = *(attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX));
+    int64_t worldSize = *(attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX));
+
+    uint64_t dataSize = static_cast<uint64_t>(worldSize * hcclBufferSize);
+    OP_LOGD(nodeName, "dataSize = %lu", dataSize);
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + dataSize + 2UL * 1024UL * 1024UL * 1024UL;
     
     return ge::GRAPH_SUCCESS;
 }
@@ -338,13 +353,13 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 
     OP_TILING_CHECK(CheckTensorShape(context, nodeName, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
-
+    
     OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Tiling check winsize failed."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "Check win size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
-
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -353,7 +368,7 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
     uint32_t batchMode = 1U;
-    context->SetScheduleMode(batchMode);
+    auto ret = context->SetScheduleMode(batchMode);
 
     const char *nodeName = context->GetNodeName();
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
@@ -363,8 +378,11 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
+    
+    auto commModePtr = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    std::string commMode(commModePtr);
 
-    uint64_t tilingKey = CalTilingKey();
+    uint64_t tilingKey = CalTilingKey(nodeName, commMode);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -377,8 +395,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
     uint32_t aivNum = platformAivNum;
-    if (*aivNumPtr > 0 && *aivNumPtr <= platformAivNum) {
+    if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
+        OP_LOGD(nodeName, "User set aiv_num = %ld", *aivNumPtr); 
     }
 
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
