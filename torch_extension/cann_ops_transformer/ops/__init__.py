@@ -32,6 +32,7 @@ from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
 from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
+from .quant_compressor import quant_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
