@@ -173,6 +173,8 @@ def save_result(params, result, fulfill_percent, result_path, softmax_max_percen
         "range_key": str(params.get("range_key")) if params.get("range_key") is not None else None,
         "range_query_rope": str(params.get("range_query_rope")) if params.get("range_query_rope") is not None else None,
         "range_key_rope": str(params.get("range_key_rope")) if params.get("range_key_rope") is not None else None,
+        "range_sinks": str(params.get("range_sinks")) if params.get("range_sinks") is not None else None,
+        "use_sinks": params.get("use_sinks", False),
         "return_softmax_lse": params.get("return_softmax_lse", False),
         "result": result,
         "fulfill_percent": fulfill_percent,
@@ -195,11 +197,11 @@ def combin_params(enabled_params, pytest_paramset=True):
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "sparse_block_size", "rope_head_dim",
-        "sparse_mode", "attention_mode", "return_softmax_lse",
+        "sparse_mode", "attention_mode", "return_softmax_lse", "use_sinks",
         "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
     ]
     range_param_names = [
-        "range_query", "range_key", "range_query_rope", "range_key_rope",
+        "range_query", "range_key", "range_query_rope", "range_key_rope", "range_sinks",
     ]
 
     for params in enabled_params:
@@ -236,6 +238,7 @@ def convert_param_combination_to_cs_format(param_combination):
     sparse_mode = param_combination["sparse_mode"]
     attention_mode = param_combination["attention_mode"]
     return_softmax_lse = param_combination.get("return_softmax_lse", False)
+    use_sinks = bool(param_combination.get("use_sinks", False))
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
     
@@ -292,6 +295,7 @@ def convert_param_combination_to_cs_format(param_combination):
                 "value_cache": [block_num, block_size, N2, D + rope_head_dim],
                 "query_rope": [B, S1, N1, rope_head_dim],
                 "key_rope": [B, S2, N2, rope_head_dim],
+                "sinks": [N1],
             }
             shape_output = {
                 "attn_out": [B, S1, N1, D],
@@ -310,6 +314,7 @@ def convert_param_combination_to_cs_format(param_combination):
                 "value_cache": [block_num, block_size, N2, D + rope_head_dim],
                 "query_rope": [T1, N1, rope_head_dim],
                 "key_rope": [B, S2, N2, rope_head_dim],
+                "sinks": [N1],
             }
             shape_output = {
                 "attn_out": [T1, N1, D],
@@ -330,6 +335,7 @@ def convert_param_combination_to_cs_format(param_combination):
             "value_cache": [T2, N2, D + rope_head_dim],
             "query_rope": [T1, N1, rope_head_dim],
             "key_rope": [T2, N2, rope_head_dim],
+            "sinks": [N1],
         }
         shape_output = {
             "attn_out": [T1, N1, D],
@@ -348,6 +354,7 @@ def convert_param_combination_to_cs_format(param_combination):
             "value_cache": [B, S2, N2, D + rope_head_dim],
             "query_rope": [B, S1, N1, rope_head_dim],
             "key_rope": [B, S2, N2, rope_head_dim],
+            "sinks": [N1],
         }
         shape_output = {
             "attn_out": [B, S1, N1, D],
@@ -367,6 +374,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "value_cache": kv_dtype_str,
         "query_rope": q_dtype_str,
         "key_rope": q_dtype_str,
+        "sinks": "fp32",
     }
     
     default_range_input = {
@@ -376,9 +384,10 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_table": [0, 1],
         "query_rope": [-10.0, 10.0],
         "key_rope": [-10.0, 10.0],
+        "sinks": [-0.2, 0.2],
     }
     range_input = {}
-    for key in ["query", "key", "query_rope", "key_rope"]:
+    for key in ["query", "key", "query_rope", "key_rope", "sinks"]:
         range_key = f"range_{key}"
         if range_key in param_combination and param_combination[range_key] is not None:
             range_input[key] = param_combination[range_key]
@@ -405,6 +414,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "attention_mode": attention_mode,
         "block_size": block_size,
         "return_softmax_lse": return_softmax_lse,
+        "use_sinks": use_sinks,
         # 原始参数，用于结果保存（与 example.xlsx 列对齐）
         "Testcase_Prefix": testcase_prefix,
         "q_type": q_type,
@@ -426,6 +436,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "range_key": range_input["key"],
         "range_query_rope": range_input["query_rope"],
         "range_key_rope": range_input["key_rope"],
+        "range_sinks": range_input["sinks"],
     }
     
     return params
