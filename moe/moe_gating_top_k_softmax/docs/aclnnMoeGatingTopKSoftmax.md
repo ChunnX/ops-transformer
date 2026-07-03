@@ -40,21 +40,21 @@
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxGetWorkspaceSize(
-    const aclTensor *x, 
-    const aclTensor *finishedOptional, 
-    int64_t          k, 
-    const aclTensor *yOut, 
-    const aclTensor *expertIdxOut, 
-    const aclTensor *rowIdxOut, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *x,
+    const aclTensor *finishedOptional,
+    int64_t          k,
+    const aclTensor *yOut,
+    const aclTensor *expertIdxOut,
+    const aclTensor *rowIdxOut,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmax(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -251,7 +251,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
   </table>
 
 - **返回值**
-  
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -376,7 +376,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnMoeGatingTopKSoftmax第一段接口
-  ret = aclnnMoeGatingTopKSoftmaxGetWorkspaceSize(input, nullptr, 2, out, expertIdOut, rowOut, &workspaceSize, &executor);
+  ret = aclnnMoeGatingTopKSoftmaxGetWorkspaceSize(input, finished, 2, out, expertIdOut, rowOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKSoftmaxGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
