@@ -9,7 +9,7 @@
 // -----------------------------------------------------------------------------------------------------------
 
 #include <torch/extension.h>
-#include "aclnn_common.h"
+#include "aclnn_cmd_macros.h"
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
