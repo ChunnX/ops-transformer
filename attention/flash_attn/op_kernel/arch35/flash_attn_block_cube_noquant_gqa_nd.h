@@ -291,14 +291,10 @@ public:
     }
 
     // Cube 侧仅保留核间/核内同步，不执行 GM 搬运 / Matmul / Fixpipe。
-    __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
+    __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1)
     {
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-            SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-        } else {
-            SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-        }
+        WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
+        SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
         SetFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
@@ -307,10 +303,8 @@ public:
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
 
-        if (unlikely(runInfo.isLastS2Loop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-            qBufId = (qBufId + 1) % L1_Q_BUFCNT;
-        }
+        SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
+        qBufId = (qBufId + 1) % L1_Q_BUFCNT;
         SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
         kBufId = (kBufId + 1) % L1_KV_BUFCNT;
 
@@ -328,15 +322,13 @@ public:
     }
 
     template<typename OutTensorT>
-    __aicore__ inline void IterateBmm1(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1)
     {
         (void)outputTensor;
-        Bmm1SyncOnly(ccId0, ccId1, runInfo);
+        Bmm1SyncOnly(ccId0, ccId1);
     }
 
-    __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId, RunInfoX &runInfo)
-    {
-        (void)runInfo;
+    __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId)
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
 
@@ -364,11 +356,11 @@ public:
 
     template<typename OutTensorT>
     __aicore__ inline void IterateBmm2(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
-                                        LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
+                                        LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId)
     {
         (void)outputTensor;
         (void)l1PTensor;
-        Bmm2SyncOnly(outCcId0, outCcId1, l1PCcId, runInfo);
+        Bmm2SyncOnly(outCcId0, outCcId1, l1PCcId);
     }
 
 }; // FANoQuantGqaBlockCubeNd
