@@ -177,12 +177,13 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
     MicroAPI::LoadAlign<uint16_t>(nzIndex, nzScatterIndex);
 
     for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        const uint32_t tokenCosSinOffset = static_cast<uint32_t>(tokenIdx) * QKV_K_SCALE_D128_FULL_SIZE;
         MicroAPI::RegTensor<float> cosValue;
         MicroAPI::RegTensor<float> sinValue;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(cosValue, cosSin + tokenCosSinOffset);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sinValue, cosSin + tokenCosSinOffset +
-                                                                                QKV_K_SCALE_D128_HALF_SIZE);
+        MicroAPI::AddrReg cosSinAddrReg =
+            MicroAPI::CreateAddrReg<float>(tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(cosValue, cosSin, cosSinAddrReg);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            sinValue, cosSin + QKV_K_SCALE_D128_HALF_SIZE, cosSinAddrReg);
 
         for (uint16_t headIdx = 0U; headIdx < headSize; ++headIdx) {
             MicroAPI::RegTensor<bfloat16_t> xLowBf16;
@@ -190,11 +191,11 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
             MicroAPI::RegTensor<float> xLow;
             MicroAPI::RegTensor<float> xHigh;
 
-            const uint32_t inputOffset =
-                static_cast<uint32_t>(tokenIdx) * inputTokenStride + static_cast<uint32_t>(headIdx) * inputHeadStride;
-            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowBf16, inputBf16 + inputOffset);
+            MicroAPI::AddrReg inputAddrReg =
+                MicroAPI::CreateAddrReg<bfloat16_t>(tokenIdx, inputTokenStride, headIdx, inputHeadStride);
+            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowBf16, inputBf16, inputAddrReg);
             MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                xHighBf16, inputBf16 + inputOffset + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
+                xHighBf16, inputBf16 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, inputAddrReg);
             RmsNormBf16ToFp32D128(xLow, xHigh, xLowBf16, xHighBf16, gammaLow, gammaHigh, epsilon, mask64, maskFirst);
 
             MicroAPI::RegTensor<bfloat16_t> outLowBf16;
@@ -216,7 +217,8 @@ __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16,
     const uint32_t outputTokenStride = QKV_K_SCALE_D128_FULL_SIZE;
     for (uint16_t headIdx = 0U; headIdx < vHeadSize; ++headIdx) {
         MicroAPI::RegTensor<float> scale;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(scale, vScale + headIdx);
+        MicroAPI::AddrReg vScaleAddrReg = MicroAPI::CreateAddrReg<float>(headIdx, 1U);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(scale, vScale, vScaleAddrReg);
 
         for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
             MicroAPI::RegTensor<bfloat16_t> vLowBf16;
@@ -224,11 +226,11 @@ __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16,
             MicroAPI::RegTensor<fp8_e4m3fn_t> vLowFp8;
             MicroAPI::RegTensor<fp8_e4m3fn_t> vHighFp8;
 
-            const uint32_t srcOffset =
-                static_cast<uint32_t>(tokenIdx) * inputTokenStride + static_cast<uint32_t>(headIdx) * inputHeadStride;
-            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(vLowBf16, inputBf16 + srcOffset);
+            MicroAPI::AddrReg inputAddrReg =
+                MicroAPI::CreateAddrReg<bfloat16_t>(headIdx, inputHeadStride, tokenIdx, inputTokenStride);
+            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(vLowBf16, inputBf16, inputAddrReg);
             MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                vHighBf16, inputBf16 + srcOffset + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
+                vHighBf16, inputBf16 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, inputAddrReg);
             ScaleBf16ToFp8D128(vLowFp8, vHighFp8, vLowBf16, vHighBf16, scale, mask64);
             MicroAPI::AddrReg outputLowAddrReg =
                 MicroAPI::CreateAddrReg<uint8_t>(headIdx, outputHeadStride, tokenIdx, outputTokenStride);
@@ -260,11 +262,11 @@ __simd_vf__ inline void QDynamicQuantD128NtdVfImpl(__ubuf__ float *qFp32, __ubuf
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkLowFp8;
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkHighFp8;
 
-            const uint32_t srcOffset = static_cast<uint32_t>(headIdx) * qkUbTokenCapacity * QKV_K_SCALE_D128_FULL_SIZE +
-                                       static_cast<uint32_t>(tokenIdx) * QKV_K_SCALE_D128_FULL_SIZE;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, qFp32 + srcOffset);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkHigh, qFp32 + srcOffset +
-                                                                                  QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
+            MicroAPI::AddrReg qkAddrReg = MicroAPI::CreateAddrReg<float>(
+                headIdx, qkUbTokenCapacity * QKV_K_SCALE_D128_FULL_SIZE, tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, qFp32, qkAddrReg);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+                qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, qkAddrReg);
             DynamicQuantFp8D128(qkLowFp8, qkHighFp8, scale, qkLow, qkHigh, fp8Max, mask64, maskFirst);
 
             const uint32_t qFp8Offset = (static_cast<uint32_t>(headIdx) * tokenSize + static_cast<uint32_t>(tokenIdx)) *
@@ -296,11 +298,11 @@ __simd_vf__ inline void QDynamicQuantD128TndVfImpl(__ubuf__ float *qFp32, __ubuf
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkLowFp8;
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkHighFp8;
 
-            const uint32_t srcOffset = static_cast<uint32_t>(tokenIdx) * qHeadSize * QKV_K_SCALE_D128_FULL_SIZE +
-                                       static_cast<uint32_t>(headIdx) * QKV_K_SCALE_D128_FULL_SIZE;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, qFp32 + srcOffset);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkHigh, qFp32 + srcOffset +
-                                                                                  QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
+            MicroAPI::AddrReg qkAddrReg = MicroAPI::CreateAddrReg<float>(
+                tokenIdx, qHeadSize * QKV_K_SCALE_D128_FULL_SIZE, headIdx, QKV_K_SCALE_D128_FULL_SIZE);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, qFp32, qkAddrReg);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+                qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, qkAddrReg);
             DynamicQuantFp8D128(qkLowFp8, qkHighFp8, scale, qkLow, qkHigh, fp8Max, mask64, maskFirst);
 
             const uint32_t qFp8Offset = (static_cast<uint32_t>(tokenIdx) * qHeadSize + static_cast<uint32_t>(headIdx)) *
@@ -336,11 +338,11 @@ __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ 
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkLowFp8;
             MicroAPI::RegTensor<fp8_e4m3fn_t> qkHighFp8;
 
-            const uint32_t srcOffset =
-                static_cast<uint32_t>(headIdx) * inputHeadStride + static_cast<uint32_t>(tokenIdx) * inputTokenStride;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, kFp32 + srcOffset);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkHigh, kFp32 + srcOffset +
-                                                                                  QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
+            MicroAPI::AddrReg qkAddrReg =
+                MicroAPI::CreateAddrReg<float>(headIdx, inputHeadStride, tokenIdx, inputTokenStride);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qkLow, kFp32, qkAddrReg);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+                qkHigh, kFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, qkAddrReg);
             DynamicQuantFp8D128(qkLowFp8, qkHighFp8, scale, qkLow, qkHigh, fp8Max, mask64, maskFirst);
 
             MicroAPI::AddrReg kFp8LowAddrReg =
