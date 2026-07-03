@@ -594,7 +594,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) ||
         (std::strncmp(commMode_, "ai_cpu", CMP_MAX_LEN) == 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
-        "The value of comm_mode must be ccu, ai_cpu or empty string"),
+        "The value of comm_mode must be ccu, ai_cpu"),
         return false);
     if (!mc2tiling::GetRankSize(opName_, group_, rankSize_)) {
         OP_LOGE(opName_, "GetRankSize failed.");

@@ -503,7 +503,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    }else {
+    } else {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherMatmulV2", "commMode",
             commMode, "'ccu' or 'ai_cpu'");
         return ACLNN_ERR_PARAM_INVALID;
