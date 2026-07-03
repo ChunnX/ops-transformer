@@ -752,7 +752,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
     if (likely(runInfo.halfMRealSize != 0)) {
-        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1ScmBlockFp8], stage1CastTensor,
+        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx *  * (BLOCK_BYTE / sizeof(Q_T)) *
+            (runInfo.mRealSize - runInfo.halfMRealSize)], stage1CastTensor,
                  {s2BaseSize / 32, (uint16_t)runInfo.halfMRealSize, (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
                   (uint16_t)(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
     }
