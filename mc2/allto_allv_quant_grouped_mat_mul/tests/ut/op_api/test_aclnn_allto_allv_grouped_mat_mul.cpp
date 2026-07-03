@@ -34,8 +34,8 @@ TEST_P(AclnnAlltoAllvQuantGroupedMatMulTest, param)
     op::SetPlatformSocVersion(param.soc);
     auto ut = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(param.gmmX, param.gmmWeight, param.gmmXScale, param.gmmWeightScale, nullptr, nullptr, param.mmXOptional,
-              param.mmWeightOptional, param.mmXScaleOptional, param.mmWeightScaleOptional, param.gmmXQuantMode, param.gmmWeightQuantMode,
+        INPUT(param.gmmX, param.gmmWeight, param.gmmXScale, param.gmmWeightScale, nullptr, nullptr, nullptr, nullptr, param.mmXOptional,
+              param.mmWeightOptional, param.mmXScaleOptional, param.mmWeightScaleOptional, nullptr, nullptr, param.gmmXQuantMode, param.gmmWeightQuantMode,
               param.mmXQuantMode, param.mmWeightQuantMode, param.group.c_str(), param.epWorldSize, param.sendCounts, param.recvCounts, param.transGmmWeight, param.transMmWeight,
               param.groupSize, param.permuteOutFlag),
         OUTPUT(param.gmmY, param.mmYOptional, param.permuteOutOptional)
