@@ -1020,7 +1020,15 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    // CVRATIO=1（独立核模式）时，每个AIC配1个AIV，blockDim应基于aicNum而非aivNum。
+    // 否则AIV的GetBlockIdx()会超过aicNum，导致aiCoreIdx=tmpBlockIdx超出metadata的AIC核数范围，
+    // 读取metadata越界 → 分核信息为垃圾值 → valueOutGm/scoreGm写入越界GM。
+    // CVRATIO=2（C:V=1:2）时，blockDim=aivNum，2个AIV共享1个AIC的metadata（aiCoreIdx=tmpBlockIdx/2）。
+#if CVRATIO == 1
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aicNum, aicNum, aicNum);
+#else
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+#endif
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
