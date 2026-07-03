@@ -32,7 +32,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t repeatStride, const float pScale,
+    const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
+    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4,
+    __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -239,18 +242,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
+    loopNum = ubN_div_8;
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
         LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
         Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
@@ -369,17 +372,21 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    uint32_t ubN_div_8 = ubN / 8;
+    uint32_t ubN_m_m_div_4 = ubN * m / 4;
+    uint32_t ubN_m_m_div_2 = ubN * m / 2;
+    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
     if (needAtten) {
         ProcessVec1DnNoUpdateVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
             m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            qGatherIdxUb);
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     } else {
         ProcessVec1DnNoUpdateVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
             m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            qGatherIdxUb);
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     }
 }
 
@@ -390,7 +397,10 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
                       __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, __ubuf__ uint8_t *indexesUb, const uint32_t m,
                       const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
                       float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t repeatStride, const float pScale,
+    const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
+    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4,
+    __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -602,18 +612,18 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
+    loopNum = ubN_div_8;
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
         LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
         Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
@@ -734,17 +744,21 @@ __aicore__ inline void ProcessVec1DnUpdate(
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    uint32_t ubN_div_8 = ubN / 8;
+    uint32_t ubN_m_m_div_4 = ubN * m / 4;
+    uint32_t ubN_m_m_div_2 = ubN * m / 2;
+    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
     if (needAtten) {
         ProcessVec1DnUpdateVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
             m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            qGatherIdxUb);
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     } else {
         ProcessVec1DnUpdateVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
             m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            qGatherIdxUb);
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     }
 }
 
@@ -800,7 +814,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale)
+    const uint32_t repeatStride, const float pScale,
+    const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
+    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -996,18 +1012,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
+    loopNum = ubN_div_8;
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
         LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
         Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
@@ -1125,15 +1141,21 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    uint32_t ubN_div_8 = ubN / 8;
+    uint32_t ubN_m_m_div_4 = ubN * m / 4;
+    uint32_t ubN_m_m_div_2 = ubN * m / 2;
+    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
     if (needAtten) {
         ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     } else {
         ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     }
 }
 
@@ -1143,7 +1165,9 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale)
+    const uint32_t repeatStride, const float pScale,
+    const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
+    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1344,18 +1368,18 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
+    loopNum = ubN_div_8;
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
+        LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
         LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
         Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
@@ -1475,15 +1499,21 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    uint32_t ubN_div_8 = ubN / 8;
+    uint32_t ubN_m_m_div_4 = ubN * m / 4;
+    uint32_t ubN_m_m_div_2 = ubN * m / 2;
+    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
     if (needAtten) {
         ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     } else {
         ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     }
 }
 
