@@ -49,30 +49,36 @@ struct PreloadArgs<true> {
 };
  
 /* ============确定Query的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
+template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
+          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
 struct QL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
-        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1, syncType>,
+                           MutexBuffersPolicyDB<BufferType::L1, syncType>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1, syncType>>;
 };
  
 /* ============确定Key的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
+template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
+          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
 struct KL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicyDB<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
-        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicyDB<BufferType::L1, syncType>,
+                           MutexBuffersPolicyDB<BufferType::L1, syncType>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1, syncType>>;
 };
  
 /* ============确定Dy的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
+template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
+          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
 struct DyL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1>, MutexBuffersPolicyDB<BufferType::L1>>,
-        MutexBuffersPolicySingleBuffer<BufferType::L1>>;
+        std::conditional_t<IS_L1_PRELOAD, MutexBuffersPolicy3buff<BufferType::L1, syncType>,
+                           MutexBuffersPolicyDB<BufferType::L1, syncType>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L1, syncType>>;
 };
  
 /* ============确定mm1 mm2 mm3共用几块L0C buffer============= */
@@ -151,7 +157,7 @@ public:
     constexpr static uint32_t ASCENDC_MUTEX_ID_LIMIT = 28;
     static_assert(L1_MUTEX_ID_NUM <= ASCENDC_MUTEX_ID_LIMIT, "FAGBlockCube uses too many MutexIDs.");
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
-    using L1MutexBufT = MutexBuffer<BufferType::L1>;
+    using L1MutexBufT = MutexBuffer<BufferType::L1, SYNC_TYPE>;
     constexpr static bool IS_DKV_RESIDENT_L0C =
         IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) && !IS_FP32_INPUT;
  
@@ -175,15 +181,15 @@ public:
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
     typename std::conditional<IS_L1_REUSE, typename DyL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type dYL1Buf;
-    typename std::conditional<IS_L1_REUSE, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type vL1Buf;
+    typename std::conditional<IS_L1_REUSE, MutexBuffersPolicySingleBuffer<BufferType::L1, SYNC_TYPE>, std::nullptr_t>::type vL1Buf;
     typename std::conditional<IS_L1_REUSE, typename QL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type qL1Buf;
     typename std::conditional<IS_L1_REUSE, typename KL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD>::TYPE,
                               std::nullptr_t>::type kL1Buf;
-    typename std::conditional<!IS_L1_REUSE, MutexBuffersPolicyDB<BufferType::L1>, std::nullptr_t>::type commonL1Buf;
+    typename std::conditional<!IS_L1_REUSE, MutexBuffersPolicyDB<BufferType::L1, SYNC_TYPE>, std::nullptr_t>::type commonL1Buf;
     //fp32 d>256 l1buffer 
-    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf1;
-    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1>, std::nullptr_t>::type fp32L1Buf2;
+    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1, SYNC_TYPE>, std::nullptr_t>::type fp32L1Buf1;
+    typename std::conditional<IS_FP32_D_EXCEED_256, MutexBuffersPolicySingleBuffer<BufferType::L1, SYNC_TYPE>, std::nullptr_t>::type fp32L1Buf2;
  
     // l0ab buffer manage, double buffer
     BufferManager<BufferType::L0A> l0aBufferManager;

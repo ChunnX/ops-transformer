@@ -46,7 +46,7 @@ struct MutexBufferInfo {
     static constexpr TPosition Position = BufferInfo<Type>::Position;
 };
 
-template<BufferType bufferType>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffer {
     // TensorType用于定义缓冲区的基础数据类型（此处为uint8_t），用于互斥缓冲区的原始存储。
     using TensorType = LocalTensor<uint8_t>;
@@ -59,28 +59,36 @@ public:
     __aicore__ inline MutexBuffer(TensorType tensor, uint32_t size) : tensor_(tensor), size_(size) {}
 
     __aicore__ inline void Init() {
-        if ASCEND_IS_AIC {
-            mutexId_ = AllocMutexID();
+        if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+            if ASCEND_IS_AIC {
+                mutexId_ = AllocMutexID();
+            }
         }
     }
 
     __aicore__ inline void UnInit() {
-        if ASCEND_IS_AIC {
-            ReleaseMutexID(mutexId_);
+        if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+            if ASCEND_IS_AIC {
+                ReleaseMutexID(mutexId_);
+            }
         }
     }
 
     template<pipe_t pipe>
     __aicore__ inline void Lock() {
-        if ASCEND_IS_AIC {
-            AscendC::Mutex::Lock<pipe>(mutexId_);
+        if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+            if ASCEND_IS_AIC {
+                AscendC::Mutex::Lock<pipe>(mutexId_);
+            }
         }
     }
 
     template<pipe_t pipe>
     __aicore__ inline void Unlock() {
-        if ASCEND_IS_AIC {
-            AscendC::Mutex::Unlock<pipe>(mutexId_);
+        if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+            if ASCEND_IS_AIC {
+                AscendC::Mutex::Unlock<pipe>(mutexId_);
+            }
         }
     }
 
