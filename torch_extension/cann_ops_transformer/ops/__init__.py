@@ -36,4 +36,4 @@ from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer, EPHandle
-from .stem_indexer import stem_indexer, stem_indexer_metadata
+# StemIndexer 接口已移至 experimental/attention/stem_indexer/（experimental 算子不放在 torch_extension）

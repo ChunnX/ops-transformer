@@ -7,6 +7,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 from typing import Optional
+import os
 
 import torch
 import torch_npu
@@ -24,8 +25,10 @@ class StemIndexerOpBuilder(OpBuilder):
         super(StemIndexerOpBuilder, self).__init__("stem_indexer")
 
     def sources(self):
-        """Path to C++ source code."""
-        return ["ops/csrc/stem_indexer.cpp"]
+        """Path to C++ source code. 接口已移出 torch_extension，csrc 位于本算子目录下。"""
+        # OpBuilder.get_absolute_paths 会以 cann_ops_transformer 包目录拼接；
+        # 这里返回绝对路径，os.path.join 遇绝对路径会直接采用，从而定位到 experimental 下的 csrc。
+        return [os.path.join(os.path.dirname(os.path.abspath(__file__)), "csrc", "stem_indexer.cpp")]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
