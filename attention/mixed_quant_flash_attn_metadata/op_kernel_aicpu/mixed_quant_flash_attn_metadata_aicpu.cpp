@@ -247,14 +247,19 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
-        mBaseSize_ = 64U;
-        s2BaseSize_ = 256U;
-    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
-        mBaseSize_ = 32U;
-        s2BaseSize_ = 512U;
+    if (quantMode_ == 1) {
+        if (validSocVersion == ValidSocVersion::ASCEND950) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
+            mBaseSize_ = 32U;
+            s2BaseSize_ = 512U;
+        } else {
+            KERNEL_LOG_ERROR("unsupported socVersion");
+            return false;
+        }
     } else {
-        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        KERNEL_LOG_ERROR("unsupported quantMode");
         return false;
     }
     param.mBaseSize = mBaseSize_;
