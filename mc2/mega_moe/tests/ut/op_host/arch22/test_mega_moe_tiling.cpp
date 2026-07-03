@@ -69,7 +69,7 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
     for (uint32_t i = 0; i < kExpertPerRank; i++) {
         inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_FLOAT, ge::FORMAT_ND});
     }
-
+ 
     gert::TilingContextPara tilingContextPara(
         "MegaMoe", inputs,
         {

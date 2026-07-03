@@ -15,7 +15,7 @@
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MegaMoeUT {
-
+ 
 class MegaMoeInferShapeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
