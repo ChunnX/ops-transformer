@@ -96,6 +96,17 @@
              .DataTypeList({ge::DT_INT32}) 
              .FormatList({ge::FORMAT_ND}) 
              .AutoContiguous(); 
+         this->Output("attn_out") 
+             .ParamType(REQUIRED) 
+             .DataType({ge::DT_BF16, ge::DT_FLOAT16}) 
+             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND}) 
+             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND}) 
+             .AutoContiguous(); 
+         this->Output("softmax_lse") 
+             .ParamType(OPTIONAL)
+             .DataTypeList({ge::DT_FLOAT}) 
+             .FormatList({ge::FORMAT_ND}) 
+             .AutoContiguous(); 
          this->Attr("quant_mode") 
              .AttrType(REQUIRED) 
              .Int(1);
@@ -129,17 +140,6 @@
          this->Attr("return_softmax_lse") 
              .AttrType(OPTIONAL) 
              .Int(0); 
-         this->Output("attn_out") 
-             .ParamType(REQUIRED) 
-             .DataType({ge::DT_BF16, ge::DT_FLOAT16}) 
-             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND}) 
-             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND}) 
-             .AutoContiguous(); 
-         this->Output("softmax_lse") 
-             .ParamType(OPTIONAL) 
-             .DataTypeList({ge::DT_FLOAT}) 
-             .FormatList({ge::FORMAT_ND}) 
-             .AutoContiguous(); 
 
 
          OpAICoreConfig aicore_config_95;
@@ -150,10 +150,10 @@
              .NeedCheckSupportFlag(false) 
              .PrecisionReduceFlag(true) 
              .ExtendCfgInfo("prebuildPattern.value", "Opaque") 
-             .ExtendCfgInfo("coreType.value", "AiCore") 
-             .ExtendCfgInfo("opFile.value", "mixed_quant_flash_attn");
- 
- 
+             .ExtendCfgInfo("coreType.value", "AiCore")
+             .ExtendCfgInfo("opFile.value", "mixed_quant_flash_attn")
+             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
+
          this->AICore().AddConfig("ascend950", aicore_config_95); 
      } 
  }; 
