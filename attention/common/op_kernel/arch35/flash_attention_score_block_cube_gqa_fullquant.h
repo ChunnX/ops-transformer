@@ -713,9 +713,9 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
         deScaleQOffset = runInfo.boIdx * constInfo.n2G * s1BlockCnt +
                          runInfo.n2oIdx * constInfo.gSize * s1BlockCnt + runInfo.goIdx * s1BlockCnt + runInfo.s1oIdx;
         /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, Ceil(S2, 256), 1] */
-        // 8 ：按照256分块计算deScaleKv偏移
-        runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt +
-            runInfo.n2oIdx * s2BlockCnt + (runInfo.s2StartIdx >> 8) + (runInfo.s2LoopCount * 2);
+
+        runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt + runInfo.n2oIdx * s2BlockCnt +
+            (runInfo.s2StartIdx >> 8) + (runInfo.s2LoopCount * 2);  // 8 ：按照256分块计算deScaleKv偏移
         deScaleKvOffset = runInfo.deScaleKvOffset;
         float deScaleQValue = this->deScaleQGm.GetValue(deScaleQOffset);
         float deScaleKValue = this->deScaleKGm.GetValue(deScaleKvOffset);
