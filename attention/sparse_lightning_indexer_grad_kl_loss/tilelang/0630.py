@@ -328,11 +328,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_sum_ub[g_id])
                     T.barrier_all()
                     T.tile.div(bmm1_ub, bmm1_ub, sm_2d_ub)
-                    # barrier removed: div→fill, VEC→VEC (different buffers)
-                    T.tile.fill(p_reduced_tmp_ub, 0)
-                    for g_id in range(G):
-                        T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
-                    # barrier removed: add→mul, VEC→VEC sequential
+                    T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
+                    # barrier removed: reduce_sum→mul, VEC→VEC sequential
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
@@ -431,9 +428,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Write reluGrad for MY K block only
                         T.tile.cast(rg_half_ub, rsy_tmp_ub, "CAST_ROUND", vector_baseg * n_block)
                         T.barrier_all()
-                        for i in range(vector_baseg):
-                            g_row = g_id * vector_baseg + i
-                            T.copy(rg_half_ub[i, :], reluGradRes[bz, s1_id, g_row, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                        T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                         T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
                         T.barrier_all()
