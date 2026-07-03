@@ -73,6 +73,7 @@ namespace MegaMoeA2A3Tiling {
 
     constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
     constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
+    constexpr uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
 
     // CCL Buffer 相关常量
     constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;  // （预留）60KB 固定偏移
@@ -103,6 +104,54 @@ namespace MegaMoeA2A3Tiling {
     constexpr int64_t DISPATCH_QUANT_MODE_NO_QUANT = 0;
     constexpr int64_t DISPATCH_QUANT_MODE_PER_TENSOR = 2;
 
+static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
+    int64_t epWorldSize, int64_t expertPerRank,
+    bool isQuantRouting, bool isW4A8, bool isA3,
+    int64_t bs, int64_t topK)
+{
+    // ccl buff的承载的数据块 1（winIn）：
+    // TPE = epWorldSize × CeilAlign(epWorldSize × expertPerRank + 1, 128) × 4B
+    int64_t offsetTokenPerExpert = epWorldSize *
+                                   ops::CeilAlign(epWorldSize * expertPerRank + 1, ALIGN_128) *
+                                   static_cast<int64_t>(sizeof(int32_t));
+
+    // ccl buff的承载的数据块 2：
+    // ============================== winIn ==============================
+    // FFN的左矩阵，非量化则token为 h×2 字节 (bf16)，量化则为 h+512 字节 (int8)
+    int64_t offsetAAfterDispatch = 0;
+    if (isA3) {  // A3打包发送，+32与+512中取大值
+        offsetAAfterDispatch = bs * topK * (isQuantRouting ? (h + ALIGN_512) : h * sizeof(int16_t));
+    } else {  // A2分开发送
+        offsetAAfterDispatch = maxRecvTokenNum * (isQuantRouting ? (h + ALIGN_512) : h * sizeof(int16_t));
+    }
+    // FFN的输出在分发后，接收的空间大小
+    int64_t offsetD = bs * topK * h * sizeof(int16_t);
+    int64_t winInTensorSize = offsetAAfterDispatch + offsetD;
+    // ============================== winOut（仅A2） ==============================
+    int64_t winOutTensorSize = 0;
+    if (!isA3) {
+        int64_t offsetA = bs * topK * (!isQuantRouting ? h * sizeof(int16_t) : (h + ALIGN_512));
+        int64_t offsetC = maxRecvTokenNum * h * sizeof(int16_t);
+        winOutTensorSize = offsetA + offsetC;
+    }
+    int64_t offsetTensor = std::max(winInTensorSize, winOutTensorSize);
+    // pertokenscale的额外空间
+    if (isQuantRouting) {
+        offsetTensor += (isA3 ? bs * topK : maxRecvTokenNum) * sizeof(float);  // pertokenScale
+    }
+
+    // ccl buff的承载的数据块 3（winIn）：
+    // 同步flag
+    int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync所用空间
+    if (!isA3) {
+        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
+        int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
+        int64_t allgatherFlag = isQuantRouting ? static_cast<int64_t>(0) : epWorldSize * 64;
+        offsetFlag += dispatchFlag + allgatherFlag;
+    }
+    return offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE;
+}
+
 // =========================== Attr 校验分函数 ===========================
 
 static ge::graphStatus CheckMoeExpertNumAttr(const int64_t *ptr)
@@ -125,44 +174,6 @@ static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
     OP_TILING_CHECK(!isValidEpWorldSize,
         OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64, 128}, but got %ld.",
             *ptr), return GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3TilingData &info,
-                                              gert::TilingContext *context)
-{
-    OP_TILING_CHECK(ptr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "cclBufferSize is null."), return GRAPH_FAILED);
-    const char *nodeName = K_INNER_DEBUG;
-    int64_t cclBufferSize = *ptr;
-    OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).", cclBufferSize,
-            ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
-    OP_TILING_CHECK(cclBufferSize == 0, OP_LOGW(nodeName, "cclBufferSize is 0, skip validation."),
-                    return ge::GRAPH_SUCCESS);
-
-    int64_t bs = info.M;
-    int64_t h = info.K;
-    int64_t topK = info.topK;
-    int64_t epWorldSize = info.epWorldSize;
-    int64_t expertPerRank = info.moeExpertNum / epWorldSize;
-
-    auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(nodeName, "y desc is null."), return ge::GRAPH_FAILED);
-    ge::DataType yDtype = yDesc->GetDataType();
-    int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
-
-    int64_t leastCclBufferSize =
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * h, ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
-
-    OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
-        OP_LOGE(nodeName, "cclBufferSize(%ld) should equal or larger than leastCclBufferSize(%ld). "
-                "bs=%ld, h=%ld, topK=%ld, epWorldSize=%ld, expertPerRank=%ld, yDtypeSize=%ld.",
-            cclBufferSize, leastCclBufferSize, bs, h, topK, epWorldSize, expertPerRank, yDtypeSize),
-        return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -344,60 +355,55 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_LOGE(K_INNER_DEBUG, "CheckEpWorldSizeAttr failed."),
         return GRAPH_FAILED);
 
-    // 3. ccl_buffer_size
-    OP_TILING_CHECK(CheckCclBufferSizeAttr(cclBufferSizePtr, info, context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(K_INNER_DEBUG, "CheckCclBufferSizeAttr failed."),
-        return GRAPH_FAILED);
-
-    // 4. max_recv_token_num
+    // 3. max_recv_token_num
     OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckMaxRecvTokenNumAttr failed."),
         return GRAPH_FAILED);
 
-    // 5-6. dispatch_quant_mode && dispatch_quant_out_dtype
+    // 4-5. dispatch_quant_mode && dispatch_quant_out_dtype
     OP_TILING_CHECK(CheckDispatchQuantAttrs(context, dispatchQuantModePtr,
         dispatchQuantOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantAttrs failed."),
         return GRAPH_FAILED);
 
-    // 7. combine_quant_mode
+    // 6. combine_quant_mode
     OP_TILING_CHECK(CheckCombineQuantModeAttr(combineQuantModePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckCombineQuantModeAttr failed."),
         return GRAPH_FAILED);
 
-    // 8. num_max_token_per_rank
+    // 7. num_max_token_per_rank
     OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."),
         return GRAPH_FAILED);
 
-    // 9. activation
+    // 8. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."),
         return GRAPH_FAILED);
 
-    // 10. activation_clamp
+    // 9. activation_clamp
     OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."),
         return GRAPH_FAILED);
 
-    // 11. activation_out_dtype
+    // 10. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."),
         return GRAPH_FAILED);
 
-    // 12. transpose_weight1/2
+    // 11. transpose_weight1/2
     OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."),
         return GRAPH_FAILED);
 
-    // 13. weight1_interleave
+    // 12. weight1_interleave
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."),
         return GRAPH_FAILED);
 
     info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
     info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
-    info.cclBufferSize = static_cast<uint32_t>(*cclBufferSizePtr);
+    info.cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     info.maxRecvTokenNum = static_cast<uint64_t>(*maxRecvTokenNumPtr);
     info.dispatchQuantMode = static_cast<uint32_t>(*dispatchQuantModePtr);
     info.dispatchQuantOutDtype = static_cast<uint32_t>(*dispatchQuantOutDtypePtr);
@@ -1014,32 +1020,34 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     MegaMoeA2A3TilingData &info)
 {
     const char *nodeName = K_INNER_DEBUG;
-    int64_t cclBufferSize = info.cclBufferSize;
+    int64_t cclBufferSize = info.cclBufferSize / 2;
     OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).",
         cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
-    OP_TILING_CHECK(cclBufferSize == 0, OP_LOGW(nodeName, "cclBufferSize is 0, skip validation."),
-                    return ge::GRAPH_SUCCESS);
 
-    int64_t bs = info.M;
     int64_t h = info.K;
-    int64_t topK = info.topK;
+    int64_t maxRecvTokenNum = info.maxRecvTokenNum;
     int64_t epWorldSize = info.epWorldSize;
     int64_t expertPerRank = info.moeExpertNum / epWorldSize;
+    bool isQuantRouting = (info.isQuantRouting != 0U);
+    bool isW4A8 = (info.isW4A8 != 0U);
 
-    auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(nodeName, "y desc is null."), return ge::GRAPH_FAILED);
-    ge::DataType yDtype = yDesc->GetDataType();
-    int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    bool isA3 = (socVersion != "Ascend910B");
 
-    int64_t leastCclBufferSize =
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * h, ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
+    int64_t leastCclBufferSize = CalcLeastCclBufferSize(maxRecvTokenNum, h,
+        epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3,
+        static_cast<int64_t>(info.M), static_cast<int64_t>(info.topK));
 
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
-        OP_LOGE(nodeName, "cclBufferSize(%ld) should equal or larger than leastCclBufferSize(%ld). "
-                "bs=%ld, h=%ld, topK=%ld, epWorldSize=%ld, expertPerRank=%ld, yDtypeSize=%ld.",
-            cclBufferSize, leastCclBufferSize, bs, h, topK, epWorldSize, expertPerRank, yDtypeSize),
+        OP_LOGE(nodeName, "cclBufferSize(%ld Bytes, %ld MB) should be >= leastCclBufferSize(%ld Bytes, %ld MB). "
+                "maxRecvTokenNum=%ld, h=%ld, epWorldSize=%ld, expertPerRank=%ld, "
+                "isQuantRouting=%d, isW4A8=%d, isA3=%d. "
+                "Suggestion: set hccl buffsize to %ld MB.",
+            cclBufferSize, cclBufferSize / MB_SIZE,
+            leastCclBufferSize, leastCclBufferSize / MB_SIZE,
+            maxRecvTokenNum, h, epWorldSize,
+            expertPerRank, isQuantRouting, isW4A8, isA3,
+            (leastCclBufferSize + MB_SIZE) / MB_SIZE),
         return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
 

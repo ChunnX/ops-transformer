@@ -115,12 +115,17 @@ private:
         (void)HcclGetRankIdFunc(comm, &rankId);
         mc2Context.epRankId = rankId;
         const char *socName = GetSocName();
+        void *remoteAddr = nullptr;
+        uint64_t commSize = 0;
         if (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr && worldSize > 8) {
+            HcclResult ret = static_cast<HcclResult>(HcclGetHcclBufferFunc(comm, &remoteAddr, &commSize));
+            cclBufferSize = static_cast<int64_t>(commSize);
+            TORCH_CHECK((ret == HCCL_SUCCESS), "Get HcclBufferSize failed, ret=", ret);
             return;
         }
         for (uint64_t remoteRankId = 0; remoteRankId < worldSize; remoteRankId++) {
-            void *remoteAddr = nullptr;
-            uint64_t commSize = 0;
+            commSize = 0;
+            remoteAddr = nullptr;
             HcclResult ret;
             if (rankId == remoteRankId) {
                 ret = static_cast<HcclResult>(HcclGetHcclBufferFunc(comm, &remoteAddr, &commSize));
