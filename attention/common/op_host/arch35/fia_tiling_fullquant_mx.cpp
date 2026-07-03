@@ -181,10 +181,12 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
     } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0) ? static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) : 0U;
-        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0) ? static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) : 0U;
-        actSharedPrefixLenDims =
-            (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0) ? static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) : 0U;
+        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) : 0U;
+        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) : 0U;
+        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0)
+                                    ? static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) : 0U;
         actualSeqLenQFlag_ =
             !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
         actualSeqLenKVFlag_ =
