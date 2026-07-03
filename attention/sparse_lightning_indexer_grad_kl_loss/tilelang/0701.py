@@ -401,15 +401,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     weight_ub2 = T.alloc_ub(vector_baseg, calc_dtype)
                     weight_half_ub2 = T.alloc_ub(vector_baseg, input_dtype)
                     mask_ub = T.alloc_ub(n_block, calc_dtype)
-                    threshold_ub = T.alloc_ub(n_block, calc_dtype)
+                    ones_ub = T.alloc_ub(n_block, calc_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_val_ub = T.alloc_ub(n_block, calc_dtype)
 
+                    T.tile.fill(ones_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
-                    T.tile.fill(threshold_ub, 1e-5)
 
                     # dWeight, reluGrad for MY K block - TRUE PARALLEL
                     T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
@@ -426,8 +426,11 @@ def tilelang_grad_kl_loss_single_kernel(
                         for i in range(vector_baseg):
                             g_row = g_id * vector_baseg + i
                             T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
-                            T.tile.cmp(mask_ub, bmm2_ub[g_row, :], threshold_ub, "GT")
                             T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_ub2[i])
+                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], 50.0)
+                            T.tile.mul(mask_ub, mask_ub, -1.0)
+                            T.tile.exp(mask_ub, mask_ub)
+                            T.tile.sub(mask_ub, ones_ub, mask_ub)
                             T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
                         # barrier removed: inner VEC loop→reduce_sum, VEC→VEC sequential
 
