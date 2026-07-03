@@ -46,11 +46,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
-    RegTensor<half> vreg_x_exp_even_f16;
-    RegTensor<half> vreg_x_exp_odd_f16;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
-    RegTensor<float> vreg_sink_input;
 
     RegTensor<float> vreg_x_exp_0;
     RegTensor<float> vreg_x_exp_1;
@@ -60,10 +55,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<float> vreg_x_exp_5;
     RegTensor<float> vreg_x_exp_6;
     RegTensor<float> vreg_x_exp_7;
-    RegTensor<half> vreg_x_exp_even_f16_1;
-    RegTensor<half> vreg_x_exp_odd_f16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
 
     RegTensor<float> vreg_x_f32_0;
     RegTensor<float> vreg_x_f32_1;
@@ -74,23 +65,12 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<float> vreg_x_f32_6;
     RegTensor<float> vreg_x_f32_7;
 
-    RegTensor<half> vreg_x_exp_f16_pack;
-    RegTensor<half> vreg_x_exp_f16_1_pack;
-    RegTensor<half> vreg_x_exp_f16_packa;
-    RegTensor<half> vreg_x_exp_f16_1_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
     MaskReg preg_108;
     MaskReg preg_134;
     MaskReg preg_135;
-    MaskReg preg_136;
     preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
-    uint32_t sreg_92 = (uint32_t)128ULL;
-    preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
@@ -382,11 +362,6 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
-    RegTensor<half> vreg_x_exp_even_f16;
-    RegTensor<half> vreg_x_exp_odd_f16;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
-    RegTensor<float> vreg_sink_input;
 
     RegTensor<float> vreg_x_exp_0;
     RegTensor<float> vreg_x_exp_1;
@@ -396,10 +371,6 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     RegTensor<float> vreg_x_exp_5;
     RegTensor<float> vreg_x_exp_6;
     RegTensor<float> vreg_x_exp_7;
-    RegTensor<half> vreg_x_exp_even_f16_1;
-    RegTensor<half> vreg_x_exp_odd_f16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
 
     RegTensor<float> vreg_x_f32_0;
     RegTensor<float> vreg_x_f32_1;
@@ -410,25 +381,13 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     RegTensor<float> vreg_x_f32_6;
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
-    RegTensor<half> vreg_x_exp_f16_pack;
-    RegTensor<half> vreg_x_exp_f16_1_pack;
-    RegTensor<half> vreg_x_exp_f16_packa;
-    RegTensor<half> vreg_x_exp_f16_1_packa;
-
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
 
     MaskReg preg_108;
     MaskReg preg_134;
     MaskReg preg_135;
-    MaskReg preg_136;
     preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
-    uint32_t sreg_92 = (uint32_t)128ULL;
-    preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
@@ -770,11 +729,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
-    RegTensor<half> vreg_x_exp_even_f16;
-    RegTensor<half> vreg_x_exp_odd_f16;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
-    RegTensor<float> vreg_sink_input;
 
     RegTensor<float> vreg_x_exp_0;
     RegTensor<float> vreg_x_exp_1;
@@ -784,10 +738,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_exp_5;
     RegTensor<float> vreg_x_exp_6;
     RegTensor<float> vreg_x_exp_7;
-    RegTensor<half> vreg_x_exp_even_f16_1;
-    RegTensor<half> vreg_x_exp_odd_f16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
 
     RegTensor<float> vreg_x_f32_0;
     RegTensor<float> vreg_x_f32_1;
@@ -798,23 +748,12 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_f32_6;
     RegTensor<float> vreg_x_f32_7;
 
-    RegTensor<half> vreg_x_exp_f16_pack;
-    RegTensor<half> vreg_x_exp_f16_1_pack;
-    RegTensor<half> vreg_x_exp_f16_packa;
-    RegTensor<half> vreg_x_exp_f16_1_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
     MaskReg preg_108;
     MaskReg preg_134;
     MaskReg preg_135;
-    MaskReg preg_136;
     preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
-    uint32_t sreg_92 = (uint32_t)128ULL;
-    preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
@@ -1093,11 +1032,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
-    RegTensor<half> vreg_x_exp_even_f16;
-    RegTensor<half> vreg_x_exp_odd_f16;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16;
-    RegTensor<float> vreg_sink_input;
 
     RegTensor<float> vreg_x_exp_0;
     RegTensor<float> vreg_x_exp_1;
@@ -1107,10 +1041,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_exp_5;
     RegTensor<float> vreg_x_exp_6;
     RegTensor<float> vreg_x_exp_7;
-    RegTensor<half> vreg_x_exp_even_f16_1;
-    RegTensor<half> vreg_x_exp_odd_f16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_even_bf16_1;
-    RegTensor<bfloat16_t> vreg_x_exp_odd_bf16_1;
 
     RegTensor<float> vreg_x_f32_0;
     RegTensor<float> vreg_x_f32_1;
@@ -1121,25 +1051,13 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_f32_6;
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
-    RegTensor<half> vreg_x_exp_f16_pack;
-    RegTensor<half> vreg_x_exp_f16_1_pack;
-    RegTensor<half> vreg_x_exp_f16_packa;
-    RegTensor<half> vreg_x_exp_f16_1_packa;
-
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_pack;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_packa;
-    RegTensor<bfloat16_t> vreg_x_exp_bf16_1_packa;
 
     MaskReg preg_108;
     MaskReg preg_134;
     MaskReg preg_135;
-    MaskReg preg_136;
     preg_108 = CreateMask<uint16_t, MaskPattern::ALL>();
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
-    uint32_t sreg_92 = (uint32_t)128ULL;
-    preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
