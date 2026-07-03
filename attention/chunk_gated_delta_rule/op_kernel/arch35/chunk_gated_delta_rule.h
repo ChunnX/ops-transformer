@@ -175,11 +175,6 @@ public:
             int32_t length = actualSeqLens_.GetValue(bid);
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
-            if constexpr (kStateIsFp32) {
-                CopyCast<highType, lowType>(initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
-                                            stateBf16Wk_, pipe_,
-                                            tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
-            }
 
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
                 cg.startPos = pos;
@@ -195,17 +190,12 @@ public:
                 SyncAll<false>();
 
                 RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                          pos == seqStart);
                 SyncAll<false>();
 
                 RunStage3(cg);
                 SyncAll<false>();
-            }
-            if constexpr (kStateIsFp32) {
-                CopyCast<lowType, highType>(stateBf16Wk_,
-                                            finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
-                                            pipe_,
-                                            tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
             }
         }
     }
@@ -223,7 +213,7 @@ private:
 
     template <typename sType>
     __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<sType> stateIn,
-                                     GlobalTensor<sType> stateOut)
+                                     GlobalTensor<sType> stateOut, bool isFirstGroup)
     {
         Stage2<sType> stageTwoOp;
         StageTwoParams initStageTwoParams;
@@ -242,6 +232,7 @@ private:
         initStageTwoParams.Dv = tiling_->dv;
         initStageTwoParams.Dk = tiling_->dk;
         initStageTwoParams.gOptional = gFlag_;
+        initStageTwoParams.isFirstGroup = isFirstGroup;
         if constexpr (std::is_same_v<sType, float>) {
             initStageTwoParams.curState = stateBf16Wk_;
             initStageTwoParams.finalState = stateDeltaWk_;

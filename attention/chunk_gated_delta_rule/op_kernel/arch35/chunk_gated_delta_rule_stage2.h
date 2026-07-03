@@ -46,6 +46,7 @@ struct StageTwoParams {
     int64_t Dv;
     int64_t Dk;
     bool gOptional;
+    bool isFirstGroup;
     // FP32-specific fields (valid only when Stage2<float>)
     GlobalTensor<float> stateFp32In;
     GlobalTensor<float> stateFp32Out;
@@ -75,6 +76,7 @@ public:
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
+        isFirstGroup_ = sTP_->isFirstGroup;
         InitLocalBuffers();
     }
 
@@ -113,6 +115,14 @@ public:
 
     __aicore__ inline void Process()
     {
+        if constexpr (kIsFp32) {
+            if (isFirstGroup_) {
+                pipe_->Reset();
+                CopyCast<float, bfloat16_t>(sTP_->stateFp32In, sTP_->curState, pipe_,
+                                            Nv_ * Dv_ * Dk_, RoundMode::CAST_NONE);
+                InitLocalBuffers();
+            }
+        }
         int64_t coreId = GetBlockIdx();
         if ASCEND_IS_AIV {
             coreId /= AIC_AIV_1_1;
@@ -341,6 +351,7 @@ private:
     int32_t chunkNum_;
     int32_t coreNum_;
     bool gOptional_;
+    bool isFirstGroup_;
 };
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE2_H
