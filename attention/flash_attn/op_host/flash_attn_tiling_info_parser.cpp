@@ -192,13 +192,13 @@ void FaInfoParser::GetInputParaInfo()
 
 ge::graphStatus FaInfoParser::GetStrides()
 {
-    /* .to(npu) 后 tensor 有全新 storage 不再是 view, InputIsView 不可靠。
-       新 opbase 支持 GetInputStride 返回有效值, 老 opbase 返回 nullptr */
+    // 用opbase版本判断：老版本opbase的输入非view, 视为tensorv1, key/value必然连续
+    if (context_->InputIsView(KEY_INDEX) == false) {
+        isTensorV1_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
     keyStrides_ = context_->GetInputStride(KEY_INDEX);
     valueStrides_ = context_->GetInputStride(VALUE_INDEX);
-    if (keyStrides_ == nullptr || valueStrides_ == nullptr) {
-        isTensorV1_ = true;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
