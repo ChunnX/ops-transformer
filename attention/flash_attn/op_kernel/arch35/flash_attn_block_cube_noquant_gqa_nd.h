@@ -10,9 +10,7 @@
 
 /*!
  * \file flash_attn_block_cube_noquant_gqa_nd.h
- * \brief FANoQuantGqaBlockCubeNd —— 仅 useDn=false 路径的 Cube Block 模板（参考 quant_flash_attn 风格）。
- *        IterateBmm1 仅含 IterateBmm1NdL0Split / IterateBmm1NdL1SplitK；IterateBmm2 系列仅保留 useDn=false 分支。
- *        Dn 路径（IterateBmm1Dn / IterateBmm1DnSplitK / FixpipeMm1Dn）由独立的 _dn.h 提供。
+ * \brief FANoQuantGqaBlockCubeNd —— 仅 useDn=false 路径的 Cube Block 模板（sync-only + matmul scaler）。
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_ND_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_ND_H_
@@ -106,9 +104,6 @@ public:
 
     QSeqParserType *qSeqParserPtr = nullptr;
     KvSeqParserType *kvSeqParserPtr = nullptr;
-
-    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
-    CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
     LocalTensor<uint8_t> l1QTensor;
     LocalTensor<uint8_t> l1KTensor;
@@ -295,194 +290,53 @@ public:
         }
     }
 
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+    // Cube 侧仅保留核间/核内同步与 matmul scaler（MMParam + scaleValue），不执行 GM 搬运 / Matmul / Fixpipe。
+    __aicore__ inline void TouchMatmulScalerBmm1(RunInfoX &runInfo)
     {
-        uint32_t nopeDealSize = dRealSize;
-
-        uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
-        if (nopeDealSize > 0) {
-            FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
-
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = dOffset,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = nopeDealSize};
-            copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
-        }
+        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+                                    (uint32_t)(constInfo.dSize), false, true);
+        (void)param;
+        (void)constInfo.scaleValue;
     }
 
-    __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
+    __aicore__ inline void TouchMatmulScalerBmm2(RunInfoX &runInfo)
     {
-        uint32_t dSize = constInfo.dSize;
-        CopyQuerySlice(dstTensor, 0, dSize, runInfo);
+        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, false, false);
+        param.realM = (uint32_t)runInfo.actMSize;
+        (void)param;
+        (void)constInfo.scaleValue;
     }
 
-    __aicore__ inline void CopyKeySlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                        RunInfoX &runInfo)
+    __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
-        uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
-
-        uint32_t nopeDealSize = dRealSize;
-        uint32_t ropeDealSize = 0;
-
-        if (nopeDealSize > 0) {
-            FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
-
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = runInfo.s2Idx,
-                              .dIdx = dOffset,
-                              .s2DealSize = runInfo.actSingleLoopS2Size,
-                              .dDealSize = nopeDealSize};
-            copyKvGmToL1(l1Tensor, keyGm, gmCoord);
-        }
-    }
-
-    __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
-    {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
-                          .n2Idx = runInfo.n2Idx,
-                          .s2Idx = runInfo.s2Idx,
-                          .dIdx = dOffset,
-                          .s2DealSize = runInfo.actSingleLoopS2Size,
-                          .dDealSize = dRealSize};
-        copyKvGmToL1(l1Tensor, valueGm, gmCoord);
-    }
-
-    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        uint32_t dSize = constInfo.dSize;
-        CopyKeySlice(dstTensor, 0, dSize, runInfo);
-    }
-
-    __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
-    }
-
-    __aicore__ inline void UpdateKey(uint32_t bIdx)
-    {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
-        keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
-    }
-
-    __aicore__ inline void UpdateValue(uint32_t bIdx)
-    {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
-    }
-
-    // ─── IterateBmm1：Nd 专用 dispatch（useDn 分支已移除）──
-    template<typename OutTensorT>
-    __aicore__ inline void IterateBmm1(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
-    {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
-
-#ifdef SKIP_C1
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
-        return;
-#endif
-
-        if constexpr (dBaseSize > 256) {
-            IterateBmm1NdL1SplitK(outputTensor, ccId0, ccId1, runInfo);
-            return;
-        }
-        IterateBmm1NdL0Split(outputTensor, ccId0, ccId1, runInfo);
-    }
-
-    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
-    {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (runInfo.actSingleLoopS2Size + 7) >> 3 << 3;
-        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = s2BaseSize;
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
-    }
-
-    /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
-    template<typename OutTensorT>
-    __aicore__ inline void IterateBmm1NdL0Split(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
-    {
-        LocalTensor<Q_T> mm1ATensor = l1QTensor[qBufId * L1_Q_SLOT_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-            {
-                CopyQueryTile(mm1ATensor, runInfo);
-            }
             SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
         } else {
             SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
         }
 
-        LocalTensor<KV_T> mm1BTensor = l1KTensor[kBufId * L1_K_SLOT_BYTES].template ReinterpretCast<KV_T>();
         WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-        {
-            CopyKeyTile(mm1BTensor, runInfo);
-        }
         SetFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        {
-            LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
-            MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                        (uint32_t)(constInfo.dSize), false, true);
-            if constexpr (dBaseSize > 128) {
-                if constexpr (s2BaseSize == 256) {
-                    MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-                        mm1ATensor, mm1BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-                } else {
-                    MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                        mm1ATensor, mm1BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-                }
-            } else {
-                MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                    mm1ATensor, mm1BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-            }
-
-            SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-            WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
-
-            FixpipeMm1(outputTensor, l0CSubTensor, runInfo);
-        }
-        SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-        kBufId = (kBufId + 1) % L1_KV_BUFCNT;
+        TouchMatmulScalerBmm1(runInfo);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
             qBufId = (qBufId + 1) % L1_Q_BUFCNT;
         }
+        SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
+        kBufId = (kBufId + 1) % L1_KV_BUFCNT;
+
+        SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
+        WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
+
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
 
         SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         cBufId = (cBufId + 1) % L0C_BUFCNT;
@@ -491,240 +345,52 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
     }
 
-    /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
     template<typename OutTensorT>
-    __aicore__ inline void IterateBmm1NdL1SplitK(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
-        constexpr uint32_t baseK = l1BaseD;
-        uint32_t kLoops = (constInfo.dSize + baseK - 1) / baseK;
+        (void)outputTensor;
+        Bmm1SyncOnly(ccId0, ccId1, runInfo);
+    }
+
+    __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId, RunInfoX &runInfo)
+    {
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
+
+        WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
+        SetFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
+        WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
+        TouchMatmulScalerBmm2(runInfo);
 
-        uint32_t dstNzC0Stride = ((runInfo.actMSize + 15) >> 4 << 4);
-        uint64_t l1BaseKOffset = baseK * dstNzC0Stride;
-
-        LocalTensor<Q_T> mm1AFullTensor = l1QTensor[qBufId * L1_Q_SLOT_BYTES].template ReinterpretCast<Q_T>();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-        }
-
-        uint32_t realK = baseK;
-        for (uint32_t k = 0; k < kLoops; k++) {
-            if (k == kLoops - 1) {
-                realK = constInfo.dSize - k * baseK;
-            }
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                CopyQuerySlice(mm1AFullTensor[k * l1BaseKOffset], k * baseK, realK, runInfo);
-                SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-            } else {
-                SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-            }
-            LocalTensor<KV_T> mm1BTensor = l1KTensor[kBufId * L1_K_SLOT_BYTES].template ReinterpretCast<KV_T>();
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-            {
-                CopyKeySlice(mm1BTensor, k * baseK, realK, runInfo);
-            }
-            SetFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
-            WaitFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-            WaitFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
-
-            MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size, realK, false,
-                                        true, k == 0, k == 0);
-
-            MatmulFull<Q_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN>(
-                mm1AFullTensor[k * l1BaseKOffset], mm1BTensor, mmL0ABuffers, mmL0BBuffers,
-                l0CSubTensor, param);
-
-            SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-            kBufId = (kBufId + 1) % L1_KV_BUFCNT;
-        }
-        if (unlikely(runInfo.isLastS2Loop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-            qBufId = (qBufId + 1) % L1_Q_BUFCNT;
-        }
+        SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
+        vBufId = (vBufId + 1) % L1_KV_BUFCNT;
         SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
-
         WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-        FixpipeMm1(outputTensor, l0CSubTensor, runInfo);
+
+        if constexpr (bmm2Write2Ub) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
+        }
 
         SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         cBufId = (cBufId + 1) % L0C_BUFCNT;
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
     }
 
     template<typename OutTensorT>
     __aicore__ inline void IterateBmm2(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
                                         LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
-#ifdef SKIP_C2
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-        if constexpr (bmm2Write2Ub) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
-        }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
-        return;
-#endif
-
-        if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
-            IterateBmm2L1SplitN(outputTensor, outCcId0, outCcId1, l1PTensor, l1PCcId, runInfo);
-        } else {
-            IterateBmm2l0Split(outputTensor, outCcId0, outCcId1, l1PTensor, l1PCcId, runInfo);
-        }
-    }
-
-    template<typename OutTensorT>
-    __aicore__ inline void IterateBmm2L1SplitN(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
-                                                LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
-    {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-
-        if constexpr (bmm2Write2Ub) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
-        }
-        constexpr uint32_t baseN = l1BaseD;
-        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
-        uint32_t realN = baseN;
-        for (uint32_t n = 0; n < nLoops; ++n) {
-            if (n == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
-                realN = tailSize ? tailSize : baseN;
-            }
-            LocalTensor<KV_T> mm2BTensor = l1VTensor[vBufId * L1_V_SLOT_BYTES].template ReinterpretCast<KV_T>();
-            WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-            {
-                CopyValueSlice(mm2BTensor, n * baseN, realN, runInfo);
-            }
-            SetFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-            {
-                LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
-                // useDn=false 分支：useDn 直接传 false，并 set realM
-                MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN,
-                                            (uint32_t)(runInfo.actSingleLoopS2Size), false, false);
-                param.realM = (uint32_t)runInfo.actMSize;
-                WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-                MatmulFull<Q_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
-                    l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-
-                SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-                vBufId = (vBufId + 1) % L1_KV_BUFCNT;
-                SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-                WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-
-                FixpipeMm2PartialN(outputTensor[n * baseN], l0CSubTensor, realN, runInfo);
-            }
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-            cBufId = (cBufId + 1) % L0C_BUFCNT;
-        }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
-    }
-
-    template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
-                                              RunInfoX &runInfo)
-    {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        if constexpr (bmm2Write2Ub) {
-            fixpipeParams.nSize = (realN + 7) >> 3 << 3;
-        } else {
-            fixpipeParams.nSize = realN;
-        }
-
-        // useDn=false 分支
-        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-
-        if constexpr (bmm2Write2Ub || splitD) {
-            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
-        } else {
-            fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
-        }
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
-    }
-
-    template<typename OutTensorT>
-    __aicore__ inline void IterateBmm2l0Split(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
-                                               LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
-    {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-
-        LocalTensor<KV_T> mm2BTensor = l1VTensor[vBufId * L1_V_SLOT_BYTES].template ReinterpretCast<KV_T>();
-        WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-        {
-            CopyValueTile(mm2BTensor, runInfo);
-        }
-        SetFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-
-        WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-        {
-            LocalTensor<T> l0CSubTensor = l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
-            // useDn=false 分支：isLeftTranspose=false，并 set realM
-            MMParam param = {
-                (uint32_t)mBaseSize,                   // singleM 128
-                (uint32_t)constInfo.dSizeV,            // singleN 128
-                (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-                false,                                 // isLeftTranspose（useDn=false）
-                false                                  // isRightTranspose
-            };
-            param.realM = (uint32_t)runInfo.actMSize;
-
-            if constexpr ((uint32_t)dVTemplateType > 128) {
-                MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                    l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-            } else {
-                if constexpr (s2BaseSize == 128) {
-                    MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                        l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-                } else {
-                    MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                        l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
-                }
-            }
-
-            SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-            vBufId = (vBufId + 1) % L1_KV_BUFCNT;
-            SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-            WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-
-            if constexpr (bmm2Write2Ub) {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
-            }
-
-            FixpipeMm2PartialN(outputTensor, l0CSubTensor, constInfo.dSizeV, runInfo);
-        }
-        SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        cBufId = (cBufId + 1) % L0C_BUFCNT;
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
+        (void)outputTensor;
+        (void)l1PTensor;
+        Bmm2SyncOnly(outCcId0, outCcId1, l1PCcId, runInfo);
     }
 
 }; // FANoQuantGqaBlockCubeNd
 
-// AIC/AIV 分编译占位（Mix kernel 在 AIV 侧重编译时使用）
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
