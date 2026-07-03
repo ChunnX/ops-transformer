@@ -28,6 +28,134 @@ constexpr uint32_t SINGLE_N_128 = 128;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t SINGLE_M = 128;
+namespace {
+const char *GetInputName(InputIndex inputIndex)
+{
+    switch (inputIndex) {
+        case InputIndex::QUERY:
+            return "query";
+        case InputIndex::ATTENTION_OUT_GRAD:
+            return "dOut";
+        case InputIndex::ATTENTION_OUT:
+            return "out";
+        case InputIndex::LSE:
+            return "lse";
+        case InputIndex::ORI_KV:
+            return "oriKv";
+        case InputIndex::CMP_KV:
+            return "cmpKv";
+        case InputIndex::ORI_SPARSE_INDICES:
+            return "oriSparseIndices";
+        case InputIndex::CMP_SPARSE_INDICES:
+            return "cmpSparseIndices";
+        case InputIndex::CU_SEQLENS_Q:
+            return "cuSeqlensQ";
+        case InputIndex::CU_SEQLENS_ORI_KV:
+            return "cuSeqlensOriKv";
+        case InputIndex::CU_SEQLENS_CMP_KV:
+            return "cuSeqlensCmpKv";
+        case InputIndex::SEQUSED_Q:
+            return "sequsedQ";
+        case InputIndex::SEQUSED_ORI_KV:
+            return "sequsedOriKv";
+        case InputIndex::SEQUSED_CMP_KV:
+            return "sequsedCmpKv";
+        case InputIndex::CMP_RESIDUAL_KV:
+            return "cmpResidualKv";
+        case InputIndex::ORI_TOPK_LENGTH:
+            return "oriTopkLength";
+        case InputIndex::CMP_TOPK_LENGTH:
+            return "cmpTopkLength";
+        case InputIndex::SINKS:
+            return "sinks";
+        case InputIndex::METADATA:
+            return "metadata";
+        default:
+            return "unknown";
+    }
+}
+
+const char *GetOutputName(OutputIndex outputIndex)
+{
+    switch (outputIndex) {
+        case OutputIndex::DQ:
+            return "dq";
+        case OutputIndex::DORI_KV:
+            return "dOriKv";
+        case OutputIndex::DCMP_KV:
+            return "dCmpKv";
+        case OutputIndex::DSINKS:
+            return "dSinks";
+        case OutputIndex::ORI_SOFTMAX_L1_NORM:
+            return "oriSoftmaxL1Norm";
+        case OutputIndex::CMP_SOFTMAX_L1_NORM:
+            return "cmpSoftmaxL1Norm";
+        default:
+            return "unknown";
+    }
+}
+
+bool IsRequiredInput(InputIndex inputIndex)
+{
+    return static_cast<uint32_t>(inputIndex) <= static_cast<uint32_t>(InputIndex::ORI_KV);
+}
+
+bool CheckDescNotNz(const gert::CompileTimeTensorDesc *desc, const char *tensorName)
+{
+    auto format = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
+    if (format == ge::FORMAT_FRACTAL_NZ) {
+        std::string fmtStr = Ops::Base::ToString(format);
+        OP_LOGE_FOR_INVALID_FORMAT("SparseFlashMlaGrad", tensorName, fmtStr.c_str(), "ND");
+        return false;
+    }
+    return true;
+}
+} // namespace
+
+bool SparseFlashMlaGradBasicTiling::CheckFormat(InputIndex inputIndex)
+{
+    const size_t index = static_cast<size_t>(inputIndex);
+    const char *inputName = GetInputName(inputIndex);
+    const gert::CompileTimeTensorDesc *desc = nullptr;
+    if (IsRequiredInput(inputIndex)) {
+        desc = context_->GetInputDesc(index);
+        OP_CHECK_IF(desc == nullptr, OP_LOGE("SparseFlashMlaGrad", "%s desc is null", inputName), return false);
+    } else {
+        desc = context_->GetOptionalInputDesc(index);
+        if (desc == nullptr) {
+            return true;
+        }
+    }
+
+    return CheckDescNotNz(desc, inputName);
+}
+
+bool SparseFlashMlaGradBasicTiling::CheckFormat(OutputIndex outputIndex)
+{
+    const size_t index = static_cast<size_t>(outputIndex);
+    const char *outputName = GetOutputName(outputIndex);
+    const gert::CompileTimeTensorDesc *desc = context_->GetOutputDesc(index);
+    if (desc == nullptr) {
+        return true;
+    }
+
+    return CheckDescNotNz(desc, outputName);
+}
+
+bool SparseFlashMlaGradBasicTiling::CheckAllFormat()
+{
+    for (uint32_t i = 0; i <= static_cast<uint32_t>(InputIndex::METADATA); ++i) {
+        if (!CheckFormat(static_cast<InputIndex>(i))) {
+            return false;
+        }
+    }
+    for (uint32_t i = 0; i <= static_cast<uint32_t>(OutputIndex::CMP_SOFTMAX_L1_NORM); ++i) {
+        if (!CheckFormat(static_cast<OutputIndex>(i))) {
+            return false;
+        }
+    }
+    return true;
+}
 
 ge::graphStatus SparseFlashMlaGradBasicTiling::GetShapeAttrsInfo()
 {
@@ -365,9 +493,16 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoCastTiling()
 ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::ATTENTION_OUT_GRAD)) == nullptr) ||
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::ATTENTION_OUT)) == nullptr) ||
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::LSE)) == nullptr) ||
                 (context_->GetInputShape(static_cast<size_t>(InputIndex::ORI_KV)) == nullptr)),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, ori_kv is nullptr."),
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query/dOut/out/lse/ori_kv is nullptr."),
                return ge::GRAPH_FAILED);
+    if (!CheckAllFormat()) {
+        OP_LOGE(context_, "SparseFlashMlaGrad inputs or outputs contain invalid format(NZ).");
+        return ge::GRAPH_FAILED;
+    }
     // -------------- input ----------------
     // TND: query [t1, n1, d]  ori_kv [t2, n2, d]  cmp_kv [t3, n2, d]   dy/attentionIn [t1, n1, d]
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s3, n2, d]   dy/attentionIn [b, s1, n1, d]

@@ -73,6 +73,9 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
+    bool CheckFormat(InputIndex inputIndex);
+    bool CheckFormat(OutputIndex outputIndex);
+    bool CheckAllFormat();
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus DoSftTiling();
     ge::graphStatus DoBlockTiling();
