@@ -1181,6 +1181,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type must be INT8 in quant mode, got %u",
                     quantOutType), return ge::GRAPH_FAILED);
     }
+    // archCode 在910B时为0, 910_93时为1
     std::string socVersion = mc2tiling::GetSocVersion(context);
     uint32_t archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
@@ -1247,16 +1248,33 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
 
     uint32_t n2 = info.K;
     uint32_t k2 = info.N / 2;
-
-    uint64_t megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                            // cumsum + preSumBeforeRank + preSumRankInExpert
-                            info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 3 +
-                            info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
-                            info.maxRecvTokenNum * info.N * sizeof(int16_t) * 2 + // GMM1 Out
-                            info.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 + // GMM2 Out
-                            info.maxRecvTokenNum * info.K + // quantizedToken
-                            info.maxRecvTokenNum * k2 + // swiglu mid
-                            info.worldSize * sizeof(int32_t) * 16; // sync
+    uint64_t megeMoeWorkspace = 0;
+    if (archCode == SOC_ASCEND910_93) {
+        megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
+                                info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) + // cumsum
+                                info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
+                                info.maxRecvTokenNum * std::max(info.K, k2) * sizeof(int16_t) + // GMM1&2 input
+                                (info.worldSize *
+                                    (info.expertPerRank + 16 - 1) / 16 * 16 * sizeof(int32_t)) + // SumBeforeRank
+                                info.worldSize * sizeof(int32_t) * 16; // sync
+        if (info.isQuantRouting == 1U) {
+            megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2; // perTokenScale GMM1&2
+        }
+        if (info.isW4A8) {
+            // when W4A8 matrix_A need int8->int4, M->2*M
+            megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
+        }
+    } else if (archCode == SOC_ASCEND910B) {
+        megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
+                                    // cumsum + preSumBeforeRank + preSumRankInExpert
+                                    info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 3 +
+                                    info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
+                                    info.maxRecvTokenNum * info.N * sizeof(int16_t) * 2 + // GMM1 Out
+                                    info.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 + // GMM2 Out
+                                    info.maxRecvTokenNum * info.K + // quantizedToken
+                                    info.maxRecvTokenNum * k2 + // swiglu mid
+                                    info.worldSize * sizeof(int32_t) * 16; // sync
+    }
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
 
