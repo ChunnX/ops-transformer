@@ -604,7 +604,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         if (tilingDataPtr_->gatherOutComputeParamsOp.useCompactGatherOutDropPad) {
             outputToSrcRowWorkspaceSize = expertNum_ * expertCapacity_ * static_cast<int64_t>(sizeof(int32_t));
             workspaceSize_ += outputToSrcRowWorkspaceSize;
-
         }
             OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, outputToSrcRowWorkspace=%ld",
                     expertIdxValueWorkspaceSize, outputToSrcRowWorkspaceSize);
@@ -2145,20 +2144,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
             tilingData->perLoopCols, tilingData->colLoops, tilingData->perCoreLoops);
 }
 
-// DropPad模式的GatherOut Tiling计算函数
-// 参考非arch35版本：Tiling4GatherOutCompute
-// 判断DropPad GatherOut是否使用compact路径（按outputRows遍历）而非fallback路径（按n*k遍历）。
-//
-// 背景：DropPad模式下，输出形状为 [expertNum, expertCapacity, cols]，总共 outputRows = expertNum*expertCapacity 行。
-// 当大量token被drop时（n*k >> outputRows），fallback路径扫描n*k个索引但大部分是无效的，
-// 而compact路径只扫描outputRows个输出行，通过outputToSrcRow查表找到源行号。
-//
-// 代价模型：
-//   - compact路径节省：savedIndexScanBytes = (n*k - outputRows) * 4 字节的索引扫描
-//   - compact路径额外开销：对超出n行的outputRows需要额外的行数据拷贝（因为outputRows可能>n）
-//   - RANDOM_ACCESS_WEIGHT=4：随机访问（compact路径按源行号跳读X）比顺序扫描代价高约4倍
-//
-// 返回true条件：节省的索引扫描量 > 额外随机拷贝代价 * 4
 bool MoeInitRoutingV3Arch35TilingClass::UseCompactGatherOutDropPad(int64_t outputRows) const
 {
     if (outputRows > totalLength_) {
