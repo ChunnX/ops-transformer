@@ -554,7 +554,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
             uint32_t elementNum = nSize;
-            AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
+            AscendC::MicroAPI::MaskReg mask;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
                 mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::MicroAPI::RegTensor<bfloat16_t> verg7;
