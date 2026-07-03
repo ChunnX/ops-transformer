@@ -183,59 +183,59 @@ __aicore__ inline void PollNotifyAndSendData(
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
 
-    while (completedRank < processRankNum) {
-        // 跳过本卡 rank 或已完成的 rank
-        while ((rankIndex + startRankId == rankId) ||
-               sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
-            rankIndex = (rankIndex + 1) % processRankNum;
-        }
-        // 读 notify count
-        __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr +
-            (rankIndex + startRankId) * sizeof(int32_t));
-        uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
-        uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
+    // while (completedRank < processRankNum) {
+    //     // 跳过本卡 rank 或已完成的 rank
+    //     while ((rankIndex + startRankId == rankId) ||
+    //            sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
+    //         rankIndex = (rankIndex + 1) % processRankNum;
+    //     }
+    //     // 读 notify count
+    //     __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineCommNotifyPtr +
+    //         (rankIndex + startRankId) * sizeof(int32_t));
+    //     uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
+    //     uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
 
-        if (curCnt > completeCnt) {
-            uint32_t needCnt = curCnt - completeCnt;
-            uint32_t slotIdx = completeCnt;
-            while (needCnt > 0) {
-                GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
-                    static_cast<uint64_t>(rankIndex + startRankId) * maxDataSizePerToken *
-                    params.tilingData->bs * params.tilingData->expertPerRank +
-                    slotIdx * (maxDataLengthPerBlock + ALIGN_32);
-                gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
-                AscendC::Nop<800>();
-                AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-                if (sendTensor.GetValue(flagIndex) == 1) {
-                    uint32_t toRankId = sendTensor.GetValue(rankIdIndex);
-                    uint32_t tokenIdx = sendTensor.GetValue(tokenIdxIndex);
-                    uint32_t topkIdx = sendTensor.GetValue(topkIdxIndex);
-                    uint32_t nLoc = sendTensor.GetValue(blockLenIndex);
-                    uint32_t n = sendTensor.GetValue(tokenLenIndex);
-                    uint32_t dataLen = sendTensor.GetValue(tokenActualLenIndex);
-                    uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
-                    uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-                    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset) +
-                        gmDstOffset * sizeof(ElementMMadOut2);
-                    params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
-                    // 标记已处理, 避免重复发送
-                    sendTensor.SetValue(flagIndex, 0);
-                    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
-                    AscendC::DataCopy(gmLocalDTriple, sendTensor, 8);
-                    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-                    needCnt--;
-                }
-                slotIdx = (slotIdx + 1 < curCnt) ? slotIdx + 1 : completeCnt;
-            }
-            sendTokenCnt.SetValue(rankIndex, curCnt);
-            if (curCnt == totalTokenCnt.GetValue(rankIndex)) {
-                completedRank++;
-            }
-        }
-        rankIndex = (rankIndex + 1) % processRankNum;
-    }
+    //     if (curCnt > completeCnt) {
+    //         uint32_t needCnt = curCnt - completeCnt;
+    //         uint32_t slotIdx = completeCnt;
+    //         while (needCnt > 0) {
+    //             GM_ADDR dataAddr = params.workspaceInfo.combineCommDataPtr +
+    //                 static_cast<uint64_t>(rankIndex + startRankId) * maxDataSizePerToken *
+    //                 params.tilingData->bs * params.tilingData->expertPerRank +
+    //                 slotIdx * (maxDataLengthPerBlock + ALIGN_32);
+    //             gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
+    //             AscendC::Nop<800>();
+    //             AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
+    //             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+    //             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    //             if (sendTensor.GetValue(flagIndex) == 1) {
+    //                 uint32_t toRankId = sendTensor.GetValue(rankIdIndex);
+    //                 uint32_t tokenIdx = sendTensor.GetValue(tokenIdxIndex);
+    //                 uint32_t topkIdx = sendTensor.GetValue(topkIdxIndex);
+    //                 uint32_t nLoc = sendTensor.GetValue(blockLenIndex);
+    //                 uint32_t n = sendTensor.GetValue(tokenLenIndex);
+    //                 uint32_t dataLen = sendTensor.GetValue(tokenActualLenIndex);
+    //                 uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
+    //                 uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+    //                 GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset) +
+    //                     gmDstOffset * sizeof(ElementMMadOut2);
+    //                 params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
+    //                 // 标记已处理, 避免重复发送
+    //                 sendTensor.SetValue(flagIndex, 0);
+    //                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    //                 AscendC::DataCopy(gmLocalDTriple, sendTensor, 8);
+    //                 SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+    //                 needCnt--;
+    //             }
+    //             slotIdx = (slotIdx + 1 < curCnt) ? slotIdx + 1 : completeCnt;
+    //         }
+    //         sendTokenCnt.SetValue(rankIndex, curCnt);
+    //         if (curCnt == totalTokenCnt.GetValue(rankIndex)) {
+    //             completedRank++;
+    //         }
+    //     }
+    //     rankIndex = (rankIndex + 1) % processRankNum;
+    // }
 }
 
 // =============================================
