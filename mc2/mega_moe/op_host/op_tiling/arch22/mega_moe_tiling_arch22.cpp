@@ -1246,7 +1246,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                 info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) + // cumsum
                                 info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
                                 info.maxRecvTokenNum * std::max(info.K, k2) * sizeof(int16_t) + // GMM1&2 input
-                                (info.worldSize * 
+                                (info.worldSize *
                                     (info.expertPerRank + 16 - 1) / 16 * 16 * sizeof(int32_t)) + // SumBeforeRank
                                 info.worldSize * sizeof(int32_t) * 16; // sync
         if (info.isQuantRouting == 1U) {
