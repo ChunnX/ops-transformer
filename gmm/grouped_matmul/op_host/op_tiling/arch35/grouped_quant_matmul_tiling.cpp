@@ -102,10 +102,21 @@ bool GroupedQmmTiling::IsMxfp4() const
            (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
 }
 
-bool GroupedQmmTiling::IsWeightNzSingleMultiSingle() const
+bool GroupedQmmTiling::IsMultiTensorWeight() const
 {
-    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
-           inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    return weightShape != nullptr && weightShape->GetOriginShape().GetDimNum() == SPLIT_M_W_DIMS - 1;
+}
+
+bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
+{
+    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && inputParams_.isSingleY &&
+           inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && IsMultiTensorWeight();
+}
+
+bool GroupedQmmTiling::IsWeightNzMultiTensorCase() const
+{
+    return IsWeightNzMultiTensorLayout() && !inputParams_.hasBias;
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -119,11 +130,11 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
-    OP_CHECK_IF(IsWeightNzSingleMultiSingle() && inputParams_.hasBias,
+    OP_CHECK_IF(IsWeightNzMultiTensorLayout() && inputParams_.hasBias,
                 OP_LOGE(inputParams_.opName,
                         "In weightNz single-multi-single case, bias is not supported."),
                 return false);
-    if (!IsWeightNzSingleMultiSingle()) {
+    if (!IsWeightNzMultiTensorCase()) {
         return true;
     }
     const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
@@ -408,7 +419,7 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
     const size_t expectedWScaleDimNum =
-        IsWeightNzSingleMultiSingle() ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
+        IsWeightNzMultiTensorCase() ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
     OP_CHECK_IF(wScaleDimNum != expectedWScaleDimNum,
                 OP_LOGE(inputParams_.opName,
                         "When split m, the dim num of scale should be %zu in mx quant mode, but actual \
@@ -421,11 +432,11 @@ is %zu",
 actual is %zu",
                         xScaleDimNum),
                 return false);
-    const bool isWeightNzSingleMultiSingle = IsWeightNzSingleMultiSingle();
+    const bool isMultiTensorWeight = IsWeightNzMultiTensorCase();
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
-    if (isWeightNzSingleMultiSingle) {
+    if (isMultiTensorWeight) {
         auto wScaleFirstDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
         auto wScaleSecondDim = static_cast<uint64_t>(wScaleShape.GetDim(1));
         const bool isNkLayout = wScaleFirstDim == logicalNSize && wScaleSecondDim == expectedKDimValue;
@@ -640,10 +651,10 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
     auto wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     const bool validWeightNzDimNum = wDimNum == WEIGHTNZ_DIM_NUM ||
-        (IsWeightNzSingleMultiSingle() && wDimNum == WEIGHTNZ_DIM_NUM - 1);
+        (IsWeightNzMultiTensorCase() && wDimNum == WEIGHTNZ_DIM_NUM - 1);
     OP_CHECK_IF(!validWeightNzDimNum,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum),
-                                             IsWeightNzSingleMultiSingle() ? "4 or 5" : "5"),
+                                             IsWeightNzMultiTensorCase() ? "4 or 5" : "5"),
                 return false);
     const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                               inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
@@ -718,7 +729,7 @@ bool GroupedQmmTiling::CheckWeightNzTransposedDims(const gert::Shape &wShape, ui
 
 bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScaleStorageShape) const
 {
-    if (!IsWeightNzSingleMultiSingle()) {
+    if (!IsWeightNzMultiTensorCase()) {
         return true;
     }
 
@@ -1082,7 +1093,7 @@ bool GroupedQmmTiling::SetMKNList()
 {
     if (inputParams_.groupType == SPLIT_M) {
         mList_[0] = -1;
-        if (IsWeightNzSingleMultiSingle()) {
+        if (IsWeightNzMultiTensorCase()) {
             uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
             for (uint16_t i = 0; i < weightTensorNum; ++i) {
                 auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
