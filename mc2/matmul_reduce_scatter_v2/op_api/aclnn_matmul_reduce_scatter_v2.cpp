@@ -31,17 +31,6 @@
 #include "aclnn_matmul_reduce_scatter_v2.h"
 #include "aclnnInner_matmul_reduce_scatter_v2.h"
 
-#define HCCL_CHANNEL_SUPPORT_VERSION 899997000
-#if __has_include("version/hcomm_version.h")
-#include "version/hcomm_version.h"
-#endif
-#ifndef HCOMM_VERSION_NUM
-#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION + 1)
-#endif
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-
 using namespace op;
 
 #ifdef __cplusplus
@@ -58,10 +47,8 @@ static constexpr int64_t SECOND_TO_LAST_AXIS = -2;
 static constexpr int64_t DIM_NUM_THREE = 3;
 static constexpr int64_t DIM_NUM_TWO = 2;
 static constexpr int64_t DIM_NUM_ONE = 1;
-static constexpr int64_t MAX_CCU_RANKSIZE = 8;
 static constexpr int64_t AICPU_STRLEN = 6;
 static constexpr int64_t CCU_STRLEN = 3;
-static constexpr int64_t EMPTY_STRLEN = 1;
 typedef struct {
     uint32_t id;
     const char* funcName;
@@ -209,10 +196,9 @@ static aclnnStatus CheckCommMode(const char* commMode)
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if ((strncmp(commMode, "ai_cpu", AICPU_STRLEN) != 0) &&
-        (strncmp(commMode, "ccu", CCU_STRLEN) != 0) &&
-        (strncmp(commMode, "", EMPTY_STRLEN) != 0)) {
+        (strncmp(commMode, "ccu", CCU_STRLEN) != 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "[MatmulReduceScatterV2] commMode must be 'ai_cpu', 'ccu' or empty string, but got '%s'.",
+                "[MatmulReduceScatterV2] commMode must be 'ai_cpu' or 'ccu', but got '%s'.",
                 commMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -522,28 +508,10 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
 {
     aclnnStatus ret = ACLNN_ERR_INNER;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (commMode == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[MatmulReduceScatterV2] CommMode is nullptr.");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (strncmp(commMode, "", EMPTY_STRLEN) == 0) {
-            uint32_t rankSize = 0;
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-            auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-            CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-            const char* effectiveCommMode = rankSize <= MAX_CCU_RANKSIZE ? "ccu" : "ai_cpu";
-            OP_LOGD("[MatmulReduceScatterV2] Commmode is adaptively set to %s.", effectiveCommMode);
-            ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale,
-                                                          blockSize, group, reduceOp, commTurn, streamMode,
-                                                          groupSize, effectiveCommMode, output,
-                                                          amaxOutOptional, workspaceSize, executor);
-        } else {
-            ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale,
-                                                          blockSize, group, reduceOp, commTurn, streamMode,
-                                                          groupSize, commMode, output, amaxOutOptional,
-                                                          workspaceSize, executor);
-        }
+        ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale,
+                                                      blockSize, group, reduceOp, commTurn, streamMode,
+                                                      groupSize, commMode, output, amaxOutOptional,
+                                                      workspaceSize, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         OP_LOGD("[MatmulReduceScatterV2] NpuArch is 2201, support aiv commmode only.");
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize,
