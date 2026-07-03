@@ -2159,4 +2159,3 @@ public:
 };
 OP_ADD(FusedInferAttentionScore, optiling::FusedInferAttentionScoreCompileInfo);
 } // namespace ops
-
