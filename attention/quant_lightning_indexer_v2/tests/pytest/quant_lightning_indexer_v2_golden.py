@@ -804,7 +804,7 @@ def qliv2_output_single(params, is_batch = False):
         if isinstance(seqused_k, str):
             seqused_k = ast.literal_eval(seqused_k)
         if isinstance(output_idx_offset, str):
-            output_idx_offset = ast.literal_eval(output_idx_offset)        
+            output_idx_offset = ast.literal_eval(output_idx_offset)
             if layout_query == "TND":
                 output_idx_offset_size = q_t_size * 1
             else:
