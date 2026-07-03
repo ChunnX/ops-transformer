@@ -10,7 +10,7 @@
 
 include_guard(GLOBAL)
 
-set(OPTENSOR_TAG_ID gmmtensor)
+set(OPTENSOR_TAG_ID gmmsms)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
