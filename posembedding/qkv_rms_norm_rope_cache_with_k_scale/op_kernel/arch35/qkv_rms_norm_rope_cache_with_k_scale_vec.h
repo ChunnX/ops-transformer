@@ -40,6 +40,7 @@ public:
         epsilon_ = epsilon;
         inputBufferUseId_ = 0U;
         vOutBufferUseId_ = 0U;
+        cosSinBatchIdx_ = 0U;
         BindLocalTensors();
         BindGlobalTensors(tensors);
     }
@@ -214,35 +215,30 @@ private:
         }
     }
 
-    __aicore__ inline uint64_t ResolveTokenPosition(uint64_t tokenOffset)
-    {
-        for (uint64_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
-            const uint64_t seqBegin = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx));
-            const uint64_t seqEnd = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx + 1U));
-            if (tokenOffset >= seqBegin && tokenOffset < seqEnd) {
-                const uint64_t localLen = seqEnd - seqBegin;
-                const uint64_t actualLen = static_cast<uint64_t>(actualSeqLensGm_.GetValue(batchIdx));
-                const uint64_t historyOffset = actualLen > localLen ? actualLen - localLen : 0U;
-                return historyOffset + tokenOffset - seqBegin;
-            }
-        }
-        return tokenOffset;
-    }
-
     __aicore__ inline void CopyCosSinTile(const TileParam &tile, uint32_t inputBufferId)
     {
         const LocalTensor<float> cosSin = cosSinDbPoolUb_[inputBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
         uint64_t runStart = 0U;
         while (runStart < tile.aivTokenSize) {
-            const uint64_t runPosition = ResolveTokenPosition(tile.aivTokenOffset + runStart);
-            uint64_t runSize = 1U;
-            while (runStart + runSize < tile.aivTokenSize) {
-                const uint64_t prevPosition = ResolveTokenPosition(tile.aivTokenOffset + runStart + runSize - 1U);
-                const uint64_t nextPosition = ResolveTokenPosition(tile.aivTokenOffset + runStart + runSize);
-                if (nextPosition != prevPosition + 1U) {
+            const uint64_t tokenOffset = tile.aivTokenOffset + runStart;
+            uint64_t runPosition = tokenOffset;
+            uint64_t runSize = tile.aivTokenSize - runStart;
+            uint64_t seqBegin = 0U;
+            uint64_t seqEnd = 0U;
+            while (cosSinBatchIdx_ < batch_) {
+                seqBegin = static_cast<uint64_t>(cuSeqLenGm_.GetValue(cosSinBatchIdx_));
+                seqEnd = static_cast<uint64_t>(cuSeqLenGm_.GetValue(cosSinBatchIdx_ + 1U));
+                if (tokenOffset < seqEnd) {
                     break;
                 }
-                ++runSize;
+                ++cosSinBatchIdx_;
+            }
+            if (cosSinBatchIdx_ < batch_ && tokenOffset >= seqBegin) {
+                const uint64_t localLen = seqEnd - seqBegin;
+                const uint64_t actualLen = static_cast<uint64_t>(actualSeqLensGm_.GetValue(cosSinBatchIdx_));
+                const uint64_t historyOffset = actualLen > localLen ? actualLen - localLen : 0U;
+                runPosition = historyOffset + tokenOffset - seqBegin;
+                runSize = MinU64(runSize, seqEnd - tokenOffset);
             }
             DataCopyGmToUb2D(cosSin[runStart * headDim_], cosSinGm_[runPosition * headDim_], runSize, headDim_,
                              headDim_);
@@ -523,6 +519,7 @@ private:
     float epsilon_;
     uint64_t inputBufferUseId_;
     uint64_t vOutBufferUseId_;
+    uint64_t cosSinBatchIdx_;
     GlobalTensor<bfloat16_t> qkvGm_;
     GlobalTensor<float> qGammaGm_;
     GlobalTensor<float> kGammaGm_;

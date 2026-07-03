@@ -175,6 +175,37 @@ def performance_t16384_tnd_to_ntd_cases(seed: int) -> Tuple[Case, ...]:
     )
 
 
+def precision_mb20_t16384_cases(seed: int) -> Tuple[Case, ...]:
+    batch_seq_lens = (17, 257, 1, 1024, 511, 2048, 33, 4096, 128, 777,
+                      64, 1536, 999, 2, 301, 819, 1234, 455, 688, 1394)
+    history_offsets = (4096, 0, 8192, 512, 17, 2048, 0, 4096, 128, 3000,
+                       0, 1024, 4096, 8192, 513, 0, 256, 2048, 1, 4096)
+    actual_seq_lens = tuple(seq_len + offset for seq_len, offset in zip(batch_seq_lens, history_offsets))
+    specs = (
+        ("n16_kv2_mb20_t16384_dpad_ntd", "NTD", ""),
+        ("n16_kv2_mb20_t16384_dpad_tnd", "TND", ""),
+        ("n16_kv2_mb20_t16384_dpad_tnd_to_ntd", "TND", "NTD"),
+    )
+    return tuple(
+        Case(
+            name=name,
+            batch_seq_lens=batch_seq_lens,
+            actual_seq_lens=actual_seq_lens,
+            n_q=16,
+            n_k=2,
+            n_v=2,
+            qkv_layout=qkv_layout,
+            q_out_layout=q_out_layout,
+            slot_pattern="random",
+            seed=seed + index,
+            block_num=1024,
+            cache_stride="d_pad",
+            cache_pad=8,
+        )
+        for index, (name, qkv_layout, q_out_layout) in enumerate(specs)
+    )
+
+
 def build_cases() -> Tuple[Case, ...]:
     n16_specs = (
         ("decode1", (1,), (1,), "linear"),
@@ -353,6 +384,8 @@ def build_cases() -> Tuple[Case, ...]:
             )
             seed += 1
     cases = list(with_tnd_to_ntd_cases(cases))
+    cases.extend(precision_mb20_t16384_cases(seed))
+    seed += 3
     cases.extend(performance_t16384_tnd_to_ntd_cases(seed))
     return tuple(cases)
 
