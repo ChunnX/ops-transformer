@@ -172,7 +172,7 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     LocalTensor<XType> winTpSendCountTensor_;
-    LocalTensor<ExpandXType> gmTpSendCountTensor_;
+    LocalTensor<ExpandXType> expandXInTensor_;
     LocalTensor<XType> outTensor_;
     LocalTensor<float> winTpSendCountFloatTensor_;
     LocalTensor<float> gmTpSendCountFloatTensor_;
@@ -243,7 +243,7 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
-    TQue<QuePosition::VECIN, 1> gmTpSendCountQueue_;
+    TQue<QuePosition::VECIN, 1> expandXInQueue_;
     TQue<QuePosition::VECIN, 1> gmTpSendCountInQueue_;
     TQue<QuePosition::VECIN, 1> winTpSendCountInQueue_;
     TQue<QuePosition::VECOUT, 1> xOutPackageQueue_;
@@ -616,10 +616,10 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::BuffIn
     }
     dispatchBufferNum_ = CalcDispatchBufferNum(perDispatchBufBytes);
     if constexpr (QuantMode > UNQUANT) {
-        tpipe_->InitBuffer(gmTpSendCountQueue_, dispatchBufferNum_, hExpandXAlignSize_);
+        tpipe_->InitBuffer(expandXInQueue_, dispatchBufferNum_, hExpandXAlignSize_);
         tpipe_->InitBuffer(xOutPackageQueue_, dispatchBufferNum_, hAlignWinSize_);
     } else {
-        tpipe_->InitBuffer(gmTpSendCountQueue_, dispatchBufferNum_, hExpandXAlign32Size_);
+        tpipe_->InitBuffer(expandXInQueue_, dispatchBufferNum_, hExpandXAlign32Size_);
         tpipe_->InitBuffer(xOutPackageQueue_, dispatchBufferNum_, hAlignWinSize_);
     }
 }
@@ -890,18 +890,18 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     GlobalTensor<float> dstPackedGlobal;
     dstPackedGlobal.SetGlobalBuffer((__gm__ float*)(rankGM));
     if constexpr (QuantMode > UNQUANT) {
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
-        LocalTensor<uint8_t> singleByteTok = gmTpSendCountTensor_.template ReinterpretCast<uint8_t>();
+        expandXInTensor_ = expandXInQueue_.AllocTensor<ExpandXType>();
+        LocalTensor<uint8_t> singleByteTok = expandXInTensor_.template ReinterpretCast<uint8_t>();
         if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(ExpandXType));
         }
         SyncFunc<AscendC::HardEvent::V_MTE2>();
-        DataCopyPad(gmTpSendCountTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
-        gmTpSendCountQueue_.EnQue(gmTpSendCountTensor_);
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.DeQue<ExpandXType>();
+        DataCopyPad(expandXInTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
+        expandXInQueue_.EnQue(expandXInTensor_);
+        expandXInTensor_ = expandXInQueue_.DeQue<ExpandXType>();
         LocalTensor<XType> quantResultLT_ = quantResultBuf_.Get<XType>();
-        quantInst_.QuantProcess(quantResultLT_, gmTpSendCountTensor_);
-        gmTpSendCountQueue_.FreeTensor<ExpandXType>(gmTpSendCountTensor_);
+        quantInst_.QuantProcess(quantResultLT_, expandXInTensor_);
+        expandXInQueue_.FreeTensor<ExpandXType>(expandXInTensor_);
         PipeBarrier<PIPE_V>();
         sendLocalTensor_ = xOutPackageQueue_.AllocTensor<ExpandXType>();
         LocalTensor<float> srcDataTensor = quantResultLT_.template ReinterpretCast<float>();
@@ -915,12 +915,12 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
         DataCopy(dstPackedGlobal, padFlagFloatTensor, blockCntPerToken_ * SPLIT_BLOCK_SIZE / sizeof(float));
         xOutPackageQueue_.FreeTensor<ExpandXType>(sendLocalTensor_);
     } else {
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
-        DataCopyPad(gmTpSendCountTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
-        gmTpSendCountQueue_.EnQue(gmTpSendCountTensor_);
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.DeQue<ExpandXType>();
+        expandXInTensor_ = expandXInQueue_.AllocTensor<ExpandXType>();
+        DataCopyPad(expandXInTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
+        expandXInQueue_.EnQue(expandXInTensor_);
+        expandXInTensor_ = expandXInQueue_.DeQue<ExpandXType>();
         outTensor_ = xOutPackageQueue_.AllocTensor<XType>();
-        LocalTensor<float> srcfloat = gmTpSendCountTensor_.template ReinterpretCast<float>();
+        LocalTensor<float> srcfloat = expandXInTensor_.template ReinterpretCast<float>();
         LocalTensor<float> packedfloat = outTensor_.template ReinterpretCast<float>();
         Duplicate(packedfloat, float(1.0), hAlignWinSize_ / sizeof(float));
         PipeBarrier<PIPE_V>();
@@ -930,7 +930,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
         outTensor_ = xOutPackageQueue_.DeQue<ExpandXType>();
         DataCopy(dstPackedGlobal, packedfloat, blockCntPerToken_ * SPLIT_BLOCK_SIZE / sizeof(float));
         xOutPackageQueue_.FreeTensor<XType>(outTensor_);
-        gmTpSendCountQueue_.FreeTensor<ExpandXType>(gmTpSendCountTensor_);
+        expandXInQueue_.FreeTensor<ExpandXType>(expandXInTensor_);
     }
 }
 
