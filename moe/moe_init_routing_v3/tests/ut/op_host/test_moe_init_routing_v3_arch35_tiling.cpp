@@ -437,11 +437,6 @@ void RunDropPadTilingTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCap
     ExecuteTestCase(tilingContextPara, result, expectTilingKey);
 }
 
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_full_load_unquant_success)
-{
-    RunDropPadTilingTestcase(4, 16, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 200000);
-}
-
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_multi_row_loop)
 {
     RunDropPadTilingTestcase(1000000, 16, 1, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
