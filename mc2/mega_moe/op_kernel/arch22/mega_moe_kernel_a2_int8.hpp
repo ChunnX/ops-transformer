@@ -297,6 +297,7 @@ private:
 
         // UB 布局：
         //   [0, copyInNum*sizeof(T))         : bufT（token 数据 + scale）
+        //   [copyInNum, +4*sizeof(float))    : bufScale（scale 数据，避免被 copyGmToUb 覆盖）
         //   [ubRdmaOffset, +UB_ALIGN)        : rdmaUbLocal（RDMA doorbell 用）
         //   [ubRdmaOffset+UB_ALIGN, +UB_ALIGN): rdmaUbLocalHead
         //   [ubFlagOffset, +UB_ALIGN)        : flagUb（epoch flag 值）
@@ -308,7 +309,9 @@ private:
         AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubFlagOffset);
 
         AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
-        AscendC::LocalTensor<float> bufScale = bufT[hiddenSize].template ReinterpretCast<float>();
+        // bufScale 放在 copyInNum 之后，避免被 copyGmToUb 覆盖
+        // copyInNum = hiddenSize + ALIGN_512，拷贝时会写入 [0, copyInNum) 区域
+        AscendC::LocalTensor<float> bufScale = bufT[copyInNum].template ReinterpretCast<float>();
 
         int32_t dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
 
@@ -336,6 +339,10 @@ private:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
                 // UB → 本地 peer mem（只写 hiddenSize 有效数据）
                 copyUbToGm(dst[offset], bufT, layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
+                // 将 scale 数据从 bufT[hiddenSize] 拷贝到 bufScale（避免 bufScale 被 copyGmToUb 覆盖）
+                // scale 数据在 src 的 hiddenSize 位置，拷贝到 bufT 后也在 hiddenSize 位置
+                AscendC::LocalTensor<float> scaleSrc = bufT[hiddenSize].template ReinterpretCast<float>();
+                AscendC::DataCopy(bufScale, scaleSrc, 4);
                 // scale 分离写入独立 gmScale 区
                 AscendC::DataCopyPad(gmScale[rowStart + i], bufScale, {1, 4, 0, 0, 0});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -441,7 +448,9 @@ private:
         uint32_t copyInNum = hiddenSize + ALIGN_512;
 
         AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
-        AscendC::LocalTensor<float> bufScale = bufT[hiddenSize].template ReinterpretCast<float>();
+        // bufScale 放在 copyInNum 之后，避免被 copyGmToUb 覆盖
+        // 注意：RecvTokensV3 中 gmDstA[offset] 包含 scale 数据，需要在拷贝后正确读取
+        AscendC::LocalTensor<float> bufScale = bufT[copyInNum].template ReinterpretCast<float>();
 
         // 等待 dispatch flag：精确匹配 FLAG_VALUE_MAGIC，避免上一轮残留误判
         //   slotIdx = srcEpIdx * expertPerRank + groupIdx
@@ -484,6 +493,10 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             // UB → GM（只写回 hiddenSize 有效数据，tail padding 由 catlass 内部处理）
             copyUbToGm(gmDstA[offset], bufT, layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
+            // 将 scale 数据从 bufT[hiddenSize] 拷贝到 bufScale（避免 bufScale 被 copyGmToUb 覆盖）
+            // scale 数据在 gmDstA 的 hiddenSize 位置，拷贝到 bufT 后也在 hiddenSize 位置
+            AscendC::LocalTensor<float> scaleSrc = bufT[hiddenSize].template ReinterpretCast<float>();
+            AscendC::DataCopy(bufScale, scaleSrc, 4);
             // scale 分离写入独立 gmScale 区
             AscendC::DataCopyPad(gmScale[rowStart2 + i], bufScale, {1, 4, 0, 0, 0});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
