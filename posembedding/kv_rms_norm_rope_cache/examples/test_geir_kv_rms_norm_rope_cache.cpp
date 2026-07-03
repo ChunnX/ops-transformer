@@ -327,8 +327,13 @@ int main(int argc, char *argv[])
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
+
         int8_t *resultData = (int8_t*)output_data_i;
+<<<<<<< Updated upstream
         for (int64_t j = 0; j < output_shape && j < result_per_output; j++) {
+=======
+        for (int64_t j = 0; j < output_shape; j+=64) {
+>>>>>>> Stashed changes
             LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
         }
     }

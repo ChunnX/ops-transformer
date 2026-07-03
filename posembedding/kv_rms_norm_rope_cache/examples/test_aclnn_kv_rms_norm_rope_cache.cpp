@@ -44,12 +44,21 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   // Print by [B, S]
   uint64_t bIdx = 0;
   uint64_t sIdx = 0;
+<<<<<<< Updated upstream
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("result[%llu, 1, %llu] is: %d\n", bIdx, sIdx, resultData[i]);
     // Fast diagonal traverse
     bIdx = (bIdx >= batchKv) ? batchKv : (bIdx + 1);
     sIdx = (sIdx >= batchSeq) ? batchSeq : (sIdx + 1);
     i += bIdx * batchKv + sIdx * batchSeq;
+=======
+  for (uint64_t i = 0; i < size; i++) {
+    LOG_PRINT("result[%lu] is: %d\n", i, resultData[i]);
+    // Fast diagonal traverse
+    bIdx = (bIdx >= batchKv) ? batchKv : (bIdx + 1);
+    sIdx = (sIdx >= batchSeq) ? batchSeq : (sIdx + 1);
+    i += bIdx * batchKv * batchSeq + sIdx * batchSeq;
+>>>>>>> Stashed changes
   }
 }
 
