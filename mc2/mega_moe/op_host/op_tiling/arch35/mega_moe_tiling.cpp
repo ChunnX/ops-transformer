@@ -353,10 +353,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             "only support no_quant(0), fp8_e5m2(3) and fp8_e4m3fn(4)"),
         return ge::GRAPH_FAILED);
 
-    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    OP_TILING_CHECK(std::strcmp(commAlgPtr, "") != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "empty string"),
-        return ge::GRAPH_FAILED);
+    // auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    // OP_TILING_CHECK(std::strcmp(commAlgPtr, "") != 0,
+    //     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "empty string"),
+    //     return ge::GRAPH_FAILED);
 
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
