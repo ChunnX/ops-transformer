@@ -25,41 +25,41 @@ constexpr int64_t QUANT_MODE_MIN = 0;
 constexpr int64_t QUANT_MODE_MAX = 3;    // 0:MX-FP8 1:Normal 2:HiFloat8 3:MX-FP4
 }  // namespace
 
-std::tuple<at::Tensor, at::Tensor> indexer_quant_cache(
-    const at::Tensor &cache, const at::Tensor &cache_scale, const at::Tensor &x,
-    const at::Tensor &slot_mapping, int64_t quant_mode, bool round_scale, double x_scale)
+std::tuple<at::Tensor, at::Tensor> IndexerQuantCache(
+    const at::Tensor &cache, const at::Tensor &cacheScale, const at::Tensor &x,
+    const at::Tensor &slotMapping, int64_t quantMode, bool roundScale, double xScale)
 {
     // 入参校验
     TORCH_CHECK(cache.numel() > 0, "Tensor cache is empty.");
-    TORCH_CHECK(cache_scale.numel() > 0, "Tensor cache_scale is empty.");
+    TORCH_CHECK(cacheScale.numel() > 0, "Tensor cache_scale is empty.");
     TORCH_CHECK(x.dim() >= 2, "x should be at least 2-dim, but got ", x.dim());
-    TORCH_CHECK(slot_mapping.dim() == x.dim() - 1,
-        "slot_mapping dim should equal x dim - 1, but got slot_mapping dim ", slot_mapping.dim(),
+    TORCH_CHECK(slotMapping.dim() == x.dim() - 1,
+        "slot_mapping dim should equal x dim - 1, but got slot_mapping dim ", slotMapping.dim(),
         " and x dim ", x.dim());
-    TORCH_CHECK(quant_mode >= QUANT_MODE_MIN && quant_mode <= QUANT_MODE_MAX,
-        "quant_mode should be 0, 1, 2 or 3, but got ", quant_mode);
-    int64_t tail_dim = x.size(x.dim() - 1);
-    TORCH_CHECK(tail_dim > 0 && tail_dim % TAIL_DIM_ALIGN == 0,
-        "The last dim (d) of x should be positive and 32-aligned, but got ", tail_dim);
+    TORCH_CHECK(quantMode >= QUANT_MODE_MIN && quantMode <= QUANT_MODE_MAX,
+        "quant_mode should be 0, 1, 2 or 3, but got ", quantMode);
+    int64_t tailDim = x.size(x.dim() - 1);
+    TORCH_CHECK(tailDim > 0 && tailDim % TAIL_DIM_ALIGN == 0,
+        "The last dim (d) of x should be positive and 32-aligned, but got ", tailDim);
 
-    at::Tensor cache_out{nullptr};
-    at::Tensor cache_scale_out{nullptr};
-    auto local_device = c10::Device(cache.device());
-    const c10::OptionalDeviceGuard device_guard(local_device);
-    cache_out = cache.clone();
-    cache_scale_out = cache_scale.clone();
+    at::Tensor cacheOut{nullptr};
+    at::Tensor cacheScaleOut{nullptr};
+    auto localDevice = c10::Device(cache.device());
+    const c10::OptionalDeviceGuard deviceGuard(localDevice);
+    cacheOut = cache.clone();
+    cacheScaleOut = cacheScale.clone();
 
-    float x_scale_f = static_cast<float>(x_scale);
-    StorageShapeTensor x_wrapped{x};
-    StorageShapeTensor slot_mapping_wrapped{slot_mapping};
-    ACLNN_CMD(aclnnIndexerQuantCache, cache_out, cache_scale_out, x_wrapped, slot_mapping_wrapped,
-              quant_mode, round_scale, x_scale_f);
-    return std::make_tuple(cache_out, cache_scale_out);
+    float xScaleF = static_cast<float>(xScale);
+    StorageShapeTensor xWrapped{x};
+    StorageShapeTensor slotMappingWrapped{slotMapping};
+    ACLNN_CMD(aclnnIndexerQuantCache, cacheOut, cacheScaleOut, xWrapped, slotMappingWrapped,
+              quantMode, roundScale, xScaleF);
+    return std::make_tuple(cacheOut, cacheScaleOut);
 }
 
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("indexer_quant_cache", &indexer_quant_cache, "indexer_quant_cache");
+    m.def("indexer_quant_cache", &IndexerQuantCache, "indexer_quant_cache");
 }
 }  // namespace op_api

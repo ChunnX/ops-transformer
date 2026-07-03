@@ -19,7 +19,7 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-mhc_pre_sinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha,
+MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha,
     const at::Tensor &bias, int64_t hcMult, int64_t numIters,
     double hcEps, double normEps, bool outFlag)
 {
@@ -65,7 +65,7 @@ mhc_pre_sinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &a
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mhc_pre_sinkhorn", &mhc_pre_sinkhorn, "mhc_pre_sinkhorn");
+    m.def("mhc_pre_sinkhorn", &MhcPreSinkhorn, "mhc_pre_sinkhorn");
 }
 
 } // namespace op_api

@@ -327,10 +327,10 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
 // Create context internally
 void ElasticBuffer::CreateContextInternal(const HcclComm &commHandle, const std::string &mc2ContextTag)
 {
-    uint64_t commContext_Size = sizeof(CommContext);
+    uint64_t commContextSize = sizeof(CommContext);
     void *ctx = nullptr;
     auto hcclRet =
-        HcclEngineCtxCreateFunc(commHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, commContext_Size, &ctx);
+        HcclEngineCtxCreateFunc(commHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, commContextSize, &ctx);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
 
     hcclRet = HcclGetRankIdFunc(commHandle, &commContext_.epRankId);
@@ -349,7 +349,7 @@ void ElasticBuffer::CreateContextInternal(const HcclComm &commHandle, const std:
     GetHcclCommResource(commHandle, &commContext_, commContext_.rankSize, memBufferTag);
 
     hcclRet = HcclEngineCtxCopyFunc(commHandle, CommEngine::COMM_ENGINE_AIV, mc2ContextTag.c_str(), &commContext_,
-                                    commContext_Size, 0);
+                                    commContextSize, 0);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
 }
 

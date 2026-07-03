@@ -479,16 +479,16 @@ public:
         : group_(group), worldSize_(worldSize),
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
-    at::Tensor create_context()
+    at::Tensor CreateContext()
     {
         EnsureResolved();
-        at::Tensor context = at::empty({context_tensor_size()}, at::TensorOptions().dtype(at::kInt)
+        at::Tensor context = at::empty({ContextTensorSize()}, at::TensorOptions().dtype(at::kInt)
             .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
         DispatchBuild(context);
         return context;
     }
 
-    void update_group(const std::string &group, at::Tensor &contextTensor)
+    void UpdateGroup(const std::string &group, at::Tensor &contextTensor)
     {
         group_ = group;
         cclBufferSize_ = 0;
@@ -496,10 +496,10 @@ public:
         DispatchBuild(contextTensor);
     }
 
-    int64_t ccl_buffer_size() const { return cclBufferSize_; }
+    int64_t CclBufferSize() const { return cclBufferSize_; }
 
 private:
-    static int64_t context_tensor_size()
+    static int64_t ContextTensorSize()
     {
         return (sizeof(CommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
     }
@@ -542,8 +542,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     py::class_<CommContextManager>(m, "CommContextManager")
         .def(py::init<const std::string &, int64_t, const py::object &>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"))
-        .def("create_context", &CommContextManager::create_context)
-        .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
-        .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
+        .def("create_context", &CommContextManager::CreateContext)
+        .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def_property_readonly("ccl_buffer_size", &CommContextManager::CclBufferSize);
 }
 } // op_api
