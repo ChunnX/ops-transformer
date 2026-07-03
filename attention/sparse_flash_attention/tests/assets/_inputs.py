@@ -98,7 +98,7 @@ def generate_valid_sparse_indices(query, key, value, sparse_indices, scale_value
 
     if sparse_indices is None:
         return
-    
+
     layout_query = kwargs.get('layout_query', 'BSND')
     layout_kv = kwargs.get('layout_kv', 'BSND')
     sparse_mode = kwargs.get('sparse_mode', 0)
@@ -113,22 +113,22 @@ def generate_valid_sparse_indices(query, key, value, sparse_indices, scale_value
         pa_block_num = kwargs.get('block_num') or key.shape[0]
         _fill_random_block_table(block_table, actual_seq_kv, pa_block_size, pa_block_num,
                                  kwargs.get('block_table_seed', 0))
-    
+
     actual_seq_q_list = _to_list(actual_seq_q)
     actual_seq_kv_list = _to_list(actual_seq_kv)
-    
+
     sparse_block_size_val = sparse_block_size or 1
-    
+
     if layout_query == "BSND":
         B = query.shape[0]
         S1 = query.shape[1]
     else:
         B = len(actual_seq_q_list) if actual_seq_q_list else 1
         S1 = max(actual_seq_q_list) if actual_seq_q_list else query.shape[0]
-    
+
     N2 = key.shape[-2] if layout_kv in ["BSND", "PA_BSND"] else key.shape[1]
     K = sparse_indices.shape[-1]
-    
+
     if not actual_seq_kv_list:
         if layout_kv == "BSND":
             default_kv = key.shape[1]
@@ -141,70 +141,70 @@ def generate_valid_sparse_indices(query, key, value, sparse_indices, scale_value
         actual_seq_kv_list = [default_kv] * B
     if not actual_seq_q_list:
         actual_seq_q_list = [S1] * B
-    
+
     sparse_indices_new = torch.full(sparse_indices.shape, -1, dtype=torch.int32)
-    
+
     if layout_query == "TND" and len(sparse_indices.shape) == 3:
         batch_q_lengths = []
         prev = 0
         for cum_sum in actual_seq_q_list:
             batch_q_lengths.append(cum_sum - prev)
             prev = cum_sum
-        
+
         batch_kv_lengths = actual_seq_kv_list if layout_kv == "PA_BSND" else [
             cum_sum - prev_kv for prev_kv, cum_sum in zip([0] + actual_seq_kv_list[:-1], actual_seq_kv_list)
         ] if layout_kv == "TND" else actual_seq_kv_list
-        
+
         t_offset = 0
         for b in range(B):
             batch_seq_q = batch_q_lengths[b] if b < len(batch_q_lengths) else batch_q_lengths[0]
             batch_seq_kv = batch_kv_lengths[b] if b < len(batch_kv_lengths) else batch_kv_lengths[0]
-            
+
             for t_local in range(batch_seq_q):
                 t_global = t_offset + t_local
                 for n in range(N2):
                     threshold = batch_seq_kv if sparse_mode == 0 else batch_seq_kv - batch_seq_q + t_local + 1
                     if threshold <= 0:
                         continue
-                    
+
                     valid_blocks = math.ceil(max(0, threshold) / sparse_block_size_val)
                     if valid_blocks <= 0:
                         continue
-                    
+
                     if valid_blocks > 1:
                         block_indices = torch.randperm(valid_blocks, dtype=torch.int32)
                     else:
                         block_indices = torch.zeros(1, dtype=torch.int32)
-                    
+
                     topk = min(valid_blocks, K)
                     if topk > 0:
                         sparse_indices_new[t_global, n, :topk-1] = block_indices[:topk-1] if topk > 1 else torch.tensor([])
                         sparse_indices_new[t_global, n, topk-1] = valid_blocks - 1
-            
+
             t_offset += batch_seq_q
     else:
         for b in range(B):
             seq_kv = actual_seq_kv_list[b] if b < len(actual_seq_kv_list) else actual_seq_kv_list[0]
             seq_q = actual_seq_q_list[b] if b < len(actual_seq_q_list) else actual_seq_q_list[0]
-            
+
             for n in range(N2):
                 for s in range(S1):
                     threshold = seq_kv if sparse_mode == 0 else seq_kv - seq_q + s + 1
                     if threshold <= 0:
                         continue
-                    
+
                     valid_blocks = math.ceil(max(0, threshold) / sparse_block_size_val)
                     if valid_blocks <= 0:
                         continue
-                    
+
                     if valid_blocks > 1:
                         block_indices = torch.randperm(valid_blocks, dtype=torch.int32)
                     else:
                         block_indices = torch.zeros(1, dtype=torch.int32)
-                    
+
                     topk = min(valid_blocks, K)
                     if topk > 0:
                         sparse_indices_new[b, s, n, :topk-1] = block_indices[:topk-1] if topk > 1 else torch.tensor([])
                         sparse_indices_new[b, s, n, topk-1] = valid_blocks - 1
-    
+
     sparse_indices[:] = sparse_indices_new.to(sparse_indices.dtype).to(sparse_indices.device)

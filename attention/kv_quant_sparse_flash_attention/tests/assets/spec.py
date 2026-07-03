@@ -16,7 +16,7 @@ import importlib.util
 from pathlib import Path
 
 
-def _load_sibling(stem):
+def load_sibling_module(stem):
     path = Path(__file__).with_name(f"{stem}.py")
     spec = importlib.util.spec_from_file_location(f"qsfa_assets_{stem}_{abs(hash(path))}", path)
     module = importlib.util.module_from_spec(spec)
@@ -24,13 +24,13 @@ def _load_sibling(stem):
     return module
 
 
-_golden = _load_sibling("_golden")
-_inputs = _load_sibling("_inputs")
+golden_module = load_sibling_module("golden")
+inputs_module = load_sibling_module("inputs")
 
 
 class KvQuantSparseFlashAttentionSpec:
-    golden = _golden.npu_kv_quant_sparse_flash_attention
-    customize_inputs = _inputs.generate_kv_quant_inputs
+    golden = golden_module.npu_kv_quant_sparse_flash_attention
+    customize_inputs = inputs_module.generate_kv_quant_inputs
     tolerance = {
         "float16": {"standard": "IsClose", "rtol": 0.001, "ptol": 0.005, "atol": 0.02},
         "bfloat16": {"standard": "IsClose", "rtol": 0.001, "ptol": 0.005, "atol": 0.02},
