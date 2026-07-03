@@ -51,14 +51,14 @@ const aclTensor *DenseLightningIndexerSoftmaxLseV2(
            layoutQ, layoutK, maskMode, cmpRatio,
            softmaxLseOut);
 
-    // ADD_TO_LAUNCHER_LIST_AICORE(
-    //     DenseLightningIndexerSoftmaxLseV2,
-    //     OP_INPUT(queryIndex, keyIndex, weight,
-    //              cuSeqLensQOptional, cuSeqLensKOptional,
-    //              seqUsedQOptional, seqUsedKOptional,
-    //              cmpResidualKOptional, metadataOptional),
-    //     OP_OUTPUT(softmaxLseOut),
-    //     OP_ATTR(layoutQ, layoutK, maskMode, cmpRatio));
+    ADD_TO_LAUNCHER_LIST_AICORE(
+        DenseLightningIndexerSoftmaxLseV2,
+        OP_INPUT(queryIndex, keyIndex, weight,
+                 cuSeqLensQOptional, cuSeqLensKOptional,
+                 seqUsedQOptional, seqUsedKOptional,
+                 cmpResidualKOptional, metadataOptional),
+        OP_OUTPUT(softmaxLseOut),
+        OP_ATTR(layoutQ, layoutK, maskMode, cmpRatio));
 
     return softmaxLseOut;
 }
