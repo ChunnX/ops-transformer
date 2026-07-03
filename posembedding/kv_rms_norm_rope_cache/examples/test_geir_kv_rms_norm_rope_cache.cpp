@@ -42,7 +42,7 @@ using std::map;
 using std::string;
 using std::vector;
 
-const int BATCH = 32;
+const int BATCH = 181;
 const int N = 1;
 const int SEQ_LENGTH = 1;
 const int GAMMA_LENGTH = 512;
