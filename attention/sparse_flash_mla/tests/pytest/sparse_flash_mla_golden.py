@@ -1462,23 +1462,23 @@ def gen_data(params, template_mode=None):
 
     sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
 
-    # kv_cache 0轴非连续 (NPU not available, skipping)
-    # properties = torch.npu.get_device_properties()
-    # if "Ascend950" in properties.name and layout_kv == "PA_BBND":
-    #     key_stride = 10
-    #     bytes_per_token = D + key_stride
-    #     blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
-    #     ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
-    #     blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
-    #     blockFusion1 = blockFusion1.npu()
-    #     ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
-    #
-    #     if template_idx != 0:
-    #         blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
-    #         cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
-    #         blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
-    #         blockFusion2 = blockFusion2.npu()
-    #         cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
+    # kv_cache 0轴非连续
+    properties = torch.npu.get_device_properties()
+    if "Ascend950" in properties.name and layout_kv == "PA_BBND":
+        key_stride = 10
+        bytes_per_token = D + key_stride
+        blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
+        ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
+        blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
+        blockFusion1 = blockFusion1.npu()
+        ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
+
+        if template_idx != 0:
+            blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
+            cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
+            blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
+            blockFusion2 = blockFusion2.npu()
+            cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
 
     metadata_input = {
         'N1': N1,
