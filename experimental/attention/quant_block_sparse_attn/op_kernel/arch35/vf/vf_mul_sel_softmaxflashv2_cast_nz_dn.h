@@ -136,7 +136,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -175,7 +174,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
@@ -502,7 +500,6 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -541,7 +538,6 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
@@ -945,7 +941,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
@@ -1297,7 +1292,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
