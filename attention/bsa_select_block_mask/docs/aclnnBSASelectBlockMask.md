@@ -82,7 +82,7 @@
 
 - 数据排布格式：
 
-  BSASelectBlockMask输入query、key的数据排布格式支持从多种维度排布解读，可通过queryLayout和keyLayout传入。为了方便理解后续支持的具体排布格式（如BNSD、TND等），此处先对排布格式中各缩写字母所代表的维度含义进行统一说明：
+  BSASelectBlockMask输入query、key的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。为了方便理解后续支持的具体排布格式（如BNSD、TND等），此处先对排布格式中各缩写字母所代表的维度含义进行统一说明：
 
   - B：表示输入样本批量大小（Batch）
   - T：B和S合轴紧密排列的长度（Total tokens）
@@ -93,8 +93,8 @@
 
 - 当前支持的布局：
 
-  - queryLayout: "TND" "BNSD"
-  - keyLayout: "TND" "BNSD"
+  - qInputLayout: "TND" "BNSD"
+  - kvInputLayout: "TND" "BNSD"
 
 ## 函数原型
 
@@ -110,9 +110,9 @@ aclnnStatus aclnnBSASelectBlockMaskGetWorkspaceSize(
   const aclIntArray *actualSeqLengthsKV,
   const aclIntArray *actualBlockLenQuery,
   const aclIntArray *actualBlockLenKey,
-  char              *queryLayout,
-  char              *keyLayout,
-  int64_t            numKeyHeads,
+  char              *qInputLayout,
+  char              *kvInputLayout,
+  int64_t            numKeyValueHeads,
   double             scaleValue,
   double             sparsity,
   aclTensor         *blockSparseMaskOut,
@@ -169,7 +169,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>key（aclTensor*）</td>
     <td>输入</td>
     <td>注意力计算中的key矩阵，即公式中的key。</td>
-    <td><ul><li>不支持空Tensor。</li><li>支持的shape为：<ul><li>TND: [totalKTokens, numKeyHeads, headDim]。</li><li>BNSD: [batch, numKeyHeads, maxKSeqLength, headDim]。</li></ul></li></ul></td>
+    <td><ul><li>不支持空Tensor。</li><li>支持的shape为：<ul><li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li><li>BNSD: [batch, numKeyValueHeads, maxKSeqLength, headDim]。</li></ul></li></ul></td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>3-4</td>
@@ -199,7 +199,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>actualSeqLengths（aclIntArray*）</td>
     <td>输入</td>
     <td>每个batch的query的实际序列长度。<br>用于描述变长序列场景下（即含有Padding填充数据的场景），每个Batch中实际有效的query token数量。</td>
-    <td><ul><li>变长序列场景（当queryLayout为 "TND" 时）：该项输入必须配置。</li><li>定长/变长场景（当queryLayout为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略Padding部分的数据，提升性能；</li><li>如不配置（传nullptr），算子将默认把query shape中的S维度作为有效长度进行全量处理。</li></ul></li></ul></td>
+    <td><ul><li>变长序列场景（当qInputLayout为 "TND" 时）：该项输入必须配置。</li><li>定长/变长场景（当qInputLayout为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略Padding部分的数据，提升性能；</li><li>如不配置（传nullptr），算子将默认把query shape中的S维度作为有效长度进行全量处理。</li></ul></li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -209,7 +209,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>actualSeqLengthsKV（aclIntArray*）</td>
     <td>输入</td>
     <td>key的实际序列长度数组。<br>用于描述变长序列场景下（即含有Padding填充数据的场景），每个Batch中实际有效的key token数量。</td>
-    <td><ul><li>变长序列场景（当keyLayout为 "TND" 时）：该项输入必须配置。</li><li>>定长/变长场景（当keyLayout为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略Padding部分的数据，提升性能；</li><li>如不配置（传nullptr），算子将默认把key shape中的S维度作为有效长度进行全量处理。</li></ul></li></ul></td>
+    <td><ul><li>变长序列场景（当kvInputLayout为 "TND" 时）：该项输入必须配置。</li><li>>定长/变长场景（当kvInputLayout为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略Padding部分的数据，提升性能；</li><li>如不配置（传nullptr），算子将默认把key shape中的S维度作为有效长度进行全量处理。</li></ul></li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -238,30 +238,30 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>-</td>
     </tr>
     <tr>
-    <td>queryLayout（char*）</td>
+    <td>qInputLayout（char*）</td>
     <td>输入</td>
     <td>query的数据排布格式。指示输入张量在内存中的具体排布。</td>
-    <td><ul>当前仅支持 "TND"、"BNSD"，queryLayout与keyLayout需要保持一致。</ul></td>
+    <td><ul>当前仅支持 "TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
     <tr>
-    <td>keyLayout（char*）</td>
+    <td>kvInputLayout（char*）</td>
     <td>输入</td>
     <td>key的数据排布格式。指示输入张量在内存中的具体排布。</td>
-    <td><ul>当前仅支持 "TND"、"BNSD"，queryLayout与keyLayout需要保持一致。</ul></td>
+    <td><ul>当前仅支持 "TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
     <tr>
-    <td>numKeyHeads（int64_t）</td>
+    <td>numKeyValueHeads（int64_t）</td>
     <td>输入</td>
     <td>key的注意力头数。</td>
-    <td><ul>当前仅支持MHA，numKeyHeads必须等于numHeads。</ul></td>
+    <td><ul>当前仅支持MHA，numKeyValueHeads必须等于numHeads。</ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -406,7 +406,7 @@ aclnnStatus aclnnBSASelectBlockMask(
 ## 约束说明
 
 - 该接口若与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- actualSeqLengths在queryLayout为 "TND" 时必选；actualSeqLengthsKV在keyLayout为 "TND" 时必选。
+- actualSeqLengths在qInputLayout为 "TND" 时必选；actualSeqLengthsKV在kvInputLayout为 "TND" 时必选。
 - 根据算子支持的输入Layout，query张量Shape中对应的head维度大小记为N1，key张量Shape中对应的head维度大小记为N2。必须满足N1 = N2（仅支持MHA）。
 - headDim = 128。
 - blockShapeX和blockShapeY必须为64的倍数。
