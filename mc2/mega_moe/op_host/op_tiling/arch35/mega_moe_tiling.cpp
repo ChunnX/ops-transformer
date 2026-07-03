@@ -1052,9 +1052,9 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
-    uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
-    OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
-    context->SetTilingKey(tilingKey);
+    // uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
+    // OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
+    // context->SetTilingKey(tilingKey);
 
     // // WorkspaceSize
     // WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
