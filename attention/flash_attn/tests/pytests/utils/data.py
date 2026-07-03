@@ -128,7 +128,7 @@ def make_noncontiguous(tensor, nc_dims):
         p[tuple(ws)] = tensor
         return p[tuple(ws)]
     elif nc_dims == 1:
-        # dim1-only: 手动拷贝到新buffer中, dim0行连续、dim1行间插入gap使stride(1)膨胀
+        # dim1-only: empty_strided创建真实非连续tensor, copy_填入数据, NPU/CPU通用
         ndim = len(shape)
         cstrides = [1] * ndim
         for i in range(ndim - 2, -1, -1):
@@ -136,21 +136,9 @@ def make_noncontiguous(tensor, nc_dims):
         gap = cstrides[2] if ndim >= 3 else 1
         tstrides = list(cstrides)
         tstrides[1] = cstrides[1] + gap
-        # dim1膨胀后dim0也需同步膨胀，避免不同block在buf中重叠
-        tstrides[0] = shape[1] * tstrides[1]
-        last_offset = sum((shape[i] - 1) * tstrides[i] for i in range(ndim))
-        buf_size = last_offset + 1
-        buf = torch.zeros(buf_size, dtype=dtype, device=device)
-        t_flat = tensor.reshape(-1)
-        for b in range(shape[0]):
-            src_base = b * cstrides[0]
-            dst_base = b * tstrides[0]
-            for n in range(shape[1]):
-                src_off = src_base + n * cstrides[1]
-                dst_off = dst_base + n * tstrides[1]
-                row_elem = cstrides[1]
-                buf[dst_off:dst_off + row_elem] = t_flat[src_off:src_off + row_elem]
-        return buf.as_strided(shape, tuple(tstrides), 0)
+        result = torch.empty_strided(shape, tuple(tstrides), dtype=dtype, device=device)
+        result.copy_(tensor)
+        return result
     elif nc_dims == (0, 1):
         pad_dim = 2
         shp = list(shape)
