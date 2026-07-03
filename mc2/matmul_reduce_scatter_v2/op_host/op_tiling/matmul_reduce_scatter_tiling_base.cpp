@@ -279,10 +279,6 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
     commMode_ = isAicpu ? Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
-    // AICPU时不走All2All + Vec Reduce通路
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        isA2APath_ = false;
-    }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
