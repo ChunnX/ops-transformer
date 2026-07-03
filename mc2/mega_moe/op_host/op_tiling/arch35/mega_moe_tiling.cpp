@@ -1033,23 +1033,23 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
-    auto attrs = context->GetAttrs();
-    tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
-    OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
-            (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
-            "should both be > 0"),
-        return ge::GRAPH_FAILED);
+    // auto attrs = context->GetAttrs();
+    // tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    // OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
+    //     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
+    //         (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
+    //         "should both be > 0"),
+    //     return ge::GRAPH_FAILED);
 
-    uint64_t ubSize = 0U;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
-    context->SetScheduleMode(1); // batch model, all cores start at the same time
-    OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
+    // uint64_t ubSize = 0U;
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    // context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+    // context->SetScheduleMode(1); // batch model, all cores start at the same time
+    // OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
 
-    // Attr check & set
-    OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    // // Attr check & set
+    // OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
+    //     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
     // uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
