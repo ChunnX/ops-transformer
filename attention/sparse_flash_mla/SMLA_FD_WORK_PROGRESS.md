@@ -544,7 +544,7 @@ if (runInfo.isS2Split) {
 
 | SMLA 适配点 | QSMLA 来源 | 搬运状态 |
 |---|---|---|
-| Vec2 partial O staging | `SCFABlockVec::ProcessVec2` lines 965–975 | copied with SMLA field rename |
+| Vec2 partial O staging | `CSABlockVec::ProcessVec2` lines 965–975 | copied with SMLA field rename |
 | `StageVec2PartialO` call params | Same function signature from `flash_decode.h` | copied as-is |
 | `GetS2SplitFdStagingLayout` | Same helper, already implemented in Phase 3 | reused |
 | `GetFaStagingWorkspaceIdx` | Same helper, already implemented in Phase 3 | reused |
@@ -634,7 +634,7 @@ Event IDs allocated in `InitLocalBuffer()` with initial `SetFlag<HardEvent::V_MT
 - Allocates FD-specific buffers based on `workspaceNum`, `mNum`, and `FD_REDUCE_CHUNK_ROWS`
 - The allocation order and buffer names are defined by common `AttentionCommon::FdBuffers` / `AttentionCommon::InitFDBuffers`
 
-**ProcessFlashDecode** (adapted from QSMLA `SCFABlockVec::ProcessFlashDecode`):
+**ProcessFlashDecode** (adapted from QSMLA `CSABlockVec::ProcessFlashDecode`):
 - Computes FD output offset from SMLA layout:
   ```cpp
   seqOffset = (TND) ? cuSeqlensQ[bn2Idx] : bn2Idx * s1Size
@@ -659,7 +659,7 @@ if (fdRunInfo.coreEnable) {
 }
 ```
 
-#### 3. `SCFABlockVecDummy` — Added dummy methods
+#### 3. `CSABlockVecDummy` — Added dummy methods
 
 ```cpp
 __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
@@ -674,7 +674,7 @@ __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &const
 | No-work core barrier | `ProcessMainLoop` `hasLoad == 0` branch | copied as-is |
 | FD dispatch | `if (fdRunInfo.coreEnable > 0)` | copied as-is |
 | `InitFDBuffers` | `AttentionCommon::InitFDBuffers` | shared common helper |
-| `ProcessFlashDecode` | `SCFABlockVec::ProcessFlashDecode` | copied with SMLA-specific output offset |
+| `ProcessFlashDecode` | `CSABlockVec::ProcessFlashDecode` | copied with SMLA-specific output offset |
 | `AttentionCommon::Reduce` call | Same function, same params | copied as-is |
 | FD event IDs | `vToMte2V0Id[2]`, `mte2ToVV0Id[2]` | copied as-is |
 | Output offset formula | QSMLA: `seqOffset * n2GDv + mIdx * n2GDv + mStartIdx * dSizeV` | copied as-is |

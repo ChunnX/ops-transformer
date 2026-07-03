@@ -387,13 +387,13 @@ outputBase =
 | FA/FD phase 调度 | `mixed_quant_sparse_flash_mla_scfa_kernel.h::ProcessMainLoop` | 保持 `ParseFdRunInfo -> FA producer -> SyncAll -> ProcessFlashDecode` 的顺序 | SMLA `ComputeParamBatch/ComputeS2LoopInfo/ProcessVec0` 的参数形式 |
 | S2 metadata 裁剪 | `ApplyS2MetadataRange` | 算法、sentinel 处理、range clamp、loop end 重算保持逐行等价 | `s2LineStartIdx/s2LineOriEndIdx` 替换为 `s2OriLineStartIdx/s2OriLineEndIdx` |
 | FD metadata 解析 | `ParseFdRunInfo` | 读取顺序和 early return 保持一致 | 使用公共 `AttentionCommon::FdRunInfo`，字段类型按 metadata ABI |
-| FA staging slot | `SCFABlockVec::GetFaStagingWorkspaceIdx` | 函数放在 SMLA Vec block 内，公式保持 `firstFdDataWorkspaceIdx + s2SplitIdx` | 函数名可加 SMLA 前缀但不要改公式 |
-| FA staging M offset | `SCFABlockVec::GetFaStagingMOffset` | 优先搬运 QSMLA subBlock/split-G offset 结构 | 若 SMLA head 分配不同，只替换 offset 计算项 |
-| staging layout | `SCFABlockVec::GetS2SplitFdStagingLayout` | 保持调用 common layout 的字段顺序 | `stagingM`、slot count 按 SMLA host workspace 公式 |
-| Vec1 LSE staging | `SCFABlockVec::ProcessVec1` 中 `isS2Split && final loop` 分支 | 在原 Vec1 final-update 后插入，调用 `StageVec1Lse` 的参数顺序保持一致 | tmp UB、event id 使用 SMLA Vec1 已有资源 |
-| Vec2 partial O staging | `SCFABlockVec::ProcessVec2` 中 `if (runInfo.isS2Split)` 分支 | 保持 final division 之后 split 写 staging、非 split copy out 的结构 | SMLA copy-out helper 和 `dSizeV/dAlign` 来源 |
+| FA staging slot | `CSABlockVec::GetFaStagingWorkspaceIdx` | 函数放在 SMLA Vec block 内，公式保持 `firstFdDataWorkspaceIdx + s2SplitIdx` | 函数名可加 SMLA 前缀但不要改公式 |
+| FA staging M offset | `CSABlockVec::GetFaStagingMOffset` | 优先搬运 QSMLA subBlock/split-G offset 结构 | 若 SMLA head 分配不同，只替换 offset 计算项 |
+| staging layout | `CSABlockVec::GetS2SplitFdStagingLayout` | 保持调用 common layout 的字段顺序 | `stagingM`、slot count 按 SMLA host workspace 公式 |
+| Vec1 LSE staging | `CSABlockVec::ProcessVec1` 中 `isS2Split && final loop` 分支 | 在原 Vec1 final-update 后插入，调用 `StageVec1Lse` 的参数顺序保持一致 | tmp UB、event id 使用 SMLA Vec1 已有资源 |
+| Vec2 partial O staging | `CSABlockVec::ProcessVec2` 中 `if (runInfo.isS2Split)` 分支 | 保持 final division 之后 split 写 staging、非 split copy out 的结构 | SMLA copy-out helper 和 `dSizeV/dAlign` 来源 |
 | FD UB 初始化 | `AttentionCommon::InitFDBuffers` | 保持 `tPipe->Reset()` 和按 `workspaceNum/mNum/chunkRows` 申请的结构 | 各算子持有 `AttentionCommon::FdBuffers<TBuf<>>` 实例 |
-| FD reduce | `SCFABlockVec::ProcessFlashDecode` | 保留输出 offset 前置计算、LocalTensor 获取、`AttentionCommon::Reduce`、最终 copy out 的结构 | 输出 offset 必须按 SMLA layout 重推，不能复制 QSMLA 公式 |
+| FD reduce | `CSABlockVec::ProcessFlashDecode` | 保留输出 offset 前置计算、LocalTensor 获取、`AttentionCommon::Reduce`、最终 copy out 的结构 | 输出 offset 必须按 SMLA layout 重推，不能复制 QSMLA 公式 |
 | no-work core barrier | `ProcessMainLoop` 的 `hasLoad == 0` 分支 | 保持 no-FA core 也 `SyncAll()` 后按 `fdRunInfo.coreEnable` 做 FD | SMLA 当前 Phase 2 尚未接 FD 时可暂不启用，Phase 5 必须补齐 |
 
 实现完成后，`SMLA_FD_WORK_PROGRESS.md` 必须记录每个映射项的状态：`copied as-is`、`copied with SMLA field rename`、`SMLA-specific replacement` 或 `not implemented yet`。

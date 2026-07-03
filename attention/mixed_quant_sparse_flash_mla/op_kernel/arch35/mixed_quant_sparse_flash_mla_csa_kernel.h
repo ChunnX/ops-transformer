@@ -566,23 +566,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
-    const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
-{
-    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-    int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
-    int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-    int64_t oriBlockNum = (oriLen + s2BaseSize - 1) / s2BaseSize;
-    int64_t blockIdx = static_cast<int64_t>(s2BlockIdx);
-    if (blockIdx <= oriBlockNum) {
-        int64_t oriToken = blockIdx * s2BaseSize;
-        return oriToken < oriLen ? oriToken : oriLen;
-    }
-    int64_t cmpToken = (blockIdx - oriBlockNum) * s2BaseSize;
-    return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
-}
-
-template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
     const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
 {

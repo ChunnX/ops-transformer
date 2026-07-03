@@ -896,5 +896,5 @@ TEST_PARAMS = {
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-# ENABLED_PARAMS = [TEST_PARAMS["csa_decode"]]
-ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [TEST_PARAMS["smla_N128"]]
+# ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]

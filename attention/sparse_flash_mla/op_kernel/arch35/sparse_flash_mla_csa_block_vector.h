@@ -630,7 +630,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
         uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
-        printf("SCFABlockVec::ProcessVec1: workspaceIdx=%u, stagingMOffset=%u, halfMRealSize=%u\n",
+        printf("CSABlockVec::ProcessVec1: workspaceIdx=%u, stagingMOffset=%u, halfMRealSize=%u\n",
             workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.halfMRealSize));
         DumpTensor(sumUb, 100, 8*32);
         AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
@@ -704,7 +704,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
             uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            printf("SCFABlockVec::ProcessVec2: workspaceIdx=%u, stagingMOffset=%u, RealSize=%u\n",
+            printf("CSABlockVec::ProcessVec2: workspaceIdx=%u, stagingMOffset=%u, RealSize=%u\n",
             workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize));
             AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,
                 workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
@@ -718,13 +718,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
     AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdRunInfo, this->tPipe, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     InitFDBuffers(fdRunInfo);
@@ -750,7 +750,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         static_cast<uint32_t>(constInfo.dSizeV),
         accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
         vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
-    printf("SCFABlockVec::ProcessFlashDecode: workspaceIdx=%u, workspaceNum=%u, mStartIdx=%u, mNum=%u, dSizeV=%u\n",
+    printf("CSABlockVec::ProcessFlashDecode: workspaceIdx=%u, workspaceNum=%u, mStartIdx=%u, mNum=%u, dSizeV=%u\n",
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
         static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
         static_cast<uint32_t>(constInfo.dSizeV));
