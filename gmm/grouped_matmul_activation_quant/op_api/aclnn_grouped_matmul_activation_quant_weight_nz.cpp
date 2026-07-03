@@ -255,6 +255,17 @@ bool IsTransposeForMxShape(const aclTensor *tensor)
            strides[secondLastDim] == expectedSecondLastStride;
 }
 
+bool IsSpecialMxXTransposeCase(const aclTensor *x, const aclTensor *xScaleOptional)
+{
+    auto xShape = x->GetViewShape();
+    auto xScaleShape = xScaleOptional->GetViewShape();
+    bool specialX = xShape.GetDimNum() >= gmaq::X_DIM_NUM &&
+                    xShape.GetDim(gmaq::DIM_0) == 1 && xShape.GetDim(gmaq::DIM_1) == 1;
+    bool specialXScale = xScaleShape.GetDimNum() >= gmaq::SCALE_DIM_NUM &&
+                         xScaleShape.GetDim(gmaq::DIM_0) == 1 && xScaleShape.GetDim(gmaq::DIM_1) == 1;
+    return specialX || specialXScale;
+}
+
 aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
                                                       const aclTensorList *&newTensorList,
                                                       aclOpExecutor *executor)
@@ -327,19 +338,20 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional
     GMMAQ_CHECK_WITH_LOG(transposeWeightScale == transposeWeightByStride, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightScale", transposeWeightScale ? "transposed" :
             "non-transposed", "the transposition of weightScale must be equal to the transposition of weight"));
-    GMMAQ_CHECK_WITH_LOG(!transposeX && !transposeXScale, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(OP_NAME, "x, xScaleOptional",
-            FormatString("{%s, %s}", transposeX ? "transposed" : "non-transposed",
-                         transposeXScale ? "transposed" : "non-transposed").c_str(),
-            "x and xScaleOptional only support non-transposed input"));
-
     if (transposeWeightScale && transposeWeightByStride) {
         transposeWeight = true;
         CHECK_RET(CreateContiguousTensorListForMXTypeMScale(weightScale, weightScale, executor) == ACLNN_SUCCESS,
                   ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (IsSpecialMxXTransposeCase(x, xScaleOptional)) {
         return ACLNN_SUCCESS;
     }
+    GMMAQ_CHECK_WITH_LOG(!transposeX && !transposeXScale, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(OP_NAME, "x, xScaleOptional",
+            FormatString("{%s, %s}", transposeX ? "transposed" : "non-transposed",
+                         transposeXScale ? "transposed" : "non-transposed").c_str(),
+            "x and xScaleOptional only support non-transposed input"));
     return ACLNN_SUCCESS;
 }
 
