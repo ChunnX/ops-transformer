@@ -112,7 +112,6 @@ public:
 
     __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &outLocal, LocalTensor<ExpandXType> &inLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = outLocal.template ReinterpretCast<int8_t>(); // 长度为int8H_Align + scaleNum
         scaleDivTensor_ = castLocalTensor_[hAlign32Size_].template ReinterpretCast<ExpandXType>(); // 偏移前面的int8
 
@@ -138,7 +137,6 @@ public:
 
     __aicore__ inline void Int8DequantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType>& outLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = inLocal.template ReinterpretCast<int8_t>();
         scaleDivTensor_ = inLocal[hAlign32Size_ / INT8_DIVIVE];
         SyncFunc<AscendC::HardEvent::S_V>();
@@ -158,7 +156,6 @@ public:
     __aicore__ inline void Int8DequantProcessA5(LocalTensor<XType>& inLocal,
         LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         LocalTensor<int8_t> tokenInt8Tensor = inLocal.template ReinterpretCast<int8_t>();
         scaleDivTensor_ = inLocal[hAlign32Size_ / INT8_DIVIVE];
         SyncFunc<AscendC::HardEvent::S_V>();
@@ -262,7 +259,6 @@ public:
     }
     __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTensor<ExpandXType>& inLocal)
     {
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
         uint32_t mxScaleNum = Align2(Ceil32(axisH_));
         __ubuf__ ExpandXType* srcAddr = (__ubuf__ ExpandXType*)inLocal.GetPhyAddr();
         __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)floatLocalTemp_.GetPhyAddr();
