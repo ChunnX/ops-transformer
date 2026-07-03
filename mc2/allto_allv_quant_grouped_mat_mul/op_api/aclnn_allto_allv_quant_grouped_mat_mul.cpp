@@ -437,13 +437,35 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
 
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
+    const aclTensor *gmmXOffsetOptional, const aclTensor *gmmWeightOffsetOptional,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
-    aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *mmXOffsetOptional, const aclTensor *mmWeightOffsetOptional, int64_t gmmXQuantMode,
+    int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+    const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight,
+    int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (gmmXOffsetOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "gmmXOffsetOptional", "non-null", "gmmXOffsetOptional is not supported and must be nullptr.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (gmmWeightOffsetOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "gmmWeightOffsetOptional", "non-null", "gmmWeightOffsetOptional is not supported and must be nullptr.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (mmXOffsetOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "mmXOffsetOptional", "non-null", "mmXOffsetOptional is not supported and must be nullptr.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (mmWeightOffsetOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "mmWeightOffsetOptional", "non-null", "mmWeightOffsetOptional is not supported and must be nullptr.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 处理非连续Tensor，目前支持转置的gmmWeight涉及该处理
     CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);	// 先检查gmmWeight是否合法，避免非法操作
     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
