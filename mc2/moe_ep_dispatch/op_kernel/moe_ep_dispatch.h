@@ -647,7 +647,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteSlotTo
 {
     GlobalTensor<XType> slotGMTensor;
     GM_ADDR rankGM = (dstRankId == epRankId_) ? localWinAddr_ : slotWorkspaceAddr_;
-    GM_ADDR slotAddr = rankGM + (static_cast<uint64_t>(dstRankId) * axisMaxBS_ + slot) * perSlotBytes_;
+    GM_ADDR slotAddr = rankGM + static_cast<uint64_t>(perSlotBytes_) * (dstRankId * axisMaxBS_ + slot);
     slotGMTensor.SetGlobalBuffer((__gm__ XType*)slotAddr);
     DataCopyParams slotCopyParams = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
     DataCopyPad(slotGMTensor, tokenSlotTensor_, slotCopyParams);
@@ -688,9 +688,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         }
 
         if (sendTokenNum > 0) {
-            uint64_t sendDataSize = perSlotBytes_ * sendTokenNum;
-            uint64_t srcWorkspaceOffset = dstRankId * axisMaxBS_ * perSlotBytes_;
-            uint64_t dstRankWinOffset = epRankId_ * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
+            uint64_t sendDataSize = static_cast<uint64_t>(perSlotBytes_) * sendTokenNum;
+            uint64_t srcWorkspaceOffset = static_cast<uint64_t>(dstRankId) * axisMaxBS_ * perSlotBytes_;
+            uint64_t dstRankWinOffset = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
             GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
             hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
                                   slotWorkspaceAddr_ + srcWorkspaceOffset, sendDataSize);
