@@ -1666,29 +1666,29 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     ResetFlagList();             // 清理workSpace空间上的flag位
     ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
 
-    if constexpr(g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<false>();            // aic需要等待flag位reset清理完成
-    CrossRankSyncInWorldSize();  // 全卡同步
+    // if constexpr(g_coreType == AIV) {
+    //     PipeBarrier<PIPE_ALL>();
+    // }
+    // SyncAll<false>();            // aic需要等待flag位reset清理完成
+    // CrossRankSyncInWorldSize();  // 全卡同步
 
-    // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    DispatchBuffInit();
-    GMMAddrInfo dispatchAddrInfo;
-    GMMAddrInfo gmm1AddrInfo;
-    TupleShape initShape;
-    Get<N_VALUE>(initShape) = hiddenDim_;
-    Get<K_VALUE>(initShape) = k_;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState dispatchState{initShape, initOffset, 0};
-    ExpertLoopState gmm1State{initShape, initOffset, 0};
+    // // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    // DispatchBuffInit();
+    // GMMAddrInfo dispatchAddrInfo;
+    // GMMAddrInfo gmm1AddrInfo;
+    // TupleShape initShape;
+    // Get<N_VALUE>(initShape) = hiddenDim_;
+    // Get<K_VALUE>(initShape) = k_;
+    // BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // ExpertLoopState dispatchState{initShape, initOffset, 0};
+    // ExpertLoopState gmm1State{initShape, initOffset, 0};
 
-    // Dispatch-prefetch count forwarding（无成员变量耦合）：
-    //   SendCntCal 将 expert token 数写入 nextSendCnt；
-    //   循环顶部 nextSendCnt → curSendCnt 显式转发；
-    //   GMM1 consumer 始终读 curSendCnt。
-    uint64_t curSendCnt = 0;    // 当前 expert 的 sendCnt（GMM1 consumer 使用）
-    uint64_t nextSendCnt = 0;   // 下一 expert 的 sendCnt（dispatch prefetch 算出）
+    // // Dispatch-prefetch count forwarding（无成员变量耦合）：
+    // //   SendCntCal 将 expert token 数写入 nextSendCnt；
+    // //   循环顶部 nextSendCnt → curSendCnt 显式转发；
+    // //   GMM1 consumer 始终读 curSendCnt。
+    // uint64_t curSendCnt = 0;    // 当前 expert 的 sendCnt（GMM1 consumer 使用）
+    // uint64_t nextSendCnt = 0;   // 下一 expert 的 sendCnt（dispatch prefetch 算出）
 
     // // 预调度 expert 0。
     // if constexpr(g_coreType == AIV) {
