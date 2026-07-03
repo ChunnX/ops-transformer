@@ -1441,6 +1441,7 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::Process()
 {
     CopyInBias();
+
     if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
         CopyInX(0);
         for (int64_t row = 1; row < curCoreRowCount_; row++) {
