@@ -58,6 +58,14 @@ __global__ __aicore__ void compressor(
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
     }
+    if (GetBlockIdx() == 0) {
+        AscendC::PRINTF("[CompressorXCacheDebug] kernel enter layout=%d dtype=%d coff=%d rotary=%d cacheMode=%d "
+                        "template=%d xCache=%d xCacheSlotMapping=%d\n",
+                        static_cast<int32_t>(XLayout), static_cast<int32_t>(XDType), static_cast<int32_t>(Coff),
+                        static_cast<int32_t>(RotaryMode), static_cast<int32_t>(CacheMode),
+                        static_cast<int32_t>(TemplateId), static_cast<int32_t>(xCache != nullptr),
+                        static_cast<int32_t>(xCacheSlotMapping != nullptr));
+    }
     const optiling::CompressorTilingData *__restrict tilingData = &tilingDataIn;
     TPipe pipe;
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
