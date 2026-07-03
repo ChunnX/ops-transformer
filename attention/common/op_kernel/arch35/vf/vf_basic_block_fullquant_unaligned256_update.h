@@ -98,8 +98,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(
         for (uint16_t j = 1; j < n / 16; ++j) {
             LoadAlign(vreg_input_x_0, srcUb + i * 16 * 16 + j * 64 * 16);  // 第一个256，搬入第j个[64, 16]的两个8行
             LoadAlign(vreg_input_x_unroll_0, srcUb + i * 16 * 16 + j * 64 * 16 + 8 * 16);
-
-            Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_0, preg_all_half);  // 读入第j个[64, 16]，和已经读入的前j-1个[64, 16]的max再取max
+            // 读入第j个[64, 16]，和已经读入的前j-1个[64, 16]的max再取max
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_0, preg_all_half);
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_0, preg_all_half);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all_half);
