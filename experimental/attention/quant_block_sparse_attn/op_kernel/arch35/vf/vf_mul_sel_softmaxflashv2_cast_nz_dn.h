@@ -31,9 +31,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
-    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -141,6 +140,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
+    Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
@@ -214,7 +214,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
-    Muls(max0, max0, dScale, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
@@ -245,11 +244,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
-
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
@@ -258,11 +252,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
         Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
         Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -343,8 +332,8 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-    float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+    bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -358,7 +347,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
-    dScale = scale * deScaleQK;
+    dScale = scale;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
@@ -367,27 +356,19 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten) {
-        ProcessVec1DnNoUpdateVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else {
-        ProcessVec1DnNoUpdateVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    }
+    ProcessVec1DnNoUpdateVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
 }
 
-template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void ProcessVec1DnUpdateVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
-    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
+__simd_vf__ inline void
+ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+                      __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
+                      __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, __ubuf__ uint8_t *indexesUb, const uint32_t m,
+                      const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+                      bool needAtten, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+                      const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -497,6 +478,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
+    Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
@@ -571,7 +553,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
-    Muls(max0, max0, dScale, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
@@ -605,11 +586,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
-
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
@@ -618,11 +594,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
         Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
         Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
         Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -705,8 +676,8 @@ __aicore__ inline void ProcessVec1DnUpdate(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-    float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+    bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -720,7 +691,7 @@ __aicore__ inline void ProcessVec1DnUpdate(
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
-    dScale = scale * deScaleQK;
+    dScale = scale;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
@@ -729,17 +700,9 @@ __aicore__ inline void ProcessVec1DnUpdate(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten) {
-        ProcessVec1DnUpdateVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else {
-        ProcessVec1DnUpdateVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    }
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
 }
 
 /*
@@ -761,13 +724,12 @@ __aicore__ inline void ProcessVec1DnUpdate(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                       const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                       const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                       const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
-                                       const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n,
-                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-                                       float keepProb, bool needAtten, const float pScale = 1.0f)
+__aicore__ inline void
+ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+                const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
+                const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n, const uint32_t originN,
+                const T scale, const T minValue, float keepProb, bool needAtten, const float pScale = 1.0f)
 {
     __ubuf__ uint32_t *qGatherIdxUb =
         (__ubuf__ uint32_t *)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
@@ -778,13 +740,13 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdate<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
-            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
+            kScaleTensor, m, n, originN, scale, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
-        ProcessVec1DnUpdate<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
-            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
+                                                  indexesTensor, maskTensor, qScaleTensor, kScaleTensor, m, n, originN,
+                                                  scale, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     }
 }
 
@@ -793,9 +755,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
-    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4)
+    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -892,6 +853,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
+    Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
@@ -965,7 +927,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
-    Muls(max0, max0, dScale, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
@@ -996,11 +957,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
-
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
@@ -1009,11 +965,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
         Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
         Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -1093,8 +1044,8 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-    float keepProb, bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+    bool needAtten, const float pScale = 1.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1108,7 +1059,7 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
-    dScale = scale * deScaleQK;
+    dScale = scale;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
@@ -1117,17 +1068,9 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten) {
-        ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else {
-        ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    }
+    ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
@@ -1135,9 +1078,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale, const uint32_t ubN_div_8, const uint32_t ubN_m_m_div_4,
-    const uint32_t ubN_m_m_div_2, const uint32_t ubN_m_m_mul3_div_4)
+    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1236,6 +1178,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
+    Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
@@ -1310,7 +1253,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
-    Muls(max0, max0, dScale, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
@@ -1344,11 +1286,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
 
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
-
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
@@ -1357,11 +1294,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
         Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
         Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -1443,8 +1375,8 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-    float keepProb, bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+    bool needAtten, const float pScale = 1.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1458,7 +1390,7 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
-    dScale = scale * deScaleQK;
+    dScale = scale;
     blockStride = ubN >> 2 | 0x1;
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
@@ -1467,17 +1399,9 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten) {
-        ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else {
-        ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, deScaleQK, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
-            ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    }
+    ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m,
+        n, originN, scale, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
@@ -1485,21 +1409,21 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-    float keepProb, bool needAtten, const float pScale = 1.0f)
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
+    bool needAtten, const float pScale = 1.0f)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdatePerTokenHead<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
-            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            kScaleTensor, m, n, originN, scale, minValue, keepProb, needAtten, pScale);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnUpdatePerTokenHead<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor,
-            kScaleTensor, m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            kScaleTensor, m, n, originN, scale, minValue, keepProb, needAtten, pScale);
     }
 }
 
