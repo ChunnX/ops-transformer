@@ -302,7 +302,7 @@ void SFAMlaTiling::InitParams()
     } else {
         perfMode_ = SFAPerfMode::C_TEMPLATE_MODE;
     }
-   
+
     coreNum_ = aicNum_;
 
     headDimAlign_ = Align(sfaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
@@ -798,7 +798,7 @@ ge::graphStatus SFATilingCheck::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() || 
+        ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
@@ -985,7 +985,7 @@ ge::graphStatus SFATilingCheck::CheckBlockTable() const
             std::to_string(blockTableBatch).c_str(),
             "The first dim of " + BLOCK_TABLE_NAME + " should be equal to batch size " + std::to_string(bSize_)),
         return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1343,7 +1343,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(bSize_).c_str(),
             "batch_size should be greater than 0"),
         return ge::GRAPH_FAILED);
-        
+
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == SFALayout::TND),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query", std::to_string(qTSize_).c_str(),
             "T_size of query should be greater than 0"),
@@ -1393,6 +1393,23 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ropeHeadDim_",
             std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
+
+    if (isA5_) {
+        OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == SFALayout::BSND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "query", std::to_string(s1Size_).c_str(),
+                                                          "BSND case input query dim 1 should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(s2Size_ <= 0 && (kvLayout_ == SFALayout::BSND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key", std::to_string(s2Size_).c_str(),
+                                                          "BSND case input key dim 1 should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(kvTSize_ <= 0 && (kvLayout_ == SFALayout::TND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of key", std::to_string(kvTSize_).c_str(),
+                                                          "T_size of key should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1432,12 +1449,12 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
             "when page attention is enabled, block_size should be in range (0, " +
             std::to_string(MAX_BLOCK_SIZE) + "]"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % 16 > 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
             "when page attention is enabled, block_size should be 16-aligned"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
             "when page attention is enabled, "
@@ -2081,7 +2098,7 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
         OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "tiling context");
         return ge::GRAPH_FAILED;
     }
-    
+
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
         ge::GRAPH_SUCCESS != GetOpParaInfo() || ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;
