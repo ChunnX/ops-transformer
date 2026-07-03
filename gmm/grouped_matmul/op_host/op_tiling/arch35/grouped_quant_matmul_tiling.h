@@ -248,7 +248,9 @@ protected:
     bool SetGroupNum(uint32_t groupListIndex);
     bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     bool IsMxfp4() const;
-    bool IsWeightNzSingleMultiSingle() const;
+    bool IsMultiTensorWeight() const;
+    bool IsWeightNzMultiTensorLayout() const;
+    bool IsWeightNzMultiTensorCase() const;
     uint16_t GetTensorListSize(uint32_t index) const;
     bool CheckWeightTensorListForWeightNz() const;
     uint64_t GetWeightLogicalNSize(const gert::Shape &wShape) const;
