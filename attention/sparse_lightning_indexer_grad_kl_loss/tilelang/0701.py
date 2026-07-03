@@ -401,14 +401,12 @@ def tilelang_grad_kl_loss_single_kernel(
                     weight_ub2 = T.alloc_ub(vector_baseg, calc_dtype)
                     weight_half_ub2 = T.alloc_ub(vector_baseg, input_dtype)
                     mask_ub = T.alloc_ub(n_block, calc_dtype)
-                    ones_ub = T.alloc_ub(n_block, calc_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_val_ub = T.alloc_ub(n_block, calc_dtype)
 
-                    T.tile.fill(ones_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
                     # dWeight, reluGrad for MY K block - TRUE PARALLEL
@@ -423,15 +421,13 @@ def tilelang_grad_kl_loss_single_kernel(
                         # barrier removed: cast→fill, VEC→VEC (different buffers)
                         T.tile.fill(weight_ub, 0)
 
-                        for i in range(vector_baseg):
+                        for i in T.Parallel(vector_baseg):
                             g_row = g_id * vector_baseg + i
                             T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
                             T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_ub2[i])
-                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], 50.0)
-                            T.tile.mul(mask_ub, mask_ub, -1.0)
-                            T.tile.exp(mask_ub, mask_ub)
-                            T.tile.sub(mask_ub, ones_ub, mask_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
+                            T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], bmm2_ub[g_row, :])
+                            T.tile.compare(mask_ub, bmm2_ub[g_row, :], 0.0, "GT")
+                            T.tile.select(rsy_tmp_ub[i, :], mask_ub, rsy_tmp_ub[i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
                         # barrier removed: inner VEC loop→reduce_sum, VEC→VEC sequential
 
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
