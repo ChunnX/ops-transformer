@@ -418,8 +418,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             g_row = g_id * vector_baseg + i
                             T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
                             T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_ub2[i])
-                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
-                            T.tile.mul(mask_ub, mask_ub, -1.0)
+                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], -10000.0)
                             T.tile.exp(mask_ub, mask_ub)
                             T.tile.sub(mask_ub, ones_ub, mask_ub)
                             T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
