@@ -50,7 +50,7 @@ struct PreloadArgs<true> {
  
 /* ============确定Query的L1类型============= */
 template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
-          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
+          SyncType syncType = SyncType::INNER_CORE_SYNC>
 struct QL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
@@ -61,7 +61,7 @@ struct QL1BuffSelector {
  
 /* ============确定Key的L1类型============= */
 template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
-          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
+          SyncType syncType = SyncType::INNER_CORE_SYNC>
 struct KL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
@@ -72,7 +72,7 @@ struct KL1BuffSelector {
  
 /* ============确定Dy的L1类型============= */
 template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD,
-          SyncType syncType = (IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC)>
+          SyncType syncType = SyncType::INNER_CORE_SYNC>
 struct DyL1BuffSelector {
     using TYPE = std::conditional_t<
         IS_L1_REUSE,
@@ -156,7 +156,7 @@ public:
         V_L1_MUTEX_BUF_NUM + COMMON_L1_MUTEX_BUF_NUM + FP32_L1_MUTEX_BUF_NUM;
     constexpr static uint32_t ASCENDC_MUTEX_ID_LIMIT = 28;
     static_assert(L1_MUTEX_ID_NUM <= ASCENDC_MUTEX_ID_LIMIT, "FAGBlockCube uses too many MutexIDs.");
-    constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
+    constexpr static SyncType SYNC_TYPE = SyncType::INNER_CORE_SYNC;
     using L1MutexBufT = MutexBuffer<BufferType::L1, SYNC_TYPE>;
     constexpr static bool IS_DKV_RESIDENT_L0C =
         IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) && !IS_FP32_INPUT;
