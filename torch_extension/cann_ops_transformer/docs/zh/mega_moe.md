@@ -483,7 +483,11 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>必选</td>
    <td>MoE 模型的总专家数量。</td>
    <td>int</td>
-   <td>[world_size, 1024]，且 num_experts % world_size == 0</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：[world_size, 1024]，且 num_experts % world_size == 0<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：[world_size, 1024]，且 num_experts % world_size == 0<br>
+        Ascend 950PR/Ascend 950DT：[world_size, 2048]，且 num_experts % world_size == 0</td>
+   </td>
   </tr>
   <tr>
    <td>num_max_tokens_per_rank</td>
@@ -493,7 +497,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
-        Ascend 950PR/Ascend 950DT：1 ≤ num_max_tokens_per_rank ≤ 512</td>
+        Ascend 950PR/Ascend 950DT：1 ≤ num_max_tokens_per_rank ≤ (8 * (256 * 1024 - 48 * 1024)) / (num_topk * (64 + world_size))</td>
    </td>
   </tr>
   <tr>
@@ -501,11 +505,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>必选</td>
    <td>表示每个token选择的专家数。</td>
    <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Ascend 950PR/Ascend 950DT：num_topk 取值为 6 或 8
-    </td>
+   <td>1 ≤ num_topk ≤ 16</td>
   </tr>
   <tr>
    <td>hidden</td>
@@ -515,7 +515,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
-        Ascend 950PR/Ascend 950DT：hidden 取值为 4096、5120 或 7168
+        Ascend 950PR/Ascend 950DT：1024 ≤ hidden ≤ 8192 且 hidden % 1024 = 0
    </td>
   </tr>
   <tr>
@@ -548,14 +548,14 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>可选</td>
    <td>dispatch通信前的token隐藏状态量化后的数据类型，默认值None表示非量化。</td>
    <td>torch.dtype</td>
-   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn</td>
+   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn，torch.float4_e2m1</td>
   </tr>
   <tr>
    <td>combine_quant_mode</td>
    <td>可选</td>
-   <td>预留参数，使用默认值即可。</td>
-   <td>-</td>
-   <td>-</td>
+   <td>combine通信前的token隐藏状态的量化模式。</td>
+   <td>int</td>
+   <td>0（非量化），3（MX模式float8_e5m2类型），4（MX模式float8_e4m3类型）</td>
   </tr>
   <tr>
    <td>comm_alg</td>
@@ -614,7 +614,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：world_size取值为2、4、8、16、32<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：world_size取值为2、4、8、16、32<br>
-        Ascend 950PR/Ascend 950DT：2 ≤ world_size ≤ 768
+        Ascend 950PR/Ascend 950DT：2 ≤ world_size ≤ 1024
    </td>
   </tr>
   <tr>
@@ -623,7 +623,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
-        Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 16
+        Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 1024
    </td>
   </tr>
  </tbody>
@@ -961,7 +961,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - **参数一致性约束**：
   - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 num_experts、hidden、intermediate_hidden 等）保持一致。
   - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`参数取值和通信域缓存区大小需保持一致
-  - mega_moe 支持四种计算场景（A16W16、A8W8-INT、A8W4-INT、A8W8-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
+  - mega_moe 支持四种计算场景（A16W16、A8W8-INT、A8W4-INT、A8W8-FP（ND/NZ）、A8W4-FP（NZ）、A4W4-FP（NZ）），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
 
     <table>
       <thead>
@@ -1037,6 +1037,32 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
           <td>BFLOAT16</td>
           <td>FLOAT8_E4M3FN</td>
           <td>FLOAT8_E4M3FN</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E8M0</td>
+          <td>–</td>
+          <td>–</td>
+          <td>BFLOAT16</td>
+          <td>4</td>
+          <td>torch.float8_e4m3fn</td>
+        </tr>
+        <tr>
+          <td><strong>A8W4-FP</strong></td>
+          <td>BFLOAT16</td>
+          <td>FLOAT8_E2M1</td>
+          <td>FLOAT8_E2M1</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E8M0</td>
+          <td>–</td>
+          <td>–</td>
+          <td>BFLOAT16</td>
+          <td>4</td>
+          <td>torch.float8_e4m3fn</td>
+        </tr>
+        <tr>
+          <td><strong>A4W4-FP</strong></td>
+          <td>BFLOAT16</td>
+          <td>FLOAT8_E2M1</td>
+          <td>FLOAT8_E2M1</td>
           <td>FLOAT8_E8M0</td>
           <td>FLOAT8_E8M0</td>
           <td>–</td>
