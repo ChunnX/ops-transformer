@@ -216,7 +216,7 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
     }
   }
   if (IsAscend910A5()) {
-    const char *commMode = "ccu";
+    const char *commMode = "ai_cpu";
     return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
                                                       commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
                                                       nullptr, workspaceSize, executor);

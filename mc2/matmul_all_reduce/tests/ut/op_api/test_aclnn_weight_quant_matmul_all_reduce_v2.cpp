@@ -127,7 +127,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, NzFormatWeightX2)
     TensorDesc antiquantOffset = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunWeightQuantMatmulAllReduceV2Ut(
-        op::SocVersion::ASCEND910B, x1, x2, &bias, antiquantScale, &antiquantOffset, nullptr, output, "", 0,
+        op::SocVersion::ASCEND910B, x1, x2, &bias, antiquantScale, &antiquantOffset, nullptr, output, "ai_cpu", 0,
         ACLNN_SUCCESS);
 }
 
@@ -138,7 +138,7 @@ TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Ascend310PPreTransposedWeight
     TensorDesc antiquantScale = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunWeightQuantMatmulAllReduceV2Ut(
-        op::SocVersion::ASCEND310P, x1, x2, nullptr, antiquantScale, nullptr, nullptr, output, "", 0, ACLNN_SUCCESS);
+        op::SocVersion::ASCEND310P, x1, x2, nullptr, antiquantScale, nullptr, nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnWeightQuantMatmulAllReduceV2ExtraTest, Ascend310PInvalidBf16)

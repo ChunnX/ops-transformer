@@ -43,8 +43,6 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 
-constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
-
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
     return std::count(list.begin(), list.end(), value) > 0;
@@ -907,28 +905,16 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommM
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(GetCommModeIndex());
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        }
-        OP_LOGI(context->GetNodeName(),
-            "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'', 'aicpu', 'ccu'");
+        OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -968,7 +954,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
