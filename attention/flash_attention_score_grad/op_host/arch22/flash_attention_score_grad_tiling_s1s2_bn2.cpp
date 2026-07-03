@@ -1804,6 +1804,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
             td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
             td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
         } else {
+            tmpData_.sumS1S2Product = 1;
             td_->opInfo.set_B(1);
             td_->opInfo.set_S1(queryShape.GetDim(DIM_0));
             td_->opInfo.set_S2(keyShape.GetDim(DIM_0));

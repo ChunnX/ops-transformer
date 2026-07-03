@@ -836,6 +836,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         } else {
             fBaseParams.b = 1;
+            fBaseParams.sumS1S2Product = 1;
             fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
             fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
         }
@@ -1683,7 +1684,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
         fBaseParams.s2Token = fBaseParams.s2Token - fBaseParams.s1 + fBaseParams.s2;
     }
 
-    if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.attenMaskOptional == EMPTY_TENSOR) {
+    if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.attenMaskOptional == EMPTY_TENSOR || isMaxWorkspace_) {
         fBaseParams.s1Token = INT32_MAX;
         fBaseParams.s2Token = INT32_MAX;
     }
@@ -1693,7 +1694,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
     // 1  2  3  5  6  不校验
     if (fBaseParams.sparseMode == ALL_MASK || fBaseParams.sparseMode == LEFT_UP_CAUSAL ||
         fBaseParams.sparseMode == RIGHT_DOWN_CAUSAL || fBaseParams.sparseMode == PREFIX ||
-        fBaseParams.sparseMode == PREFIX_COMPRESS) {
+        fBaseParams.sparseMode == PREFIX_COMPRESS || isMaxWorkspace_) {
         return ge::GRAPH_SUCCESS;
     }
 
