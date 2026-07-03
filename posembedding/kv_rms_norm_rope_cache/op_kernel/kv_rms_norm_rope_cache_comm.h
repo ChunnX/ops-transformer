@@ -19,6 +19,7 @@
 namespace KvRmsNormRopeCache {
 using namespace AscendC;
 
+constexpr int64_t NUM_ONE = 1;
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t NUM_FOUR = 4;
 constexpr int64_t NUM_EIGHT = 8;
@@ -66,16 +67,29 @@ public:
     {
     }
 
-    __aicore__ inline int32_t InitSharedData(int32_t methodMode)
+    __aicore__ inline int32_t InitSharedData(uint32_t methodMode)
     {
         if (methodMode >= METHOD_TYPES) {
             // Throw exception state for INVALID method modes
             return -1;
         }
 
+        this->sKv = this->tilingData_->seqLength;
+        this->numHead = (methodMode == METHOD_V2) ? this->tilingData_->numHead : NUM_ONE;
+
         this->RMS_NORM_LENGTH = KERNEL_RMS_NORM_LENGTH[methodMode];
         this->ROPE_LENGTH = KERNEL_ROPE_LENGTH[methodMode];
         this->V_LENGTH = V_CACHE_SIZES[methodMode];
+
+        if (methodMode == METHOD_V1) {
+            // KV Concat in hDimV=512, hDimK=64(Rope).
+            this->hDimK = this->ROPE_LENGTH;
+            this->hDimV = this->RMS_NORM_LENGTH;
+        } else if (methodMode == METHOD_V2) {
+            // KV Split in hDimK=192([:64] for Rope), hDimV=128.
+            this->hDimK = this->RMS_NORM_LENGTH;
+            this->hDimV = this->V_LENGTH;
+        }
         return 0;
     }
 
@@ -89,6 +103,12 @@ protected:
     int64_t batchIdx{0};
     int64_t seqIdx{0};
     int64_t numHeadIdx{0};
+
+    uint32_t sKv{0};    // Sequence length of KV
+    uint32_t numHead{0};    // Sequence length of KV
+    // Runtime hidden dim sizes marked by tensor component type
+    uint32_t hDimK{0};
+    uint32_t hDimV{0};
 
     // Sahred members
     TPipe *pipe_ = nullptr;
@@ -118,6 +138,35 @@ public:
 protected:
     TQue<QuePosition::VECOUT, 1> outQueueK, outQueueV;
     TBuf<TPosition::VECCALC> bufferXFp32, bufferXSquare, bufferSum;
+
+    constexpr static int64_t NUM_SIX = 6;
+    constexpr static int64_t NUM_TWELVE = 12;
+    constexpr static int64_t NUM_FORTY_EIGHT = 48;
+    int64_t ROPE_LENGTH_HALF{32};
+
+    uint32_t methodMode = 0;
+    uint32_t rowsPerBlock{0};
+    uint32_t rmsNormElemPerSlice{0};    // rmsNorm elements operated in a single process flow
+    uint32_t halfRopeElemPerSlice{0};
+    uint32_t ropeElemPerSlice{0};       // rope elements operated in a single process flow
+    uint32_t kElemPerSlice{0};          // k cache elements written out per MTE call
+    uint32_t vElemPerSlice{0};          // v cache elements written out per MTE call
+
+    __aicore__ inline void InitMTPBaseData(const GM_ADDR v)
+    {
+        this->methodMode = (v == nullptr ? METHOD_V1 : METHOD_V2);
+        this->InitSharedData(this->methodMode);
+
+        // Init runtime decution consts
+        const auto& tiling = *this->tilingData_;
+        this->rowsPerBlock = tiling.rowsPerBlock;
+
+        this->rmsNormElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->RMS_NORM_LENGTH);
+        this->halfRopeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->ROPE_LENGTH_HALF);
+        this->ropeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->ROPE_LENGTH);
+        this->kElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimK);
+        this->vElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimV);
+    }
 };
 
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
@@ -168,7 +217,7 @@ protected:
 };
 
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
-class KernelKvRmsNormRopeCacheCutBSQuant
+class KernelKvRmsNormRopeCacheCutBSQugit lant
     : public KernelKvRmsNormRopeCacheCutBSScatter<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE> {
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheCutBSQuant(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)

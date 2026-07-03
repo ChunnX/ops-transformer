@@ -30,9 +30,8 @@ public:
     __aicore__ inline void Init(GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache,
                                 GM_ADDR v_cache, GM_ADDR v)
     {
-        methodMode = v == nullptr ? 0 : 1;
-        this->InitSharedData(methodMode);
-        if (methodMode == 0) {
+        this->InitMTPBaseData(v);
+        if (this->methodMode == 0) {
             // init global memory
             this->kvGm.SetGlobalBuffer((__gm__ KV_DTYPE *)kv + GetBlockIdx() * this->tilingData_->rowsPerBlock *
                                                                    this->tilingData_->seqLength *
@@ -72,7 +71,7 @@ public:
                                     this->tilingData_->rowsPerBlock * this->RMS_NORM_LENGTH * sizeof(KV_DTYPE));
             this->pipe_->InitBuffer(this->outQueueK, 1,
                                     this->tilingData_->rowsPerBlock * this->ROPE_LENGTH * sizeof(KV_DTYPE));
-        } else if (methodMode == 1) {
+        } else if (this->methodMode == 1) {
             // init global memory
             this->kvGm.SetGlobalBuffer((__gm__ KV_DTYPE *)kv +
                                        GetBlockIdx() * this->tilingData_->rowsPerBlock * this->tilingData_->numHead *
@@ -136,7 +135,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (methodMode == 0) {
+        if (this->methodMode == 0) {
             for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
                 RopeK(i);
                 PipeBarrier<PIPE_V>();
@@ -146,7 +145,7 @@ public:
                 PipeBarrier<PIPE_V>();
                 ScatterUpdateV(i);
             }
-        } else if (methodMode == 1) {
+        } else if (this->methodMode == 1) {
             for (int64_t n = 0; n < this->tilingData_->numHead; n++) {
                 for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
                     // Process K
@@ -651,11 +650,6 @@ public:
     }
 
 private:
-    int64_t ROPE_LENGTH_HALF{32};
-    int64_t methodMode = 0;
-    constexpr static int64_t NUM_SIX = 6;
-    constexpr static int64_t NUM_TWELVE = 12;
-    constexpr static int64_t NUM_FORTY_EIGHT = 48;
     GlobalTensor<KV_DTYPE> vGm;
     TQue<QuePosition::VECIN, 1> CosSin;
 };

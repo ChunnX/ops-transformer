@@ -32,9 +32,8 @@ public:
                                 GM_ADDR v_cache, GM_ADDR optional_k_rope, GM_ADDR optional_c_kv, GM_ADDR k_rope_scale,
                                 GM_ADDR c_kv_scale, GM_ADDR k_rope_offset, GM_ADDR c_kv_offset, GM_ADDR v)
     {
-        methodMode = v == nullptr ? 0 : 1;
-        this->InitSharedData(methodMode);
-        if (methodMode == 1) {
+        this->InitMTPBaseData(v);
+        if (this->methodMode == 1) {
             // init global memory
             this->kvGm.SetGlobalBuffer((__gm__ KV_DTYPE *)kv +
                                        GetBlockIdx() * this->tilingData_->rowsPerBlock * this->tilingData_->numHead *
@@ -109,7 +108,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (methodMode == 1) {
+        if (this->methodMode == 1) {
             for (int64_t n = 0; n < this->tilingData_->numHead; n++) {
                 for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
                     // load quant scale and offset
@@ -499,13 +498,6 @@ public:
     }
 
 private:
-    int64_t ROPE_LENGTH_HALF{32};
-    int64_t methodMode = 0;
-    int64_t isKOffset = 0;
-    int64_t isVOffset = 0;
-    constexpr static int64_t NUM_SIX = 6;
-    constexpr static int64_t NUM_TWELVE = 12;
-    constexpr static int64_t NUM_FORTY_EIGHT = 48;
     TQue<QuePosition::VECIN, 1> inQueueScaleOffset;
     TQue<QuePosition::VECIN, 1> CosSin;
     GlobalTensor<KV_DTYPE> vGm;
