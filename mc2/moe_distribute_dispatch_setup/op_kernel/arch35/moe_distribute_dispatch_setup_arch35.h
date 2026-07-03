@@ -107,6 +107,8 @@ private:
         uint32_t curSendCnt_, uint32_t curUseAivNum, uint32_t& startTokenId_, uint32_t& endTokenId_,
         uint32_t& sendTokenNum_, bool isFront = true);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t& curExpertCnt);
+    __aicore__ inline void WriteDataToChannel(uint32_t currRankId, uint32_t sendRankId, uint32_t dstBlockIdx, uint32_t moeStartToken, uint32_t slot);
+    __aicore__ inline void WriteStatusToChannel(uint32_t currRankId, uint32_t sendRankId, uint32_t sendExpertId, uint32_t globalExpertId);
 
 #ifdef IDENTIFICATION
     __aicore__ inline void PackPair(uint64_t& packed, uint32_t rankId, uint32_t expertId);
@@ -1078,6 +1080,40 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Separate
 // 如果“绕路”是先写到一张非热点 rank 做中转，再由它转发/聚合到原目标 expert，那么可以在 Communication() 里处理 overflow token，
 // 但不能写到中转 rank 的普通 expert window。应该写到一个专门的 reroute/overflow buffer，并额外写 metadata，
 // 例如原始目标 (sendRankId, sendExpertId)、原始 slot、token 数等。
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::WriteDataToChannel(uint32_t currRankId, uint32_t sendRankId, uint32_t dstBlockIdx, uint32_t moeStartToken, uint32_t slot)
+{
+    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
+
+    GM_ADDR remoteAddr = (GM_ADDR)(
+        GetUrmaAddrByRankId(sendRankId, epRankId_) +
+        dstBlockIdx * expertPerSizeOnWin_ +
+        slot * hAlignWinSize_);
+
+    hcomm_.WriteNbi<false>(
+        mc2Context_->hcommHandle_[currRankId],
+        remoteAddr,
+        rankGM,
+        hOutSizeAlign_);
+}
+
+// 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::WriteStatusToChannel(uint32_t currRankId, uint32_t sendRankId, uint32_t sendExpertId, uint32_t globalExpertId)
+{
+    uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
+    GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
+    GM_ADDR statusDst =
+        GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
+        dataState_ * WIN_STATE_OFFSET +
+        statusIndex * stateOffset_;
+
+    hcomm_.WriteNbi<false>(
+        mc2Context_->hcommHandle_[currRankId],
+        statusDst,
+        statusSrc,
+        UB_ALIGN);
+}
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
@@ -1120,23 +1156,10 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     // axisBS_ * axisK_：总路由条目数，也就是 batch 中每个 token 选 K 个 expert 后的总 token-expert 数量。
     // moeExpertNum_：MoE expert 总数，也就是 moeExpertRankNum_ * moeExpertNumPerRank_
     // waterline：MoE expert 的平均 token 路由数，平均每个 expert/block 分到多少 token
-    uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
+    // uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
 
     for (uint32_t sendRankId = startRankId; sendRankId < endRankId; ++sendRankId) {
         if (sendRankId < sharedExpertRankNum_) {
-            //// 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
-            //uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
-            //GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
-            //GM_ADDR statusDst =
-            //    GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
-            //    dataState_ * WIN_STATE_OFFSET +
-            //    statusIndex * stateOffset_;
-            //hcomm_.WriteNbi<false>(
-            //    mc2Context_->hcommHandle_[currRankId],
-            //    statusDst,
-            //    statusSrc,
-            //    UB_ALIGN);
-            //hasWrite = true;
             continue;
         }
         // 本卡通信：仅搬运数据
@@ -1148,120 +1171,15 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         // 非本卡通信：发完 epRankId_-->sendRankId 的所有token后，统一敲doorbell
         bool hasWrite = false;
         uint32_t currRankId = sendRankId > epRankId_ ? sendRankId - 1 : sendRankId;
-        uint32_t tmpRankId = sendRankId < moeExpertNumPerRank_ ? sendRankId : moeExpertNumPerRank_;
-        for (uint32_t sendExpertId = tmpRankId; sendExpertId < moeExpertNumPerRank_; ++sendExpertId) {
-            uint32_t globalExpertId = sharedExpertRankNum_ +
-                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
-
+        //uint32_t tmpRankId = sendRankId < moeExpertNumPerRank_ ? sendRankId : moeExpertNumPerRank_;
+        for (uint32_t sendExpertId = 0; sendExpertId < moeExpertNumPerRank_; ++sendExpertId) {
+            uint32_t globalExpertId = sharedExpertRankNum_ + (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
             uint32_t curTokenNum = statusTensor_(globalExpertId * 8 + 1);
             uint32_t dstBlockIdx = epRankId_ * moeExpertNumPerRank_ + sendExpertId;
-
-            if(curTokenNum > waterline) {
-                //热点卡，需要绕路处理，todo 如何实现绕路？重置 remoteAddr??????
-                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
-                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
-
-                    GM_ADDR remoteAddr = (GM_ADDR)(
-                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
-                        dstBlockIdx * expertPerSizeOnWin_ +
-                        slot * hAlignWinSize_);
-
-                    hcomm_.WriteNbi<false>(
-                        mc2Context_->hcommHandle_[currRankId],
-                        remoteAddr,
-                        rankGM,
-                        hOutSizeAlign_);
-                }
+            for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
+                WriteDataToChannel(currRankId, sendRankId, dstBlockIdx, moeStartToken, slot);
             }
-            else {
-                // 非热点卡，走最短路径
-                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
-                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
-
-                    GM_ADDR remoteAddr = (GM_ADDR)(
-                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
-                        dstBlockIdx * expertPerSizeOnWin_ +
-                        slot * hAlignWinSize_);
-
-                    hcomm_.WriteNbi<false>(
-                        mc2Context_->hcommHandle_[currRankId],
-                        remoteAddr,
-                        rankGM,
-                        hOutSizeAlign_);
-                }
-            }
-
-            // 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
-            uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
-            GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
-            GM_ADDR statusDst =
-                GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
-                dataState_ * WIN_STATE_OFFSET +
-                statusIndex * stateOffset_;
-
-            hcomm_.WriteNbi<false>(
-                mc2Context_->hcommHandle_[currRankId],
-                statusDst,
-                statusSrc,
-                UB_ALIGN);
-            hasWrite = true;
-            moeStartToken += curTokenNum;
-        }
-        for (uint32_t sendExpertId = 0; sendExpertId < tmpRankId; ++sendExpertId) {
-            uint32_t globalExpertId = sharedExpertRankNum_ +
-                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
-
-            uint32_t curTokenNum = statusTensor_(globalExpertId * 8 + 1);
-            uint32_t dstBlockIdx = epRankId_ * moeExpertNumPerRank_ + sendExpertId;
-
-            if(curTokenNum > waterline) {
-                //热点卡，需要绕路处理，todo 如何实现绕路？重置 remoteAddr??????
-                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
-                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
-
-                    GM_ADDR remoteAddr = (GM_ADDR)(
-                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
-                        dstBlockIdx * expertPerSizeOnWin_ +
-                        slot * hAlignWinSize_);
-
-                    hcomm_.WriteNbi<false>(
-                        mc2Context_->hcommHandle_[currRankId],
-                        remoteAddr,
-                        rankGM,
-                        hOutSizeAlign_);
-                }
-            }
-            else {
-                // 非热点卡，走最短路径
-                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
-                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
-
-                    GM_ADDR remoteAddr = (GM_ADDR)(
-                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
-                        dstBlockIdx * expertPerSizeOnWin_ +
-                        slot * hAlignWinSize_);
-
-                    hcomm_.WriteNbi<false>(
-                        mc2Context_->hcommHandle_[currRankId],
-                        remoteAddr,
-                        rankGM,
-                        hOutSizeAlign_);
-                }
-            }
-
-            // 每个远端 expert 的 token WriteNbi 入队后，无论 curTokenNum 是否为 0，都写状态块。
-            uint32_t statusIndex = epRankId_ + sendExpertId * epWorldSize_;
-            GM_ADDR statusSrc = statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1) + globalExpertId * UB_ALIGN;
-            GM_ADDR statusDst =
-                GetUrmaStateAddrByRankId(sendRankId, epRankId_) +
-                dataState_ * WIN_STATE_OFFSET +
-                statusIndex * stateOffset_;
-
-            hcomm_.WriteNbi<false>(
-                mc2Context_->hcommHandle_[currRankId],
-                statusDst,
-                statusSrc,
-                UB_ALIGN);
+            WriteStatusToChannel(currRankId, sendRankId, sendExpertId, globalExpertId);
             hasWrite = true;
             moeStartToken += curTokenNum;
         }
