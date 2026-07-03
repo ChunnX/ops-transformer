@@ -968,8 +968,12 @@ static aclnnStatus CheckGroupedMatmulAntiQuant(const gmm::GroupedMatmulParams &g
                "In op [%s], when %s, [%s] must not be nullptr.", opName, scenario, "antiquantScale");
     DataType w0Dtype = (*gmmParams.weight)[0]->GetDataType();
     bool isAntiquantInt4 = w0Dtype == DataType::DT_INT4;
+    bool isA16W4Pergroup = isAntiquantInt4 && !gmmParams.isSingleWeight &&
+                           gmmParams.antiquantScaleOptional != nullptr &&
+                           (*gmmParams.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == 2;
 
-    CHECK_COND(((isAntiquantInt4 && gmmParams.isSingleWeight) || gmmParams.antiquantOffsetOptional != nullptr),
+    CHECK_COND(((isAntiquantInt4 && gmmParams.isSingleWeight) || isA16W4Pergroup ||
+                gmmParams.antiquantOffsetOptional != nullptr),
                ACLNN_ERR_PARAM_INVALID, "In op [%s], when A16W4 antiquant, [%s] must not be nullptr.", opName,
                "antiquantOffset");
     // check the shape of antiquantScale and antiquantOffset
@@ -1906,10 +1910,6 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
         return ACLNN_SUCCESS;
     }
     if (xSize == 1UL && weightSize > 1UL && ySize == 1UL) {
-        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, [%s] is "
-                   "not supported.",
-                   opName, "bias");
         CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
                    "check failed.",
