@@ -24,7 +24,7 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
-#include "matmul_reduce_scatter_v2_c_tiling.h"
+#include "../matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS \

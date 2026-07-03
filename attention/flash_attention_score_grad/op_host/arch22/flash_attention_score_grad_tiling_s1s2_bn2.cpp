@@ -1770,9 +1770,17 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]"), return ge::GRAPH_FAILED);
             int64_t tempN2 = keyShape.GetDim(DIM_1);
-            for (size_t i = 0; i < seqQShapeSize; i++) {
-                int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
-                int64_t kvSeqLen = (i == 0 ? kvValue[i] : std::max(int64_t(0), kvValue[i] - kvValue[i - 1]));
+
+            // EOD场景: 累加和尾部连续为0的batch为无效数据，需跳过
+            size_t realBSize = seqQShapeSize;
+            while (realBSize > 0 && qValue[realBSize - 1] == 0 && kvValue[realBSize - 1] == 0) {
+                --realBSize;
+            }
+            td_->opInfo.set_B(realBSize);
+
+            for (size_t i = 0; i < realBSize; i++) {
+                int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
+                int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
                 tmpData_.actualSeqQlen.push_back(qSeqLen);
                 tmpData_.actualSeqKvlen.push_back(kvSeqLen);
                 int64_t s1s2Product = tmpData_.actualSeqQlen[i] * tmpData_.actualSeqKvlen[i];
@@ -1789,17 +1797,6 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
                     OP_LOGI(context_, "TND EmptyInput detected, tndEmptyTensorFlag is set to True");
                 }
             }
-
-            uint64_t tailZeroCount = 0;
-            for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-                if (tmpData_.actualSeqQlen[i] <= 0 && tmpData_.actualSeqKvlen[i] <= 0) {
-                    ++tailZeroCount;
-                } else {
-                    break;
-                }
-            }
-            auto realBSize = seqQShapeSize - tailZeroCount;
-            td_->opInfo.set_B(realBSize);
 
             // query [t1, n1, d]   kv [t2, n2, d]   dy [t1, n1, d]
             OP_CHECK_IF(keyShape.GetDim(DIM_1) == 0, OP_LOGW(context_, "dim 1 of key is 0."),
