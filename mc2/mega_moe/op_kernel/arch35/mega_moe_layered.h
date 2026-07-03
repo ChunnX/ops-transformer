@@ -1662,9 +1662,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
-    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    ResetFlagList();             // 清理workSpace空间上的flag位
-    ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
+    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    // ResetFlagList();             // 清理workSpace空间上的flag位
+    // ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
 
     // if constexpr(g_coreType == AIV) {
     //     PipeBarrier<PIPE_ALL>();
