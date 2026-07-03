@@ -32,9 +32,10 @@ class MMPlusReduceScatter : public OneCalcOneCommBase {
         // Constructor
         explicit MMPlusReduceScatter(const mc2tiling::TilingArgs& args, uint32_t inputRankDim,
             KernelType inputKernelType, SocVersion inputSocVersion = SocVersion::SOC910_B,
-            bool deterministicFlag = false)
+            bool deterministicFlag = false, bool isAicpuComm = false)
             : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
-            deterministicSoc910B_(deterministicFlag)
+            deterministicSoc910B_(deterministicFlag),
+            isAicpuComm_(isAicpuComm)
         {
             commPerf_.SetCommShapeLen(clusterInfo_.nValue);
             commPerf_.SetCommDTypeSize(clusterInfo_.outMatrixCDtypeSize);
@@ -52,6 +53,7 @@ class MMPlusReduceScatter : public OneCalcOneCommBase {
         void SetCommTimeFactorForA5();
         void SetCommTimeFactorForOther();
         void SetCommTimeFactor();
+        bool isAicpuComm_ = false;
 };
 
 

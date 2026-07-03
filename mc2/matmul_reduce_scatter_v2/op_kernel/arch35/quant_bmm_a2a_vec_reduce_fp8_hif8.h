@@ -576,7 +576,7 @@ __aicore__ inline void
 QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::VecWaitCube()
 {
     // 等待 AIC 完成
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_S>(SYNC_AIC_AIV_DET_FLAG);
 }
 
 }  // namespace MatmulReduceScatterV2Impl
