@@ -9,7 +9,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
     dense_lightning_indexer_softmax_lse_v2_def.cpp
     )
 endif()
@@ -25,5 +25,5 @@ if (BUILD_OPS_RTY_KERNEL)
                 --op_relocatable_kernel_binary=true
     )
 else()
-    add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse_v2 ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse_v2 ACLNNTYPE aclnn_exclude)
 endif()
