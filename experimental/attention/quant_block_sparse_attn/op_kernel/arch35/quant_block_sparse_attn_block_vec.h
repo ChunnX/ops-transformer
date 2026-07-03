@@ -333,6 +333,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
                                           Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                           RunInfo &runInfo, ConstInfo &constInfo)
 {
+    AscendC::MarkStampImpl<PIPE_V, 0>
     // bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (isFp8 && hasAtten) {
@@ -398,6 +399,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     //-------------------------Data copy to l1-------------------------
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+    AscendC::MarkStampImpl<PIPE_V, 1>
 
     // 按照64对齐搬运
     DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * ((runInfo.s2RealSize + 63) >> 6 << 6)],
@@ -426,6 +428,7 @@ __aicore__ inline void
 BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
                                             RunInfo &runInfo, ConstInfo &constInfo)
 {
+    AscendC::MarkStampImpl<PIPE_V, 2>
     if (unlikely(runInfo.vec2S1BaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
         return;
@@ -478,6 +481,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize,
                                                                (uint16_t)dTemplateAlign64, deSCaleVValue);
         }
+        AscendC::MarkStampImpl<PIPE_V, 3>
         CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
