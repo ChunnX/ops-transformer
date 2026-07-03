@@ -63,7 +63,6 @@ class KvCompressEpilogOpBuilder(OpBuilder):
 
 # Instantiate the builder
 kv_compress_epilog_op_builder = KvCompressEpilogOpBuilder()
-op_module = kv_compress_epilog_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, kv_compress_epilog_op_builder.name, "PrivateUse1")
@@ -71,6 +70,7 @@ def _kv_compress_epilog(cache: torch.Tensor, x: torch.Tensor, slot_mapping: torc
                         quant_group_size: int = 64, quant_mode: str = DEFAULT_QUANT_MODE,
                         round_scale: bool = True, x_scale: float = 1.0) -> None:
     quant_mode_int = _resolve_quant_mode(quant_mode)
+    op_module = kv_compress_epilog_op_builder.load()
     op_module.kv_compress_epilog(cache, x, slot_mapping, quant_group_size,
                                  quant_mode_int, round_scale, x_scale)
 
