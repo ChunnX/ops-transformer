@@ -924,11 +924,11 @@ __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::PostQuant(Con
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::FDPostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                    LocalTensor<OUTPUT_T> &attenOut,
-                                                                    LocalTensor<T> &accumOutLocal,
-                                                                    uint64_t perChannelQuantOffset,
-                                                                    uint32_t dealRowCount,
-                                                                    uint32_t dSizeAlignedDim64)
+    LocalTensor<OUTPUT_T> &attenOut,
+    LocalTensor<T> &accumOutLocal,
+    uint64_t perChannelQuantOffset,
+    uint32_t dealRowCount,
+    uint32_t dSizeAlignedDim64)
 {
     if (constInfo.isPostQuantPerChnl) {
         if (constInfo.isPostQuantBF16) {
