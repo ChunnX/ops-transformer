@@ -327,10 +327,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY: preload Weights once (same across all K-blocks)
+                    # ReduceSumY + GlobalSoftmaxI max: fused into single K-block pass
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
                     T.barrier_all()
+                    T.tile.fill(rsy_max_ub, -1e30)
                     for n_rsy in T.serial(n_num):
                         T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
                         T.tile.fill(rsy_reduce_ub, 0)
@@ -340,18 +341,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
                             T.barrier_all()
                         T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
-
-                    # Global SoftmaxI: find global max across K blocks (1-fold, no redundant replication)
-                    T.tile.fill(rsy_max_ub, -1e30)
-                    # barrier removed: fill → ReduceSumY copy, no data dependency
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                        # Fused: update global max from rsy_reduce_ub (still in UB, no GM round-trip)
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
                         T.barrier_all()
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
-                        # element-wise max on (1,) buffers — replaces max_pair_ub + reduce_max
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         T.barrier_all()
+                        # barrier removed: next n_rsy's fill(rsy_reduce_ub) writes same buffer → barrier_all above covers it
 
                     T.tile.fill(rsy_sum_ub, 0)
                     T.barrier_all()
