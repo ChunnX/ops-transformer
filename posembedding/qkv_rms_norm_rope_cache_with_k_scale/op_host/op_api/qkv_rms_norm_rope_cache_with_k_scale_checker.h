@@ -47,7 +47,7 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     aclTensor *kCache{nullptr};
     aclTensor *vCache{nullptr};
     aclTensor *kScaleCache{nullptr};
-    const aclTensor *cuSeqLen{nullptr};
+    const aclTensor *cuSeqLens{nullptr};
     const aclTensor *actualSeqLens{nullptr};
     // Optional inputs (required in first phase, but declared as optional in def)
     const aclTensor *rotationOptional{nullptr};
@@ -91,11 +91,13 @@ public:
     static constexpr uint64_t CACHE_HEAD_INDEX = 1;
     static constexpr uint64_t CACHE_BLOCK_SIZE_INDEX = 2;
     static constexpr uint64_t CACHE_HEAD_DIM_INDEX = 3;
-    static constexpr int64_t MIN_CU_SEQ_LEN_SIZE = 2;
+    static constexpr int64_t MIN_CU_SEQ_LENS_SIZE = 2;
     static constexpr int64_t ACTUAL_SEQ_LENS_BATCH_DIFF = 1;
     static constexpr int64_t K_SCALE_CACHE_SCALE_DIM = 1;
     static constexpr const char *QKV_LAYOUT_NTD = "NTD";
     static constexpr const char *QKV_LAYOUT_TND = "TND";
+    static constexpr const char *DEFAULT_QKV_LAYOUT = QKV_LAYOUT_TND;
+    static constexpr const char *DEFAULT_Q_OUT_LAYOUT = QKV_LAYOUT_NTD;
 
     // Dtype support lists
     inline static const std::vector<op::DataType> QKV_TYPE_LIST = {op::DataType::DT_BF16};
@@ -104,7 +106,7 @@ public:
     inline static const std::vector<op::DataType> SLOT_MAPPING_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> CACHE_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
     inline static const std::vector<op::DataType> K_SCALE_CACHE_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::vector<op::DataType> CU_SEQ_LEN_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> CU_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> ACTUAL_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> ROTATION_TYPE_LIST = {op::DataType::DT_BF16};
     inline static const std::vector<op::DataType> V_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
@@ -256,13 +258,11 @@ private:
             {"kCacheRef", params_.kCache, "kCacheRef can not be nullptr"},
             {"vCacheRef", params_.vCache, "vCacheRef can not be nullptr"},
             {"kScaleCacheRef", params_.kScaleCache, "kScaleCacheRef can not be nullptr"},
-            {"cuSeqLen", params_.cuSeqLen, "cuSeqLen can not be nullptr"},
+            {"cuSeqLens", params_.cuSeqLens, "cuSeqLens can not be nullptr"},
             {"actualSeqLens", params_.actualSeqLens, "actualSeqLens can not be nullptr"},
             {"rotationOptional", params_.rotationOptional, "rotationOptional can not be nullptr"},
             {"vScaleOptional", params_.vScaleOptional, "vScaleOptional can not be nullptr"},
             {"headNums", params_.headNums, "headNums can not be nullptr"},
-            {"qkv_layout", params_.qkvLayout, "qkv_layout can not be nullptr"},
-            {"q_out_layout", params_.qOutLayout, "q_out_layout can not be nullptr"},
             {"qOut", params_.qOut, "qOut can not be nullptr"},
             {"qScale", params_.qScale, "qScale can not be nullptr"},
             {"workspaceSize", params_.workspaceSize, "workspaceSize can not be nullptr"},
@@ -289,7 +289,7 @@ private:
             {"kCacheRef", params_.kCache, &CACHE_TYPE_LIST},
             {"vCacheRef", params_.vCache, &CACHE_TYPE_LIST},
             {"kScaleCacheRef", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
-            {"cuSeqLen", params_.cuSeqLen, &CU_SEQ_LEN_TYPE_LIST},
+            {"cuSeqLens", params_.cuSeqLens, &CU_SEQ_LENS_TYPE_LIST},
             {"actualSeqLens", params_.actualSeqLens, &ACTUAL_SEQ_LENS_TYPE_LIST},
             {"rotationOptional", params_.rotationOptional, &ROTATION_TYPE_LIST},
             {"vScaleOptional", params_.vScaleOptional, &V_SCALE_TYPE_LIST},
@@ -340,12 +340,23 @@ private:
         return ACLNN_SUCCESS;
     }
 
+    static const char *GetQkvLayoutOrDefault(const char *layout)
+    {
+        return layout == nullptr || layout[0] == '\0' ? DEFAULT_QKV_LAYOUT : layout;
+    }
+
+    static const char *GetQOutLayoutOrDefault(const char *layout)
+    {
+        return layout == nullptr || layout[0] == '\0' ? DEFAULT_Q_OUT_LAYOUT : layout;
+    }
+
     aclnnStatus CheckQkvLayout(bool &isTnd) const
     {
-        const bool isNtd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_NTD) == 0;
-        isTnd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_TND) == 0;
+        const char *qkvLayout = GetQkvLayoutOrDefault(params_.qkvLayout);
+        const bool isNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
+        isTnd = std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qkv_layout", params_.qkvLayout,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qkv_layout", qkvLayout,
                                                   "qkv_layout must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -354,16 +365,18 @@ private:
 
     aclnnStatus CheckQOutLayout(bool &isTnd) const
     {
-        const bool isNtd = std::strcmp(params_.qOutLayout, QKV_LAYOUT_NTD) == 0;
-        isTnd = std::strcmp(params_.qOutLayout, QKV_LAYOUT_TND) == 0;
+        const char *qkvLayout = GetQkvLayoutOrDefault(params_.qkvLayout);
+        const char *qOutLayout = GetQOutLayoutOrDefault(params_.qOutLayout);
+        const bool isNtd = std::strcmp(qOutLayout, QKV_LAYOUT_NTD) == 0;
+        isTnd = std::strcmp(qOutLayout, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", params_.qOutLayout,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", qOutLayout,
                                                   "q_out_layout must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const bool qkvIsNtd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_NTD) == 0;
+        const bool qkvIsNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
         if (qkvIsNtd && isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", params_.qOutLayout,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", qOutLayout,
                                                   "qkv_layout=NTD with q_out_layout=TND is not supported");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -419,21 +432,21 @@ private:
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
-        const auto &cuSeqLenShape = params_.cuSeqLen->GetViewShape();
-        if (unlikely(cuSeqLenShape.GetDimNum() != RANK_1D ||
-                     cuSeqLenShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_CU_SEQ_LEN_SIZE)) {
-            const std::string incorrectShape = ShapeToString(params_.cuSeqLen);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "cuSeqLen", incorrectShape.c_str(),
-                                                  "cuSeqLen must be a 1D tensor with length >= 2");
+        const auto &cuSeqLensShape = params_.cuSeqLens->GetViewShape();
+        if (unlikely(cuSeqLensShape.GetDimNum() != RANK_1D ||
+                     cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_CU_SEQ_LENS_SIZE)) {
+            const std::string incorrectShape = ShapeToString(params_.cuSeqLens);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "cuSeqLens", incorrectShape.c_str(),
+                                                  "cuSeqLens must be a 1D tensor with length >= 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
         if (unlikely(actualSeqLensShape.GetDimNum() != RANK_1D ||
                     actualSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
-                    cuSeqLenShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
+                    cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
             const std::string incorrectShape = ShapeToString(params_.actualSeqLens);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "actualSeqLens", incorrectShape.c_str(),
-                                                  "actualSeqLens must have shape [cuSeqLen.shape[0] - 1]");
+                                                  "actualSeqLens must have shape [cuSeqLens.shape[0] - 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -564,7 +577,7 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"cuSeqLen", params_.cuSeqLen},
+            {"cuSeqLens", params_.cuSeqLens},
             {"actualSeqLens", params_.actualSeqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},
@@ -592,7 +605,7 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"cuSeqLen", params_.cuSeqLen},
+            {"cuSeqLens", params_.cuSeqLens},
             {"actualSeqLens", params_.actualSeqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},

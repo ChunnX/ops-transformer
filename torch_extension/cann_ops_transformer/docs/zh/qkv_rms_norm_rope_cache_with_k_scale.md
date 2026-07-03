@@ -29,10 +29,10 @@
   y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
   $$
 
-  第`b`个batch中第`i`个token的RoPE位置由`cu_seq_len`和`actual_seq_lens`确定：
+  第`b`个batch中第`i`个token的RoPE位置由`cu_seq_lens`和`actual_seq_lens`确定：
 
   $$
-  position = actual\_seq\_lens[b] - (cu\_seq\_len[b + 1] - cu\_seq\_len[b]) + i
+  position = actual\_seq\_lens[b] - (cu\_seq\_lens[b + 1] - cu\_seq\_lens[b]) + i
   $$
 
   Q/K分支执行RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行RoPE：
@@ -91,14 +91,14 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
     k_cache,
     v_cache,
     k_scale_cache,
-    cu_seq_len,
+    cu_seq_lens,
     actual_seq_lens,
     head_nums,
-    qkv_layout,
-    q_out_layout,
     *,
     rotation=None,
     v_scale=None,
+    layout_qkv="TND",
+    layout_q_out="NTD",
     epsilon=0.000001,
 ) -> (Tensor, Tensor)
 ```
@@ -113,14 +113,14 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
     k_cache,
     v_cache,
     k_scale_cache,
-    cu_seq_len,
+    cu_seq_lens,
     actual_seq_lens,
     head_nums,
-    qkv_layout,
-    q_out_layout,
     *,
     rotation=None,
     v_scale=None,
+    layout_qkv="TND",
+    layout_q_out="NTD",
     epsilon=0.000001,
 ) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
@@ -131,7 +131,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
-| qkv | Tensor | 必选 | Q/K/V融合输入，对应公式中的`qkv`。`qkv_layout="TND"`时shape为`[T,Nq+Nk+Nv,D]`，`qkv_layout="NTD"`时shape为`[Nq+Nk+Nv,T,D]`。 | torch.bfloat16 | 3维 |
+| qkv | Tensor | 必选 | Q/K/V融合输入，对应公式中的`qkv`。`layout_qkv="TND"`时shape为`[T,Nq+Nk+Nv,D]`，`layout_qkv="NTD"`时shape为`[Nq+Nk+Nv,T,D]`。 | torch.bfloat16 | 3维 |
 | q_gamma | Tensor | 必选 | Q分支RMSNorm权重，对应Q分支公式中的`gamma`。 | torch.float32 | `[D]` |
 | k_gamma | Tensor | 必选 | K分支RMSNorm权重，对应K分支公式中的`gamma`。 | torch.float32 | `[D]` |
 | cos_sin | Tensor | 必选 | RoPE位置编码表，对应公式中的`cos_sin`、`cos`和`sin`。前`D/2`列为cos，后`D/2`列为sin。 | torch.float32 | `[MaxSeqLen,D]` |
@@ -139,13 +139,13 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 | k_cache | Tensor | 必选 | K Cache写回Tensor，对应公式中的`k_cache`。原地接口会直接更新该Tensor；functional接口会更新其副本并返回。支持符合约束的非连续Tensor。 | torch.float8_e4m3fn | `[BlockNum,Nk,BlockSize,D]` |
 | v_cache | Tensor | 必选 | V Cache写回Tensor，对应公式中的`v_cache`。原地接口会直接更新该Tensor；functional接口会更新其副本并返回。支持符合约束的非连续Tensor。 | torch.float8_e4m3fn | `[BlockNum,Nv,BlockSize,D]` |
 | k_scale_cache | Tensor | 必选 | K动态量化scale cache写回Tensor，对应公式中的`k_scale_cache`。原地接口会直接更新该Tensor；functional接口会更新其副本并返回。支持符合约束的非连续Tensor。 | torch.float32 | `[BlockNum,Nk,BlockSize,1]` |
-| cu_seq_len | Tensor | 必选 | 当前调用内各batch token数的前缀和，对应公式中的`cu_seq_len`。 | torch.int32 | `[Batch+1]` |
+| cu_seq_lens | Tensor | 必选 | 当前调用内各batch token数的前缀和，对应公式中的`cu_seq_lens`。 | torch.int32 | `[Batch+1]` |
 | actual_seq_lens | Tensor | 必选 | 每个batch追加本次token后的实际序列长度，对应公式中的`actual_seq_lens`。 | torch.int32 | `[Batch]` |
-| head_nums | List[int] | 必选 | Q/K/V头数数组，依次映射为公式中的`Nq`、`Nk`、`Nv`。必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
-| qkv_layout | str | 必选 | `qkv`的N/T轴布局标识，对应公式中`T`、`Nq`、`Nk`、`Nv`所在轴。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
-| q_out_layout | str | 必选 | `q_out`和`q_scale`的N/T轴布局标识。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
+| head_nums | List[int] | 必选 | 必选属性，Q/K/V头数数组，依次映射为公式中的`Nq`、`Nk`、`Nv`。必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
 | rotation | Tensor | 可选 | Q/K共享矩阵乘权重，对应公式中的`rotation`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.bfloat16 | `[D,D]` |
 | v_scale | Tensor | 可选 | V分支量化缩放因子，对应公式中的`v_scale`。该参数默认值为`None`，但当前实现不支持不传、传入`None`或传入空Tensor。 | torch.float32 | `[Nv]` |
+| layout_qkv | str | 可选 | 可选属性，`qkv`的N/T轴布局标识，对应公式中`T`、`Nq`、`Nk`、`Nv`所在轴。默认值为`"TND"`，传入`None`或空字符串时按默认值处理；大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
+| layout_q_out | str | 可选 | 可选属性，`q_out`和`q_scale`的N/T轴布局标识。默认值为`"NTD"`，传入`None`或空字符串时按默认值处理；大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | epsilon | float | 可选 | RMSNorm防除零参数，对应公式中的`epsilon`，默认值为`1e-6`。 | float | - |
 
 ## 返回值说明
@@ -154,15 +154,15 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
-| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`q_out_layout="TND"`时shape为`[T,Nq,D]`，`q_out_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
-| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`q_out_layout="TND"`时shape为`[T,Nq]`，`q_out_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
+| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`layout_q_out="TND"`时shape为`[T,Nq,D]`，`layout_q_out="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
+| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`layout_q_out="TND"`时shape为`[T,Nq]`，`layout_q_out="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
 
 ### qkv_rms_norm_rope_cache_with_k_scale_functional
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |---|---|---|---|---|---|
-| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`q_out_layout="TND"`时shape为`[T,Nq,D]`，`q_out_layout="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
-| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`q_out_layout="TND"`时shape为`[T,Nq]`，`q_out_layout="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
+| q_out | Tensor | 必选 | Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的`x_{fp8}`。`layout_q_out="TND"`时shape为`[T,Nq,D]`，`layout_q_out="NTD"`时shape为`[Nq,T,D]`。 | torch.float8_e4m3fn | 3维 |
+| q_scale | Tensor | 必选 | Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的`scale`。`layout_q_out="TND"`时shape为`[T,Nq]`，`layout_q_out="NTD"`时shape为`[Nq,T]`。 | torch.float32 | 2维 |
 | k_cache_out | Tensor | 必选 | 更新后的K Cache，shape和dtype与输入`k_cache`一致。 | torch.float8_e4m3fn | `[BlockNum,Nk,BlockSize,D]` |
 | v_cache_out | Tensor | 必选 | 更新后的V Cache，shape和dtype与输入`v_cache`一致。 | torch.float8_e4m3fn | `[BlockNum,Nv,BlockSize,D]` |
 | k_scale_cache_out | Tensor | 必选 | 更新后的K动态量化scale cache，shape和dtype与输入`k_scale_cache`一致。 | torch.float32 | `[BlockNum,Nk,BlockSize,1]` |
@@ -174,15 +174,15 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
 - `qkv_rms_norm_rope_cache_with_k_scale`为原地接口，会修改调用方传入的`k_cache`、`v_cache`和`k_scale_cache`。
 - `qkv_rms_norm_rope_cache_with_k_scale_functional`会克隆输入cache，并返回更新后的cache副本。
 - 当前实现仅支持`D=128`，且`Nv`必须等于`Nk`。
-- `qkv_layout`控制`qkv`的N/T轴布局，`q_out_layout`控制`q_out`和`q_scale`的N/T轴布局：
-  - `qkv_layout="TND"`，`q_out_layout="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[T,Nq,D]`，`q_scale=[T,Nq]`。
-  - `qkv_layout="TND"`，`q_out_layout="NTD"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
-  - `qkv_layout="NTD"`，`q_out_layout="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
-- 当前不支持`qkv_layout="NTD"`、`q_out_layout="TND"`。
+- `layout_qkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layout_q_out`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
+  - `layout_qkv="TND"`，`layout_q_out="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[T,Nq,D]`，`q_scale=[T,Nq]`。
+  - `layout_qkv="TND"`，`layout_q_out="NTD"`：`qkv=[T,Nq+Nk+Nv,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
+  - `layout_qkv="NTD"`，`layout_q_out="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`q_out=[Nq,T,D]`，`q_scale=[Nq,T]`。
+- 当前不支持`layout_qkv="NTD"`、`layout_q_out="TND"`。
 - `k_cache`、`v_cache`和`k_scale_cache`的`BlockNum`和`BlockSize`必须一致。
 - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1；`k_cache`和`v_cache`前三维stride必须一致。
-- `cu_seq_len[0]`应为0，`cu_seq_len[-1]`应等于`T`。`actual_seq_lens`长度应等于`cu_seq_len.shape[0]-1`。
-- `actual_seq_lens[b]`必须满足`actual_seq_lens[b] >= cu_seq_len[b+1] - cu_seq_len[b]`。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
+- `cu_seq_lens[0]`应为0，`cu_seq_lens[-1]`应等于`T`。`actual_seq_lens`长度应等于`cu_seq_lens.shape[0]-1`。
+- `actual_seq_lens[b]`必须满足`actual_seq_lens[b] >= cu_seq_lens[b+1] - cu_seq_lens[b]`。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
 - `cos_sin`第一维需覆盖本次调用会访问的RoPE位置。
 - `slot_mapping`取值范围应为`[0,BlockNum*BlockSize-1]`。同一次调用内多个token写入同一slot时，最终写入顺序和结果未定义。
 - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
@@ -207,7 +207,6 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
   batch, max_seq_len = 1, 16
   block_num, block_size = 1, 16
   head_nums = [Nq, Nk, Nv]
-  qkv_layout = "TND"
 
   qkv = torch.randn(T, Nq + Nk + Nv, D, device="npu", dtype=torch.bfloat16)
   q_gamma = torch.ones(D, device="npu", dtype=torch.float32)
@@ -218,7 +217,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
   k_cache = torch.empty(block_num, Nk, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
   v_cache = torch.empty(block_num, Nv, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
   k_scale_cache = torch.empty(block_num, Nk, block_size, 1, device="npu", dtype=torch.float32)
-  cu_seq_len = torch.tensor([0, T], device="npu", dtype=torch.int32)
+  cu_seq_lens = torch.tensor([0, T], device="npu", dtype=torch.int32)
   actual_seq_lens = torch.tensor([T], device="npu", dtype=torch.int32)
   rotation = torch.eye(D, device="npu", dtype=torch.float32).to(torch.bfloat16)
   v_scale = torch.ones(Nv, device="npu", dtype=torch.float32)
@@ -232,11 +231,9 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
       k_cache,
       v_cache,
       k_scale_cache,
-      cu_seq_len,
+      cu_seq_lens,
       actual_seq_lens,
       head_nums,
-      qkv_layout,
-      qkv_layout,
       rotation=rotation,
       v_scale=v_scale,
       epsilon=1e-6,
@@ -257,7 +254,6 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
   T, Nq, Nk, Nv, D = 4, 16, 2, 2, 128
   block_num, block_size = 1, 16
   head_nums = [Nq, Nk, Nv]
-  qkv_layout = "TND"
 
   qkv = torch.randn(T, Nq + Nk + Nv, D, device="npu", dtype=torch.bfloat16)
   q_gamma = torch.ones(D, device="npu", dtype=torch.float32)
@@ -268,7 +264,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
   k_cache = torch.empty(block_num, Nk, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
   v_cache = torch.empty(block_num, Nv, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
   k_scale_cache = torch.empty(block_num, Nk, block_size, 1, device="npu", dtype=torch.float32)
-  cu_seq_len = torch.tensor([0, T], device="npu", dtype=torch.int32)
+  cu_seq_lens = torch.tensor([0, T], device="npu", dtype=torch.int32)
   actual_seq_lens = torch.tensor([T], device="npu", dtype=torch.int32)
   rotation = torch.eye(D, device="npu", dtype=torch.float32).to(torch.bfloat16)
   v_scale = torch.ones(Nv, device="npu", dtype=torch.float32)
@@ -283,11 +279,9 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_functional(
           k_cache,
           v_cache,
           k_scale_cache,
-          cu_seq_len,
+          cu_seq_lens,
           actual_seq_lens,
           head_nums,
-          qkv_layout,
-          qkv_layout,
           rotation=rotation,
           v_scale=v_scale,
       )

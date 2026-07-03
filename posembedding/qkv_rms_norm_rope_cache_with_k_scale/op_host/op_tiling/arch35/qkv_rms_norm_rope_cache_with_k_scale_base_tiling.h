@@ -48,7 +48,7 @@ struct ContractInput {
     TensorContractInfo kCache;
     TensorContractInfo vCache;
     TensorContractInfo kScaleCache;
-    TensorContractInfo cuSeqLen;
+    TensorContractInfo cuSeqLens;
     TensorContractInfo actualSeqLens;
     TensorContractInfo rotation;
     TensorContractInfo vScale;

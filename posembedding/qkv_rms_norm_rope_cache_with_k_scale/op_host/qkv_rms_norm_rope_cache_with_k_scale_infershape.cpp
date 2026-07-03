@@ -103,13 +103,13 @@ static ge::graphStatus ValidateMinDimNum(gert::InferShapeContext *context, const
 static ge::graphStatus ParseQkvLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= QKV_LAYOUT_ATTR_INDEX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "qkv_layout", "missing", "qkv_layout must exist");
-        return ge::GRAPH_FAILED;
+        isNtd = false;
+        return ge::GRAPH_SUCCESS;
     }
     const char *qkvLayout = attrs->GetStr(QKV_LAYOUT_ATTR_INDEX);
-    if (qkvLayout == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "qkv_layout", "nullptr", "qkv_layout must exist");
-        return ge::GRAPH_FAILED;
+    if (qkvLayout == nullptr || qkvLayout[0] == '\0') {
+        isNtd = false;
+        return ge::GRAPH_SUCCESS;
     }
     if (std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0 || std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0) {
         isNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
@@ -123,15 +123,13 @@ static ge::graphStatus ParseQOutLayout(gert::InferShapeContext *context, const g
                                        bool qkvIsNtd, bool &qOutIsNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= Q_OUT_LAYOUT_ATTR_INDEX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", "missing",
-                                              "q_out_layout must exist");
-        return ge::GRAPH_FAILED;
+        qOutIsNtd = true;
+        return ge::GRAPH_SUCCESS;
     }
     const char *qOutLayout = attrs->GetStr(Q_OUT_LAYOUT_ATTR_INDEX);
-    if (qOutLayout == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", "nullptr",
-                                              "q_out_layout must exist");
-        return ge::GRAPH_FAILED;
+    if (qOutLayout == nullptr || qOutLayout[0] == '\0') {
+        qOutIsNtd = true;
+        return ge::GRAPH_SUCCESS;
     }
     const bool isNtd = std::strcmp(qOutLayout, QKV_LAYOUT_NTD) == 0;
     const bool isTnd = std::strcmp(qOutLayout, QKV_LAYOUT_TND) == 0;

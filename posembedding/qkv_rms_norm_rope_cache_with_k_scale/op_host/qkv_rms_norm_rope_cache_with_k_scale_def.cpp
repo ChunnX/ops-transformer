@@ -39,7 +39,7 @@ public:
             .DataType(fp32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
-        this->Input("cu_seq_len")
+        this->Input("cu_seq_lens")
             .ParamType(REQUIRED)
             .DataType(int32Types)
             .Format(ndFormats)
@@ -63,8 +63,8 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
-        this->Attr("qkv_layout").AttrType(REQUIRED).String();
-        this->Attr("q_out_layout").AttrType(REQUIRED).String();
+        this->Attr("qkv_layout").AttrType(OPTIONAL).String("TND");
+        this->Attr("q_out_layout").AttrType(OPTIONAL).String("NTD");
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         OpAICoreConfig config950;

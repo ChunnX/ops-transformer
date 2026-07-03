@@ -66,6 +66,12 @@ struct TilingRunOptions {
     uint64_t aivNum = 0U;
     bool headNumsPresent = false;
     std::vector<int64_t> headNums;
+    bool qkvLayoutPresent = true;
+    bool qOutLayoutPresent = true;
+    bool qkvLayoutOverridePresent = false;
+    bool qOutLayoutOverridePresent = false;
+    std::string qkvLayoutOverride;
+    std::string qOutLayoutOverride;
     std::string socVersion = "Ascend950";
 };
 
@@ -150,7 +156,7 @@ void RefreshShapes(ContractInput &input)
     SetShape(input.kScaleCache, input.blockNum, input.numKHeads, input.blockSize, 1);
     input.kScaleCache.stride = Stride(input.numKHeads * input.blockSize, input.blockSize, 1, 1);
     input.kScaleCache.stridePresent = true;
-    SetShape(input.cuSeqLen, static_cast<uint64_t>(input.batch) + 1);
+    SetShape(input.cuSeqLens, static_cast<uint64_t>(input.batch) + 1);
     SetShape(input.actualSeqLens, static_cast<uint64_t>(input.batch));
     SetShape(input.rotation, input.headDim, input.headDim);
     SetShape(input.vScale, input.numVHeads);
@@ -178,7 +184,7 @@ ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, ui
     input.kCache.dtype = ge::DT_FLOAT8_E4M3FN;
     input.vCache.dtype = ge::DT_FLOAT8_E4M3FN;
     input.kScaleCache.dtype = ge::DT_FLOAT;
-    input.cuSeqLen.dtype = ge::DT_INT32;
+    input.cuSeqLens.dtype = ge::DT_INT32;
     input.actualSeqLens.dtype = ge::DT_INT32;
     input.rotation.dtype = ge::DT_BF16;
     input.vScale.dtype = ge::DT_FLOAT;
@@ -257,7 +263,7 @@ std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
     inputs.push_back(MakeTensorSpec(input.kCache));
     inputs.push_back(MakeTensorSpec(input.vCache));
     inputs.push_back(MakeTensorSpec(input.kScaleCache));
-    inputs.push_back(MakeTensorSpec(input.cuSeqLen));
+    inputs.push_back(MakeTensorSpec(input.cuSeqLens));
     inputs.push_back(MakeTensorSpec(input.actualSeqLens));
     inputs.push_back(input.rotation.shapePresent ? MakeTensorSpec(input.rotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     inputs.push_back(input.vScale.shapePresent ? MakeTensorSpec(input.vScale) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
@@ -301,12 +307,22 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     attrs.reserve(4U);
     attrs.push_back(gert::TilingContextPara::OpAttr(
         "head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)));
-    attrs.push_back(gert::TilingContextPara::OpAttr("qkv_layout",
-        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
-    attrs.push_back(gert::TilingContextPara::OpAttr("q_out_layout",
-        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qOutLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
-    attrs.push_back(
-        gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
+    if (options.qkvLayoutPresent) {
+        const std::string qkvLayout =
+            options.qkvLayoutOverridePresent ? options.qkvLayoutOverride :
+                                               (input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD");
+        attrs.push_back(gert::TilingContextPara::OpAttr(
+            "qkv_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(qkvLayout)));
+    }
+    if (options.qkvLayoutPresent && options.qOutLayoutPresent) {
+        const std::string qOutLayout =
+            options.qOutLayoutOverridePresent ? options.qOutLayoutOverride :
+                                                (input.qOutLayout == TEST_LAYOUT_TND ? "TND" : "NTD");
+        attrs.push_back(gert::TilingContextPara::OpAttr(
+            "q_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(qOutLayout)));
+        attrs.push_back(
+            gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
+    }
     return attrs;
 }
 
@@ -589,8 +605,8 @@ TensorContractInfo *FindTensor(ContractInput &input, const std::string &name)
     if (name == "kScaleCache") {
         return &input.kScaleCache;
     }
-    if (name == "cuSeqLen") {
-        return &input.cuSeqLen;
+    if (name == "cuSeqLens") {
+        return &input.cuSeqLens;
     }
     if (name == "actualSeqLens") {
         return &input.actualSeqLens;
@@ -668,6 +684,16 @@ void ApplyRunOptionUpdate(TilingRunOptions &options, const std::string &field, c
     } else if (field == "headNums") {
         options.headNums = ops::ut::ParseI64List(value);
         options.headNumsPresent = true;
+    } else if (field == "qkvLayoutAttrPresent") {
+        options.qkvLayoutPresent = ops::ut::ParseBool(value);
+    } else if (field == "qOutLayoutAttrPresent") {
+        options.qOutLayoutPresent = ops::ut::ParseBool(value);
+    } else if (field == "qkvLayoutAttr") {
+        options.qkvLayoutOverride = value == "<empty>" ? "" : value;
+        options.qkvLayoutOverridePresent = true;
+    } else if (field == "qOutLayoutAttr") {
+        options.qOutLayoutOverride = value == "<empty>" ? "" : value;
+        options.qOutLayoutOverridePresent = true;
     } else if (field == "socVersion") {
         options.socVersion = value;
     } else {

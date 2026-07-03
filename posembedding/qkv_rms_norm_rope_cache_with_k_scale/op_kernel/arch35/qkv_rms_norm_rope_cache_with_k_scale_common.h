@@ -140,7 +140,7 @@ struct GlobalTensors {
     GM_ADDR kCache;
     GM_ADDR vCache;
     GM_ADDR kScaleCache;
-    GM_ADDR cuSeqLen;
+    GM_ADDR cuSeqLens;
     GM_ADDR actualSeqLens;
     GM_ADDR rotation;
     GM_ADDR vScale;

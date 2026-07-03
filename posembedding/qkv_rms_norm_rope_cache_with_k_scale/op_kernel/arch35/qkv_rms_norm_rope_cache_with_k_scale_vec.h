@@ -235,8 +235,8 @@ private:
             uint64_t seqBegin = 0U;
             uint64_t seqEnd = 0U;
             while (cosSinBatchIdx_ < batch_) {
-                seqBegin = static_cast<uint64_t>(cuSeqLenGm_.GetValue(cosSinBatchIdx_));
-                seqEnd = static_cast<uint64_t>(cuSeqLenGm_.GetValue(cosSinBatchIdx_ + 1U));
+                seqBegin = static_cast<uint64_t>(cuSeqLensGm_.GetValue(cosSinBatchIdx_));
+                seqEnd = static_cast<uint64_t>(cuSeqLensGm_.GetValue(cosSinBatchIdx_ + 1U));
                 if (tokenOffset < seqEnd) {
                     break;
                 }
@@ -510,7 +510,7 @@ private:
         kGammaGm_.SetGlobalBuffer((__gm__ float *)tensors.kGamma);
         cosSinGm_.SetGlobalBuffer((__gm__ float *)tensors.cosSin);
         slotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.slotMapping);
-        cuSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLen);
+        cuSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLens);
         actualSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.actualSeqLens);
         vScaleGm_.SetGlobalBuffer((__gm__ float *)tensors.vScale);
         qOutGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.qOut);
@@ -544,7 +544,7 @@ private:
     GlobalTensor<float> kGammaGm_;
     GlobalTensor<float> cosSinGm_;
     GlobalTensor<int32_t> slotMappingGm_;
-    GlobalTensor<int32_t> cuSeqLenGm_;
+    GlobalTensor<int32_t> cuSeqLensGm_;
     GlobalTensor<int32_t> actualSeqLensGm_;
     GlobalTensor<float> vScaleGm_;
     GlobalTensor<fp8_e4m3fn_t> qOutGm_;

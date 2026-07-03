@@ -44,14 +44,15 @@ class Case:
     n_q: int
     n_k: int
     n_v: int
-    qkv_layout: str
-    q_out_layout: str = ""
+    layout_qkv: str
+    layout_q_out: str = ""
     slot_pattern: str = "linear"
     seed: int = 0
     block_size: int = 16
     block_num: int = 8
     cache_stride: str = "contiguous"
     cache_pad: int = 0
+    omit_layout_args: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,7 @@ class MatchResult:
 def with_tnd_to_ntd_cases(cases: List[Case]) -> Tuple[Case, ...]:
     extended = list(cases)
     for index, case in enumerate(cases):
-        if case.qkv_layout != "TND" or case.q_out_layout:
+        if case.layout_qkv != "TND" or case.layout_q_out:
             continue
         if not case.name.endswith("_tnd"):
             raise ValueError(f"{case.name}: TND base case name must end with _tnd")
@@ -93,7 +94,7 @@ def with_tnd_to_ntd_cases(cases: List[Case]) -> Tuple[Case, ...]:
                 name=f"{case.name[:-4]}_tnd_to_ntd",
                 batch_seq_lens=varied_seq_lens,
                 actual_seq_lens=varied_actual_seq_lens,
-                q_out_layout="NTD",
+                layout_q_out="NTD",
                 seed=case.seed + 100000,
             )
         )
@@ -163,8 +164,8 @@ def performance_t16384_tnd_to_ntd_cases(seed: int) -> Tuple[Case, ...]:
             n_q=heads[0],
             n_k=heads[1],
             n_v=heads[2],
-            qkv_layout="TND",
-            q_out_layout="NTD",
+            layout_qkv="TND",
+            layout_q_out="NTD",
             slot_pattern="random",
             seed=seed + index,
             block_num=1024,
@@ -194,15 +195,32 @@ def precision_mb20_t16384_cases(seed: int) -> Tuple[Case, ...]:
             n_q=16,
             n_k=2,
             n_v=2,
-            qkv_layout=qkv_layout,
-            q_out_layout=q_out_layout,
+            layout_qkv=layout_qkv,
+            layout_q_out=layout_q_out,
             slot_pattern="random",
             seed=seed + index,
             block_num=1024,
             cache_stride="d_pad",
             cache_pad=8,
         )
-        for index, (name, qkv_layout, q_out_layout) in enumerate(specs)
+        for index, (name, layout_qkv, layout_q_out) in enumerate(specs)
+    )
+
+
+def default_layout_case(seed: int) -> Case:
+    return Case(
+        name="n16_kv2_default_layout_tnd_to_ntd",
+        batch_seq_lens=(19,),
+        actual_seq_lens=(19,),
+        n_q=16,
+        n_k=2,
+        n_v=2,
+        layout_qkv="TND",
+        layout_q_out="NTD",
+        slot_pattern="random",
+        seed=seed,
+        block_num=8,
+        omit_layout_args=True,
     )
 
 
@@ -278,7 +296,7 @@ def build_cases() -> Tuple[Case, ...]:
                         n_q=heads[0],
                         n_k=heads[1],
                         n_v=heads[2],
-                        qkv_layout=layout,
+                        layout_qkv=layout,
                         slot_pattern=slot_pattern,
                         seed=seed,
                     )
@@ -298,7 +316,7 @@ def build_cases() -> Tuple[Case, ...]:
                         n_q=heads[0],
                         n_k=heads[1],
                         n_v=heads[2],
-                        qkv_layout=layout,
+                        layout_qkv=layout,
                         slot_pattern=slot_pattern,
                         seed=seed,
                         block_num=block_num,
@@ -317,7 +335,7 @@ def build_cases() -> Tuple[Case, ...]:
                     n_q=64,
                     n_k=8,
                     n_v=8,
-                    qkv_layout=layout,
+                    layout_qkv=layout,
                     slot_pattern=slot_pattern,
                     seed=seed,
                     block_num=block_num,
@@ -336,7 +354,7 @@ def build_cases() -> Tuple[Case, ...]:
                     n_q=64,
                     n_k=8,
                     n_v=8,
-                    qkv_layout=layout,
+                    layout_qkv=layout,
                     slot_pattern=slot_pattern,
                     seed=seed,
                     block_num=block_num,
@@ -355,7 +373,7 @@ def build_cases() -> Tuple[Case, ...]:
                     n_q=16,
                     n_k=2,
                     n_v=2,
-                    qkv_layout=layout,
+                    layout_qkv=layout,
                     slot_pattern=slot_pattern,
                     seed=seed,
                     block_num=block_num,
@@ -374,7 +392,7 @@ def build_cases() -> Tuple[Case, ...]:
                     n_q=8,
                     n_k=1,
                     n_v=1,
-                    qkv_layout=layout,
+                    layout_qkv=layout,
                     slot_pattern=slot_pattern,
                     seed=seed,
                     block_num=block_num,
@@ -387,13 +405,15 @@ def build_cases() -> Tuple[Case, ...]:
     cases.extend(precision_mb20_t16384_cases(seed))
     seed += 3
     cases.extend(performance_t16384_tnd_to_ntd_cases(seed))
+    seed += 3
+    cases.append(default_layout_case(seed))
     return tuple(cases)
 
 
 CASES = build_cases()
 
 
-def make_cu_seq_len(seq_lens: Iterable[int]) -> torch.Tensor:
+def make_cu_seq_lens(seq_lens: Iterable[int]) -> torch.Tensor:
     prefix = [0]
     for seq_len in seq_lens:
         prefix.append(prefix[-1] + int(seq_len))
@@ -423,13 +443,13 @@ def make_slot_mapping(case: Case, total_tokens: int, generator: torch.Generator)
 
 
 def validate_case(case: Case) -> None:
-    if case.qkv_layout not in ("NTD", "TND"):
-        raise ValueError(f"{case.name}: qkv_layout must be NTD or TND")
-    q_out_layout = case.q_out_layout or case.qkv_layout
-    if q_out_layout not in ("NTD", "TND"):
-        raise ValueError(f"{case.name}: q_out_layout must be NTD or TND")
-    if case.qkv_layout == "NTD" and q_out_layout == "TND":
-        raise ValueError(f"{case.name}: qkv_layout=NTD with q_out_layout=TND is not supported")
+    if case.layout_qkv not in ("NTD", "TND"):
+        raise ValueError(f"{case.name}: layout_qkv must be NTD or TND")
+    layout_q_out = case.layout_q_out or case.layout_qkv
+    if layout_q_out not in ("NTD", "TND"):
+        raise ValueError(f"{case.name}: layout_q_out must be NTD or TND")
+    if case.layout_qkv == "NTD" and layout_q_out == "TND":
+        raise ValueError(f"{case.name}: layout_qkv=NTD with layout_q_out=TND is not supported")
     if case.n_k != case.n_v:
         raise ValueError(f"{case.name}: Nk and Nv must match")
     if len(case.actual_seq_lens) != len(case.batch_seq_lens):
@@ -479,7 +499,7 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
     total_tokens = sum(case.batch_seq_lens)
     total_heads = case.n_q + case.n_k + case.n_v
     qkv_shape = (total_tokens, total_heads, HEAD_SIZE)
-    if case.qkv_layout == "NTD":
+    if case.layout_qkv == "NTD":
         qkv_shape = (total_heads, total_tokens, HEAD_SIZE)
 
     qkv = (torch.randn(qkv_shape, generator=generator, dtype=torch.float32) * 0.5).to(torch.bfloat16)
@@ -494,7 +514,7 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
         torch.float8_e4m3fn
     )
     k_scale_cache = torch.zeros((case.block_num, case.n_k, case.block_size, 1), dtype=torch.float32)
-    cu_seq_len = make_cu_seq_len(case.batch_seq_lens)
+    cu_seq_lens = make_cu_seq_lens(case.batch_seq_lens)
     actual_seq_lens = torch.tensor(case.actual_seq_lens, dtype=torch.int32)
     rotation = torch.eye(HEAD_SIZE, dtype=torch.float32).to(torch.bfloat16)
     v_scale = torch.rand((case.n_v,), generator=generator, dtype=torch.float32) + 0.5
@@ -508,11 +528,11 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
         "k_cache": k_cache,
         "v_cache": v_cache,
         "k_scale_cache": k_scale_cache,
-        "cu_seq_len": cu_seq_len,
+        "cu_seq_lens": cu_seq_lens,
         "actual_seq_lens": actual_seq_lens,
         "head_nums": [case.n_q, case.n_k, case.n_v],
-        "qkv_layout": case.qkv_layout,
-        "q_out_layout": case.q_out_layout or case.qkv_layout,
+        "layout_qkv": case.layout_qkv,
+        "layout_q_out": case.layout_q_out or case.layout_qkv,
         "rotation": rotation,
         "v_scale": v_scale,
         "epsilon": DEFAULT_EPSILON,
@@ -535,8 +555,8 @@ def to_npu_inputs(cpu_inputs: Dict[str, object], case: Case, device: str) -> Dic
     return npu_inputs
 
 
-def resolve_positions(cu_seq_len: torch.Tensor, actual_seq_lens: torch.Tensor) -> torch.Tensor:
-    cu = cu_seq_len.to(torch.int64)
+def resolve_positions(cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor) -> torch.Tensor:
+    cu = cu_seq_lens.to(torch.int64)
     actual = actual_seq_lens.to(torch.int64)
     total_tokens = int(cu[-1].item())
     positions = torch.empty((total_tokens,), dtype=torch.int64)
@@ -549,8 +569,8 @@ def resolve_positions(cu_seq_len: torch.Tensor, actual_seq_lens: torch.Tensor) -
     return positions
 
 
-def apply_rope(x: torch.Tensor, cos_sin: torch.Tensor, cu_seq_len: torch.Tensor, actual_seq_lens: torch.Tensor):
-    positions = resolve_positions(cu_seq_len, actual_seq_lens)
+def apply_rope(x: torch.Tensor, cos_sin: torch.Tensor, cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor):
+    positions = resolve_positions(cu_seq_lens, actual_seq_lens)
     if int(positions.min().item()) < 0 or int(positions.max().item()) >= cos_sin.shape[0]:
         raise ValueError("cos_sin does not cover all RoPE positions")
 
@@ -588,16 +608,16 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     k_cache = cpu_inputs["k_cache"].clone()
     v_cache = cpu_inputs["v_cache"].clone()
     k_scale_cache = cpu_inputs["k_scale_cache"].clone()
-    cu_seq_len = cpu_inputs["cu_seq_len"]
+    cu_seq_lens = cpu_inputs["cu_seq_lens"]
     actual_seq_lens = cpu_inputs["actual_seq_lens"]
     rotation = cpu_inputs["rotation"].to(torch.float32)
     v_scale = cpu_inputs["v_scale"].to(torch.float32)
     n_q, n_k, n_v = cpu_inputs["head_nums"]
-    qkv_layout = cpu_inputs["qkv_layout"]
-    q_out_layout = cpu_inputs["q_out_layout"]
+    layout_qkv = cpu_inputs["layout_qkv"]
+    layout_q_out = cpu_inputs["layout_q_out"]
     epsilon = cpu_inputs["epsilon"]
 
-    if qkv_layout == "TND":
+    if layout_qkv == "TND":
         q = qkv[:, :n_q, :]
         k = qkv[:, n_q:n_q + n_k, :]
         v = qkv[:, n_q + n_k:n_q + n_k + n_v, :]
@@ -611,15 +631,15 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     q_norm = q / q_rms * q_gamma[None, None, :]
     k_norm = k / k_rms * k_gamma[None, None, :]
 
-    q_rope = apply_rope(q_norm, cos_sin, cu_seq_len, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
-    k_rope = apply_rope(k_norm, cos_sin, cu_seq_len, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
+    q_rope = apply_rope(q_norm, cos_sin, cu_seq_lens, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
+    k_rope = apply_rope(k_norm, cos_sin, cu_seq_lens, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
     q_after_cube = q_rope @ rotation
     k_after_cube = k_rope @ rotation
     qk_after_cube = torch.cat((q_after_cube, k_after_cube), dim=1)
     qk_quant, scale = dynamic_quant_fp8(qk_after_cube)
 
     v_out = (v * v_scale[None, :, None]).to(torch.float8_e4m3fn)
-    if q_out_layout == "TND":
+    if layout_q_out == "TND":
         q_out = qk_quant[:, :n_q, :].contiguous()
         q_scale = scale[:, :n_q].contiguous()
     else:
@@ -647,6 +667,11 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
     from cann_ops_transformer.ops import qkv_rms_norm_rope_cache_with_k_scale
 
     npu_inputs = to_npu_inputs(cpu_inputs, case, device)
+    layout_kwargs = (
+        {}
+        if case.omit_layout_args
+        else {"layout_qkv": npu_inputs["layout_qkv"], "layout_q_out": npu_inputs["layout_q_out"]}
+    )
     with torch.no_grad():
         q_out, q_scale = qkv_rms_norm_rope_cache_with_k_scale(
             npu_inputs["qkv"],
@@ -657,14 +682,13 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
             npu_inputs["k_cache"],
             npu_inputs["v_cache"],
             npu_inputs["k_scale_cache"],
-            npu_inputs["cu_seq_len"],
+            npu_inputs["cu_seq_lens"],
             npu_inputs["actual_seq_lens"],
             npu_inputs["head_nums"],
-            npu_inputs["qkv_layout"],
-            npu_inputs["q_out_layout"],
             rotation=npu_inputs["rotation"],
             v_scale=npu_inputs["v_scale"],
             epsilon=npu_inputs["epsilon"],
+            **layout_kwargs,
         )
     torch.npu.synchronize()
     return {
@@ -768,8 +792,8 @@ def compare_outputs(actual: Dict[str, torch.Tensor], expected: Dict[str, torch.T
 
 def expected_shapes(case: Case):
     total_tokens = sum(case.batch_seq_lens)
-    q_out_layout = case.q_out_layout or case.qkv_layout
-    if q_out_layout == "TND":
+    layout_q_out = case.layout_q_out or case.layout_qkv
+    if layout_q_out == "TND":
         return (total_tokens, case.n_q, HEAD_SIZE), (total_tokens, case.n_q)
     return (case.n_q, total_tokens, HEAD_SIZE), (case.n_q, total_tokens)
 
@@ -792,8 +816,9 @@ def warmup_perf_all(device: str) -> None:
 
 def print_case_results(case: Case, results: List[MatchResult]) -> None:
     print(
-        f"[CASE] {case.name} qkv_layout={case.qkv_layout} "
-        f"q_out_layout={case.q_out_layout or case.qkv_layout} heads=({case.n_q},{case.n_k},{case.n_v}) "
+        f"[CASE] {case.name} layout_qkv={case.layout_qkv} "
+        f"layout_q_out={case.layout_q_out or case.layout_qkv} omit_layout_args={case.omit_layout_args} "
+        f"heads=({case.n_q},{case.n_k},{case.n_v}) "
         f"seq={case.batch_seq_lens} actual_seq={case.actual_seq_lens} slot={case.slot_pattern} "
         f"cache_stride={case.cache_stride} cache_pad={case.cache_pad}"
     )

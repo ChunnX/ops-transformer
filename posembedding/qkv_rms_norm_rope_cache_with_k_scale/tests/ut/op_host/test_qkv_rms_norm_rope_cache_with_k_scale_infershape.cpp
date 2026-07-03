@@ -107,15 +107,29 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidQkvLayout)
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsMissingQkvLayout)
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersDefaultLayoutsWhenLayoutAttrsMissing)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     gert::InfershapeContextPara para(
         "QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
         {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)}});
 
-    std::vector<std::vector<int64_t>> expected;
-    ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
+    std::vector<std::vector<int64_t>> expected = {
+        {16, 20, 128}, {16, 20}, {8, 2, 128, 128}, {8, 2, 128, 128}, {8, 2, 128, 1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersDefaultLayoutsWhenLayoutAttrsEmpty)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
+                                     BuildAttrs(headNums, "", ""));
+
+    std::vector<std::vector<int64_t>> expected = {
+        {16, 20, 128}, {16, 20}, {8, 2, 128, 128}, {8, 2, 128, 128}, {8, 2, 128, 1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsQkvHeadLessThanNq)

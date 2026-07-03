@@ -83,22 +83,22 @@
 | k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, D]`，支持非连续Tensor。 | FLOAT8_E4M3FN | ND |
 | v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`，支持非连续Tensor。 | FLOAT8_E4M3FN | ND |
 | k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`，支持非连续Tensor。 | FLOAT | ND |
-| cu_seq_len | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
+| cu_seq_lens | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
 | actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
 | rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。当前不支持不传或空Tensor。 | BFLOAT16 | ND |
 | v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。当前不支持不传或空Tensor。 | FLOAT | ND |
 | q_out | 输出 | Q分支FP8 E4M3FN量化输出。`q_out_layout="TND"`时shape为`[T, Nq, D]`，`q_out_layout="NTD"`时shape为`[Nq, T, D]`。 | FLOAT8_E4M3FN | ND |
 | q_scale | 输出 | Q分支动态量化scale。`q_out_layout="TND"`时shape为`[T, Nq]`，`q_out_layout="NTD"`时shape为`[Nq, T]`。 | FLOAT | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
-| qkv_layout | 属性 | `qkv`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
-| q_out_layout | 属性 | `q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
+| qkv_layout | 可选属性 | `qkv`的N/T轴布局，默认值为`"TND"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
+| q_out_layout | 可选属性 | `q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
 
 ## 约束说明
 
 - 输入shape限制：
   - 当前实现仅支持`D=128`，且`Nv=Nk`。
-  - `qkv_layout`控制`qkv`的N/T轴布局，`q_out_layout`控制`q_out`和`q_scale`的N/T轴布局：
+  - `qkv_layout`控制`qkv`的N/T轴布局，默认值为`"TND"`；`q_out_layout`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
     - `qkv_layout="TND"`，`q_out_layout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
     - `qkv_layout="TND"`，`q_out_layout="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
     - `qkv_layout="NTD"`，`q_out_layout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
@@ -107,8 +107,8 @@
     - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1。
     - `k_cache`和`v_cache`前三维stride必须一致。
 - 输入值域限制：
-  - `cu_seq_len`表示当前调用内token的batch前缀和，`cu_seq_len[0]`应为0，`cu_seq_len[Batch]`应等于`T`。
-  - `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + i`得到；调用方需保证`actual_seq_lens[b] >= cu_seq_len[b+1] - cu_seq_len[b]`。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
+  - `cu_seq_lens`表示当前调用内token的batch前缀和，`cu_seq_lens[0]`应为0，`cu_seq_lens[Batch]`应等于`T`。
+  - `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_lens[b+1] - cu_seq_lens[b]) + i`得到；调用方需保证`actual_seq_lens[b] >= cu_seq_lens[b+1] - cu_seq_lens[b]`。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
   - `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 - 输入属性限制：
