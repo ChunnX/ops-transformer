@@ -18,7 +18,7 @@
 
 namespace op_api {
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mhc_post_backward(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(
     const at::Tensor &gradOutput, const at::Tensor &x,
     const at::Tensor &hRes, const at::Tensor &hOut, const at::Tensor &hPost)
 {
@@ -36,7 +36,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mhc_post_backward(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mhc_post_backward", &mhc_post_backward, "mhc_post_backward");
+    m.def("mhc_post_backward", &MhcPostBackward, "mhc_post_backward");
 }
 
 } // namespace op_api
