@@ -108,7 +108,7 @@ def make_noncontiguous(tensor, nc_dims):
     Args:
         tensor: 连续的 torch.Tensor
         nc_dims: 0 --> 仅 dim0 非连续 (pad dim1 后切片)
-                 1 --> 仅 dim1 非连续 (pad dim2 后切片 + as_strided 恢复 dim0 stride)
+                 1 --> 仅 dim1 非连续 (手动拷贝到flat buffer, dim0行连续+dim1行间gap)
                  (0, 1) --> dim0 和 dim1 都非连续 (pad dim2 后切片)
 
     Returns:
@@ -128,21 +128,27 @@ def make_noncontiguous(tensor, nc_dims):
         p[tuple(ws)] = tensor
         return p[tuple(ws)]
     elif nc_dims == 1:
-        # pad dim2 会让 dim0+dim1 同时变大，再用 as_strided 把 dim0 归位
-        pad_dim = 2
-        shp = list(shape)
-        shp[pad_dim] += 1
-        p = torch.zeros(shp, dtype=dtype, device=device)
-        ws = [slice(None)] * len(shape)
-        ws[pad_dim] = slice(None, shape[pad_dim])
-        p[tuple(ws)] = tensor
-        r = p[tuple(ws)]
-        contig_dim0 = 1
-        for i in range(1, len(shape)):
-            contig_dim0 *= shape[i]
-        new_strides = list(r.stride())
-        new_strides[0] = contig_dim0
-        return r.as_strided(r.shape, tuple(new_strides), r.storage_offset())
+        # dim1-only: 手动拷贝到新buffer中, dim0行连续、dim1行间插入gap使stride(1)膨胀
+        ndim = len(shape)
+        cstrides = [1] * ndim
+        for i in range(ndim - 2, -1, -1):
+            cstrides[i] = cstrides[i + 1] * shape[i + 1]
+        gap = cstrides[2] if ndim >= 3 else 1
+        tstrides = list(cstrides)
+        tstrides[1] = cstrides[1] + gap
+        last_offset = sum((shape[i] - 1) * tstrides[i] for i in range(ndim))
+        buf_size = last_offset + 1
+        buf = torch.zeros(buf_size, dtype=dtype, device=device)
+        t_flat = tensor.reshape(-1)
+        for b in range(shape[0]):
+            src_base = b * cstrides[0]
+            dst_base = b * tstrides[0]
+            for n in range(shape[1]):
+                src_off = src_base + n * cstrides[1]
+                dst_off = dst_base + n * tstrides[1]
+                row_elem = cstrides[1]
+                buf[dst_off:dst_off + row_elem] = t_flat[src_off:src_off + row_elem]
+        return buf.as_strided(shape, tuple(tstrides), 0)
     elif nc_dims == (0, 1):
         pad_dim = 2
         shp = list(shape)
