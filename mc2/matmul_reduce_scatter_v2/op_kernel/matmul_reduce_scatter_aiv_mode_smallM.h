@@ -21,8 +21,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "kernel_tiling/kernel_tiling.h"
-#include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"

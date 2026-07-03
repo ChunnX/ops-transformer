@@ -15,7 +15,6 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_LAYERED_H
 #define MOE_DISTRIBUTE_COMBINE_V2_LAYERED_H
 #include "kernel_operator.h"
-#include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_v2_tiling.h"
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"

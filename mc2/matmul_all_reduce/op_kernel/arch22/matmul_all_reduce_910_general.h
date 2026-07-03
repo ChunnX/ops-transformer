@@ -21,7 +21,6 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
 #include "matmul_all_reduce_base.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
