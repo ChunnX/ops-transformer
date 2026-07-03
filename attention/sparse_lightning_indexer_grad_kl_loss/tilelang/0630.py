@@ -296,6 +296,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -313,13 +314,20 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     # barrier removed: sm_sum ops → bmm1_copy, no data dependency
 
-                    # P_reduced for MY K block (only local block, no cross-core dependency)
+                    # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
                     for g_id in range(G):
-                        T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
-                        T.tile.exp(bmm1_ub[g_id, :], bmm1_ub[g_id, :])
-                        T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
+                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_max_ub[g_id])
+                    T.barrier_all()
+                    T.tile.sub(bmm1_ub, bmm1_ub, sm_2d_ub)
+                    T.tile.exp(bmm1_ub, bmm1_ub)
+                    # rebuild sm_2d with sm_sum for div
+                    for g_id in range(G):
+                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_sum_ub[g_id])
+                    T.barrier_all()
+                    T.tile.div(bmm1_ub, bmm1_ub, sm_2d_ub)
                     # barrier removed: div→fill, VEC→VEC (different buffers)
                     T.tile.fill(p_reduced_tmp_ub, 0)
                     for g_id in range(G):
