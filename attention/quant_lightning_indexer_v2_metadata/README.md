@@ -163,7 +163,7 @@
   </tbody>
   </table>
 
-  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quant_mode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1，128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。</li></ul>
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quant_mode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1，128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。</li></ul>
 
 ## 约束说明
 
