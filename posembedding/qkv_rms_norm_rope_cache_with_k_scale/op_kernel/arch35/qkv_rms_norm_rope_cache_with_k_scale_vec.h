@@ -20,8 +20,8 @@ template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
-                                uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t kvCacheStrideBlock,
-                                uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
+                                uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t tokenTile,
+                                uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
                                 uint64_t kScaleCacheStrideBlock, uint64_t kScaleCacheStrideHead,
                                 uint64_t kScaleCacheStrideToken, float epsilon)
     {
@@ -41,6 +41,16 @@ public:
         inputBufferUseId_ = 0U;
         vOutBufferUseId_ = 0U;
         cosSinBatchIdx_ = 0U;
+        const uint64_t tokenCapacity = CeilDiv(tokenTile, QKV_K_SCALE_MIX_AIV_PER_AIC);
+        const uint64_t qPreprocessRows = tokenCapacity * qHeadNum_;
+        const uint64_t kPreprocessRows = tokenCapacity * kvHeadNum_;
+        qPreprocessRowStride_ =
+            static_cast<uint32_t>(AlignUp(qPreprocessRows - 1U, QKV_K_SCALE_QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) + 1U);
+        kPreprocessRowStride_ =
+            static_cast<uint32_t>(AlignUp(kPreprocessRows - 1U, QKV_K_SCALE_QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) + 1U);
+        qPreprocessElements_ = static_cast<uint32_t>(
+            (((QKV_K_SCALE_HEAD_DIM_D128 / QKV_K_SCALE_NZ_C0) - 1U) * qPreprocessRowStride_ + qPreprocessRows) *
+            QKV_K_SCALE_NZ_C0);
         BindLocalTensors();
         BindGlobalTensors(tensors);
     }
@@ -145,9 +155,8 @@ public:
     }
 
 private:
-    static constexpr uint32_t QK_PREPROCESS_BF16_NZ_BYTES = QKV_K_SCALE_OUTPUT_ONE_BUFFER_BYTES / 2U;
-    static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS = QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
-    static constexpr uint32_t QK_PREPROCESS_UB_NZ_ROW_STRIDE = QKV_K_SCALE_HEAD_DIM_D128;
+    static constexpr uint32_t QK_PREPROCESS_SCATTER_INDEX_TABLE_ELEMENTS =
+        QKV_K_SCALE_QK_NZ_SCATTER_INDEX_TABLE_ELEMENTS;
     static constexpr bool QKV_IS_TND = QKV_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
     static constexpr bool Q_OUT_IS_TND = Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
 
@@ -253,7 +262,8 @@ private:
         const LocalTensor<float> gamma = gammaUb_;
         const LocalTensor<float> cosSin = cosSinDbPoolUb_[inputBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
         const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
-        const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
+        const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[qPreprocessElements_];
+        const LocalTensor<uint16_t> kNzScatterIndex = qkNzScatterIndexUb_[QK_PREPROCESS_SCATTER_INDEX_TABLE_ELEMENTS];
         const uint32_t tokenCapacity = static_cast<uint32_t>(tile.cubeHalfTokenSize);
         uint32_t inputTokenStride;
         uint32_t inputHeadStride;
@@ -282,26 +292,31 @@ private:
             (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
             (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
             static_cast<uint16_t>(qHeadNum_), inputTokenStride, inputHeadStride, qOutputTokenStride, outputHeadStride,
-            epsilon_);
+            qPreprocessRowStride_, epsilon_);
         const uint32_t kInputOffset = static_cast<uint32_t>(qHeadNum_) * inputHeadStride;
         AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
             (__ubuf__ bfloat16_t *)input[kInputOffset].GetPhyAddr(),
             (__ubuf__ float *)(gamma[QKV_K_SCALE_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
-            (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(), (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(),
+            (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(), (__ubuf__ uint16_t *)kNzScatterIndex.GetPhyAddr(),
             static_cast<uint16_t>(tile.aivTokenSize), static_cast<uint16_t>(kvHeadNum_), inputTokenStride,
-            inputHeadStride, kOutputTokenStride, outputHeadStride, epsilon_);
+            inputHeadStride, kOutputTokenStride, outputHeadStride, kPreprocessRowStride_, epsilon_);
     }
 
     __aicore__ inline void BuildRopeNzScatterIndex()
+    {
+        BuildRopeNzScatterIndexTable(qkNzScatterIndexUb_, qPreprocessRowStride_);
+        BuildRopeNzScatterIndexTable(qkNzScatterIndexUb_[QK_PREPROCESS_SCATTER_INDEX_TABLE_ELEMENTS],
+                                     kPreprocessRowStride_);
+    }
+
+    __aicore__ inline void BuildRopeNzScatterIndexTable(const LocalTensor<uint16_t> &scatterIndex,
+                                                        uint32_t rowStride)
     {
         for (uint32_t dim = 0U; dim < QKV_K_SCALE_D128_HALF_SIZE; ++dim) {
             const uint32_t dBlock = dim / QKV_K_SCALE_NZ_C0;
             const uint32_t dInner = dim % QKV_K_SCALE_NZ_C0;
             // BF16 values produced by f32->bf16 cast occupy one lane in each 32-bit slot.
-            qkNzScatterIndexUb_.SetValue(2U * dim,
-                                          static_cast<uint16_t>(dBlock * QK_PREPROCESS_UB_NZ_ROW_STRIDE *
-                                                                    QKV_K_SCALE_NZ_C0 +
-                                                                dInner));
+            scatterIndex.SetValue(2U * dim, static_cast<uint16_t>(dBlock * rowStride * QKV_K_SCALE_NZ_C0 + dInner));
         }
     }
 
@@ -314,18 +329,19 @@ private:
         const uint64_t qTileRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kTileRows = tile.cubeTokenSize * kvHeadNum_;
         const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
-        const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
+        const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[qPreprocessElements_];
         CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1, qRopeNz, qTileRows, qHeadNum_, tile.cubeHalfTokenSize,
-                                            tile.aivBlockTokenOffset, tile.aivTokenSize);
+                                            tile.aivBlockTokenOffset, tile.aivTokenSize, qPreprocessRowStride_);
         CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1[NzMatrixElements(qTileRows)], kRopeNz, kTileRows, kvHeadNum_,
-                                            tile.cubeHalfTokenSize, tile.aivBlockTokenOffset, tile.aivTokenSize);
+                                            tile.cubeHalfTokenSize, tile.aivBlockTokenOffset, tile.aivTokenSize,
+                                            kPreprocessRowStride_);
     }
 
     __aicore__ inline void CopyRopeSegmentBf16LayoutNzUbToL1Nz(const LocalTensor<bfloat16_t> &dstSegment,
                                                                const LocalTensor<bfloat16_t> &srcSegment,
                                                                uint64_t tileSegmentRows, uint64_t headSize,
                                                                uint64_t tokenCapacity, uint64_t aivBlockTokenOffset,
-                                                               uint64_t tokenSize)
+                                                               uint64_t tokenSize, uint32_t rowStride)
     {
         if (tokenSize == 0U || headSize == 0U) {
             return;
@@ -334,7 +350,7 @@ private:
         DataCopyParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(QKV_K_SCALE_HEAD_DIM_D128 / QKV_K_SCALE_NZ_C0);
         copyParams.blockLen = static_cast<uint16_t>(copyRows);
-        copyParams.srcStride = static_cast<uint16_t>(QK_PREPROCESS_UB_NZ_ROW_STRIDE - copyRows);
+        copyParams.srcStride = static_cast<uint16_t>(rowStride - copyRows);
         copyParams.dstStride = static_cast<uint16_t>(AlignUp(tileSegmentRows, QKV_K_SCALE_NZ_C0) - copyRows);
         const uint64_t dstRowOffset = aivBlockTokenOffset * headSize;
         DataCopy(dstSegment[dstRowOffset * QKV_K_SCALE_NZ_C0], srcSegment, copyParams);
@@ -520,6 +536,9 @@ private:
     uint64_t inputBufferUseId_;
     uint64_t vOutBufferUseId_;
     uint64_t cosSinBatchIdx_;
+    uint32_t qPreprocessRowStride_;
+    uint32_t kPreprocessRowStride_;
+    uint32_t qPreprocessElements_;
     GlobalTensor<bfloat16_t> qkvGm_;
     GlobalTensor<float> qGammaGm_;
     GlobalTensor<float> kGammaGm_;

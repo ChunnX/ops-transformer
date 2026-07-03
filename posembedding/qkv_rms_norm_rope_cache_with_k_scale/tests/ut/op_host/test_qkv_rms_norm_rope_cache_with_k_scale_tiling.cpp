@@ -53,6 +53,13 @@ uint64_t EncodeQkvKScaleTilingKey(uint64_t qkvLayout, uint64_t qOutLayout)
     return (qkvLayout << QKV_LAYOUT_TILING_KEY_SHIFT) | (qOutLayout << Q_OUT_LAYOUT_TILING_KEY_SHIFT);
 }
 
+uint64_t CalcQkPreprocessNzBytes(uint64_t rowCount)
+{
+    const uint64_t rowStride = Ops::Base::CeilAlign(rowCount - 1, QkvTiling::QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) + 1;
+    const uint64_t blockCount = (QkvTiling::QK_PREPROCESS_NZ_D_BLOCKS - 1) * rowStride + rowCount;
+    return blockCount * QkvTiling::QK_PREPROCESS_BLOCK_BYTES;
+}
+
 struct TilingRunOptions {
     uint64_t aicNum = 32U;
     bool aivNumPresent = false;
@@ -922,6 +929,10 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
     EXPECT_EQ(tiling.coreTokenTile, item.coreTokenTile);
     EXPECT_EQ(tiling.coreGroupNum, item.coreGroupNum);
     EXPECT_EQ(qkHeadNum, input.numQHeads + input.numKHeads);
+    const uint64_t qPreprocessRows = tokenTilePerAiv * tiling.qHeadNum;
+    const uint64_t kPreprocessRows = tokenTilePerAiv * tiling.kvHeadNum;
+    EXPECT_LE(CalcQkPreprocessNzBytes(qPreprocessRows) + CalcQkPreprocessNzBytes(kPreprocessRows),
+              QkvTiling::QK_PREPROCESS_UB_BYTES);
     EXPECT_LE(tokenTilePerAiv * qkHeadNum, QkvTiling::QK_OUTPUT_ROWS_PER_AIV);
     EXPECT_LE(tokenTilePerAiv * (qkHeadNum + tiling.kvHeadNum), QkvTiling::QKV_INPUT_ROWS_PER_AIV);
     EXPECT_LE(tokenTilePerAiv * tiling.kvHeadNum, QkvTiling::V_OUTPUT_ROWS_PER_AIV);

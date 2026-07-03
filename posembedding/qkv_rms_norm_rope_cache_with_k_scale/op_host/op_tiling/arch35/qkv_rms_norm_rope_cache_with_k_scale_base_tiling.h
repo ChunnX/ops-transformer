@@ -62,6 +62,10 @@ public:
     static constexpr uint64_t L0C_MAX_ROWS = 256;
     static constexpr uint64_t QKV_INPUT_ROWS_PER_AIV = 160;
     static constexpr uint64_t QK_OUTPUT_ROWS_PER_AIV = 128;
+    static constexpr uint64_t QK_PREPROCESS_UB_BYTES = 64UL * 1024UL;
+    static constexpr uint64_t QK_PREPROCESS_BLOCK_BYTES = 32;
+    static constexpr uint64_t QK_PREPROCESS_UB_NZ_STRIDE_ALIGN = 16;
+    static constexpr uint64_t QK_PREPROCESS_NZ_D_BLOCKS = 8;
     static constexpr uint64_t V_OUTPUT_ROWS_PER_AIV = 80;
     static constexpr uint64_t DIM_TILE = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;

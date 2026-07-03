@@ -27,15 +27,15 @@ template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch, uint64_t qHeadNum,
-                                uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t kvCacheStrideBlock,
-                                uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
+                                uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize, uint64_t tokenTile,
+                                uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
                                 uint64_t kScaleCacheStrideBlock, uint64_t kScaleCacheStrideHead,
                                 uint64_t kScaleCacheStrideToken, float epsilon)
     {
         if ASCEND_IS_AIC {
             InitAic(tensors, qHeadNum, kvHeadNum);
         } else {
-            InitAiv(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, kvCacheStrideBlock,
+            InitAiv(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
                     kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
                     kScaleCacheStrideToken, epsilon);
         }
@@ -89,8 +89,9 @@ private:
 
     __aicore__ inline void InitAiv(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
                                    uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
-                                   uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead, uint64_t kvCacheStrideToken,
-                                   uint64_t kScaleCacheStrideBlock, uint64_t kScaleCacheStrideHead,
+                                   uint64_t tokenTile, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
+                                   uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
+                                   uint64_t kScaleCacheStrideHead,
                                    uint64_t kScaleCacheStrideToken, float epsilon)
     {
         tileCount_ = 0U;
@@ -99,7 +100,7 @@ private:
                                               QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS);
         outputDbPoolUb_ = LocalTensor<float>(TPosition::LCM, QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET,
                                              QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
-        vec_.Init(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, kvCacheStrideBlock,
+        vec_.Init(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, tokenTile, kvCacheStrideBlock,
                   kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
                   kScaleCacheStrideToken, epsilon);
         vec_.InitIntraCoreEvents();

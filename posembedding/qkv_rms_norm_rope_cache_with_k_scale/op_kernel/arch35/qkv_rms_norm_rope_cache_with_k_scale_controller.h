@@ -33,8 +33,9 @@ public:
         InitTileParamBuffer(tileParam);
         basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
                         tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize,
-                        tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
-                        tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
+                        tilingData->tokenTile, tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead,
+                        tilingData->kvCacheStrideToken, tilingData->kScaleCacheStrideBlock,
+                        tilingData->kScaleCacheStrideHead,
                         tilingData->kScaleCacheStrideToken, tilingData->epsilon);
         basicBlock.PrepareBeforeLoop();
         const uint64_t localTileId = ForEachTile(basicBlock, tilingData, tokenRange, tileParam);

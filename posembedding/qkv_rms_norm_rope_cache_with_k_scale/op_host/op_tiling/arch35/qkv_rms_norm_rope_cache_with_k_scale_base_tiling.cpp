@@ -86,6 +86,17 @@ uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numK
     return Ops::Base::CeilAlign(tokenTile * numQHeads, 16UL) + Ops::Base::CeilAlign(tokenTile * numKHeads, 16UL);
 }
 
+uint64_t CalcQkPreprocessNzBytes(uint64_t rowCount)
+{
+    const uint64_t rowStride =
+        Ops::Base::CeilAlign(rowCount - 1,
+                             QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) +
+        1;
+    const uint64_t blockCount =
+        (QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_NZ_D_BLOCKS - 1) * rowStride + rowCount;
+    return blockCount * QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_BLOCK_BYTES;
+}
+
 const char *DtypeName(ge::DataType dtype)
 {
     switch (dtype) {
@@ -472,11 +483,20 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMinimumTokenTil
 {
     const uint64_t numQkHeads = input_.numQHeads + input_.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input_.numVHeads;
+    const uint64_t qkPreprocessBytes =
+        CalcQkPreprocessNzBytes(input_.numQHeads) + CalcQkPreprocessNzBytes(input_.numKHeads);
     const uint64_t qkAlignedRows = CalcQkAlignedRows(1, input_.numQHeads, input_.numKHeads);
     OP_CHECK_IF(numQkHeads > QK_OUTPUT_ROWS_PER_AIV,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "Nq+Nk", std::to_string(numQkHeads).c_str(),
                     ("nq plus nk must be less than or equal to " + std::to_string(QK_OUTPUT_ROWS_PER_AIV)).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qkPreprocessBytes > QK_PREPROCESS_UB_BYTES,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "Q/K preprocess UB bytes", std::to_string(qkPreprocessBytes).c_str(),
+                    ("Q/K rope preprocess UB footprint must be less than or equal to " +
+                     std::to_string(QK_PREPROCESS_UB_BYTES))
+                        .c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         numQkvHeads > QKV_INPUT_ROWS_PER_AIV,
@@ -502,19 +522,24 @@ bool QkvRmsNormRopeCacheWithKScaleBaseTiling::TrySelectTokenTile(uint64_t tokenT
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
     const uint64_t numQkHeads = input_.numQHeads + input_.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input_.numVHeads;
+    const uint64_t qRows = tokenTilePerAiv * input_.numQHeads;
+    const uint64_t kRows = tokenTilePerAiv * input_.numKHeads;
+    const uint64_t qkPreprocessBytes = CalcQkPreprocessNzBytes(qRows) + CalcQkPreprocessNzBytes(kRows);
     const uint64_t rowTile = tokenTile * numQkHeads;
     const uint64_t rowTileAligned = Ops::Base::CeilAlign(rowTile, 16UL);
     const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input_.numQHeads, input_.numKHeads);
-    const bool fitsUb = tokenTilePerAiv * numQkHeads <= QK_OUTPUT_ROWS_PER_AIV &&
+    const bool fitsUb = qkPreprocessBytes <= QK_PREPROCESS_UB_BYTES &&
+                        tokenTilePerAiv * numQkHeads <= QK_OUTPUT_ROWS_PER_AIV &&
                         tokenTilePerAiv * numQkvHeads <= QKV_INPUT_ROWS_PER_AIV &&
                         tokenTilePerAiv * input_.numVHeads <= V_OUTPUT_ROWS_PER_AIV;
     const bool fitsL0c = rowTile <= L0C_MAX_ROWS && rowTileAligned <= L0C_MAX_ROWS && qkAlignedRows <= L0C_MAX_ROWS;
     const bool accepted = fitsUb && fitsL0c;
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%llu tokenTile=%llu rowTile=%llu "
-            "rowTileAligned=%llu qkAlignedRows=%llu fitsUb=%u fitsSideBySideL0c=%u accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U,
-            accepted ? 1U : 0U);
+            "rowTileAligned=%llu qkAlignedRows=%llu qkPreprocessBytes=%llu fitsUb=%u fitsSideBySideL0c=%u "
+            "accepted=%u.",
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, qkPreprocessBytes,
+            fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
     return accepted;
 }
 
