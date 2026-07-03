@@ -250,8 +250,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
+<<<<<<< HEAD
     uint32_t maxSize = dstRankIdsSize;
     maxSize = hFp32Size > dstRankIdsSize ? hFp32Size : dstRankIdsSize;
+=======
+    uint32_t maxSize = hFp32Size > dstRankIdsSize ? hFp32Size : dstRankIdsSize;
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
     tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
     totalUsedUB_ += maxSize;
 
@@ -356,19 +360,31 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
+<<<<<<< HEAD
         uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
+=======
+        uint32_t toDstRankId = dstRankIdsTensor_(tokenIndex);
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
         int32_t curExpertCnt = 0;
 
         if (tokenIndex > 0) {
             SyncFunc<AscendC::HardEvent::S_V>();
+<<<<<<< HEAD
             CalTokenSendExpertCnt(todDstRankId, tokenIndex, curExpertCnt);
+=======
+            CalTokenSendExpertCnt(toDstRankId, tokenIndex, curExpertCnt);
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
         }
 
         SyncFunc<AscendC::HardEvent::S_V>();
         
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
+<<<<<<< HEAD
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(todDstRankId) +
+=======
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(toDstRankId) +
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
                                            epRankId_ * expertPerSizeOnWin_ +
                                            curExpertCnt * hAlignWinSize_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
@@ -535,6 +551,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
 
     uint32_t countPerDataSize = dataSize / hOutAlignUbSize_; // 每次拷贝的token数量
+<<<<<<< HEAD
+=======
+    if (countPerDataSize == 0) {
+        countPerDataSize = 1;
+    }
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
     uint32_t beginIdx = preCnt;
 
     // ============ 遍历每个rank，从窗口拷贝数据到输出 ============

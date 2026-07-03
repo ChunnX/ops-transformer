@@ -409,8 +409,8 @@ protected:
                                    int64_t maxCoreNum);
     void SetPrefixSparseStartIdx(const std::vector<std::vector<int64_t>> &sparseValidArray,
                                  MultiCoreParamsRegbase &multiCoreParamsRegbase, int64_t maxCoreNum);
-    void PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray, int64_t *sparseStartIdx,
-                                      int32_t validAivNum, int64_t avgLoadSize);
+    int64_t PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray, int64_t *sparseStartIdx,
+                                         int32_t validAivNum, int64_t avgLoadSize);
     bool PartitionSparseData(const std::vector<int64_t> &sparseRollingArray, int64_t sparseRollingArraySum,
                              int64_t sparseArraySize, int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult);
     SparseEnum GetPrefixNList(std::ostringstream &failReason);

@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -119,7 +119,7 @@
     - `Y`：表示本卡需要分发的最大token数量。
     - `BS`：示各Attention节点上的发送token数，取值范围为0 < `BS` ≤ 512。
     - `H`：表示hidden size隐藏层大小，取值范围为1024 ≤ `H` ≤ 8192。
-    - `HS`：表示hidden与scale 隐藏层大小，取值范围为1152 ≤ `HS` ≤ 8320。
+    - `HS`：表示hidden与scale隐藏层大小，取值范围为1152 ≤ `HS` ≤ 8320。
     - `ffnRankNum`：表示选取ffnRankNum个卡作为FFnWorker，取值范围为0 < `ffnRankNum` < `worldSize`。
     - `attnRankNum`：表示选取attnRankNum个卡作为AttnWorker，取值范围为0 < `attnRankNum` < `worldSize`。
     - `sharedExpertNum`：表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），取值范围为0 ≤ `sharedExpertNum` ≤ 4。
@@ -127,7 +127,7 @@
 - 通信域使用约束：
     - FFNToAttention算子的通信域中不允许有其他算子。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 ## 调用说明

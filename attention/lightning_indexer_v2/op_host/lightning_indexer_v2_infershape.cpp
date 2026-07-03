@@ -100,7 +100,7 @@ static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContex
     ge::DataType outputType = ge::DT_INT32;
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
-    context->SetOutputDataType(1, context->GetInputDataType(QUERY_INDEX));
+    context->SetOutputDataType(1, ge::DT_FLOAT);
     OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferDataType end.");
     return GRAPH_SUCCESS;
 }

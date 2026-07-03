@@ -37,7 +37,7 @@
     y_{i(j)}[ j - start_{i(j)}]
     $$
 
-    其中 $i(j)$ 是 token j被分配到的专家索引。$y_{i(j)}[ j - start_{i(j)}]$是该token在对应专家下的计算结果。
+    其中 $i(j)$ 是token j被分配到的专家索引。$y_{i(j)}[ j - start_{i(j)}]$是该token在对应专家下的计算结果。
   - 3.共享专家输出融合：
 
     $$
@@ -476,7 +476,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - 在MXFP4/MXFP8场景中，offsetOptional、antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
   - 在MXFP4场景中，必须满足k为偶数的约束。在x2非转置的情况下，n必须为偶数。
   - 在MXFP4/MXFP8场景中，支持x2转置或者非转置。x2与scale的转置属性必须保持一致。
-  - e 必须小于等于1024。
+  - e必须小于等于1024。
   - 在MXFP4场景中，k不能为2。
 
 ## 调用示例
@@ -669,7 +669,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
         std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        // 创建int32_t 的w aclTensor，后续转为int_4
+        // 创建int32_t的w aclTensor，后续转为int_4
         ret = CreateAclTensorWeight(wHostData, wShape, &wDeviceAddr, aclDataType::ACL_INT32, &w);
         std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> wTensorPtr(w, aclDestroyTensor);
         std::unique_ptr<void, aclError (*)(void *)> wDeviceAddrPtr(wDeviceAddr, aclrtFree);
@@ -741,7 +741,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         ret = aclnnGroupedMatmulFinalizeRoutingV3(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3 failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -905,7 +905,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   }
 
     int main() {
-      // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+      // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
       int32_t deviceId = 0;
       aclrtStream stream;
       auto ret = Init(deviceId, &stream);
@@ -1060,7 +1060,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       ret = aclnnGroupedMatmulFinalizeRoutingV3(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3 failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -42,18 +42,18 @@ private:
         uint32_t attenMaskSize = 0;
         std::string strMaskShape;
     };
-    ge::graphStatus CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckSparseMode(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckSparseMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
+    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo) const;
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;

@@ -163,6 +163,7 @@ void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitCo
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx) / cmpRatio_;
+        maxS2Size_ = std::max(maxS2Size_, s2Size);
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -171,7 +172,20 @@ void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitCo
             splitInfo.isKvSeqAllZero = false;
         }
     }
-    return;
+    if (maxS2Size_ > sparseCount_) {
+        supportFd_ = true;
+        return;
+    }
+    validSocVersion_ = ProcessSocVersion();
+    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
+        if (maxS2Size_ > 2 * s2BaseSize_) {
+            supportFd_ = true;
+        }
+    } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
+        if (maxS2Size_ > 5 * s2BaseSize_) {
+            supportFd_ = true;
+        }
+    }
 }
 
 int64_t QuantLightningIndexerMetadataCpuKernel::CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)

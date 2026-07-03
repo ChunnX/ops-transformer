@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如Bus Error等。
@@ -283,7 +283,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 - 通信引擎commMode支持度：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
-  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
     - AICPU：不占用计算核，通信效率高，但通信静态开销较大，对小数据量通信场景不友好。适用于大数据高带宽场景。
@@ -309,7 +309,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -413,7 +413,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
         std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
         std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT16, &x2);
@@ -424,7 +424,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        // 调用第一段接口, x3位置传入out
+        // 调用第一段接口， x3位置传入out
         ret = aclnnMatmulAllReduceV3GetWorkspaceSize(x1, x2, bias, x3, hcom_name, "sum", "", commTurn, streamMode, out, &workspaceSize, &executor);
 
         CHECK_RET(ret == ACL_SUCCESS,

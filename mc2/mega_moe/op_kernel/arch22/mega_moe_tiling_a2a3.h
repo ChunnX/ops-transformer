@@ -33,7 +33,7 @@ using namespace Mc2Tiling;
 #define SOC_ASCEND910B 0
 #define SOC_ASCEND910_93 1
 
-struct MegaMoeInfoCommon {
+struct MegaMoeA2A3TilingData {
     uint32_t M;
     uint32_t K;
     uint32_t N;
@@ -43,17 +43,16 @@ struct MegaMoeInfoCommon {
     uint32_t topK;
     uint32_t worldSize;
     uint32_t listLen;
-    bool isA2;
 
     uint32_t moeExpertNum;
     uint32_t epWorldSize;
     uint32_t cclBufferSize;
     uint32_t maxRecvTokenNum;
     uint32_t dispatchQuantMode;
-    int32_t dispatchQuantOutType;
+    int32_t dispatchQuantOutDtype;
     uint32_t combineQuantMode;
     uint32_t commAlgCode;
-    uint32_t numMaxTokenPerRank;
+    uint32_t numMaxTokensPerRank;
     uint32_t activationCode;
     float activationClamp;
     uint32_t isTransposeW1;
@@ -67,19 +66,19 @@ struct MegaMoeInfoCommon {
     uint32_t isQuantRouting;
     uint32_t isW4A8;
 
-    int32_t activation_out_dtype;
+    int32_t activationOutDtype;
     uint32_t weight1Interleave;
 
     uint64_t initRoutingQuantTilingKey;
 };
 
 struct MegaMoeTilingDataQuant {
-    MegaMoeInfoCommon common;
+    MegaMoeA2A3TilingData common;
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
 };
 
 struct MegaMoeTilingDataNonQuant {
-    MegaMoeInfoCommon common;
+    MegaMoeA2A3TilingData common;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 };
 #endif

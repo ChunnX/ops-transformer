@@ -258,7 +258,7 @@ void CalcCostInfo(SplitContext &splitContext);
 void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
 void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
 void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
-void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
+void AssignByBlock(AssignContext &assignContext);
 void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
 
 // FD
@@ -268,7 +268,7 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
 // main
 void SplitFD(SplitResult &result);
 void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
-void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &splitParam, SplitResult &result);
+void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, SplitResult &result);
 
 void LogAssignContext(const char* phase, const AssignContext &assignContext);
 }

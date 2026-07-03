@@ -103,6 +103,11 @@ struct RunInfoX {
     uint64_t kvPaddingBeginOffset = 0;
 };
 
+struct StridesConstInfo {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
 struct CommonConstInfo {
     /* 轴长度 */
     uint32_t bSize;
@@ -120,7 +125,14 @@ struct CommonConstInfo {
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
-
+    
+    /* strides */
+    StridesConstInfo keyStrides;
+    StridesConstInfo valueStrides;
+    StridesConstInfo kRopeStrides;
+    StridesConstInfo kScaleStrides;
+    StridesConstInfo vScaleStrides;
+    
     /* FA kernel meta */
     uint32_t bN2Start;
     uint32_t bN2End;

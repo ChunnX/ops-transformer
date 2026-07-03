@@ -7,19 +7,19 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------:|
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
 - 接口功能:
-    aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上,
+    aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - 计算公式：
@@ -32,16 +32,16 @@
     - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
 
         $$
-        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
+        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2) + bias_{optional})
         $$
 
-    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时, x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时， x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
 
-    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(n, k)时, x1Scale的shape为(m, ceildiv(k, 64), 2)、x2Scale的shape为(n, ceildiv(k, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。mx量化仅支持x2、x2Scale转置场景。
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(n, k)时， x1Scale的shape为(m, ceildiv(k, 64), 2)、x2Scale的shape为(n, ceildiv(k, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。mx量化仅支持x2、x2Scale转置场景。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
@@ -119,7 +119,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>x2(aclTensor*)</td>
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
-        <td><ul><li>当前版本仅支持二维输入, shape为[k, n]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
+        <td><ul><li>当前版本仅支持二维输入， shape为[k, n]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8</td>
         <td>ND、FRACTAL_NZ</td>
         <td>2</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>blockSize（int64_t）</td>
         <td>输入</td>
         <td>用于表示mm输出矩阵在M轴方向上和N轴方向上可以用于对应方向上的多少个数的量化。</td>
-        <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0, 当前版本只支持blockSizeM=blockSizeN=0。</td>
+        <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0,当前版本只支持blockSizeM=blockSizeN=0。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -277,14 +277,14 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - x1、x2：commMode为aiv时，数据类型支持FLOAT16、BFLOAT16、INT8，x1数据格式仅支持ND，x2数据格式支持ND、FRACTAL_NZ。
-        - bias：在commMode为aiv时，当x1和x2数据类型为INT8时，bias数据类型必须为FLOAT；当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16。
+        - bias：在commMode为aiv时，当x1和x2数据类型为INT8时，bias数据类型可以是FLOAT16、BFLOAT16、FLOAT；当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16、FLOAT；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16、FLOAT。
         - x1Scale：在commMode为aiv时，数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
         - x2Scale：在commMode为aiv时，数据类型支持FLOAT、INT64，数据格式支持ND。INT64数据类型仅在output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
         - commMode：当前仅支持aiv模式。aiv模式下使用AI VECTOR核完成通信任务。当前版本仅支持输入“aiv”。
-        - output：数据类型支持FLOAT16、BFLOAT16。 如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
+        - output：数据类型支持FLOAT16、BFLOAT16。如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - x1、x2：数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，数据格式仅支持ND。
         - bias：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
@@ -297,7 +297,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
             groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
             $$
             - 如果满足重新设置条件，一般情况下，当x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
-        - commMode：当前版本仅支持输入“ccu”。
+        - commMode：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
 
             $$
@@ -330,7 +330,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     <tr>
         <td>ACLNN_ERR_PARAM_INVALID</td>
         <td>161002</td>
-        <td>传入的x1、x2、output、bias(非空场景)、x1Scale(非空场景)、x2Scale(非空场景)、quantScale(非空场景) 的数据格式或数据类型不在支持范围内。</td>
+        <td>传入的x1、x2、output、bias(非空场景)、x1Scale(非空场景)、x2Scale(非空场景)、quantScale(非空场景)的数据格式或数据类型不在支持范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 - 通信引擎约束：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持commMode为"ccu"。
+  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。
@@ -399,10 +399,10 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8时，不支持空tensor。
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2的数据类型需要保持一致。
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2的数据可以为其中一种。
-    - 支持2、4、8、16、32、64卡。
+    - 支持2、4、8、16、32、64卡；支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
     - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -417,9 +417,9 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
 
     ```c++
     #include <iostream>
@@ -525,7 +525,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
         std::vector<int8_t> x1HostData(x1ShapeSize, 0);
         std::vector<int8_t> x2HostData(x2ShapeSize, 0);
-        std::vector<float> biasHostData(biasShapeSize, 0);
+        std::vector<int32_t> biasHostData(biasShapeSize, 0);
         std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 0);
         std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 0);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
@@ -557,7 +557,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         // 调用第二阶段接口
         ret = aclnnMatmulReduceScatterV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2 failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -795,7 +795,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         // 调用第二阶段接口
         ret = aclnnMatmulReduceScatterV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2 failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);

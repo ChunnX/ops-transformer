@@ -34,7 +34,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
@@ -96,7 +96,7 @@ const int64_t H_V1 = 7168;
 const int64_t H_UPPER_BOUND_V2 = 8192;
 const int64_t H_LOWER_BOUND_V2 = 1024;
 const int64_t MAX_EP_WORLD_SIZE_V1 = 288;
-const int64_t MAX_EP_WORLD_SIZE_V2 = 768;
+const int64_t MAX_EP_WORLD_SIZE_V2 = 1024;
 const int64_t MIN_EP_WORLD_SIZE_V2 = 2;
 const int64_t MAX_SHARED_EXPERT_NUM_V2 = 4;
 const int64_t MIN_SHARED_EXPERT_NUM_V2 = 0;

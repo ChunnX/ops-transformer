@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "sparse_flash_attention_common_arch35.h"
-#include "util_regbase.h"
+#include "./common/util_regbase.h"
 
 using namespace matmul;
 using namespace regbaseutil;
@@ -27,17 +27,6 @@ using namespace AscendC::Impl::Detail;
 
 static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
-
-TEMPLATE_INTF
-__aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,
-    const ConstInfo &constInfo, int32_t bIdx,
-    __gm__ int32_t* actualSeqQlenAddr)
-{
-    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
-        runParam.qBOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1] * constInfo.gSize * 512;
-        runParam.qRopeBOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1] * constInfo.gSize * 64;
-    }
-}
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
@@ -205,18 +194,6 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
                 }
             }
-    } else {
-        if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
-            runParam.tensorQRopeOffset = runParam.qRopeBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSizeRope;
-        } else {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
-                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
-            runParam.tensorQRopeOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gS1D +
-                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSizeRope;
-        }
     }
 }
 

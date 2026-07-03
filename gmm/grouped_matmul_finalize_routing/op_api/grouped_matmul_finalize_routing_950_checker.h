@@ -69,7 +69,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 constexpr size_t ZERO_DIM = 0UL;
 constexpr size_t ONE_DIM = 1UL;
 constexpr size_t TWO_DIM = 2UL;
-constexpr size_t THERE_DIM = 3UL;
+constexpr size_t THREE_DIM = 3UL;
 constexpr size_t FOUR_DIM = 4UL;
 constexpr int64_t GMMFR_SPLIT_SIZE = 64L;
 constexpr int64_t GMMFR_SPLIT_FACTOR = 2L;
@@ -97,7 +97,7 @@ static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKE
 static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
 enum class QuantMode {
-    PERTOEKN = 0, // pertoken 量化
+    PERTOKEN = 0, // pertoken 量化
     MX = 2        // MX量化
 };
 
@@ -117,7 +117,7 @@ public:
             quantMode_ = QuantMode::MX;
         } 
         else if(CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)){
-            quantMode_ = QuantMode::PERTOEKN;
+            quantMode_ = QuantMode::PERTOKEN;
         }else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "scale", op::ToString(scaleDtype).GetString(),
@@ -184,14 +184,14 @@ public:
         auto logitDimNumber = gmmParams_.logit->GetViewShape().GetDimNum();
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
-        size_t xscaleExpectDim = quantMode_ == QuantMode::MX ?  THERE_DIM:ONE_DIM;
-        size_t weightscaleExpectDim = quantMode_ == QuantMode::MX ?  FOUR_DIM:THERE_DIM;
+        size_t xscaleExpectDim = quantMode_ == QuantMode::MX ?  THREE_DIM:ONE_DIM;
+        size_t weightscaleExpectDim = quantMode_ == QuantMode::MX ?  FOUR_DIM:THREE_DIM;
         GMMFR_CHECK_REPORT(xDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "x", std::to_string(xDimNumber),
                                                         std::to_string(TWO_DIM)));
-        GMMFR_CHECK_REPORT(wDimNumber == THERE_DIM, return ACLNN_ERR_PARAM_INVALID,
+        GMMFR_CHECK_REPORT(wDimNumber == THREE_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "weight",
-                                                        std::to_string(wDimNumber), std::to_string(THERE_DIM)));
+                                                        std::to_string(wDimNumber), std::to_string(THREE_DIM)));
         GMMFR_CHECK_REPORT(wScaleDimNumber == weightscaleExpectDim, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "scale",
                                                         std::to_string(wScaleDimNumber),
@@ -379,7 +379,7 @@ public:
             if (CheckDtypeValidForMX() == false) {
                 return false;
             }
-        } else if (quantMode_ == QuantMode::PERTOEKN) {
+        } else if (quantMode_ == QuantMode::PERTOKEN) {
             if (CheckDtypeValidForPertoken() == false) {
                 return false;
             }

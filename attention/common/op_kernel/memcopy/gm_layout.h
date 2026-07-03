@@ -236,12 +236,16 @@ struct GmLayout<GmFormat::PA_BnBsND> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d,
+                                      uint64_t bn2stride = 0, uint64_t n2Stride = 0) {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t nStride = dStride * d;
         uint64_t bsStride = nStride * n;
         uint64_t bnStride = bsStride * blockSize;
+        if (bn2stride != 0) {
+            bnStride = bn2stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
     }
 };
@@ -252,12 +256,17 @@ struct GmLayout<GmFormat::PA_BnNBsD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d,
+                                      uint64_t bn2stride = 0, uint64_t n2Stride = 0) {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t bsStride = dStride * d;
         uint64_t nStride = bsStride * blockSize;
         uint64_t bnStride = nStride * n;
+        if (bn2stride != 0 && n2Stride != 0) {
+            nStride = n2Stride;
+            bnStride = bn2stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
     }
 };
@@ -268,13 +277,18 @@ struct GmLayout<GmFormat::PA_NZ> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d1, uint32_t d0) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d1, uint32_t d0,
+                                      uint64_t bn2stride = 0, uint64_t n2Stride = 0) {
         shape = AscendC::MakeShape(n, d1, blockSize, d0);
         uint64_t d0Stride = 1;
         uint64_t bsStride = d0Stride * d0;
         uint64_t d1Stride = bsStride * blockSize;
         uint64_t nStride = d1Stride * d1;
         uint64_t bnStride = nStride * n;
+        if (bn2stride != 0 && n2Stride != 0) {
+            nStride = n2Stride;
+            bnStride = bn2stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, d1Stride, bsStride, d0Stride);
     }
 };
@@ -285,13 +299,18 @@ struct GmLayout<GmFormat::PA_NZ_K_SCALE> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize1, uint32_t d, uint32_t blockSize0) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize1, uint32_t d, uint32_t blockSize0,
+                                      uint64_t bn2stride = 0, uint64_t n2Stride = 0) {
         shape = AscendC::MakeShape(n, blockSize1, d, blockSize0);
         uint64_t bs0Stride = 1;
         uint64_t dStride = bs0Stride * blockSize0;
         uint64_t bs1Stride = dStride * d;
         uint64_t nStride = bs1Stride * blockSize1;
         uint64_t bnStride = nStride * n;
+        if (bn2stride != 0 && n2Stride != 0) {
+            nStride = n2Stride;
+            bnStride = bn2stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, bs1Stride, dStride, bs0Stride);
     }
 };

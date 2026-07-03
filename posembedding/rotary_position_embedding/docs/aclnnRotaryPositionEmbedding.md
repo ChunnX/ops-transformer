@@ -303,7 +303,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     - B，N < 1000;
     - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
       - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
-      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
+      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum或者D >= 80
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
     - 当x为TND时，cos、sin支持T1D、TND
@@ -396,7 +396,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl API手册
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -488,7 +488,7 @@ int main() {
     aclDestroyTensor(sin);
     aclDestroyTensor(out);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(xDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);

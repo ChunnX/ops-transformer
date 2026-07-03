@@ -80,7 +80,7 @@ $$
       <tr>
         <td>out_flag</td>
         <td>可选输入</td>
-        <td>表示是否输出inv_rms/h_mix/h_pre, 默认为0表示不输出，为1表示全输出。</td>
+        <td>表示是否输出inv_rms/h_mix/h_pre,默认为0表示不输出，为1表示全输出。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>

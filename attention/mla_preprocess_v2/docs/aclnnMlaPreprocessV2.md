@@ -727,8 +727,8 @@ aclnnStatus aclnnMlaPreprocessV2(
 - 确定性计算：
   - aclnnMlaPreprocessV2默认确定性实现。
 - shape格式字段含义及约束
-    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - tokenNum：tokenNum表示输入样本批量大小，取值范围：0~256
+    - hiddenSize：hiddenSize表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
     - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
@@ -737,7 +737,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
-    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
+    - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式
 
 ## 调用示例
 
@@ -950,7 +950,7 @@ int TransToNZShape(std::vector<int64_t> &shapeND, size_t  typeSize) {
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，acl API手册
+  // 1.（固定写法）device/stream初始化，acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 5;
   aclrtStream stream;
@@ -1192,7 +1192,7 @@ int main() {
             LOG_PRINT("acaclnnMlaPreprocess failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
@@ -1232,7 +1232,7 @@ int main() {
   aclDestroyTensor(ctkvScale);
   aclDestroyTensor(qNopeScale);
 
-  // 7. 释放device 资源
+  // 7. 释放device资源
   aclrtFree(inputDeviceAddr);
   aclrtFree(gamma0DeviceAddr);
   aclrtFree(beta0DeviceAddr);
@@ -1258,7 +1258,7 @@ int main() {
   aclrtFree(ctkvScaleDeviceAddr);
   aclrtFree(qNopeScaleDeviceAddr);
 
-  // 8. 释放host 资源
+  // 8. 释放host资源
   aclrtFree(inputHostAddr);
   aclrtFree(gamma0HostAddr);
   aclrtFree(beta0HostAddr);

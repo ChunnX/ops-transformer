@@ -16,7 +16,7 @@
 算子功能：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序。
 
 计算公式：
-  tokens\_num 为routingMap的第0维大小，expert\_num为routingMap的第1维大小。
+  tokens\_num为routingMap的第0维大小，expert\_num为routingMap的第1维大小。
  
  1.dropAndPad为`false`时：
   
@@ -125,7 +125,7 @@
   <tr>
    <td>numOutTokens</td>
    <td>属性</td>
-   <td>公式中的numOutTokens，用于计算公式中topK 和capacity 的有效输出token数。</td>
+   <td>公式中的numOutTokens，用于计算公式中topK和capacity的有效输出token数。</td>
    <td>INT64</td>
    <td>-</td>
   </tr>

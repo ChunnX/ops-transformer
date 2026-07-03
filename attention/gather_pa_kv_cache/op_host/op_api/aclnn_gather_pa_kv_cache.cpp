@@ -284,7 +284,9 @@ static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTens
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCache);
     bool valueCacheCase1 = IsFirstAxisNonContiguous(valueCache);
-    return keyCacheCase1 && valueCacheCase1;
+    // 任一cache首轴非连续即支持(与scatter对齐): 单个cache非连续场景也需走非连续路径,
+    // 否则会落到ProcessContiguous, 丢失view的stride0/offset导致读错block。
+    return keyCacheCase1 || valueCacheCase1;
 }
 
 static bool IsSupportNonContiguousKeyAndCache(
@@ -486,18 +488,15 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    bool isCacheModeNorm = (cacheMode == nullptr ||
-                            strlen(cacheMode) == 0 ||
-                            strcmp(cacheMode, "Norm") == 0);
-    if (isCacheModeNorm) {
-        bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
-        bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
-        if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
-            return ProcessNonContiguous(
-                keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
-                seqOffsetOptional, cacheMode, isSeqLensCumsum,
-                workspaceSize, executor, uniqueExecutor, isKeyAndCacheNonContiguous);
-        }
+    // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
+    // 其连续化无法正确还原NZ view的stride0/offset, 会读错block导致精度错误。
+    bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
+    bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
+    if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
+        return ProcessNonContiguous(
+            keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
+            seqOffsetOptional, cacheMode, isSeqLensCumsum,
+            workspaceSize, executor, uniqueExecutor, isKeyAndCacheNonContiguous);
     }
     return ProcessContiguous(
         keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,

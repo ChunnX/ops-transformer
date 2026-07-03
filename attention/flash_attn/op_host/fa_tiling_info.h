@@ -104,7 +104,8 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 enum class MaskMode : int32_t {
     NO_MASK = 0,
-    CAUSAL = 3
+    CAUSAL = 3,
+    BAND = 4
 };
 
 enum class FaLayout : uint32_t {
@@ -113,7 +114,7 @@ enum class FaLayout : uint32_t {
     TND = 2,
     PA_BBND = 3,
     PA_BNBD = 4,
-    PA_Nz = 5,
+    PA_NZ = 5,
     LSE_BNS = 6,
     LSE_NT = 7
 };
@@ -122,7 +123,8 @@ const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
                                                    {"TND", FaLayout::TND},
                                                    {"PA_BBND", FaLayout::PA_BBND},
-                                                   {"PA_BNBD", FaLayout::PA_BNBD}};
+                                                   {"PA_BNBD", FaLayout::PA_BNBD},
+                                                   {"PA_NZ", FaLayout::PA_NZ}};
 
 enum class FaAxis : uint32_t {
     B = 0,

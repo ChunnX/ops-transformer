@@ -8,7 +8,7 @@
 
 ## 功能说明
 
-- 算子功能：在 MoE (Mixture of Experts) 架构的分布式推理/训练中，将普通路由专家与共享专家的 ID 及其对应的 TopK 权重进行融合拼接。
+- 算子功能：在MoE (Mixture of Experts)架构的分布式推理/训练中，将普通路由专家与共享专家的ID及其对应的TopK权重进行融合拼接。
 
 ## 参数说明
 
@@ -35,7 +35,7 @@
 - 当前k支持7，8，16
 - shared_expert_num当前支持1
 - 位移参数pos = log2(local_simple_num), local_simple_num >= 8
-- dtype 取值说明（1=half, 27=bfloat16）
+- dtype取值说明（1=half, 27=bfloat16）
 
 ## 调用说明
 

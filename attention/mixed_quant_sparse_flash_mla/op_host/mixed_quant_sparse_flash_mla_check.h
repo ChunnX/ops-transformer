@@ -150,6 +150,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
+constexpr uint32_t KV_INPUT_DIM_LIMIT = 608;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;

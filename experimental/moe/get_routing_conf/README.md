@@ -47,35 +47,35 @@
 	<tr>
       <td>indices</td>
       <td>输入</td>
-      <td>专家索引,shape(token, topk)</td>
+      <td>专家索引，shape(token, topk)</td>
       <td>int32_t</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>scores</td>
       <td>输入</td>
-      <td>专家得分,shape(token, topk)</td>
+      <td>专家得分，shape(token, topk)</td>
       <td>bfloat16</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>init_token_table</td>
       <td>输出</td>
-      <td>当前卡上每个token对应的专家的token位置，shape为 ((expert, token))</td>
+      <td>当前卡上每个token对应的专家的token位置，shape为((expert, token))</td>
       <td>int64</td>
       <td>ND</td>
     </tr>
   <tr>
       <td>final_token_table</td>
       <td>输出</td>
-      <td>每条routing信息（token-expert）的编号, shape为 (token, expert)</td>
+      <td>每条routing信息（token-expert）的编号， shape为(token, expert)</td>
       <td>int32</td>
       <td>ND</td>
     </tr>
   <tr>
       <td>final_score_table</td>
       <td>输出</td>
-      <td>每条routing信息的对应得分, shape(token, expert)</td>
+      <td>每条routing信息的对应得分， shape(token, expert)</td>
       <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -133,7 +133,7 @@
 
 ## 设计方案
 
-### Tilling 策略
+### Tilling策略
 
 - 分核策略：
 init_table：分割tokenNum
@@ -141,7 +141,7 @@ init_list：单核计算
 init_other：分割localExpertNum，得到每个expert的专属token编号
 final：分割tokenNum
 
-### Kernel 侧设计
+### Kernel侧设计
 
 进行Init和Process两个阶段，其中Process包括数据搬入（CopyIn）、计算（Compute）、数据搬出（CopyOut）三个阶段，实现RoutingConfig算子计算。
 

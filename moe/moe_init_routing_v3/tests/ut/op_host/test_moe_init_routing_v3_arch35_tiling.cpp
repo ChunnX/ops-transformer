@@ -33,6 +33,7 @@ constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8;
 constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
+constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
@@ -62,6 +63,8 @@ ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataT
         case QUANT_MODE_STATIC:
         case QUANT_MODE_DYNAMIC:
             return ge::DT_INT8;
+        case QUANT_MODE_INT4_DYNAMIC:
+            return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
             return ge::DT_FLOAT8_E5M2;
@@ -142,6 +145,7 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_HIF8_PERTENSOR:
         case QUANT_MODE_HIF8_PERTOKEN:
         case QUANT_MODE_DYNAMIC:
+        case QUANT_MODE_INT4_DYNAMIC:
             return MakePerTokenScaleDesc(totalLength);
         case QUANT_MODE_MXFP8_E5M2:
         case QUANT_MODE_MXFP8_E4M3FN:
@@ -669,9 +673,9 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_dynamic_with_s
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic)
 {
     int64_t h = 84;
-    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
-                              {180, 192}, ROW_IDX_TYPE_GATHER, {1, 84}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
-                              ge::GRAPH_SUCCESS);
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_INT4_DYNAMIC, ge::DT_FLOAT,
+                               {180, 192}, ROW_IDX_TYPE_GATHER, {1, 84}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
 // static quant success with scale and offset
@@ -721,9 +725,9 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_static_missing
 // INT4 dynamic with odd cols
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_odd_cols)
 {
-    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
-                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
-                              ge::GRAPH_FAILED);
+    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_INT4_DYNAMIC, ge::DT_FLOAT,
+                               {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                               kExpandedXDtypeAuto, ge::GRAPH_FAILED);
 }
 
 // MXFP4 unsupported x dtype
@@ -737,9 +741,9 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp4_bad_xdty
 // INT4 dynamic with float16 x
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_bad_xdtype)
 {
-    RunArch35ExtendedTestcase(1, 84, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT16,
-                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
-                              ge::GRAPH_FAILED);
+    RunArch35ExtendedTestcase(1, 84, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_INT4_DYNAMIC, ge::DT_FLOAT16,
+                               {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                               kExpandedXDtypeAuto, ge::GRAPH_FAILED);
 }
 
 // UNQUANT FP8 with wrong scale dtype

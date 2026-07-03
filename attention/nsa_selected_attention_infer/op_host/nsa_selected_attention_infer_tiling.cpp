@@ -109,7 +109,7 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
     blockSize_ = *context_->blockSize;
     selectedBlockSize_ = *context_->selectedBlockSize;
     selectedBlockCount_ = *context_->selectedBlockCount;
-    
+
     OP_CHECK_IF((selectedBlockCount_ != -1) && (selectedBlockCount_ != selectedBlockCountShapeRange), OP_LOGE(context_->opName,
         "selectedBlockCount is not -1, %ld; or the same with topkindices last dim shape %u", selectedBlockCount_, selectedBlockCountShapeRange), return ge::GRAPH_FAILED);
     OP_CHECK_IF(numHeads_ <= 0, OP_LOGE(context_->opName, "numHeads %ld is less than 1", numHeads_), return ge::GRAPH_FAILED);
@@ -670,7 +670,7 @@ ge::graphStatus NsaSelectTiling::GenTilingKey() const
     std::string layout(context_->layOut);
     if (layout == "TND") {
         context_->tilingKey = 1U;
-    } 
+    }
     OP_LOGD(context_->opName, "Nsa select tilingKey: %lu", context_->tilingKey);
 
     return ge::GRAPH_SUCCESS;
@@ -726,7 +726,7 @@ ge::graphStatus NsaSelectTiling::ConvertContext(gert::TilingContext &context, Ns
 
     nsaContext.attenOut.desc = context.GetOutputDesc(OUTPUT_INDEX);
     nsaContext.attenOut.shape = context.GetOutputShape(OUTPUT_INDEX);
-    
+
 
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from GE is nullptr"),
@@ -771,7 +771,7 @@ ge::graphStatus NsaSelectTiling::RunBigKernelTiling(NsaSelectAttentionInferConte
         (CalcWorkSpace() != ge::GRAPH_SUCCESS) ||
         (CalcBlockDim() != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
-        
+
     }
     return GenTilingKey();
 }

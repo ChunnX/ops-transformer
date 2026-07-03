@@ -25,6 +25,7 @@ constexpr uint32_t SCALE_INDEX = 2;
 constexpr uint32_t GROUPLIST_INDEX = 3;
 constexpr uint32_t PER_TOKEN_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
+constexpr uint32_t DIM_NUM_2D = 2U;
 constexpr uint64_t TILING_KEY = 0;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 0;
 constexpr uint32_t ATTR_INDEX_GROUP_SIZE = 1;

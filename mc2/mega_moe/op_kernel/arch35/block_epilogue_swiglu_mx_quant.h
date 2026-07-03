@@ -42,7 +42,7 @@ enum class QuantDtype : uint8_t {
 } // namespace SwigluQuantMsg
 
 namespace {
-// constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
+constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;

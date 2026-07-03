@@ -18,13 +18,11 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
-#include "util_regbase.h"
 
 using namespace matmul;
 using namespace regbaseutil;
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
-
 static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
 
@@ -78,6 +76,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }
+
     runParam.preTokensPerBatch = runParam.actualS1Size;
 }
 
@@ -94,6 +93,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 {
     runParam.qSNumInOneBlock = 1; // qsfa 不切G轴, 计算每个基本块可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
+
     if (runParam.nextTokensPerBatch < 0) {
         uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
         int64_t gs1LoopStartIdx =
@@ -142,9 +142,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
-
     runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
+
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
         runParam.sOuterOffset = qsfaCubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
@@ -189,9 +189,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
             return true;
         }
     }
-
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
-
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
     return false;
 }
@@ -246,10 +244,10 @@ TEMPLATE_INTF
 __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo)
 {
     runInfo.boIdx = runParam.boIdx;
-    runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
+    runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
+    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.kvLoopEndIdx = runParam.kvLoopEndIdx;

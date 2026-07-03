@@ -30,7 +30,7 @@
 using namespace AscendC;
 using namespace matmul;
 
-namespace RfaKenelCommon {
+namespace BsaKernelCommon {
     constexpr uint32_t QK_READY_ID = 1;
     constexpr uint32_t SOFTMAX_READY_ID = 2;
     constexpr uint32_t PV_READY_ID = 3;

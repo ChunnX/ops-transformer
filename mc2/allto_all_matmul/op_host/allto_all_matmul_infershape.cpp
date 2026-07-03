@@ -294,7 +294,7 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext *c
         OP_LOGI(INNER_DEBUG, "The yDtype value is: %ld", *yDtypePtr);
         yType = static_cast<ge::DataType>(*yDtypePtr);
     } else {
-        OP_LOGE(INNER_DEBUG, "The yDtypePtr is null or get invalid yDtype value: DT_UNDEFINED.");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "yDtype", "DT_UNDEFINED", "valid dtype value");
         return ge::GRAPH_FAILED;
     }
     // 设置推导的datatype

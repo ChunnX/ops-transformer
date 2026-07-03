@@ -196,6 +196,7 @@ public:
     ge::graphStatus GetN1Size();
     ge::graphStatus GetAndCheckN2Size();
     ge::graphStatus GetGSize();
+    ge::graphStatus CheckFeatureMlaNoQuantShape() const;
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
     void GenerateInfo(LITilingInfo &liInfo);

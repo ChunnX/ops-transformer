@@ -215,6 +215,8 @@ ge::graphStatus FusedFloydAttentionGradTilingS1s2Bn2gs1s2::GetShapeAttrsInfo()
     fBaseParams.s1Align = (fBaseParams.s1 + INPUT_ALIGN - 1) / INPUT_ALIGN * INPUT_ALIGN;
     fBaseParams.s2Align = (fBaseParams.s2 + INPUT_ALIGN - 1) / INPUT_ALIGN * INPUT_ALIGN;
 
+    // Direct multiplication is safe: CheckInputShapeValid enforces documented bounds
+    // (B<=2048, N%16, M/K 128-aligned <=1M, D=32/64/128), products fit in int64.
     fBaseParams.qSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1 * fBaseParams.d;
     fBaseParams.kvSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.d;
     fBaseParams.k1v1Size = fBaseParams.b * fBaseParams.n2 * fBaseParams.s2 * fBaseParams.s1 * fBaseParams.d;
@@ -249,8 +251,9 @@ ge::graphStatus FusedFloydAttentionGradTilingS1s2Bn2gs1s2::GetShapeAttrsInfo()
     int64_t kvSizeAlign = fBaseParams.kvSize;
     int64_t k1v1SizeAlign = fBaseParams.k1v1Size;
     if (fBaseParams.mm2IsNZOut) {
-        qSizeAlign = fBaseParams.qSize / fBaseParams.d * ((fBaseParams.d + C0_SIZE - 1) / C0_SIZE * C0_SIZE);
-        kvSizeAlign = fBaseParams.kvSize / fBaseParams.d * ((fBaseParams.d + C0_SIZE - 1) / C0_SIZE * C0_SIZE);
+        int64_t dAlign = (fBaseParams.d + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
+        qSizeAlign = (fBaseParams.qSize / fBaseParams.d) * dAlign;
+        kvSizeAlign = (fBaseParams.kvSize / fBaseParams.d) * dAlign;
     }
     fBaseParams.qSizeAlign = qSizeAlign;
     fBaseParams.kvSizeAlign = kvSizeAlign;
@@ -837,7 +840,7 @@ ge::graphStatus FusedFloydAttentionGradTilingS1s2Bn2gs1s2::DoPreTiling()
     int64_t kvPreTailNum = kvPreTailNumTmp == 0 ? kvPreBlockFactor : kvPreTailNumTmp;
 
     int64_t k1v1PreBlockFactor = (fBaseParams.k1v1SizeAlign + maskUsedCoreNum - 1) / maskUsedCoreNum;
-    OP_CHECK_IF(kvPreBlockFactor == 0,
+    OP_CHECK_IF(k1v1PreBlockFactor == 0,
                OP_LOGE(context_, "divisor k1v1PreBlockFactor is 0."),
                return ge::GRAPH_FAILED);
     int64_t k1v1PreBlockTotal = (fBaseParams.k1v1SizeAlign + k1v1PreBlockFactor - 1) / k1v1PreBlockFactor;

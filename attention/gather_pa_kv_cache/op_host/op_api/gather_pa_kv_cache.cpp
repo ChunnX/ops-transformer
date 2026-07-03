@@ -13,6 +13,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
+#include "opdev/platform.h"
 
 using namespace op;
 
@@ -34,8 +35,12 @@ std::tuple<const aclTensor*, const aclTensor*> GatherPaKvCache(
     L0_DFX(GatherPaKvCache, keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
            seqOffsetOptional, cacheMode, isSeqLensCumsum);
 
+    auto& platformInfo = op::GetCurrentPlatformInfo();
+    auto socVersion = platformInfo.GetCurNpuArch();
+    bool isArch35 = (socVersion == NpuArch::DAV_3510);
+
     const aclTensor *seqOffset = seqOffsetOptional;
-    if (seqOffset == nullptr) {
+    if (!isArch35 && seqOffset == nullptr) {
         seqOffset = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 

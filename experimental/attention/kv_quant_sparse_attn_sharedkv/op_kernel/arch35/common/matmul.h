@@ -427,6 +427,119 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
     l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
 }
 
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
+__aicore__ inline void MatmulK1(
+    const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
+    LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
+    uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
+{
+    uint32_t kLoops = (param.singleK + baseK - 1) / baseK; // 尾块处理
+    uint32_t tailSize = param.singleK % baseK;
+    uint32_t tailK = tailSize ? tailSize : baseK;
+    uint64_t l1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK; // 要对齐
+    uint64_t l1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+    if constexpr (IsSameType<A, fp8_e5m2_t>::value || \
+        IsSameType<A, fp8_e4m3fn_t>::value || IsSameType<A, hifloat8_t>::value) {
+        l1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
+        l1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK;
+    }
+    if constexpr (IsSameType<A, float32_t>::value) {
+        l1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
+        l1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 3;
+    }
+#endif
+    for (uint32_t k = 0; k < kLoops; k++) {
+        uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufId];
+        WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
+        LoadDataToL0A(curAL0Tensor, aL1Tensor, param, k * l1Aoffset, tileK, param.singleM);
+
+        uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LoadDataToL0B(curBL0Tensor, bL1Tensor, param, k * l1Boffset, tileK, param.singleN, loopNum);
+
+        SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+        WaitFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+        MmadParams mmadParams;
+        mmadParams.m = param.singleM;
+        if (param.realM != 0) {
+            mmadParams.m = param.realM;
+        }
+        mmadParams.n = param.singleN;
+        mmadParams.k = tileK;
+        if (mmadParams.m == 1) {
+            mmadParams.m = 16;
+        }
+        mmadParams.cmatrixInitVal = param.isOutKFisrt && (k == 0);
+        mmadParams.cmatrixSource = false;
+        if (param.unitFlag != 0) {
+            mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
+                                UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+        }
+        Mmad(cL0Tensor, curAL0Tensor, curBL0Tensor, mmadParams);
+        SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
+        l0ABBufId ^= 1;
+    }
+}
+ 	 
+// 切N
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
+__aicore__ inline void MatmulN1(
+    const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
+    LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
+    uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
+{
+    uint32_t nLoops = (param.singleN + baseN - 1) / baseN; // 尾块处理
+    uint32_t tailSize = param.singleN % baseN;
+    uint32_t tailN = tailSize ? tailSize : baseN;
+    uint64_t l1BOffset = param.isRightTranspose ? (baseN << 4) : ((param.singleK + 15) >> 4 << 4) * baseN;
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+    if constexpr (IsSameType<A, fp8_e5m2_t>::value || \
+        IsSameType<A, fp8_e4m3fn_t>::value || IsSameType<A, hifloat8_t>::value) {
+        l1BOffset = ((param.singleK + 31) >> 5 << 5) * baseN;
+    }
+#endif
+    uint64_t l0COffset = ((param.singleM + 15) >> 4 << 4) * baseN;
+    if (param.realM != 0) {
+        l0COffset = ((param.realM + 15) >> 4 << 4) * baseN;
+    }
+
+    MmadParams mmadParams;
+    mmadParams.m = param.singleM;
+    if (param.realM != 0) {
+        mmadParams.m = param.realM;
+    }
+    mmadParams.k = param.singleK;
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
+    mmadParams.cmatrixInitVal = param.isOutKFisrt;
+    mmadParams.cmatrixSource = false;
+    mmadParams.unitFlag = param.unitFlag;
+    for (uint32_t n = 0; n < nLoops; n++) {
+        uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
+        mmadParams.n = tileN;
+
+        WaitFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
+        LocalTensor<L0AType> curAL0Tensor = aL0Tensor[BUFFER_SIZE_8K * l0ABBufId];
+        if (n == 0 || n == 1) { // n=1时多搬运一次, 为了将l0ab的同步flagId合并, 减少指令数量，解决MAC队列满阻塞scalar的问题
+            LoadDataToL0A(curAL0Tensor, aL1Tensor, param, 0, param.singleK, param.singleM);
+        }
+
+        uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
+        LocalTensor<L0BType> curBL0Tensor = bL0Tensor[BUFFER_SIZE_16K * l0ABBufId];
+        LoadDataToL0B(curBL0Tensor, bL1Tensor, param, n * l1BOffset, param.singleK, tileN, loopNum);
+        SetFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+        WaitFlag<HardEvent::MTE1_M>(l0ABMte1ToMFlagId + l0ABBufId);
+
+        Mmad(cL0Tensor[n * l0COffset], curAL0Tensor, curBL0Tensor, mmadParams);
+
+        SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + l0ABBufId);
+        l0ABBufId ^= 1;
+    }
+}
+
 // 切M
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL>
 __aicore__ inline void MatmulKM(const LocalTensor<A> &aL1Tensor,

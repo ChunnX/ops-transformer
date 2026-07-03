@@ -26,12 +26,7 @@
 #include "const_args.hpp"
 #include "mc2_moe_context.h"
 
-#ifdef HCCL_COMM
 #include "../../../../common/op_kernel/moe_distribute_base.h"
-
-#else
-#include "shmem_api.h"
-#endif
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__
 constexpr int32_t MAX_RANK_SIZE = 32;
@@ -159,6 +154,7 @@ FORCE_INLINE_AICORE void AIVRDMAPostSend(
         memDetail->sizeOfMemDetails * static_cast<uint32_t>(HcclAiRMAMemType::REMOTE_INPUT)))->key;
     *(__gm__ uint64_t*)(wqeAddr + 24) = (uint64_t)(destDmaAddr);
 
+    // Setup SGE and write to GM
     __gm__ uint8_t* sgeAddr = wqeAddr + sizeof(struct hns_roce_rc_sq_wqe);
     *(__gm__ uint32_t*)(sgeAddr) = messageLen;
     memDetail = (__gm__ HcclAiRMAMemInfo*)(mem_info_table + sizeof_memdetail * destRankId);
@@ -303,8 +299,7 @@ public:
         } else {
             return (GM_ADDR)((rankId == m_rank) ?
                                  WinContext_->localWindowsIn :
-                                 ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) +
-                   offset;
+                                 ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
         }
 #else
         return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
@@ -417,6 +412,103 @@ public:
 
         AscendC::SyncAll<true>();
         gm_store(sync_base, count);
+    }
+
+    // Cross-server-capable overload of CrossRankSync.
+    // Same counter-based barrier protocol as the no-arg version, but routes the
+    // remote write through RDMA when the destination rank lives on another server.
+    //
+    // ctrBuffer is a caller-owned UB scratch laid out as (in int32 units):
+    //   [0 .. 7]                            -> payload (count is stored at [0]);
+    //                                          full 32-byte block is the RDMA payload
+    //   [UB_ALIGN/4 .. 2*UB_ALIGN/4 - 1]    -> rdmaUbLocal  (uint64 doorbell scratch)
+    //   [2*UB_ALIGN/4 .. 3*UB_ALIGN/4 - 1]  -> rdmaUbLocalHead (uint32 head scratch)
+    // i.e. needs at least 3 * UB_ALIGN = 96 bytes of UB and must be free for the
+    // duration of this call (matches how CrossRankSyncV2Set lays out its scratch).
+    FORCE_INLINE_AICORE
+    void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer) {
+        uint64_t flag_offset_i32   = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
+        uint64_t flag_offset_bytes = (m_segmentSize - MB_SIZE);
+        __gm__ int32_t* sync_counter = (__gm__ int32_t*)(*this)() + flag_offset_i32;
+        __gm__ int32_t* sync_base    = (__gm__ int32_t*)(*this)() + flag_offset_i32 + 2048;
+        gm_dcci((__gm__ uint8_t*)sync_base);
+        int count = gm_load(sync_base) + 1;
+        int vec_id = AscendC::GetBlockIdx();
+        int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
+
+#ifdef HCCL_COMM
+        AscendC::LocalTensor<uint64_t> rdmaUbLocal;
+        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
+        AscendC::GlobalTensor<int32_t> gmCrossServerPayload;
+        if constexpr (IS_A2) {
+            rdmaUbLocal     = ctrBuffer[UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint64_t>();
+            rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
+            gmCrossServerPayload.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                windowsOutAddr() + flag_offset_bytes
+                + static_cast<uint64_t>(m_rank) * 16 * sizeof(int32_t)));
+            // Only this core's stride may include cross-server targets; skip UB→GM staging if none.
+            bool needRdmaStage = false;
+            int32_t const localServerId = m_rank / SERVER_RANK_SIZE_A2;
+            for (int j = vec_id; j < m_rankSize; j += vec_size) {
+                if ((j / SERVER_RANK_SIZE_A2) != localServerId) {
+                    needRdmaStage = true;
+                    break;
+                }
+            }
+            if (needRdmaStage) {
+                ctrBuffer.SetValue(0, count);
+                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+                AscendC::DataCopy(gmCrossServerPayload, ctrBuffer, 8);
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
+        } else {
+            ctrBuffer.SetValue(0, count);
+            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        }
+#endif
+
+        // Phase 1: post every outbound write. RDMA is async, so we must finish
+        // posting all WQEs before any local poll (otherwise an intra-server peer
+        // may already have arrived while our own cross-server WQEs are still
+        // sitting unposted, and the producer side never makes forward progress).
+        for (int i = vec_id; i < m_rankSize; i += vec_size) {
+            __gm__ int32_t* sync_remote =
+                (__gm__ int32_t*)((*this)(i)) + flag_offset_i32 + m_rank * 16;
+#ifdef HCCL_COMM
+            if constexpr (IS_A2) {
+                int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
+                int32_t dstServerId   = i / SERVER_RANK_SIZE_A2;
+                if (dstServerId != localServerId) {
+                    AIVRDMAPostSend(
+                        (GM_ADDR)gmCrossServerPayload.GetPhyAddr(),
+                        (GM_ADDR)sync_remote,
+                        static_cast<uint64_t>(i),
+                        8 * sizeof(int32_t),
+                        reinterpret_cast<__gm__ HcclAiRMAInfo*>(WinContext_->aiRMAInfo),
+                        rdmaUbLocal,
+                        rdmaUbLocalHead);
+                    continue;
+                }
+            }
+#endif
+            gm_store(sync_remote, count);
+            gm_dcci((__gm__ uint8_t*)sync_remote);
+        }
+
+        // Phase 2: wait for the same set of source ranks to land their count in
+        // our local sync slots. Works uniformly for intra-server (gm_store) and
+        // inter-server (RDMA) producers because both ultimately materialize the
+        // same int32 at sync_counter[i*16].
+        for (int i = vec_id; i < m_rankSize; i += vec_size) {
+            auto sync_check = sync_counter + i * 16;
+            gm_signal_wait_until_eq_for_barrier(sync_check, count);
+        }
+
+        AscendC::SyncAll<true>();
+        gm_store(sync_base, count);
+        gm_dcci((__gm__ uint8_t*)sync_base);
     }
 
     FORCE_INLINE_AICORE

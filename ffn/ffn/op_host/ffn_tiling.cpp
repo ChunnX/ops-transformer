@@ -719,7 +719,7 @@ void FFNTiling::PrintMatMulTiling(const char *opName, TCubeTiling &matmulTiling)
 
 void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLevel)
 {
-    if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
+    if (debugLevel) {
         return;
     }
 
@@ -733,7 +733,7 @@ void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLev
        << baseParams.get_activeType() << " workspace1Size " << baseParams.get_workspace1Size() << " workspace2Size "
        << baseParams.get_workspace2Size() << " syncWorkspaceSize " << baseParams.get_syncWorkspaceSize()
        << " dataTypeSize " << baseParams.get_dataTypeSize();
-    OP_LOGI(context->GetNodeName(), "ffnBaseParams: %s", ss.str().c_str());
+    OP_LOGD(context->GetNodeName(), "ffnBaseParams: %s", ss.str().c_str());
 
     auto &singleCoreParams = tilingData.ffnSingleCoreParams;
     std::stringstream ss1;
@@ -741,7 +741,7 @@ void FFNTiling::PrintFFNTiling(const gert::TilingContext *context, bool debugLev
         << singleCoreParams.get_baseN2() << " ubCalSize " << singleCoreParams.get_ubCalSize() << " ubRestBytes "
         << singleCoreParams.get_ubRestBytes() << " mm1ResUbSize " << singleCoreParams.get_mm1ResUbSize() << " tiling "
         << context->GetTilingKey();
-    OP_LOGI(context->GetNodeName(), "ffnSingleCoreParams: %s", ss1.str().c_str());
+    OP_LOGD(context->GetNodeName(), "ffnSingleCoreParams: %s", ss1.str().c_str());
 }
 
 void FFNTiling::PrintCriticalInfo(gert::TilingContext *context)

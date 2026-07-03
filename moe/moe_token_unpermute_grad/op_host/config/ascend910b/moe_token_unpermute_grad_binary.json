@@ -9,7 +9,7 @@
           "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -76,7 +76,7 @@
           "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -143,7 +143,7 @@
           "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -210,7 +210,7 @@
           "index": 0,
           "dtype": "float16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -277,7 +277,7 @@
           "index": 0,
           "dtype": "float16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -344,7 +344,7 @@
           "index": 0,
           "dtype": "float16",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -411,7 +411,7 @@
           "index": 0,
           "dtype": "float32",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -478,7 +478,7 @@
           "index": 0,
           "dtype": "float32",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {
@@ -545,7 +545,7 @@
           "index": 0,
           "dtype": "float32",
           "format": "ND",
-          "paramType": "required",
+          "paramType": "optional",
           "shape": [-2]
         },
         {

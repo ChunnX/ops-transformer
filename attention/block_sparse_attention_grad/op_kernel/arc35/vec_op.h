@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+#include "vector_api/vf_cast_nd2nz.h"
 using namespace AscendC;
 
 namespace BSA_ARC35 {
@@ -48,11 +49,17 @@ private:
     uint32_t base_n;
     uint32_t vec_base_m;
     uint32_t vec_base_n;
+    GM_ADDR act_seq_q_len;
     GlobalTensor<float> lse_gm_;
     GlobalTensor<float> sftg_workspace_;
     LocalTensor<float> lse_tensor_;
-    LocalTensor<INPUT_TYPE> softmax_res_tensor_;
+    LocalTensor<float> lse_tensor_ping_;
+    LocalTensor<float> lse_tensor_pong_;
+    LocalTensor<float> sftg_front_tensor_;
+    LocalTensor<float> sftg_front_tensor_ping_;
+    LocalTensor<float> sftg_front_tensor_pong_;
     LocalTensor<INPUT_TYPE> softmax_res_nz_tensor_;
+    LocalTensor<INPUT_TYPE> sftg_res_nz_tensor_;
 
     LocalTensor<float> vec_in_ping_;
     LocalTensor<float> vec_in_pong_;
@@ -76,7 +83,19 @@ private:
     static constexpr uint32_t BLOCK_INPUT = BLOCK_SIZE / sizeof(INPUT_TYPE);
     constexpr static uint32_t PRE_TILE_LEN = 60 * 1024;  // pre一次处理元素的个数
     constexpr static uint32_t POST_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
-    GM_ADDR act_seq_q_len;
+    // runtInfo
+    int32_t s1_process_;
+    int32_t s1_process_align_;
+    int32_t s2_process_align_;
+    int32_t half_s1_process_align_;
+    int32_t data_size;
+    int32_t half_s1_process_real_;
+    uint64_t lse_gm_offset_;
+    uint64_t sftg_gm_offset_;
+    uint64_t l1_offset_;
+    TEventID event_ping_ = EVENT_ID3;
+    TEventID event_pong_ = EVENT_ID4;
+    TEventID event_id;
 
 public:
     __aicore__ inline VecOp(){};
@@ -109,13 +128,30 @@ public:
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
         // local_tensor
-        lse_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
-        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
-
-        softmax_res_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
         softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
         ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
+        sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
+        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
+        lse_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        lse_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        sftg_front_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        sftg_front_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+    }
+
+    __aicore__ inline void SetFlag()
+    {
+        SET_FLAG(V, MTE2, event_ping_);
+        SET_FLAG(V, MTE2, event_pong_);
+    }
+
+    __aicore__ inline void WaitFlag()
+    {
+        WAIT_FLAG(V, MTE2, event_ping_);
+        WAIT_FLAG(V, MTE2, event_pong_);
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
@@ -145,6 +181,7 @@ public:
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
         uint32_t process_s1_size = SFTG_TILE_LEN / head_dim_;
         uint32_t ub_offset = 0;
+        uint32_t sftg_ping_pong_idx = 0;
         dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
@@ -153,7 +190,6 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-
         dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
@@ -169,6 +205,8 @@ public:
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
             int64_t current_q_seqlen, last_seq_total_len;
             if constexpr (INPUT_LAYOUT == TND) {
@@ -192,28 +230,110 @@ public:
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
                 }
-
+                TEventID event_id = sftg_ping_pong_idx ? event_ping_ : event_pong_;
                 ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
+
+                WAIT_FLAG(MTE3, MTE2, event_id);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
-                                        tilingData);
-                SET_FLAG(MTE3, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+                                        tilingData, sftg_ping_pong_idx);
+                SET_FLAG(MTE3, MTE2, event_id);
+                sftg_ping_pong_idx = 1 - sftg_ping_pong_idx;
             }
+        }
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
+    }
+
+    __aicore__ inline void SendVecSftPreProcess(const RunTimeInfo &runTimeInfo, uint32_t pingpong_idx)
+    {
+        s1_process_ = runTimeInfo.s1Len;
+        s1_process_align_ = runTimeInfo.s1LenAlign;
+        s2_process_align_ = runTimeInfo.s2LenAlign;
+        half_s1_process_align_ = s1_process_align_ / 2;
+        data_size = half_s1_process_align_ * s2_process_align_;
+        half_s1_process_real_ = v_sub_core_idx_ == 0 ?
+                                    half_s1_process_align_ :
+                                    (s1_process_ - half_s1_process_align_); // GM CopyIn仍采用实际的mProcess
+        sftg_gm_offset_ = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * half_s1_process_align_ * 8;
+        if constexpr (INPUT_LAYOUT == TND) {
+            lse_gm_offset_ = runTimeInfo.lseGmOffset + v_sub_core_idx_ * half_s1_process_align_ * q_head_num_;
+        } else {
+            lse_gm_offset_ = runTimeInfo.lseGmOffset + v_sub_core_idx_ * half_s1_process_align_;
+        }
+        l1_offset_ = v_sub_core_idx_ * half_s1_process_align_ * C0_SIZE;
+
+        if (half_s1_process_real_ > 0) {
+            lse_tensor_ = pingpong_idx == 0 ? lse_tensor_ping_ : lse_tensor_pong_;
+            sftg_front_tensor_ = pingpong_idx == 0 ? sftg_front_tensor_ping_ : sftg_front_tensor_pong_;
+            event_id = pingpong_idx == 0 ? event_ping_ : event_pong_;
+
+            WAIT_FLAG(V, MTE2, event_id);
+            CopyInLSE(lse_tensor_, lse_gm_[lse_gm_offset_], half_s1_process_real_);
+            DataCopy(sftg_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
     }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
-    {
-        ComputeSoftmax(dst_l1_tensor, src_ub_tensor, runTimeInfo);
+    { /*
+       * function: Compute simple softmax
+       * input shape：[s1LenAlign / 2, s2LenAlign]
+       * out shape:   [s1LenAlign / 2, s2LenAlign]
+       * dtype:       float
+       */
+        if (half_s1_process_real_ <= 0) {
+            return;
+        }
+
+        SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
+                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
+
+        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+        SET_FLAG(V, MTE3, EVENT_ID0);
+        WAIT_FLAG(V, MTE3, EVENT_ID0);
+
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
+        dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride =
+            (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        DataCopy(dst_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
     }
 
     __aicore__ inline void SendVecSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                               const LocalTensor<float> &softmax_ub_tensor,
                                               const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
-        // 计算时softmaxGrad时softmax必然计算完
-        ComputeSoftmaxGrad(dst_l1_tensor, softmax_ub_tensor, src_ub_tensor, runTimeInfo);
+        /*
+         * function: Compute softmaxGrad
+         * input shape：[s1LenAlign / 2, s2LenAlign]
+         * out shape:   [s1LenAlign / 2, s2LenAlign]
+         * dtype:       float
+         */
+        if (half_s1_process_real_ <= 0) {
+            return;
+        }
+        ComputeSoftmaxGrad((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
+                           (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
+                           (__ubuf__ float *)sftg_front_tensor_.GetPhyAddr(), half_s1_process_align_,
+                           s2_process_align_);
+
+        CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+        SET_FLAG(V, MTE3, EVENT_ID0);
+        WAIT_FLAG(V, MTE3, EVENT_ID0);
+
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
+        dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride =
+            (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
+        SET_FLAG(V, MTE2, event_id);
     }
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
@@ -226,6 +346,7 @@ public:
         uint64_t dq_size = tilingData->dqSize;
         uint64_t dkv_size = tilingData->dkSize;
         uint32_t ub_offset = 0;
+        uint32_t post_ping_pong_idx = 0;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
@@ -234,129 +355,21 @@ public:
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
         vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
 
         EvenCoreInfo info;
         ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
-        ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        ComputeVecPost<true>(dk_out_gm, dk_workspace, info);
-
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        ComputeVecPost<false>(dv_out_gm, dv_workspace, info, post_ping_pong_idx);
+        ComputeVecPost<true>(dk_out_gm, dk_workspace, info, post_ping_pong_idx);
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
-        ComputeVecPost<true>(dq_out_gm, dq_workspace, info);
+        ComputeVecPost<true>(dq_out_gm, dq_workspace, info, post_ping_pong_idx);
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
     }
 
 private:
-    __aicore__ inline void ComputeSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
-                                          const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
-    { /*
-       * function: Compute simple softmax
-       * input shape：[s1LenAlign / 2, s2LenAlign]
-       * out shape:   [s1LenAlign / 2, s2LenAlign]
-       * dtype:       float
-       */
-        int32_t m_process = runTimeInfo.s1Len;
-        int32_t m_process_align = runTimeInfo.s1LenAlign;
-        int32_t n_process_align = runTimeInfo.s2LenAlign;
-        int32_t sub_m_process = m_process_align / 2;
-        int32_t data_size = sub_m_process * n_process_align;
-        int32_t sub_real_m_process =
-            v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
-        uint64_t lse_offset;
-        if constexpr (INPUT_LAYOUT == TND) {
-            lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process * q_head_num_;
-        } else {
-            lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process;
-        }
-        uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
-        if (sub_real_m_process <= 0) {
-            return;
-        }
-
-        Muls(src_ub_tensor, src_ub_tensor, softmax_scale_, data_size);
-        PipeBarrier<PIPE_V>();
-
-        CopyInLSE(lse_tensor_, lse_gm_[lse_offset], sub_real_m_process);
-        SET_FLAG(MTE2, V, EVENT_ID0);
-        WAIT_FLAG(MTE2, V, EVENT_ID0);
-
-        SubBrcb(src_ub_tensor, src_ub_tensor, lse_tensor_, sub_m_process, n_process_align);
-        PipeBarrier<PIPE_V>();
-
-        Exp(src_ub_tensor, src_ub_tensor, data_size);
-        PipeBarrier<PIPE_V>();
-
-        Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
-        PipeBarrier<PIPE_V>();
-
-        ND2NZ(softmax_res_nz_tensor_, softmax_res_tensor_, sub_m_process, n_process_align);
-        PipeBarrier<PIPE_V>();
-        SET_FLAG(V, MTE3, EVENT_ID0);
-        WAIT_FLAG(V, MTE3, EVENT_ID0);
-
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = n_process_align / C0_SIZE;
-        dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
-    }
-
-    __aicore__ inline void ComputeSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
-                                              const LocalTensor<float> &softmax_ub_tensor,
-                                              const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
-    {
-        /*
-         * function: Compute softmaxGrad
-         * input shape：[s1LenAlign / 2, s2LenAlign]
-         * out shape:   [s1LenAlign / 2, s2LenAlign]
-         * dtype:       float
-         */
-        int32_t m_process = runTimeInfo.s1Len;
-        int32_t m_process_align = runTimeInfo.s1LenAlign;
-        int32_t n_process_align = runTimeInfo.s2LenAlign;
-        int32_t sub_m_process = m_process_align / 2;
-        int32_t data_size = sub_m_process * n_process_align;
-        int32_t sub_real_m_process =
-            v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
-        uint64_t sftgGmOffset = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * sub_m_process * 8;
-        uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
-        if (sub_real_m_process <= 0) {
-            return;
-        }
-
-        SET_FLAG(V, MTE2, EVENT_ID0);
-        WAIT_FLAG(V, MTE2, EVENT_ID0);
-
-        DataCopy(lse_tensor_, sftg_workspace_[sftgGmOffset], sub_real_m_process * 8);
-        SET_FLAG(MTE2, V, EVENT_ID0);
-        WAIT_FLAG(MTE2, V, EVENT_ID0);
-
-        SubBrcb(src_ub_tensor, src_ub_tensor, lse_tensor_, sub_m_process, n_process_align);
-        PipeBarrier<PIPE_V>();
-
-        Mul(src_ub_tensor, src_ub_tensor, softmax_ub_tensor, data_size);
-        PipeBarrier<PIPE_V>();
-
-        Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
-        PipeBarrier<PIPE_V>();
-
-        ND2NZ(softmax_res_nz_tensor_, softmax_res_tensor_, sub_m_process, n_process_align);
-        PipeBarrier<PIPE_V>();
-        SET_FLAG(V, MTE3, EVENT_ID0);
-        WAIT_FLAG(V, MTE3, EVENT_ID0);
-
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = n_process_align / C0_SIZE;
-        dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
-        PipeBarrier<PIPE_ALL>();
-    }
-
     __aicore__ inline void ComputeVecPre(const GlobalTensor<float> &dst_tensor, const LocalTensor<float> &src_tensor,
                                          const EvenCoreInfo &info)
     {
@@ -390,16 +403,16 @@ private:
     __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_gm,
                                                    const GlobalTensor<INPUT_TYPE> &dy_gm,
                                                    const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info,
-                                                   const TILING_CLASS *tilingData)
+                                                   const TILING_CLASS *tilingData, const uint32_t sftg_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
-        LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
-        LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
-        LocalTensor<float> dy_out_tensor = dy_out_ping_;
-        LocalTensor<float> attention_out_tensor = attention_out_ping_;
-        LocalTensor<float> sftg_front_tensor = sftg_front_ping_;
+        LocalTensor<INPUT_TYPE> dy_tensor = sftg_ping_pong_idx ? dy_in_ping_ : dy_in_pong_;
+        LocalTensor<INPUT_TYPE> attention_tensor = sftg_ping_pong_idx ? attention_in_ping_ : attention_in_pong_;
+        LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
+        LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
+        LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
         uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
@@ -460,14 +473,15 @@ private:
 
     template <bool MULS>
     __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
-                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info)
+                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info,
+                                          uint32_t &post_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
 
-        LocalTensor<float> vecIn = vec_in_ping_;
-        LocalTensor<INPUT_TYPE> vecOut = vec_out_ping_;
+        LocalTensor<float> vecIn;
+        LocalTensor<INPUT_TYPE> vecOut;
         uint32_t process_size = info.max_process_size;
 
         for (uint32_t i = 0; i < info.loop_num; i++) {
@@ -477,8 +491,12 @@ private:
                     break;
                 }
             }
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + i * info.max_process_size;
 
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopy(vecIn, src_tensor[gm_offset], process_size);
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -493,11 +511,14 @@ private:
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             DataCopy(dst_tensor[gm_offset], vecOut, process_size);
-            SET_FLAG(MTE3, MTE2, EVENT_ID0);
-            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
 
         if (info.pad_tail > 0) {
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
             uint32_t pad_tail_align = RoundUp<uint32_t>(info.pad_tail, 16);
             DataCopyParams copyParam;
@@ -505,6 +526,8 @@ private:
             copyParam.blockLen = info.pad_tail * sizeof(float);
             copyParam.srcStride = 0;
             copyParam.dstStride = 0;
+
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopyPad(vecIn, src_tensor[gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -520,7 +543,88 @@ private:
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
             DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
+    }
+
+    __simd_vf__ inline void SimpleSoftmax(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
+                                          __ubuf__ float *src1Tensor, const uint64_t row, const uint64_t col)
+    {
+        AscendC::Reg::RegTensor<float> src_reg;
+        AscendC::Reg::RegTensor<float> lse_reg;
+        AscendC::Reg::RegTensor<float> scale_reg;
+        AscendC::Reg::MaskReg msk_reg;
+        constexpr static uint16_t repeat_size = 256 / sizeof(float);
+        uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
+        uint32_t ub_offset = 0;
+        Duplicate(scale_reg, softmax_scale_);
+
+        for (int32_t i = 0; i < row; i++) {
+            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(lse_reg, src1Tensor + i * 8);
+            uint32_t count = col;
+            ub_offset = i * col;
+
+            for (int32_t j = 0; j < repeat_times; j++) {
+                msk_reg = AscendC::Reg::UpdateMask<float>(count);
+
+                LoadAlign(src_reg, src0Tensor + ub_offset);
+                Mul(src_reg, src_reg, scale_reg, msk_reg);
+                Sub(src_reg, src_reg, lse_reg, msk_reg);
+                Exp(src_reg, src_reg, msk_reg);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
+                ub_offset += repeat_size;
+            }
+        }
+    }
+
+    __simd_vf__ inline void ComputeSoftmaxGrad(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
+                                               __ubuf__ float *src1Tensor, __ubuf__ float *sftFrontTensor,
+                                               const uint64_t row, const uint64_t col)
+    {
+        AscendC::Reg::RegTensor<float> src_reg;
+        AscendC::Reg::RegTensor<float> sft_front_reg;
+        AscendC::Reg::RegTensor<float> mul_reg;
+        AscendC::Reg::MaskReg msk_reg;
+        constexpr static uint16_t repeat_size = 256 / sizeof(float);
+        uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
+        uint32_t ub_offset = 0;
+
+        for (int32_t i = 0; i < row; i++) {
+            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(sft_front_reg, sftFrontTensor + i * 8);
+            uint32_t count = col;
+            ub_offset = i * col;
+
+            for (int32_t j = 0; j < repeat_times; j++) {
+                msk_reg = AscendC::Reg::UpdateMask<float>(count);
+
+                LoadAlign(src_reg, src0Tensor + ub_offset);
+                Sub(src_reg, src_reg, sft_front_reg, msk_reg);
+                LoadAlign(mul_reg, src1Tensor + ub_offset);
+                Mul(src_reg, src_reg, mul_reg, msk_reg);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
+                ub_offset += repeat_size;
+            }
+        }
+    }
+
+    __aicore__ inline void ComputeEvenCoreInfo(EvenCoreInfo &info, const uint32_t data_size,
+                                               const uint32_t max_process_size)
+    {
+        /*
+         * function: even process data_size
+         */
+        uint32_t per_core_size = CeilDiv<uint32_t>(data_size, v_core_num_);
+        info.start_idx = v_core_idx_ * per_core_size;
+        info.len = (info.start_idx + per_core_size > data_size) ? data_size - info.start_idx : per_core_size;
+        info.max_process_size = max_process_size;
+        info.data_size = data_size;
+        info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
+
+        uint32_t tail = info.len % max_process_size;
+        // 由于DataCopyPad最多处理65535，因此tail部分分成align_tail和pad_tail计算
+        info.align_tail = tail / 16 * 16;
+        info.pad_tail = tail - info.align_tail;
     }
 
     __aicore__ inline void CopyInLSE(const LocalTensor<float> &dstTensor, const GlobalTensor<float> &srcTensor,
@@ -545,61 +649,6 @@ private:
                     {static_cast<uint16_t>(count), static_cast<uint32_t>(1 * sizeof(float)),
                      static_cast<uint32_t>(src_stride), 0, 0},
                     {false, 0, 0, 0});
-    }
-
-    __aicore__ inline void SubBrcb(const LocalTensor<float> &dstTensor, const LocalTensor<float> &src0Tensor,
-                                   const LocalTensor<float> &src1Tensor, const uint64_t row, const uint64_t col)
-    {
-        /*
-         * function: dstTensor = src0Tensor - src1Tensor
-         * input shape： src0Tensor[row, col], src1Tensor[row, 8]
-         * out shape:    [row, col]
-         */
-        for (uint32_t i = 0; i < row; i++) {
-            float sub_value = src1Tensor.GetValue(i * BLOCK_FP32);
-            SET_FLAG(S, V, EVENT_ID0);
-            WAIT_FLAG(S, V, EVENT_ID0);
-            Subs(dstTensor[i * col], src0Tensor[i * col], sub_value, col);
-        }
-    }
-
-    __aicore__ inline void ND2NZ(const LocalTensor<INPUT_TYPE> &dstTensor, const LocalTensor<INPUT_TYPE> &srcTensor,
-                                 const uint64_t row, const uint64_t col)
-    {
-        uint64_t src_offset = 0;
-        uint64_t dst_offset = 0;
-        uint32_t C0_NUM = CeilDiv<uint32_t>(col, C0_SIZE);
-
-        DataCopyParams repeatParams;
-        repeatParams.blockCount = C0_NUM;
-        repeatParams.blockLen = C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        repeatParams.srcStride = 0;
-        repeatParams.dstStride = (row - 1) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-
-        for (uint64_t i = 0; i < row; i++) {
-            src_offset = i * col;
-            dst_offset = i * C0_SIZE;
-            DataCopy(dstTensor[dst_offset], srcTensor[src_offset], repeatParams);
-        }
-    }
-
-    __aicore__ inline void ComputeEvenCoreInfo(EvenCoreInfo &info, const uint32_t data_size,
-                                               const uint32_t max_process_size)
-    {
-        /*
-         * function: even process data_size
-         */
-        uint32_t per_core_size = CeilDiv<uint32_t>(data_size, v_core_num_);
-        info.start_idx = v_core_idx_ * per_core_size;
-        info.len = (info.start_idx + per_core_size > data_size) ? data_size - info.start_idx : per_core_size;
-        info.max_process_size = max_process_size;
-        info.data_size = data_size;
-        info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
-
-        uint32_t tail = info.len % max_process_size;
-        // 由于DataCopyPad最多处理65535，因此tail部分分成align_tail和pad_tail计算
-        info.align_tail = tail / 16 * 16;
-        info.pad_tail = tail - info.align_tail;
     }
 };
 

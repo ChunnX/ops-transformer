@@ -30,6 +30,10 @@ python bandwidth_test.py
 ### 测试模式配置
 
 ```python
+<<<<<<< HEAD
+=======
+# 带宽测试与精度测试不能同时使能
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
 is_precision_test = True   # 是否进行精度测试
 is_bandwidth_test = False # 是否进行带宽测试
 is_single_test = True     # True: 单配置测试; False: 多配置批量测试

@@ -44,6 +44,7 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                       __gm__ uint8_t *tiling, __gm__ uint8_t *runtimeMetaData)
 {
+    fa_base_matmul::idCounterNum = 0;
     // 1. 解析 q_out layout → (inputLayout, outputLayout)
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);

@@ -189,7 +189,10 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
                 return ge::GRAPH_FAILED);
 
+<<<<<<< HEAD
     tilingData.maxBs = static_cast<int32_t>(xDim0);
+=======
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
     tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
@@ -341,7 +344,11 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
     uint32_t batchMode = 1U;
+<<<<<<< HEAD
     auto ret = context->SetScheduleMode(batchMode);
+=======
+    context->SetScheduleMode(batchMode);
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
 
     const char *nodeName = context->GetNodeName();
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
@@ -365,7 +372,11 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
     uint32_t aivNum = platformAivNum;
+<<<<<<< HEAD
     if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
+=======
+    if (*aivNumPtr > 0 && *aivNumPtr <= platformAivNum) {
+>>>>>>> 8f0194ee469b0d2028062d71cf07bbd9092c5d7b
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
 

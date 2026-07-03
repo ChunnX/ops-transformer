@@ -65,7 +65,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)
 
     int64_t expectTilingKey = 1154;
     std::string expectTilingData =
-        "2199023255554 64 16 4410436851802832928 8589934600 2 3 16 128 656 0 "
+        "2199023255554 64 16 8589934624 4410436851802832898 8 3 16 128 656 0 "
         "40532396646334464 262144 64 316659348865024 2199023255560 ";
     std::vector<size_t> expectWorkspaces = {293928960};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
@@ -111,7 +111,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_1)
 
     int64_t expectTilingKey = 1092;
     std::string expectTilingData =
-        "1099511627778 96 0 4410436851802832896 8589934608 4294967298 0 8 64 "
+        "1099511627778 96 0 8589934592 4410436851802832898 4294967312 0 8 64 "
         "656 0 40532396646334464 262144 64 316659348832256 1099511627792 ";
     std::vector<size_t> expectWorkspaces = {268763136};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
