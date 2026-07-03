@@ -132,16 +132,19 @@ def get_mega_moe_ccl_buffer_size(
     def inline_align(val, align):
         return (val + align - 1) // align * align
     torch._check(((ep_world_size >= 2) and (ep_world_size <= 1024)),
-                     lambda: (f"ep_world_size only support in [2, 1024], but got {ep_world_size=}."))
+        lambda: (f"ep_world_size only support in [2, 1024], but got {ep_world_size=}."))
     torch._check(((hidden >= 1024) and (hidden <= 8192)),
-                    lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
-    torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
-                    lambda: (f"num_max_tokens_per_rank only support in [1, 512], "
-                            f"but got {num_max_tokens_per_rank=}."))
+        lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
+    total_ub_size = 256 * 1024 # 950系列ubSize总大小为256K
+    tokens_per_rank_limit = (8 * (total_ub_size - 48 * 1024)) // (num_topk * (64 + ep_world_size))
+    torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= tokens_per_rank_limit)),
+        lambda: (f"num_max_tokens_per_rank only support in [1, {tokens_per_rank_limit=}], "
+                    f"tokens_per_rank_limit = (8 * (total_ub_size - 48 * 1024)) / (num_topk * (64 + ep_world_size)), "
+                    f"but got {num_max_tokens_per_rank=}."))
     torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 2048)),
-                    lambda: (f"moe_expert_num only support in [1, 2048], but got {moe_expert_num=}."))
+        lambda: (f"moe_expert_num only support in [1, 2048], but got {moe_expert_num=}."))
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
-                     lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
+        lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
     local_moe_expert_num = moe_expert_num // ep_world_size
     align_32 = 32
     align_256 = 256
