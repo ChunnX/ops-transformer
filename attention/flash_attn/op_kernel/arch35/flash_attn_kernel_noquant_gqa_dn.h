@@ -55,14 +55,19 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
-    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfoX slot，换取消除内层循环的取模scalar bound。
+    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个 slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
+    // 将容量向上取整到最近的 2 的幂(=4)。
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
                   "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
+
+    struct TaskSlot {
+        uint64_t loop = 0;
+        bool isValid = false;
+    };
 
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -408,7 +413,7 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
@@ -432,7 +437,7 @@ public:
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTask(createdTaskCount, taskSlots);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
@@ -446,7 +451,7 @@ public:
             }
             // 执行任务
             if (validTaskCount) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
+                ExecuteTask(executedTaskCount, taskSlots);
                 executedTaskCount++;
                 if (executedTaskCount > PRELOAD_N) {
                     validTaskCount--;
@@ -619,156 +624,80 @@ public:
         }
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
-        
-        if (runInfo0.isValid) {
+        TaskSlot &slot0 = taskSlots[loop & PRELOAD_TASK_CACHE_MASK];
+        if (slot0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(slot0.loop);
             } else {
-                ComputeVec1(runInfo0);
+                ComputeVec1(slot0.loop);
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
-            if (runInfoNegN.isValid) {
+            TaskSlot &slotNegN = taskSlots[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+            if (slotNegN.isValid) {
                 if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
+                    ComputeMm2(slotNegN.loop);
                 } else {
-                    ComputeVec2(runInfoNegN);
+                    ComputeVec2(slotNegN.loop);
                 }
-                runInfoNegN.isValid = false;
+                slotNegN.isValid = false;
             }
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(uint64_t loop)
     {
-        uint32_t slotIdx = runInfo.loop % 2U;
+        uint32_t slotIdx = loop % 2U;
         auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
-        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
+        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2(uint64_t loop)
     {
-        uint32_t outSlot = runInfo.loop % 2U;
-        uint32_t l1PIdx  = runInfo.loop % 3U;
+        uint32_t outSlot = loop % 2U;
+        uint32_t l1PIdx  = loop % 3U;
         uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
             cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
-                                  l1PTensor, l1PCcId, runInfo);
+                                  l1PTensor, l1PCcId);
         } else {
-            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
-                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
-                                  l1PTensor, l1PCcId, runInfo);
+            cubeBlock.IterateBmm2(bmm2GmSlot[loop % 3U],
+                                  CC_BMM2_0 + (loop % 3U), 0U,
+                                  l1PTensor, l1PCcId);
         }
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(uint64_t loop)
     {
-        uint32_t bmm1Slot = runInfo.loop % 2U;
-        uint32_t l1PIdx   = runInfo.loop % 3U;
+        uint32_t bmm1Slot = loop % 2U;
+        uint32_t l1PIdx   = loop % 3U;
         uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
-        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
+        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, loop);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2(uint64_t loop)
     {
-        uint32_t outSlot = runInfo.loop % 2U;
+        uint32_t outSlot = loop % 2U;
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot);
         } else {
-            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
-                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
+            vecFaBlock.ProcessVec2(bmm2GmSlot[loop % 3U],
+                                   CC_BMM2_0 + (loop % 3U));
         }
     }
 
-    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void CreateTask(uint64_t loop, TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
-    }
-
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
-    {
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
-
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
-        }
-        info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
-        }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
-        }
-
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
-        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
+        TaskSlot &slot = taskSlots[loop & PRELOAD_TASK_CACHE_MASK];
+        slot.loop = loop;
+        slot.isValid = true;
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,

@@ -212,35 +212,26 @@ public:
     }
     __aicore__ inline void ProcessVec1(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
                                        LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
-                                       RunInfoX runInfo)
+                                       uint64_t loop)
     {
         (void)l1PTensor;
         (void)bmm1UbTensor;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
-            return;
-        }
-        int64_t stage1Offset = runInfo.loop & (DB - 1);
+        int64_t stage1Offset = loop & (DB - 1);
         WaitFlag<HardEvent::MTE3_V>(stage1Offset == 0 ? stage1OutBufFreeEventId0 : stage1OutBufFreeEventId1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         SetFlag<HardEvent::V_MTE3>(stage1OutBufReadyEventId0 + stage1Offset);
         WaitFlag<HardEvent::V_MTE3>(stage1OutBufReadyEventId0 + stage1Offset);
         SetFlag<HardEvent::MTE3_V>(stage1Offset == 0 ? stage1OutBufFreeEventId0 : stage1OutBufFreeEventId1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
-        if (unlikely(runInfo.isLastS2Loop)) {
-            Vec1TailSyncOnly(runInfo);
-        }
+        Vec1TailSyncOnly();
     }
 
-    __aicore__ inline void Vec1TailSyncOnly(RunInfoX &runInfo)
+    __aicore__ inline void Vec1TailSyncOnly()
     {
-        if (this->isFd) {
-            if (runInfo.isS2SplitCore || constInfo.isSoftmaxLseEnable) {
-                WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-                SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-            }
+        if (this->isFd && constInfo.isSoftmaxLseEnable) {
+            WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
+            SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
         } else if (constInfo.isSoftmaxLseEnable) {
             WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
             SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
@@ -252,10 +243,9 @@ public:
     }
 
     template <typename BmmResT>
-    __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId)
     {
         (void)bmm2ResTensor;
-        (void)runInfo;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
         WaitFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
