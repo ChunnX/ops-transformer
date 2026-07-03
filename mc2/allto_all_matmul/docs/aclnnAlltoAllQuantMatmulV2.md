@@ -66,7 +66,8 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI\_CPU引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：`commMode`支持`ai_cpu`和`ccu`。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：无新增特性，`commMode`仅支持`aiv`。
 
 ## 函数原型
 
@@ -591,10 +592,13 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
       * mx量化场景下，x2必须转置，shape为(H*rankSize, N)，transposeX2为True。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎参数commMode根据不同设备型号有不同的限制：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持输入`aiv`。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持输入`ai_cpu`和`ccu`。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - 支持CCU通信和AI\_CPU通信。
+      - 支持CCU通信和AI_CPU通信。
       - CCU通信仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 

@@ -26,11 +26,12 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_comm_utils.h"
+#include "mc2_tiling_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
+#include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -111,11 +112,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    if (commMode_ == TPL_AICPU_COMM_MODE) {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
     } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
