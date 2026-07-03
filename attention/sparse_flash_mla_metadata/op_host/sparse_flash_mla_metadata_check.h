@@ -661,6 +661,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when layout_q is TND and seqused_q is passed, the batch_size obtained "
                 "from cu_seqlens_q should be the same as that obtained from seqused_q, but got %lld and %lld",
                 cuSeqlensQBatchSize, queryBatchSize);
+            return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (hasOriKv) {
@@ -680,6 +681,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, layout_kv is TND and seqused_ori_kv is "
                     "passed, the batch_size obtained from cu_seqlens_ori_kv should be the same as that obtained from "
                     "seqused_ori_kv, but got %lld and %lld", cuSeqlensOriKvBatchSize, oriKvBatchSize);
+                return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
@@ -700,6 +702,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, layout_kv is TND and seqused_cmp_kv is "
                     "passed, the batch_size obtained from cu_seqlens_cmp_kv should be the same as that obtained from "
                     "seqused_cmp_kv, but got %lld and %lld", cuSeqlensCmpKvBatchSize, cmpKvBatchSize);
+                return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 cmp_residual_kv 元素数
