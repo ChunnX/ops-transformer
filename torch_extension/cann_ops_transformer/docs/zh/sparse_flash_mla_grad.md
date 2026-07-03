@@ -4,7 +4,7 @@
 
 | 产品 | 是否支持 |
 | :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | × |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
 | <term>Atlas 200I/500 A2 推理产品</term> | × |
@@ -120,17 +120,17 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cu_seqlens_cmp_kv**（`Tensor`）：可选参数，代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，数据类型支持`int32`，shape为[B+1]，累加和与T3保持一致。
 
-- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数，当前仅支持传None。
+- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数，当前仅支持传None。
+- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数，当前仅支持传None。
+- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，数据类型支持`int32`，支持非连续，数据格式支持ND，shape为[B]，当cmp_kv不为空且cmp_mask_mode=3时必须传入。
+- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，数据类型支持`int32`，支持非连续，数据格式支持ND，shape为[B]。当 cmp_kv 不为空且 cmp_mask_mode=3 时必须传入。
 
-- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度，当前仅支持传None。
+- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度，数据类型支持`int32`，shape为`[B,S1,N2]`（BSND）或`[T1,N2]`（TND）。当 ori_mask_mode=0 且 ori_sparse_indices 不为 None 时必须传入且必须为准确值。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，当前仅支持传None。
+- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，数据类型支持`int32`，shape为`[B,S1,N2]`（BSND）或`[T1,N2]`（TND）。当 cmp_mask_mode=0 且 cmp_sparse_indices 不为 None 时必须传入且必须为准确值。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
 - **sinks**（`Tensor`）：可选参数，表示注意力下沉tensor，数据类型支持`float32`，支持非连续，数据格式支持ND，shape为[N1]，当前不支持传None。
 
@@ -140,9 +140,9 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cmp_ratio**（`int`）：可选参数，代表压缩率，数据类型支持`int`，取值范围：1~128，默认值：1。
 
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`，当前仅支持模式4（band模式的mask，滑窗范围由ori_win_left、ori_win_right控制，起点为右下角）。
+- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
 
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`，当前仅支持模式3（rightDownCausal模式的mask，对应以右顶点为划分的下三角场景）。
+- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
 
 - **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，当前仅支持取值127。
 
@@ -166,17 +166,17 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cu_seqlens_cmp_kv**（`Tensor`）：可选参数，代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，数据类型支持`int32`，shape为[B+1]，累加和与T3保持一致。
 
-- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数，当前仅支持传None。
+- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数，当前仅支持传None。
+- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数，当前仅支持传None。
+- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数，数据类型支持`int32`，shape为`[B]`。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，数据类型支持`int32`，支持非连续，数据格式支持ND，shape为[B]，当cmp_kv不为空且cmp_mask_mode=3时必须传入。
+- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，数据类型支持`int32`，支持非连续，数据格式支持ND，shape为[B]。当 cmp_kv 不为空且 cmp_mask_mode=3 时必须传入。
 
-- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度，当前仅支持传None。
+- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度，数据类型支持`int32`，shape为`[B,S1,N2]`（BSND）或`[T1,N2]`（TND）。当 ori_mask_mode=0 且 ori_sparse_indices 不为 None 时必须传入且必须为准确值。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，当前仅支持传None。
+- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，数据类型支持`int32`，shape为`[B,S1,N2]`（BSND）或`[T1,N2]`（TND）。当 cmp_mask_mode=0 且 cmp_sparse_indices 不为 None 时必须传入且必须为准确值。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
 - **batch_size**（`int`）：可选参数，表示输入样本批量大小（即B），数据类型支持`int`。
 
@@ -192,9 +192,9 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cmp_ratio**（`int`）：可选参数，代表压缩率，数据类型支持`int`，取值范围：1~128，默认值：1。
 
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`，当前仅支持模式4（band模式的mask，滑窗范围由ori_win_left、ori_win_right控制，起点为右下角）。
+- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
 
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`，当前仅支持模式3（rightDownCausal模式的mask，对应以右顶点为划分的下三角场景）。
+- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
 
 - **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，当前仅支持取值127。
 
@@ -220,13 +220,15 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **dsinks**（`Tensor`）：可选输出，表示输入sinks的梯度，支持非连续，数据格式支持ND，数据类型支持`float32`，shape与输入sinks保持一致。
 
-- **ori_softmax_l1norm**（`Tensor`）：当前该参数不支持，输出为None。
+- **ori_softmax_l1norm**（`Tensor`）：可选输出，表示q与ori_kv计算得出的softmax的L1Norm结果，公式为reduceG(softmax)/G；数据类型为`float32`。`layout_q`为BSND时shape为`[B,S1,N2,K1]`，当`layout_q`为TND时shape为`[T1,N2,K1]`。当 ori_sparse_indices 不为 None 时该输出不为空，其他场景下输出为 None。Atlas A2/A3 当前不支持（输出为 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **cmp_softmax_l1norm**（`Tensor`）：可选输出，表示q与cmp_kv计算得出的softmax的L1Norm结果，公式为reduceG(softmax)/G；在SCFA场景下该输出不为空，其他场景下输出为None。
+- **cmp_softmax_l1norm**（`Tensor`）：可选输出，表示q与cmp_kv计算得出的softmax的L1Norm结果，公式为reduceG(softmax)/G；当 cmp_sparse_indices 不为 None 时该输出不为空，其他场景下输出为 None。Atlas A2/A3 支持 SCFA 场景（cmp_kv != None 且 cmp_sparse_indices != None）；Ascend 950PR/Ascend 950DT 支持 SCFA 场景及 cmp_mask_mode=0 的稀疏场景。
 
 ### sparse_flash_mla_grad_metadata
 
 - **metadata**（`Tensor`）：暂不支持，输出固定为None。
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
 
 ## 约束说明
 
@@ -235,6 +237,24 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
     - SWA场景：要求cmp_kv == None && cmp_sparse_indices == None
     - SCFA场景：要求cmp_kv != None && cmp_sparse_indices != None
     - CFA场景：要求cmp_kv != None && cmp_sparse_indices == None
+- **确定性计算**：Ascend 950PR/Ascend 950DT 默认非确定性计算，支持通过 `aclrtCtxSetSysParamOpt` 开启确定性计算；Atlas A2/A3 不支持开启确定性计算。
+- **Mask 模式支持**：
+
+    | 模式 | 含义 | 备注 |
+    | :--- | :--- | :--- |
+    | 0 | 不做 mask 操作 | 支持 |
+    | 3 | rightDownCausal | 支持 |
+    | 4 | band（滑窗，起点右下角） | oriMaskMode 支持 |
+
+- **规格约束**：
+
+    | 参数 | Atlas A2/A3 | Ascend 950PR/Ascend 950DT |
+    | :--- | :--- | :--- |
+    | N1 | 1~128 | 1~128 |
+    | N2 | 1 | 1 |
+    | D | 512 | 512 |
+    | layout_q/kv | BSND / TND，必须一致 | BSND / TND，必须一致 |
+    | cmp_ratio | 1~128 | 1~128 |
 
 ## 调用示例
 
