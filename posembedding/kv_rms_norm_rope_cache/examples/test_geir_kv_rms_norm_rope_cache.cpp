@@ -42,7 +42,7 @@ using std::map;
 using std::string;
 using std::vector;
 
-const int BATCH = 181;
+const int BATCH = 32;
 const int N = 1;
 const int SEQ_LENGTH = 1;
 const int GAMMA_LENGTH = 512;
@@ -318,6 +318,7 @@ int main(int argc, char *argv[])
     }
 
     int output_num = output.size();
+    int result_per_output = 8;
     for (int i = 0; i < output_num; i++) {
         std::cout << "output " << i << " dtype :  " << output[i].GetTensorDesc().GetDataType() << std::endl;
         string output_file = "./tc_ge_irrun_test_0008_npu_output_" + std::to_string(i) + ".bin";
@@ -327,7 +328,7 @@ int main(int argc, char *argv[])
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
         int8_t *resultData = (int8_t*)output_data_i;
-        for (int64_t j = 0; j < output_shape; j++) {
+        for (int64_t j = 0; j < output_shape && j < result_per_output; j++) {
             LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
         }
     }
