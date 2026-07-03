@@ -580,8 +580,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
-                    localGmAddr, maskSlotSize_);
+                // hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
+                //     localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
@@ -593,7 +593,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
         if (curRankId == rankId_) {
             continue;
         }
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
+        // hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
     }
 }
 
@@ -1662,9 +1662,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
-    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    // ResetFlagList();             // 清理workSpace空间上的flag位
-    // ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
+    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    ResetFlagList();             // 清理workSpace空间上的flag位
+    ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
 
     // if constexpr(g_coreType == AIV) {
     //     PipeBarrier<PIPE_ALL>();
