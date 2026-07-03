@@ -38,7 +38,7 @@
 #include "hccl_common.h"
 
 // ACLNN common utilities
-#include "aclnn_common.h"
+#include "aclnn_cmd_macros.h"
 
 // torch_npu stream utilities
 #include "torch_npu/csrc/core/npu/NPUStream.h"

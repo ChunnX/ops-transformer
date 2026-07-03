@@ -11,7 +11,7 @@
 #include <torch/extension.h>
 #include <string>
 #include <tuple>
-#include "aclnn_common.h"
+#include "aclnn_cmd_macros.h"
 
 namespace op_api {
 constexpr int64_t SLI_KL_LOSS_GRAD_METADATA_SIZE = 64;

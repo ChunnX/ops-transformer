@@ -13,7 +13,7 @@
 #include <tuple>
 
 #include <torch/extension.h>
-#include "aclnn_common.h"
+#include "aclnn_cmd_macros.h"
 #if __has_include("aclnnop/aclnn_moe_token_permute_v2.h")
 #include "aclnnop/aclnn_moe_token_permute_v2.h"
 #elif __has_include("aclnn_moe_token_permute_v2.h")
