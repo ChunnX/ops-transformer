@@ -1304,7 +1304,7 @@ private:
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
-                                   params.EP, gmCGMM1[gmOffsetC], runtimeRank, params.listLen, resource,
+                                   params.EP, runtimeRank, params.listLen, resource,
                                    params.epilogueCoreNum, params.swigluLimit);
                 }
                 AscendC::SyncAll<true>();
@@ -1534,7 +1534,7 @@ private:
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                        blockEpilogue(gmCGMM2, gmC2, gmPerTokenScale2,
+                        blockEpilogue(gmC2, gmPerTokenScale2,
                                       reinterpret_cast<__gm__ float *>(params.ptrBias2), realTileCoord, realTileShape,
                                       groupIdx, preSrcExpertSum, preSumBeforeRank, params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
