@@ -249,6 +249,7 @@ public:
     void set_maxValidBBLen(uint32_t val) { maxValidBBLen = val; }
     void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
     void set_bandIdx(int64_t val) { bandIdx = val; }
+    void set_reserved(uint32_t val) { reserved = val; }
     void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
     void set_dqIsNeedDeter(const uint64_t* val) { 
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
@@ -397,6 +398,8 @@ public:
     void set_dropoutIsDivisibleBy8(uint32_t val) { dropoutIsDivisibleBy8 = val; }
     void set_sValueZeroUnderTND(bool val) { sValueZeroUnderTND = val; }
     void set_hasInvalidCol(bool val) { hasInvalidCol = val; }
+    void set_reserved2(uint8_t val) { reserved2 = val; }
+    void set_reserved3(uint8_t val) { reserved3 = val; }
     void set_sfmgUsedCoreNum(uint32_t val) { sfmgUsedCoreNum = val; }
     void set_sfmgDyBufferLen(uint32_t val) { sfmgDyBufferLen = val; }
     void set_sfmgYBufferLen(uint32_t val) { sfmgYBufferLen = val; }
