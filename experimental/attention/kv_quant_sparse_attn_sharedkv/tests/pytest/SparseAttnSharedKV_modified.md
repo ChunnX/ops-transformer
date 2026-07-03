@@ -420,15 +420,17 @@ s2Tail = total - (s2Loop - 1) * 128;  // 尾块有效数
 
 一份 KV 矩阵每经过一轮基本块循环便前进一步，依次走 **vec0 产出（AIV）→ load 取数 GM→L1（AIC）→ bmm1（AIC）→ bmm2（AIC）** 四步。收益的关键，在于 `load` 与 `vec0` 落在哪一轮基本块循环：
 
-**修改前（预取深度 2）——取数与产出同一轮**：`PRELOAD_NUM = 2`、`runInfo[3]`，参与轮转的 KV 矩阵 3 份。`load` 与 `vec0` 落在同一轮、且取的是同一块；AIC 必须等 AIV 的 `ProcessVec0` 产出并跨核同步后才能 `IterateLoadQK`，故 cube 每轮均需空等一次。
+**修改前（预取深度 2）——取数与产出同一轮**：`PRELOAD_NUM = 2`、`runInfo[3]`，参与轮转的 KV 矩阵 3 份。`load` 与 `vec0` 落在同一轮、且取的是同一块；AIC 必须等 AIV 的 `ProcessVec0` 产出并跨核同步后才能 `IterateLoadQK`。
 
-**修改后（预取深度 3）——load 比 vec0 晚一轮**：把预取 `PRELOAD_NUM` 从 2 提到 3（`runInfo[4]`），让 `load` 与 `vec0` 解耦到相邻两轮基本块循环——`vec0` 在本轮产出并写 GM，`load` 推迟到下一轮才从 GM 取到 L1。AIV 因此有一整轮时间完成"产出 + 跨核交付"，AIC 取数时数据已在 GM 就绪、不再等待，这段延迟被掩盖到前序基本块的 cube 计算之后。
+**修改后（预取深度 3）——load 比 vec0 晚一轮**：把预取 `PRELOAD_NUM` 从 2 提到 3（`runInfo[4]`），让 `load` 与 `vec0` 解耦到相邻两轮基本块循环——`vec0` 在本轮产出并写 GM，`load` 推迟到下一轮才从 GM 取到 L1。
 
-![v0preload 前后核间流水对比](fig/pipeline.svg)
+<div align="center">
+  <img src="fig/pipeline.svg" alt="v0preload 前后核间流水对比" width="100%">
+</div>
 
-加深预取后，vec0 / load / bmm1 / bmm2 四个阶段各持有一份 KV 矩阵，参与轮转的 KV 矩阵从 3 份增加到 4 份。**但在 N=128 上，这一份的增加无需为存储额外分配空间**，原因是：N=128 的 KV 矩阵经 GM 中转（G=128 跨 2 个 AIC 共享），承接这第 4 份 KV 矩阵的 GM 空间来自更早一轮 v0 释放后的复用——第 N+3 轮的 v0 发起前，已先完成若干轮 bmm（v1）计算，更早一轮 v0 写入 GM 的数据早已被 `load` 搬入 L1、对应的 GM 中转槽位随之释放，恰好用于承接这第 4 份 KV 矩阵。故 L1 侧仍只用 `l1RightBuffers` 的 3 块缓冲（按 `taskIdMod3` 轮转）、分配不变。
+上图按依赖关系（而非固定轮次）排布三条流水线：**aiv**（向量核，依次做 `vec0` 产出 KV、以及 softmax 等后续向量处理）、**cube MTE2**（`load`，把 KV 从 GM 搬入 L1）、**MMAD**（cube 的 `bmm1`/`bmm2` 矩阵计算）；同色块表示复用同一块 L1 KV buffer（`l1RightBuffers` 按 `taskIdMod3` 轮转，故第 1、4 块同色、第 2、5 块同色，依此类推）。修改前 `vec0` 仅超前两轮，`load` 与 `vec0` 落在同一轮、取同一块 KV。修改前在 preload 结束进入稳态后，MMAD 行出现周期性空转（图中红色 idle 段）；修改后 `vec0` 多预取一轮、超前三轮，`load` 改取上一轮已在 GM 就绪的 KV，MMAD 取数时数据早已到位，除 preload 外不再空等、连续满负荷运转。
 
-从 buffer 角度看，上图中每一份 KV 矩阵（绿框）从 `vec0` 产出到被 `bmm2` 消费，需在 L1 的 3 块 `l1RightBuffers` 中驻留 `load → bmm1 → bmm2` 三轮（图中同色块即同一块 buffer，3 块按 `taskIdMod3` 轮转）。修改前 `load` 与 `vec0` 同轮，cube 每轮须先等 `vec0` 产出，方能填入当前轮转到的 buffer（上图红框），3 块 buffer 无法连续周转、cube 周期性空等；修改后 `load` 提前一轮、取上一轮已就绪的 KV，3 块 buffer 依次被 `load / bmm1 / bmm2` 占满、连续周转，cube 空转大幅收窄。这正是第 2 节“以三份 buffer 消除 bubble”的设计得以落实——cube MFU 从 55.8% 提升至 74%。
+这里需特别说明修改后仍残留的一处等待：图中 **load 第四块 qk 时，其起点被推迟到第一轮 qk 的 `bmm2` 算完之后才能启动**（红色箭头）。原因在于 L1 只有三块 KV buffer 循环复用，第四块与第一块落在同一块 L1 空间上，必须等第一块 KV 的最后一个消费者 `bmm2` 读完、腾出该 buffer，第四块的 KV 才能覆盖写入这块 L1。不过此刻 MMAD 正忙于前序基本块的 bmm 计算，这段 buffer 等待被压在 cube 计算之后、完全掩盖，并不会让 MMAD 空转；三块 buffer 因而得以连续周转，第 2 节“以三份 buffer 消除 bubble”的设计落到实处——cube MFU 从 55.8% 提升至 74%。
 
 ### 5.3 推广到 N=64：核间同步重构
 
