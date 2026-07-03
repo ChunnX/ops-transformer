@@ -33,7 +33,8 @@ namespace {
 extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparse_indices,
     const aclTensor *blockTableOptional, const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKvOptional,
-    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, double scaleValue,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, const aclTensor *sinksOptional,
+    double scaleValue,
     int64_t sparseBlockSizeOptional, char *layoutQueryOptional, char *layoutKvOptional,
     int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t attentionMode,
     bool returnSoftmaxLse, const aclTensor *attentionOut, const aclTensor *softmaxMax,
@@ -128,7 +129,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     }
     return aclnnInnerSparseFlashAttentionGetWorkspaceSize(
         query, key, valueTensor, sparseIndices, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
-        scaleValue, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, sparseMode, preTokens,
+        nullptr, scaleValue, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, sparseMode, preTokens,
         nextTokens, attentionMode, returnSoftmaxLse, attentionOut,
         softmaxMax, softmaxSum, workspaceSize, executor);
 }
