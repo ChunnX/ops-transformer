@@ -713,11 +713,11 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loc
     attenOut = vec2ResUb;
 
     // 拷贝参数赋值
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = runInfo.vec2S1RealSize;
-    dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-    dataCopyParams.srcStride = (dvSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
-    dataCopyParams.dstStride = 0;
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = runInfo.vec2S1RealSize;
+    copyParams.blockLen = constInfo.dSizeV * sizeof(T);
+    copyParams.srcStride = (dvSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+    copyParams.dstStride = 0;
 
     // 地址偏移计算
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
@@ -727,7 +727,7 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loc
                   mStart * constInfo.dSizeV + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV;
 
     DataCopyPad(this->accumOutGm[base + runInfo.flashDecodeS2Idx * constInfo.gSize * constInfo.dSizeV],
-                attenOut, dataCopyParams);
+                attenOut, copyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -743,20 +743,20 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyLseIn(Con
             constInfo.gSize * fp32BaseSize + startRow * fp32BaseSize;
 
     // 拷贝参数赋值
-    DataCopyExtParams copyInParams;
-    copyInParams.blockCount = constInfo.splitKVNum;
-    copyInParams.blockLen = dealRowCount * fp32BaseSize * sizeof(T);
-    copyInParams.srcStride = (constInfo.gSize - dealRowCount) * fp32BaseSize * sizeof(T);
-    copyInParams.dstStride = 0;
+    DataCopyExtParams lseCopyParams;
+    lseCopyParams.blockCount = constInfo.splitKVNum;
+    lseCopyParams.blockLen = dealRowCount * fp32BaseSize * sizeof(T);
+    lseCopyParams.srcStride = (constInfo.gSize - dealRowCount) * fp32BaseSize * sizeof(T);
+    lseCopyParams.dstStride = 0;
 
-    DataCopyPadExtParams<T> copyInPadParams;
-    copyInPadParams.isPad = false;
-    copyInPadParams.leftPadding = 0;
-    copyInPadParams.rightPadding = 0;
-    copyInPadParams.paddingValue = 0;
+    DataCopyPadExtParams<T> lseCopyPadParams;
+    lseCopyPadParams.isPad = false;
+    lseCopyPadParams.leftPadding = 0;
+    lseCopyPadParams.rightPadding = 0;
+    lseCopyPadParams.paddingValue = 0;
 
-    DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], copyInParams, copyInPadParams);
-    DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], copyInParams, copyInPadParams);
+    DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], lseCopyParams, lseCopyPadParams);
+    DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], lseCopyParams, lseCopyPadParams);
     softmaxMaxInputQue.EnQue(softmaxMaxLocal);
     softmaxSumInputQue.EnQue(softmaxSumLocal);
 }
@@ -812,23 +812,23 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyAccumOutI
     if constexpr (BaseClass::splitD){
         dvSizeAligned64 = constInfo.dBasicBlock;
     }
-    DataCopyExtParams copyInParams;
-    copyInParams.blockCount = dealRowCount;
-    copyInParams.blockLen = constInfo.dSizeV * sizeof(T);
-    copyInParams.srcStride = 0;
-    copyInParams.dstStride = (dvSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
+    DataCopyExtParams accumCopyParams;
+    accumCopyParams.blockCount = dealRowCount;
+    accumCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+    accumCopyParams.srcStride = 0;
+    accumCopyParams.dstStride = (dvSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
 
-    DataCopyPadExtParams<T> copyInPadParams;
-    copyInPadParams.isPad = true;
-    copyInPadParams.leftPadding = 0;
-    copyInPadParams.rightPadding = (dvSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
-    copyInPadParams.paddingValue = 0;
+    DataCopyPadExtParams<T> accumCopyPadParams;
+    accumCopyPadParams.isPad = true;
+    accumCopyPadParams.leftPadding = 0;
+    accumCopyPadParams.rightPadding = (dvSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
+    accumCopyPadParams.paddingValue = 0;
     // 地址偏移计算
     uint64_t combineAccumOutOffset = ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum +
                                       n2Idx * constInfo.splitKVNum + splitKVIndex) *
                                          constInfo.gSize * constInfo.dSizeV +
                                      startRow * constInfo.dSizeV;
-    DataCopyPad(accumOutLocal, this->accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
+    DataCopyPad(accumOutLocal, this->accumOutGm[combineAccumOutOffset], accumCopyParams, accumCopyPadParams);
     accumOutInputQue.EnQue(accumOutLocal);
 }
 
