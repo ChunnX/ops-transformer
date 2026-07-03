@@ -126,9 +126,9 @@
 </thead>
 <tbody>
   <tr>
-    <td>dyRef</td>
+    <td>dy</td>
     <td>输入</td>
-    <td>公式中的dy，表示正向计算输出y的导数，inplace更新为正向输入x的导数。Inplace模式，dyRef同时作为输出写入结果。</td>
+    <td>公式中的dy，表示正向计算输出y的导数，inplace更新为正向输入x的导数。Inplace模式，dy同时作为输出写入结果。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -147,14 +147,14 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>rotaryMode</td>
+    <td>rotary_mode</td>
     <td>属性</td>
-    <td>旋转模式，0=half，1=interleave，2=quarter，3=interleave-half。</td>
+    <td>旋转模式，0=half，1=interleave，2=quarter，3=interleave-half。当前仅支持interleave模式（rotary_mode=1）。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
   <tr>
-    <td>partialSlice</td>
+    <td>partial_slice</td>
     <td>属性</td>
     <td>D维度上的切片范围[start, end)，默认{0, 0}表示不做有效计算。start须在[0, D]内，end须在[start, D]内。</td>
     <td>IntArray</td>
@@ -168,13 +168,13 @@
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - 该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）。其他模式暂不支持。
-- Inplace执行：输入dyRef和输出共享同一个Tensor，计算结果直接写回输入dyRef。
-- 输入dyRef当前只支持BSND排布，输入cos/sin的shape必须与dyRef满足B/S/N维度的广播关系（如BSND、111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
-  - 输入张量dyRef的最后一维大小D必须小于等于1024。
-  - 输入张量cos、sin的最后一维大小必须等于切片长度(end - start)。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
-  - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
-  - quarter模式下，切片长度(end - start)必须能被4整除。
+- Inplace执行：输入dy和输出共享同一个Tensor，计算结果直接写回输入dy。
+- 输入dy当前只支持BSND排布，输入cos/sin的shape必须与dy满足B/S/N维度的广播关系（如BSND、111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
+  - 输入张量dy的最后一维大小D必须小于等于1024。
+  - 输入张量cos、sin的最后一维大小必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
+  - half、interleave和interleave-half模式下，partial_slice切片长度（即partial_slice[1] - partial_slice[0]）必须能被2整除。
+  - quarter模式下，partial_slice切片长度（即partial_slice[1] - partial_slice[0]）必须能被4整除。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
 
@@ -184,3 +184,4 @@
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_inplace_partial_rotary_mul_grad](./examples/arch35/test_aclnn_inplace_partial_rotary_mul_grad.cpp) | 通过[aclnnInplacePartialRotaryMulGrad](./docs/aclnnInplacePartialRotaryMulGrad.md)接口方式调用InplacePartialRotaryMulGrad算子。             |
+| 图模式调用 | [test_geir_inplace_partial_rotary_mul_grad](./examples/arch35/test_geir_inplace_partial_rotary_mul_grad.cpp) | 通过[算子IR](./op_graph/inplace_partial_rotary_mul_grad_proto.h)构图方式调用InplacePartialRotaryMulGrad算子。 |
