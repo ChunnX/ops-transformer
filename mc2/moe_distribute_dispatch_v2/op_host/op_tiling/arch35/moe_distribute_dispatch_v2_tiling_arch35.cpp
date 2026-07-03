@@ -1281,6 +1281,13 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     return ge::GRAPH_SUCCESS;
 }
 
+struct MoeDistributeDispatchCompileInfo {};
+static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext* context)
 {
     MoeDistributeDispatchV2TilingFuncA5 impl;
@@ -1288,5 +1295,6 @@ static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext
 }
 
 IMPL_OP_OPTILING(MoeDistributeDispatchV2)
-    .Tiling(MoeDistributeDispatchV2TilingFuncImpl);
+    .Tiling(MoeDistributeDispatchV2TilingFuncImpl)
+    .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
 } // namespace optiling
