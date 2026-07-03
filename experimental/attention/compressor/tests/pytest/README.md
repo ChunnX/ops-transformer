@@ -54,6 +54,17 @@
 ``` bash
 bash test_run.sh single
 ```
+
+#### grouped decode x_cache单独调测
+非压缩轮次只执行x_cache update-only：
+``` bash
+bash run_grouped_decode_update_only.sh
+```
+
+压缩轮次执行x_cache read，并与legacy full-x路径对比输出和state_cache：
+``` bash
+bash run_grouped_decode_compress.sh
+```
 #### 用例的批量生成与测试
 1、excel路径下存放用例excel表格
 
