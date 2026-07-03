@@ -630,6 +630,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
                 <td>361001</td>
                 <td>API内存调用npu runtime的接口异常。</td>
             </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>输入参数（如layout、maskMode）的取值超出支持范围，或输入Tensor的shape维度不符合约束要求。</td>
+            </tr>
         </tbody>
     </table>
 
