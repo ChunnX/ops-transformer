@@ -181,7 +181,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[int] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = ""
+    comm_alg: str = "urma"
 ) -> SymmBuffer:
 
     return SymmBuffer(
