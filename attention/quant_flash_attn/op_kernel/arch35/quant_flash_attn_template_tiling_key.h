@@ -1,0 +1,115 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file quant_flash_attn_template_tiling_key.h
+ * \brief QuantFlashAttn TilingKey定义（量化，MXFP8_FP32）
+ */
+
+#ifndef TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
+#define TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
+
+#include "ascendc/host_api/tiling/template_argument.h"
+
+#if __has_include("../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h")
+#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
+#include "../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
+#else
+#include "../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../prompt_flash_attention/arch35/prompt_flash_attention_tiling_regbase.h"
+#include "../incre_flash_attention/arch35/incre_flash_attention_tiling_regbase.h"
+#endif
+
+#include "quant_flash_attn_tiling_data.h"
+
+#ifndef ORIG_DTYPE_QUERY
+#define ORIG_DTYPE_QUERY (DT_FP8_E4M3FN)
+#endif
+
+#ifndef ORIG_DTYPE_KEY
+#define ORIG_DTYPE_KEY (DT_FP8_E4M3FN)
+#endif
+
+#ifndef ORIG_DTYPE_ATTENTION_OUT
+#define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
+#endif
+
+ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
+    //    bit 8-1 InOutLayoutType(InputLayoutType-OutputLayoutType)
+    //    0: InOutLayoutType_BNSD_BNSD
+    //    1: InOutLayoutType_BSH_BSH (BSND shares same layout as BSH)
+    //    2: InOutLayoutType_TND_TND
+    ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 255),
+    //    bit 18-9 Config(S1,S2,D,DV)
+    //   27: Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64
+    //   28: Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128
+    ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1023),
+    //    bit 23-19 QuantMode
+    //    1: QFA_MXFP8_FP32 (PD-merged)
+    ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
+    //    bit 24 HasAttenMask
+    //    0: false
+    //    1: true
+    ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
+    //    bit 26-25 KvLayoutType
+    //    0: KvLayoutType_NO_PA
+    //    1: KvLayoutType_PA_BBH
+    //    2: KvLayoutType_PA_BNBD
+    //    3: KvLayoutType_PA_NZ
+    ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
+    //    bit 27 IsFd
+    //    0: false
+    //    1: true
+    ASCENDC_TPL_BOOL_DECL(IsFd, false, true),
+    //    bit 28 EmptyTensor
+    //    0: false
+    //    1: true
+    ASCENDC_TPL_BOOL_DECL(EmptyTensor, false, true),
+    //    bit 29 IsReconstructTemp
+    //    0: false
+    //    1: true
+    ASCENDC_TPL_BOOL_DECL(IsReconstructTemp, false, true),
+);
+
+ASCENDC_TPL_SEL(
+#if (ORIG_DTYPE_QUERY == DT_FP8_E4M3FN && ORIG_DTYPE_KEY == DT_FP8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+    // mxfp8 softmax fp32
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
+                             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
+                             KvLayoutType_PA_NZ),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
+        ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
+    ),
+#endif
+
+    // empty tensor placeholder
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 1),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
+    ),
+);
+
+#endif // TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_

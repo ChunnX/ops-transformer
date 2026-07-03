@@ -1,0 +1,521 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file quant_flash_attn_tiling.cpp
+ * \brief QuantFlashAttn arch35 tiling implementation (MXFP8_FP32)
+ */
+
+#include "quant_flash_attn_tiling.h"
+#include "../quant_flash_attn_tiling.h"
+#include <map>
+#include <vector>
+#include <numeric>
+#include <algorithm>
+#include <graph/utils/type_utils.h>
+#include "log/log.h"
+#include "../quant_flash_attn_tiling_utils.h"
+#include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
+#include "../../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
+
+using namespace ge;
+using namespace AscendC;
+namespace optiling {
+namespace quant_flash_attn {
+using namespace arch35FIA;
+constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
+
+void QuantFlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
+{
+    qfaInfo_ = static_cast<QfaTilingInfo *>(tilingInfo);
+}
+
+bool QuantFlashAttnTilingImpl::IsCapable()
+{
+    if (qfaInfo_ == nullptr) {
+        return false;
+    }
+    if (qfaInfo_->quantMode != QfaQuantMode::MXFP8_FP32) {
+        return false;
+    }
+    return true;
+}
+
+void QuantFlashAttnTilingImpl::CalcScheduleMode()
+{
+    scheduleMode_ = ScheduleMode::BATCH_MODE;
+    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
+}
+
+ge::graphStatus QuantFlashAttnTilingImpl::DoOpTiling()
+{
+    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(qfaInfo_->opName, "Set plat memory info fail."),
+                return ge::GRAPH_FAILED);
+
+    InitImplParam();
+    SplitPolicy();
+    FillTiling();
+    CalcScheduleMode();
+    CalcWorkspaceSize();
+    GenTilingKey();
+
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+        (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantFlashAttnTilingImpl::SetPlatMemoryInfo()
+{
+    auto platformInfoPtr = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(qfaInfo_->opName, "The platformInfoPtr is null!"),
+                return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    platformInfo_.cvRatio = platformInfo_.aivNum / platformInfo_.aicNum;
+    platformInfo_.coreNum = platformInfo_.aivNum;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
+
+    platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    OP_LOGI(qfaInfo_->opName, "AIV:%u AIC:%u L0A:%lu L0B:%lu L0C:%lu UB:%lu L1:%lu L2:%lu", platformInfo_.aivNum,
+            platformInfo_.aicNum, platformInfo_.l0aSize, platformInfo_.l0bSize, platformInfo_.l0cSize,
+            platformInfo_.ubSize, platformInfo_.l1Size, platformInfo_.l2Size);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+void QuantFlashAttnTilingImpl::InitImplParam()
+{
+    const gert::Tensor *actSeqLenQ = qfaInfo_->opParamInfo.cuSeqlensQ.tensor;
+    const gert::Tensor *actSeqLenKV = qfaInfo_->opParamInfo.cuSeqlensKv.tensor;
+    uint32_t actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
+    uint32_t actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
+    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
+    cuSeqLenKVFlag_ =
+        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+
+    const gert::Tensor *seqUsedQ = qfaInfo_->opParamInfo.sequsedQ.tensor;
+    const gert::Tensor *seqUsedKv = qfaInfo_->opParamInfo.sequsedKv.tensor;
+    uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
+    uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
+    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
+    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
+
+    decodeS1GMerge_ =
+        (qfaInfo_->opParamInfo.qDescale.tensor != nullptr) &&
+        (qfaInfo_->opParamInfo.qDescale.tensor->GetStorageShape().GetDimNum() == 5);
+
+    for (uint32_t bIdx = 0; bIdx < qfaInfo_->bSize; bIdx++) {
+        if (seqUsedQFlag_) {
+            if (seqUsedQDims == 1) {
+                actualSeqLengthsQ_.push_back(seqUsedQ->GetData<int32_t>()[0]);
+            } else {
+                actualSeqLengthsQ_.push_back(seqUsedQ->GetData<int32_t>()[bIdx]);
+            }
+        } else if (cuSeqLenQFlag_) {
+            if (actSeqLenQDims == 1) {
+                actualSeqLengthsQ_.push_back(actSeqLenQ->GetData<int32_t>()[0]);
+            } else if (qfaInfo_->qLayout != QfaLayout::TND) {
+                actualSeqLengthsQ_.push_back(actSeqLenQ->GetData<int32_t>()[bIdx]);
+            } else {
+                actualSeqLengthsQ_.push_back(
+                    actSeqLenQ->GetData<int32_t>()[bIdx + 1] - actSeqLenQ->GetData<int32_t>()[bIdx]);
+            }
+        } else {
+            actualSeqLengthsQ_.push_back(qfaInfo_->s1Size);
+        }
+
+        if (seqUsedKvFlag_) {
+            if (seqUsedKvDims == 1) {
+                actualSeqLengthsKV_.push_back(seqUsedKv->GetData<int32_t>()[0]);
+            } else {
+                actualSeqLengthsKV_.push_back(seqUsedKv->GetData<int32_t>()[bIdx]);
+            }
+        } else if (cuSeqLenKVFlag_) {
+            if (actSeqLenKVDims == 1) {
+                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int32_t>()[0]);
+            } else if (qfaInfo_->kvLayout != QfaLayout::TND) {
+                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int32_t>()[bIdx]);
+            } else {
+                actualSeqLengthsKV_.push_back(
+                    actSeqLenKV->GetData<int32_t>()[bIdx + 1] - actSeqLenKV->GetData<int32_t>()[bIdx]);
+            }
+        } else {
+            actualSeqLengthsKV_.push_back(qfaInfo_->s2Size);
+        }
+    }
+}
+
+void QuantFlashAttnTilingImpl::SplitPolicy()
+{
+    sOuterFactor_ = SOUTER_64;
+    sInnerFactor_ = SINNER_512;
+    CalcNumBlocks(platformInfo_.aicNum);
+    flashDecodeFlag_ = false;
+
+    isExistRowInvalid_ = IsExistRowInvalid();
+}
+
+void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
+{
+    auto dSize = qfaInfo_->qkHeadDim;
+    auto dVsize = qfaInfo_->vHeadDim;
+
+    if (dSize <= DSIZE_64) {
+        dSize = DSIZE_64;
+    } else if (dSize <= DSIZE_128) {
+        dSize = DSIZE_128;
+    } else if (dSize <= DSIZE_256) {
+        dSize = DSIZE_256;
+    }
+
+    if (dVsize <= DSIZE_64) {
+        dVsize = DSIZE_64;
+    } else if (dVsize <= DSIZE_128) {
+        dVsize = DSIZE_128;
+    } else if (dVsize <= DSIZE_256) {
+        dVsize = DSIZE_256;
+    }
+
+    if (dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
+    } else if (dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(qfaInfo_->opName, "qkHeadDim/vHeadDim",
+            (std::to_string(qfaInfo_->qkHeadDim) + "/" + std::to_string(qfaInfo_->vHeadDim)).c_str(),
+            "Only D64/DV64 and D128/DV128 with S1Aligned128/S2Aligned512 are supported");
+    }
+}
+
+void QuantFlashAttnTilingImpl::UpdateTilingKeyLayout()
+{
+    if (qfaInfo_->qLayout == QfaLayout::BNSD) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
+    } else if (qfaInfo_->qLayout == QfaLayout::TND) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
+    } else {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
+    }
+}
+
+void QuantFlashAttnTilingImpl::UpdateTilingKeyKvLayout()
+{
+    if (!qfaInfo_->pageAttentionFlag) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_NO_PA;
+    } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+    } else if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
+    } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
+    }
+}
+
+void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
+{
+    UpdateTilingKeyLayout();
+    UpdateTilingKeyConfig();
+    UpdateTilingKeyQuantMode();
+    tilingKeyInfo_.hasAttenMask = (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK));
+    UpdateTilingKeyKvLayout();
+    tilingKeyInfo_.isFd = flashDecodeFlag_;
+    tilingKeyInfo_.emptyTensor = false;
+    tilingKeyInfo_.isReconstructTemp = true;
+}
+
+void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
+{
+    tilingKeyInfo_.quantMode = QFA_QUANT_MODE_MXFP8_FP32;
+}
+
+void QuantFlashAttnTilingImpl::GenTilingKey()
+{
+    UpdateTilingKeyInfo();
+    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
+                                    tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask,
+                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
+                                    tilingKeyInfo_.emptyTensor, tilingKeyInfo_.isReconstructTemp);
+
+    OP_LOGI(qfaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
+    OP_LOGI(qfaInfo_->opName,
+            "The tilingkey param is inOutLayoutType: %llu, config: %llu, quantMode: %llu, "
+            "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, isReconstructTemp: %u.",
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
+            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.isReconstructTemp);
+}
+
+void QuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
+{
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(qfaInfo_->platformInfo);
+    auto aivNum = aicNum * platformInfo_.cvRatio;
+
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+}
+
+void QuantFlashAttnTilingImpl::CalcWorkspaceSize()
+{
+    size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
+    uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
+    uint32_t dSize = qfaInfo_->vHeadDim;
+    uint32_t dVBasicBlock = 0;
+    if (dSize <= DSIZE_64) {
+        dVBasicBlock = DSIZE_64;
+    } else if (dSize <= DSIZE_128) {
+        dVBasicBlock = DSIZE_128;
+    } else if (dSize <= DSIZE_256) {
+        dVBasicBlock = DSIZE_256;
+    } else if (dSize <= DSIZE_512) {
+        dVBasicBlock = DSIZE_512;
+    }
+
+    workspaceSize_ = sysWorkspaceSize;
+
+    int64_t bmm2Bytes = 0;
+    int64_t vec2Bytes = 0;
+    int64_t bmm2ResBlockSize = dVBasicBlock;
+    if (dVBasicBlock > DSIZE_256) {
+        bmm2ResBlockSize = DSIZE_512;
+    }
+    if (dSize > DSIZE_128) {
+        bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
+        if (dVBasicBlock > DSIZE_256) {
+            vec2Bytes = mSize * dVBasicBlock * sizeof(float);
+        }
+    }
+    workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_QFA_ARCH35 * numBlocks_;
+
+    if (qfaInfo_->pageAttentionFlag) {
+        workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
+    }
+
+    if (flashDecodeFlag_) {
+        uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize;
+        uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float);
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+    }
+
+    OP_LOGI(qfaInfo_->opName, "Workspaces: %lu", workspaceSize_);
+}
+
+void QuantFlashAttnTilingImpl::FillTiling()
+{
+    ComputeTilingData();
+    SetQFATilingData();
+    PrintAllTilingData();
+}
+
+void QuantFlashAttnTilingImpl::ComputeTilingData()
+{
+    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.sparseMode = qfaInfo_->maskMode;
+
+    if (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK)) {
+        uint64_t maskDimNum = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDimNum();
+        uint64_t maskS1Size = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
+        uint64_t maskS2Size = qfaInfo_->opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
+        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.attenMaskS1Size = maskS1Size;
+        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.attenMaskS2Size = maskS2Size;
+    }
+
+    if (qfaInfo_->pageAttentionFlag) {
+        if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
+            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 0;
+        } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
+            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 1;
+        } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
+            tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 2;
+        }
+    }
+
+    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.isExistRowInvalid = isExistRowInvalid_ ? 1 : 0;
+}
+
+bool QuantFlashAttnTilingImpl::IsExistRowInvalid()
+{
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+        return false;
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        return false;
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::ALL_MASK)) {
+        return true;
+    }
+    for (uint32_t bIdx = 0; bIdx < qfaInfo_->bSize; bIdx++) {
+        int64_t actualSeqLenQ = actualSeqLengthsQ_.size() > bIdx ? actualSeqLengthsQ_[bIdx] : qfaInfo_->s1Size;
+        int64_t actualSeqLenKV = actualSeqLengthsKV_.size() > bIdx ? actualSeqLengthsKV_[bIdx] : qfaInfo_->s2Size;
+        if (actualSeqLenQ == 0 || actualSeqLenKV == 0) {
+            continue;
+        }
+        int64_t winLeft = qfaInfo_->winLeft;
+        int64_t winRight = qfaInfo_->winRight;
+        int64_t preTokenLeftUp = 0;
+        int64_t nextTokenLeftUp = 0;
+        if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+            preTokenLeftUp = winLeft - actualSeqLenKV + actualSeqLenQ;
+            nextTokenLeftUp = winRight + actualSeqLenKV - actualSeqLenQ;
+        } else {
+            preTokenLeftUp = winLeft;
+            nextTokenLeftUp = winRight;
+        }
+        if ((preTokenLeftUp < 0) || (nextTokenLeftUp < 0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void QuantFlashAttnTilingImpl::SetQFATilingData()
+{
+    tilingData_.baseTiling.quantFlashAttnBaseParams.bSize = qfaInfo_->bSize;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.t1Size = qfaInfo_->qTSize;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.t2Size = qfaInfo_->kTSize;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.n2Size =
+        decodeS1GMerge_ ? qfaInfo_->n2Size : qfaInfo_->n1Size;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.gSize =
+        decodeS1GMerge_ ? qfaInfo_->gSize : 1;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.s1Size = qfaInfo_->s1Size;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.s2Size = qfaInfo_->s2Size;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.dSize = qfaInfo_->qkHeadDim;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.dSizeV = qfaInfo_->vHeadDim;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.scaleValue = qfaInfo_->softmaxScale;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensQSize =
+        (qfaInfo_->qLayout == QfaLayout::TND && cuSeqLenQFlag_) ? qfaInfo_->bSize + 1 : 0;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.cuSeqLensKVSize =
+        (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize + 1 : 0;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = qfaInfo_->batchContinuousFlag;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.isSoftMaxLseEnable = qfaInfo_->softmaxLseFlag;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsNull =
+        !(cuSeqLenQFlag_ && qfaInfo_->qLayout == QfaLayout::TND);
+    tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsKVNull =
+        !(cuSeqLenKVFlag_ && qfaInfo_->kvLayout == QfaLayout::TND);
+    tilingData_.baseTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
+    tilingData_.baseTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
+    tilingData_.baseTiling.quantFlashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
+    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;
+    if (qfaInfo_->winLeft == -1) {
+        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+    }
+    if (qfaInfo_->winRight == -1) {
+        tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+    }
+    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.blockSize = qfaInfo_->paBlockSize;
+    uint32_t maxBlockNumPerBatch = 0;
+    if (qfaInfo_->pageAttentionFlag) {
+        maxBlockNumPerBatch = qfaInfo_->maxBlockNumPerBatch;
+    }
+    tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+}
+
+bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
+{
+    if (seqUsedQFlag_ || seqUsedKvFlag_) {
+        return true;
+    }
+    if (qfaInfo_->qLayout == QfaLayout::TND && qfaInfo_->kvLayout == QfaLayout::TND) {
+        return qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+        return false;
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::ALL_MASK)) {
+        return true;
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        return qfaInfo_->s1Size > qfaInfo_->s2Size;
+    }
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        if (qfaInfo_->winRight == -1) {
+            return false;
+        }
+        return (qfaInfo_->s1Size - qfaInfo_->s2Size) > qfaInfo_->winRight;
+    }
+    return false;
+}
+
+ge::graphStatus QuantFlashAttnTilingImpl::SetTilingData(QuantFlashAttnTilingData &tilingData)
+{
+    QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
+    OP_CHECK_IF(tiling == nullptr, OP_LOGE(qfaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
+    *tiling = tilingData;
+    return ge::GRAPH_SUCCESS;
+}
+
+void QuantFlashAttnTilingImpl::PrintAllTilingData()
+{
+    QuantFlashAttnQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
+    QuantFlashAttnBaseParams &params = baseTiling.quantFlashAttnBaseParams;
+    QuantFlashAttnAttenMaskParams &maskParams = baseTiling.quantFlashAttnAttenMaskParams;
+    QuantFlashAttnPageAttentionParams &paParams = baseTiling.quantFlashAttnPageAttentionParams;
+    QuantFlashAttnWorkspaceParams &wsParams = baseTiling.quantFlashAttnWorkspaceParams;
+
+    OP_LOGD(qfaInfo_->opName, "bSize:%d", params.bSize);
+    OP_LOGD(qfaInfo_->opName, "t1Size:%d", params.t1Size);
+    OP_LOGD(qfaInfo_->opName, "t2Size:%d", params.t2Size);
+    OP_LOGD(qfaInfo_->opName, "n2Size:%d", params.n2Size);
+    OP_LOGD(qfaInfo_->opName, "gSize:%d", params.gSize);
+    OP_LOGD(qfaInfo_->opName, "s1Size:%d", params.s1Size);
+    OP_LOGD(qfaInfo_->opName, "s2Size:%d", params.s2Size);
+    OP_LOGD(qfaInfo_->opName, "dSize:%d", params.dSize);
+    OP_LOGD(qfaInfo_->opName, "dSizeV:%d", params.dSizeV);
+    OP_LOGD(qfaInfo_->opName, "cuSeqLensQSize:%d", params.cuSeqLensQSize);
+    OP_LOGD(qfaInfo_->opName, "cuSeqLensKVSize:%d", params.cuSeqLensKVSize);
+    OP_LOGD(qfaInfo_->opName, "seqUsedQSize:%d", params.seqUsedQSize);
+    OP_LOGD(qfaInfo_->opName, "seqUsedKvSize:%d", params.seqUsedKvSize);
+    OP_LOGD(qfaInfo_->opName, "scaleValue:%f", params.scaleValue);
+    OP_LOGD(qfaInfo_->opName, "iscuSeqLengthsNull:%d", params.iscuSeqLengthsNull);
+    OP_LOGD(qfaInfo_->opName, "iscuSeqLengthsKVNull:%d", params.iscuSeqLengthsKVNull);
+    OP_LOGD(qfaInfo_->opName, "isKvContinuous:%d", params.isKvContinuous);
+    OP_LOGD(qfaInfo_->opName, "isSoftMaxLseEnable:%d", params.isSoftMaxLseEnable);
+    OP_LOGD(qfaInfo_->opName, "coreNum:%d", params.coreNum);
+    OP_LOGD(qfaInfo_->opName, "outputLayout:%d", params.outputLayout);
+    OP_LOGD(qfaInfo_->opName, "needInitOutput:%d", params.needInitOutput);
+
+    OP_LOGD(qfaInfo_->opName, "maskMode:%d", maskParams.sparseMode);
+    OP_LOGD(qfaInfo_->opName, "winLefts:%d", maskParams.winLefts);
+    OP_LOGD(qfaInfo_->opName, "winRights:%d", maskParams.winRights);
+    OP_LOGD(qfaInfo_->opName, "attenMaskS1Size:%d", maskParams.attenMaskS1Size);
+    OP_LOGD(qfaInfo_->opName, "attenMaskS2Size:%d", maskParams.attenMaskS2Size);
+    OP_LOGD(qfaInfo_->opName, "isExistRowInvalid:%d", maskParams.isExistRowInvalid);
+
+    OP_LOGD(qfaInfo_->opName, "paLayoutType:%d", paParams.paLayoutType);
+    OP_LOGD(qfaInfo_->opName, "blockSize:%d", paParams.blockSize);
+    OP_LOGD(qfaInfo_->opName, "maxBlockNumPerBatch:%d", paParams.maxBlockNumPerBatch);
+
+    OP_LOGD(qfaInfo_->opName, "accumOutSize:%d", wsParams.accumOutSize);
+    OP_LOGD(qfaInfo_->opName, "logSumExpSize:%d", wsParams.logSumExpSize);
+
+    OP_LOGD(qfaInfo_->opName, "tilingKey:%llu", tilingKey_);
+}
+
+} // namespace quant_flash_attn
+
+using quant_flash_attn::QuantFlashAttnTilingImpl;
+
+REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnTilingImpl,
+                              std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 1);
+} // namespace optiling
