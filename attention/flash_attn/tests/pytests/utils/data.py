@@ -136,6 +136,8 @@ def make_noncontiguous(tensor, nc_dims):
         gap = cstrides[2] if ndim >= 3 else 1
         tstrides = list(cstrides)
         tstrides[1] = cstrides[1] + gap
+        # dim1膨胀后dim0也需同步膨胀，避免不同block在buf中重叠
+        tstrides[0] = shape[1] * tstrides[1]
         last_offset = sum((shape[i] - 1) * tstrides[i] for i in range(ndim))
         buf_size = last_offset + 1
         buf = torch.zeros(buf_size, dtype=dtype, device=device)
