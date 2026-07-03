@@ -21,10 +21,11 @@ import torch
 DATA_RANGE_LEFT = -10
 DATA_RANGE_RIGHT = 10
 
-# 三种运行模式
+# 四种运行模式
 # 0 不切S2
 # 1 切S2
 # 2 AMLA
+# 3 FD (Flash Decode, S2分块计算后reduce)
 
 RUN_MODE = 1
 
@@ -619,17 +620,6 @@ class GeneralizedSFA:
                             softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
                             softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
                     elif RUN_MODE == 1:
-                        bn2_idx = self._bn2_idx(i_B, i_N2)
-                        fd_ranges = self._get_fd_ranges_for_row(bn2_idx, i_S1, 0, G)
-                        if fd_ranges:
-                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                            cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
-                            fd_out, fd_max, fd_sum = self._run_fd_golden(
-                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, fd_ranges)
-                            attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
-                            if return_softmax_lse:
-                                softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
-                            continue
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
                             total_s2_loop_time = 0
@@ -738,6 +728,59 @@ class GeneralizedSFA:
                             rcof_old = rcof
                         row_sum_expand = row_sum.unsqueeze(1)
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (O_flash / row_sum_expand / tmp_scale_16_expand).to(dtype=q_bnsd.dtype)
+                    elif RUN_MODE == 3:
+                        bn2_idx = self._bn2_idx(i_B, i_N2)
+                        fd_ranges = self._get_fd_ranges_for_row(bn2_idx, i_S1, 0, G)
+                        if fd_ranges:
+                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                            cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
+                            fd_out, fd_max, fd_sum = self._run_fd_golden(
+                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, fd_ranges)
+                            attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
+                            if return_softmax_lse:
+                                softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
+                            continue
+                        if empty_flag_ori:
+                            ori_s2_loop_time = 0
+                            total_s2_loop_time = 0
+                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                        else:
+                            ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
+                            total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
+                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                            row_max = torch.empty((G, 1), dtype=torch.float32)
+                            row_max = cur_sinks
+
+                        for i_S2 in range(total_s2_loop_time):
+                            if i_S2 < ori_s2_loop_time:
+                                if i_S2 < ori_s2_loop_time - 1:
+                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:(i_S2 + 1) * s2_base_size, :]
+                                else:
+                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:, :]
+                            else:
+                                if i_S2 < total_s2_loop_time - 1:
+                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:(i_S2 - ori_s2_loop_time + 1) * s2_base_size, :]
+                                else:
+                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:, :]
+                            v_tile = k_tile.clone()
+                            mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
+                            scale_res = mm1_res * self.softmax_scale
+                            row_max_old = row_max.clone()
+                            row_max_tmp = torch.max(scale_res, dim=1)[0]
+                            row_max = torch.max(row_max, row_max_tmp)
+                            update_mul = torch.exp(row_max_old - row_max)
+                            row_max_expand = row_max.unsqueeze(1)
+                            update_mul_expand = update_mul.unsqueeze(1)
+                            cur_softmax_res = torch.exp(scale_res - row_max_expand)
+                            row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+                            cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
+                            cur_o = torch.matmul(cur_softmax_res, v_tile)
+                            cur_attn_out = cur_attn_out * update_mul_expand + cur_o
+                        row_sum_expand = row_sum.unsqueeze(1)
+                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (cur_attn_out / row_sum_expand).to(dtype=q_bnsd.dtype)
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(row_sum + 1e-10)
                     else:
                         raise ValueError(f"unsupported RUN_MODE:{RUN_MODE}")
         return attn_out, softmax_lse
