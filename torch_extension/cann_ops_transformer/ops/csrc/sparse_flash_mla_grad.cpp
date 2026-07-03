@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <cstring>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
