@@ -40,58 +40,11 @@ struct CGDRInitParams {
     GM_ADDR finalState;
 };
 
-template <typename srcType, typename dstType>
-__aicore__ inline void CopyCast(
-    const GlobalTensor<srcType>& src,
-    const GlobalTensor<dstType>& dst,
-    TPipe* pipe,
-    const int64_t totalDataCount,
-    const RoundMode& roundMode)
-{
-    if ASCEND_IS_AIV {
-        int64_t blkNum = GetBlockNum();
-        int64_t blkId = GetBlockIdx();
-        int64_t dataPerCore = (totalDataCount + blkNum - 1) / blkNum;
-        int64_t startPos = dataPerCore * blkId;
-        int64_t endPos = startPos + dataPerCore;
-        if (startPos >= totalDataCount) {
-            return;
-        }
-        if (endPos > totalDataCount) {
-            endPos = totalDataCount;
-        }
-        TQue<QuePosition::VECIN, TQUE_DEPTH_TWO> inQueue;
-        TQue<QuePosition::VECOUT, TQUE_DEPTH_TWO> outQueue;
-        pipe->InitBuffer(inQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(srcType));   // use 2 buffer
-        pipe->InitBuffer(outQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(dstType));  // use 2 buffer
-        for (int64_t i = startPos; i < endPos; i += TILE_LEN) {
-            uint32_t blockLen = i + TILE_LEN > endPos ? endPos - i : TILE_LEN;
-            // copy in
-            DataCopyExtParams inParams{1, static_cast<uint32_t>(blockLen * sizeof(srcType)), 0, 0, 0};
-            DataCopyPadExtParams<srcType> inPadParams{false, 0, 0, 0};
-            auto inLocal = inQueue.AllocTensor<srcType>();
-            DataCopyPad(inLocal, src[i], inParams, inPadParams);
-            inQueue.EnQue(inLocal);
-            // cast
-            auto stateIn = inQueue.DeQue<srcType>();
-            auto stateOut = outQueue.AllocTensor<dstType>();
-            Cast(stateOut, stateIn, roundMode, blockLen);
-            outQueue.EnQue(stateOut);
-            inQueue.FreeTensor(stateIn);
-            // copy out
-            auto outLocal = outQueue.DeQue<dstType>();
-            DataCopyExtParams outParams{1, static_cast<uint32_t>(blockLen * sizeof(dstType)), 0, 0, 0};
-            DataCopyPad(dst[i], outLocal, outParams);
-            outQueue.FreeTensor(outLocal);
-        }
-        PipeBarrier<PIPE_V>();
-    }
-}
 
-
-template <typename lowType, typename highType>
+template <typename lowType, typename highType, typename stateType = lowType>
 class CGDR {
 public:
+    static constexpr bool kStateIsFp32 = std::is_same_v<stateType, float>;
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
         : stageOneOp_(stage1MT_)
     {
@@ -161,13 +114,8 @@ public:
         }
 
         dataSize = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-        if (tiling_->stateIsFp32) {
-            initStateFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.initState), dataSize);
-            finalStateFp32_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.finalState), dataSize);
-        } else {
-            initState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.initState), dataSize);
-            finalState_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.finalState), dataSize);
-        }
+        initState_.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(initParams.initState), dataSize);
+        finalState_.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(initParams.finalState), dataSize);
 
         actualSeqLens_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams.seqlens), tiling_->b);
 
@@ -197,7 +145,7 @@ public:
         highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
 
-        if (tiling_->stateIsFp32) {
+        if constexpr (kStateIsFp32) {
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
             stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_), stateWkElemCnt);
             stateDeltaWk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_) + stateWkElemCnt,
@@ -227,50 +175,35 @@ public:
             int32_t length = actualSeqLens_.GetValue(bid);
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
-            if (tiling_->stateIsFp32) {
-                CopyCast<highType, lowType>(initStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+            if constexpr (kStateIsFp32) {
+                CopyCast<highType, lowType>(initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
                                             stateBf16Wk_, pipe_,
                                             tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
             }
 
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
-                // set chunk group
                 cg.startPos = pos;
                 if (pos + tiling_->maxGroupLength > seqEnd) {
                     cg.length = seqEnd - pos;
                 } else {
                     cg.length = tiling_->maxGroupLength;
                 }
-                if (tiling_->stateIsFp32) {
-                    auto curStateFp32 = (pos == seqStart) ?
-                        initStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                        finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                    auto finalStateFp32 = finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                    RunStage1(cg);
-                    SyncAll<false>();
-                    RunStage2(cg, curStateFp32, finalStateFp32);
-                    SyncAll<false>();
-                    RunStage3(cg);
-                    SyncAll<false>();
-                } else {
-                    auto curState = (pos == seqStart) ?
-                                    initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
-                                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                    // compute this chunk group
-                    RunStage1(cg);
-                    SyncAll<false>();
+                auto curState = (pos == seqStart) ?
+                    initState_[bid * tiling_->nv * tiling_->dv * tiling_->dk] :
+                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                RunStage1(cg);
+                SyncAll<false>();
 
-                    RunStage2(cg, curState,
-                              finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
-                    SyncAll<false>();
+                RunStage2(cg, curState,
+                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                SyncAll<false>();
 
-                    RunStage3(cg);
-                    SyncAll<false>();
-                }
+                RunStage3(cg);
+                SyncAll<false>();
             }
-            if (tiling_->stateIsFp32) {
+            if constexpr (kStateIsFp32) {
                 CopyCast<lowType, highType>(stateBf16Wk_,
-                                            finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                                            finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
                                             pipe_,
                                             tiling_->nv * tiling_->dv * tiling_->dk, RoundMode::CAST_NONE);
             }
@@ -288,11 +221,11 @@ private:
         pipe_->Reset();
     }
 
-    template <typename stateType>
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<stateType> stateIn,
-                                     GlobalTensor<stateType> stateOut)
+    template <typename sType>
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<sType> stateIn,
+                                     GlobalTensor<sType> stateOut)
     {
-        Stage2<stateType> stageTwoOp;
+        Stage2<sType> stageTwoOp;
         StageTwoParams initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
@@ -309,7 +242,7 @@ private:
         initStageTwoParams.Dv = tiling_->dv;
         initStageTwoParams.Dk = tiling_->dk;
         initStageTwoParams.gOptional = gFlag_;
-        if constexpr (std::is_same_v<stateType, float>) {
+        if constexpr (std::is_same_v<sType, float>) {
             initStageTwoParams.curState = stateBf16Wk_;
             initStageTwoParams.finalState = stateDeltaWk_;
             initStageTwoParams.stateFp32In = stateIn;
@@ -347,12 +280,10 @@ private:
     GlobalTensor<highType> g_;
     GlobalTensor<lowType> out_;
     float scale_;
-    GlobalTensor<lowType> finalState_;
-    GlobalTensor<lowType> initState_;
+    GlobalTensor<stateType> finalState_;
+    GlobalTensor<stateType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
 
-    GlobalTensor<highType> initStateFp32_;
-    GlobalTensor<highType> finalStateFp32_;
     GlobalTensor<lowType> stateBf16Wk_;
     GlobalTensor<lowType> stateDeltaWk_;
     GM_ADDR highStateAddr_;

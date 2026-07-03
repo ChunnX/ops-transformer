@@ -45,6 +45,51 @@ namespace ChunkGatedDeltaRule {
     constexpr uint32_t BLOCK_FLOAT_NUM = 8;
     constexpr uint32_t BLOCK_BF16_NUM = 16;
     constexpr uint32_t TILE_LEN = 1024;   // 1024 = 1kb，经测试1kb和10kb性能差异很小
+
+    template <typename srcType, typename dstType>
+    __aicore__ inline void CopyCast(
+        const AscendC::GlobalTensor<srcType>& src,
+        const AscendC::GlobalTensor<dstType>& dst,
+        AscendC::TPipe* pipe,
+        const int64_t totalDataCount,
+        const AscendC::RoundMode& roundMode)
+    {
+        if ASCEND_IS_AIV {
+            int64_t blkNum = GetBlockNum();
+            int64_t blkId = GetBlockIdx();
+            int64_t dataPerCore = (totalDataCount + blkNum - 1) / blkNum;
+            int64_t startPos = dataPerCore * blkId;
+            int64_t endPos = startPos + dataPerCore;
+            if (startPos >= totalDataCount) {
+                return;
+            }
+            if (endPos > totalDataCount) {
+                endPos = totalDataCount;
+            }
+            AscendC::TQue<AscendC::QuePosition::VECIN, TQUE_DEPTH_TWO> inQueue;
+            AscendC::TQue<AscendC::QuePosition::VECOUT, TQUE_DEPTH_TWO> outQueue;
+            pipe->InitBuffer(inQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(srcType));
+            pipe->InitBuffer(outQueue, BUFFER_NUM_TWO, TILE_LEN * sizeof(dstType));
+            for (int64_t i = startPos; i < endPos; i += TILE_LEN) {
+                uint32_t blockLen = i + TILE_LEN > endPos ? endPos - i : TILE_LEN;
+                AscendC::DataCopyExtParams inParams{1, static_cast<uint32_t>(blockLen * sizeof(srcType)), 0, 0, 0};
+                AscendC::DataCopyPadExtParams<srcType> inPadParams{false, 0, 0, 0};
+                auto inLocal = inQueue.AllocTensor<srcType>();
+                AscendC::DataCopyPad(inLocal, src[i], inParams, inPadParams);
+                inQueue.EnQue(inLocal);
+                auto stateIn = inQueue.DeQue<srcType>();
+                auto stateOut = outQueue.AllocTensor<dstType>();
+                AscendC::Cast(stateOut, stateIn, roundMode, blockLen);
+                outQueue.EnQue(stateOut);
+                inQueue.FreeTensor(stateIn);
+                auto outLocal = outQueue.DeQue<dstType>();
+                AscendC::DataCopyExtParams outParams{1, static_cast<uint32_t>(blockLen * sizeof(dstType)), 0, 0, 0};
+                AscendC::DataCopyPad(dst[i], outLocal, outParams);
+                outQueue.FreeTensor(outLocal);
+            }
+            AscendC::PipeBarrier<AscendC::PIPE_V>();
+        }
+    }
 }  // ChunkGatedDeltaRule
 
 #endif  // __CHUNK_GATED_DELTA_RULE_UTILS_H__
