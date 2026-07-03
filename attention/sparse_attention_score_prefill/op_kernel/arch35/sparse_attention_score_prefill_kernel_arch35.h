@@ -196,12 +196,11 @@ public:
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
 #endif
-
         Phase1KvCentricCompute(
             coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
             gK2qSlotIndices, gBlockTable, gWorkspaceO, gWorkspaceF);
-        AscendC::SyncAll<false>();
-        Phase2CombineScale(coreIdx, coreNum, gO, gWorkspaceO, gWorkspaceF);
+        AscendC::SyncAll();
+        //Phase2CombineScale(coreIdx, coreNum, gO, gWorkspaceO, gWorkspaceF);
         ReleaseSyncFlags();
     }
 
@@ -439,8 +438,7 @@ private:
             if (numQTokens == 0) {
                 continue;
             }
-            AscendC::printf("88888888888888888888888: taskIdx:%d, numQTokens: %d\n", taskIdx, numQTokens);
-
+            
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t sColsAligned = sColMax;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
@@ -486,17 +484,17 @@ private:
 #endif
 #ifdef __DAV_VEC__
                         epilogueSoftmax.Init(ubTmpBuf, ubLseStage[l1PBufId], ubRowSumStage[l1PBufId]);
-                        auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, validSize);
+                        auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, causalValidLen);
                         auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
                         epilogueSoftmax(
                             ubSTensor[ubSBufId], ubPBuf[ubSBufId], l1PTensor, groupSize_, vecRows,
-                            validSize, causalValidLen, sColsAligned,
-                            mm1ToSmFlag, smToMm2Flag, 123U + qi, 456U + qi);
+                            causalValidLen, sColsAligned,
+                            mm1ToSmFlag, smToMm2Flag);
 #endif
                     }
                 }
 
-                if (qi >= PRE_LAUNCH) {
+                if (qi >= PRE_LAUNCH && qi - PRE_LAUNCH < numQTokens) {
                     uint32_t qiDe = qi - PRE_LAUNCH;
                     uint32_t csrIdx = csrStart + qiDe;
                     uint32_t qToken = static_cast<uint32_t>(
@@ -521,20 +519,18 @@ private:
                         auto ubOTensorTla = tla::MakeTensor(
                             ubOTmpTensor[ubOTmpBufId], ubOLayout, Arch::PositionUB{});
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
-                        blockMmadPV(ubOTensorTla, groupSize_, validSize, embed_,
+                        blockMmadPV(ubOTensorTla, groupSize_, causalValidLenDe, embed_,
                             smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
-AscendC::printf("00000000000000000000000\n");
                         if (vecRows > 0U) {
-                            AscendC::printf("11111111111111111111111111\n");
                             Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
                             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-                            AscendC::printf("2222222222222222222222: ubOTmpBufId: %d, vecRowOffset * oColAligned:%d\n", ubOTmpBufId, vecRowOffset * oColAligned);
+                            AscendC::printf("33333333333333333333333: ubOTmpBufId: %d, vecRowOffset * oColAligned:%d, %f\n",
+                                ubOTmpBufId, vecRowOffset * oColAligned, ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned].GetValue(0));
                             /*AscendC::DumpTensor(
                                 ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
                                 789 + qiDe, 16);*/
-                            AscendC::printf("3333333333333333333333:%f\n", ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned].GetValue(0));
                             int32_t dLen = static_cast<int32_t>(embed_);
                             for (uint32_t gh = 0; gh < vecRows; gh++) {
                                 float rowSum = ubRowSumStage[l1PBufIdDe].GetValue(gh);
@@ -546,24 +542,14 @@ AscendC::printf("00000000000000000000000\n");
                                         invSum, dLen);
                                 }
                             }
-                            AscendC::printf("444444444444444444444\n");
-                            AscendC::printf("55555555555555555\n");
-                            AscendC::PipeBarrier<PIPE_V>();
-                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
-                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                             AscendC::DataCopy(
                                 gWorkspaceF[wsFOff + vecRowOffset], ubLseStage[l1PBufIdDe], vecRows);
-                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-                            AscendC::printf("66666666666666666666666\n");
-
                             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
                             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
                             AscendC::DataCopy(
                                 gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
                                 ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
                                 vecRows * embed_);
-                                AscendC::printf("77777777777777777777777\n");
-                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
                             Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
                             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
                         } else {
