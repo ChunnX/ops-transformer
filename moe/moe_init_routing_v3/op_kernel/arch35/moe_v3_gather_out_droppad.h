@@ -273,11 +273,11 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
     int64_t tileRows = Max(curCorePerLoopIndicesElements_, static_cast<int64_t>(1));
     for (int64_t outputRowOffset = startOutputRow; outputRowOffset < endOutputRow; outputRowOffset += tileRows) {
         int64_t curLoopRows = Min(tileRows, endOutputRow - outputRowOffset);
-        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+
         CopySourceRowsIn(outputRowOffset, curLoopRows);
         LocalTensor<int32_t> sourceRowsLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
-        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
+        // 按列分块拷贝：当cols很大时，一行数据需要分多次拷贝
         for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
             int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
             int64_t colsLoopOffset = colsLoop * perLoopCols_;
@@ -300,13 +300,12 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
                     scaleLocal = scaleCopyInQueue_.DeQue<float>();
                 }
 
-                SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
                 int64_t outputRow = outputRowOffset + idx;
                 DataCopyPad(expandedXGm_[outputRow * cols_ + colsLoopOffset], xLocal, copyXParams);
                 if (isInputScale_ == 1 && colsLoop == 0) {
                     DataCopyPad(expandedScaleGm_[outputRow], scaleLocal, copyScaleParams);
                 }
-                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+
                 if (isInputScale_ == 1 && colsLoop == 0) {
                     scaleCopyInQueue_.FreeTensor(scaleLocal);
                 }
@@ -334,10 +333,8 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
             }
             int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
             int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
-            // SCATTER 的 expandedRowIdxGm_ 已在 Init 中按核偏移，GATHER 则保留全局索引布局。
-            int64_t expandedRowIdxReadOffset = (rowIdxType_ == SCATTER) ? curExpertLoopOffset : globalReadOffset;
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            CopyExpertIn(expandedRowIdxReadOffset, curLoopElements);
+            CopyExpertIn(globalReadOffset, curLoopElements);
 
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
@@ -361,7 +358,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                         scaleLocal = scaleCopyInQueue_.DeQue<float>();
                     }
 
-                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
                     DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
                     DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
                     while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
@@ -376,7 +372,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                             DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
                         }
                     }
-                    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
                     if (isInputScale_ == 1 && colsLoop == 0) {
                         scaleCopyInQueue_.FreeTensor(scaleLocal);

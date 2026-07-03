@@ -583,10 +583,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         totalLength_ * static_cast<int64_t>(sizeof(float) * NUM_TWO * NUM_THREE);             // 排序需要的空间
     int64_t coreSyncWorkspaceSize = tilingDataPtr_->coreNum * SORT32_ALIGN_ELEMENT * NUM_TWO; // 多核同步需要的空间
     int64_t scatterWorkspaceSize = totalLength_ * static_cast<int64_t>(sizeof(int32_t));
-    // ExpertTokensCount uses aligned int32 work areas after sortedExpertIdx/expandDstToSrcRow:
-    // expertCountTempGm (always) and expertTotalCountGm (only for non-DropPad modes).
-    int64_t expertCountAlignedElements = Align(expertEnd_ - expertStart_, static_cast<int64_t>(sizeof(int32_t)));
-    int64_t expertTokensCountWorkspaceSize = expertCountAlignedElements * static_cast<int64_t>(sizeof(int32_t));
+    int64_t expertTokensCountWorkspaceSize = (expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int32_t));
     if (dropPadMode_ != DROP_PAD_MODE_DROPPAD) {
         expertTokensCountWorkspaceSize += expertCountAlignedElements * static_cast<int64_t>(sizeof(int32_t));
     }
@@ -601,16 +598,14 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
         workspaceSize_ += expertIdxValueWorkspaceSize;
 
-        // outputToSrcRow compact map: 仅compact路径需要，gather_out_droppad只遍历输出行
+        int64_t outputToSrcRowWorkspaceSize = 0;
         if (tilingDataPtr_->gatherOutComputeParamsOp.useCompactGatherOutDropPad) {
-            int64_t outputToSrcRowWorkspaceSize = expertNum_ * expertCapacity_ * static_cast<int64_t>(sizeof(int32_t));
+            outputToSrcRowWorkspaceSize = expertNum_ * expertCapacity_ * static_cast<int64_t>(sizeof(int32_t));
             workspaceSize_ += outputToSrcRowWorkspaceSize;
+
+        }
             OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, outputToSrcRowWorkspace=%ld",
                     expertIdxValueWorkspaceSize, outputToSrcRowWorkspaceSize);
-        } else {
-            OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld (no outputToSrcRow for non-compact)",
-                    expertIdxValueWorkspaceSize);
-        }
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
@@ -2150,6 +2145,18 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
 
 // DropPad模式的GatherOut Tiling计算函数
 // 参考非arch35版本：Tiling4GatherOutCompute
+// 判断DropPad GatherOut是否使用compact路径（按outputRows遍历）而非fallback路径（按n*k遍历）。
+//
+// 背景：DropPad模式下，输出形状为 [expertNum, expertCapacity, cols]，总共 outputRows = expertNum*expertCapacity 行。
+// 当大量token被drop时（n*k >> outputRows），fallback路径扫描n*k个索引但大部分是无效的，
+// 而compact路径只扫描outputRows个输出行，通过outputToSrcRow查表找到源行号。
+//
+// 代价模型：
+//   - compact路径节省：savedIndexScanBytes = (n*k - outputRows) * 4 字节的索引扫描
+//   - compact路径额外开销：对超出n行的outputRows需要额外的行数据拷贝（因为outputRows可能>n）
+//   - RANDOM_ACCESS_WEIGHT=4：随机访问（compact路径按源行号跳读X）比顺序扫描代价高约4倍
+//
+// 返回true条件：节省的索引扫描量 > 额外随机拷贝代价 * 4
 bool MoeInitRoutingV3Arch35TilingClass::UseCompactGatherOutDropPad(int64_t outputRows) const
 {
     if (outputRows > totalLength_) {
@@ -2203,10 +2210,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
         perLoopMaxIndicesElements = maxAlignedBytes / static_cast<int64_t>(sizeof(int32_t));
         perLoopMaxIndicesElements = perLoopMaxIndicesElements / int32ElementsPerBlock * int32ElementsPerBlock;
 
-        if (perLoopMaxIndicesElements > 0) {
-            break;
-        }
-        if (perLoopCols <= 1) {
+        if (perLoopMaxIndicesElements > 0 || perLoopCols <= 1) {
             break;
         }
         perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
