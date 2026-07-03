@@ -202,7 +202,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 19
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 20
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
-        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),             # 22
+        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 22
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -295,13 +295,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
-                rsy_max_ub = T.alloc_ub(16, calc_dtype)
-                rsy_sum_ub = T.alloc_ub(16, calc_dtype)
-                rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
-                rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
-                max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
-                eps_sum_ub = T.alloc_ub(16, calc_dtype)
+                rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
+                rsy_max_ub = T.alloc_ub((1,), calc_dtype)
+                rsy_sum_ub = T.alloc_ub((1,), calc_dtype)
+                rsy_chunk_max_ub = T.alloc_ub((1,), calc_dtype)
+                rsy_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
+                eps_sum_ub = T.alloc_ub((1,), calc_dtype)
                 softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
@@ -343,20 +342,16 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.barrier_all()
                         T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
 
-                    # Global SoftmaxI (all cores execute - must traverse all K blocks)
+                    # Global SoftmaxI: find global max across K blocks (1-fold, no redundant replication)
                     T.tile.fill(rsy_max_ub, -1e30)
                     # barrier removed: fill → ReduceSumY copy, no data dependency
                     for n_idx_iter in T.serial(n_num):
                         T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        for i in range(16):
-                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
-                        T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
-                        # barrier removed: reduce_max→mul, VEC→VEC (different buffers)
-                        T.tile.mul(max_pair_ub[0, :], rsy_max_ub, 1.0)
-                        T.tile.mul(max_pair_ub[1, :], rsy_chunk_max_ub, 1.0)
-                        # barrier removed: mul→reduce_max, VEC→VEC sequential
-                        T.reduce_max(max_pair_ub, rsy_max_ub, 0)
+                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                        # element-wise max on (1,) buffers — replaces max_pair_ub + reduce_max
+                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         T.barrier_all()
 
                     T.tile.fill(rsy_sum_ub, 0)
@@ -367,10 +362,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.barrier_all()
                         T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
-                        for i in range(16):
-                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
-                        T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
+                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
                         # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
@@ -463,16 +457,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
                     # barrier removed: mul→mul loop, VEC→VEC no dependency
 
-                    loss_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
-                    for i in range(16):
-                        T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
-                    # barrier removed: mul loop→reduce_sum, VEC→VEC sequential
-                    loss_sum_ub = T.alloc_ub(16, calc_dtype)
-                    T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
+                    T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
+                    # barrier removed: mul→reduce_sum, VEC→VEC sequential
+                    loss_sum_ub = T.alloc_ub((1,), calc_dtype)
+                    T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
                     T.barrier_all()
 
-                    # Write partial Loss for MY K block only (first element)
-                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
+                    # Write partial Loss for MY K block only (single value)
+                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
 
                 T.set_cross_flag("V", 12)
 
@@ -746,7 +738,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
-            loss_out = torch.zeros(B, S1, n_num_ws * 16, dtype=torch.float32, device=query.device)
+            loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                                         bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
                                         d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
@@ -797,9 +789,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         else:
             d_weight = d_weight.to(input_dtype)
 
-        # Accumulate partial Loss across K blocks (take first element from each 16-block)
-        loss_values = loss_out[:, :, 0:n_num_ws * 16].reshape(B, S1, n_num_ws, 16)[:, :, :, 0]
-        kl_loss = loss_values.sum()
+        # Accumulate partial Loss across K blocks
+        kl_loss = loss_out.sum()
 
         if _PROFILE:
             _t_reduce_end.record()
