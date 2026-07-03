@@ -1041,30 +1041,30 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
             "should both be > 0"),
         return ge::GRAPH_FAILED);
 
-    // uint64_t ubSize = 0U;
-    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    // context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
-    // context->SetScheduleMode(1); // batch model, all cores start at the same time
-    // OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
+    uint64_t ubSize = 0U;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+    context->SetScheduleMode(1); // batch model, all cores start at the same time
+    OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
 
-    // // Attr check & set
-    // OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
-    //     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    // Attr check & set
+    OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
-    // Cal TilingKey
-    // uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
-    // OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
-    // context->SetTilingKey(tilingKey);
+    //Cal TilingKey
+    uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
+    OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
+    context->SetTilingKey(tilingKey);
 
-    // // WorkspaceSize
-    // WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
-    // OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
-    //                 OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
+    // WorkspaceSize
+    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
+    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
-    // // Print Info
-    // PrintMegaMoeTilingData(tilingData, nodeName);
-    // printWorkspaceInfo(&workspaceInfo, nodeName);
-    // printPeermemInfo(tilingData, nodeName);
+    // Print Info
+    PrintMegaMoeTilingData(tilingData, nodeName);
+    printWorkspaceInfo(&workspaceInfo, nodeName);
+    printPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
 }
