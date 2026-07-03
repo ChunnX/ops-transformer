@@ -931,7 +931,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
-    // 左矩阵复用，S2的第一次循环加载左矩阵	 
+    // 左矩阵复用，S2的第一次循环加载左矩阵
     // 加载左矩阵到L1 ,当前使用全载方式
     if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
         mm1A = l1QBuffers.Get();
