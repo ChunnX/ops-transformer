@@ -1280,7 +1280,7 @@ private:
                     cumsumMM[tokenPerExpertLayout(
                         params.EP - 1, RuntimeRank(params), 0) - tokenPerExpertLayout(0, params.EP - 1, 0)],
                     rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank, params.EP,
-                    gmCGMM1[gmOffsetC], RuntimeRank(params), params.listLen, resource,
+                    RuntimeRank(params), params.listLen, resource,
                     params.epilogueCoreNum, params.swigluLimit);
             }
             AscendC::SyncAll<true>();
@@ -1391,7 +1391,7 @@ private:
                         actualm = actualBlockShape.m() - (m_rows / 2) * m0 - cur_row * m0;
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
-                    blockEpilogue(gmCGMM2, gmC2, gmPerTokenScale2,
+                    blockEpilogue(gmC2, gmPerTokenScale2,
                                     reinterpret_cast<__gm__ float *>(params.ptrBias2),
                                     realTileCoord, realTileShape, groupIdx,
                                     preSrcExpertSum * 2, preSumBeforeRankForCombine, params.listLen);

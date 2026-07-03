@@ -148,7 +148,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<float> const &gmGMM2, AscendC::GlobalTensor<ElementC> const &gmC,
+    void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, __gm__ float *gmWeightAux,
                     GemmCoord &blockCoord, GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
                     AscendC::GlobalTensor<int32_t> preSumBeforeRank, int32_t listLen)
