@@ -1056,15 +1056,15 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
-    // WorkspaceSize
-    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
-    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
+    // // WorkspaceSize
+    // WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
+    // OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+    //                 OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
-    // Print Info
-    PrintMegaMoeTilingData(tilingData, nodeName);
-    printWorkspaceInfo(&workspaceInfo, nodeName);
-    printPeermemInfo(tilingData, nodeName);
+    // // Print Info
+    // PrintMegaMoeTilingData(tilingData, nodeName);
+    // printWorkspaceInfo(&workspaceInfo, nodeName);
+    // printPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
 }
