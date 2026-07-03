@@ -225,7 +225,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
-                <td>预留字段，表示每个batch实际使用的q长度。</td>
+                <td>表示每个batch实际使用的q长度。</td>
                 <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>seqUsedKOptional</td>
                 <td>可选输入</td>
-                <td>预留字段，表示每个batch实际使用的k长度。</td>
+                <td>表示每个batch实际使用的k长度。</td>
                 <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
@@ -365,6 +365,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
         </tbody>
     </table>
 
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
 - **返回值：**
 
