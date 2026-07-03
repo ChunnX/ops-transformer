@@ -1690,46 +1690,46 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     uint64_t curSendCnt = 0;    // 当前 expert 的 sendCnt（GMM1 consumer 使用）
     uint64_t nextSendCnt = 0;   // 下一 expert 的 sendCnt（dispatch prefetch 算出）
 
-    // 预调度 expert 0。
-    if constexpr(g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-            DispatchTokenToRmtServer(0);
-            SendCntCal(0, nextSendCnt);
-            if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
-                UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
-            }
-        }
-    }
+    // // 预调度 expert 0。
+    // if constexpr(g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1) {
+    //         DispatchTokenToRmtServer(0);
+    //         SendCntCal(0, nextSendCnt);
+    //         if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
+    //             UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+    //             TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
+    //         }
+    //     }
+    // }
 
-    for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
-        curSendCnt = nextSendCnt;  // forward: dispatch(e) → GMM1(e)
+    // for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
+    //     curSendCnt = nextSendCnt;  // forward: dispatch(e) → GMM1(e)
 
-        // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
-        if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
-                DispatchTokenToRmtServer(localExpertId + 1);
-                SendCntCal(localExpertId + 1, nextSendCnt);
-                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-                }
-            }
-        }
+    //     // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
+    //     if constexpr(g_coreType == AIV) {
+    //         if (subBlockIdx_ == 1 && localExpertId + 1 < expertPerRank_) {
+    //             DispatchTokenToRmtServer(localExpertId + 1);
+    //             SendCntCal(localExpertId + 1, nextSendCnt);
+    //             if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+    //                 UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+    //                 TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+    //             }
+    //         }
+    //     }
 
-        // GMM1 consumer 消费 expert e。
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-    }
-    EndSync(vecSetSyncCom_);
-    if constexpr(g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-            ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
-        }
-    }
+    //     // GMM1 consumer 消费 expert e。
+    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+    //         continue;
+    //     }
+    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+    //     GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+    // }
+    // EndSync(vecSetSyncCom_);
+    // if constexpr(g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1) {
+    //         ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+    //     }
+    // }
 
     // SyncAll<true>();
     // // 3. 本卡专家接收数据GroupMatmul2 & Combine
