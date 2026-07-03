@@ -18,6 +18,7 @@ from .mega_moe import (
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
+from .sparse_flash_attention import npu_sparse_flash_attention_v2
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
 from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
