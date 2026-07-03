@@ -27,15 +27,9 @@ def load_pytest_golden_module():
     global PYTEST_GOLDEN_MODULE
     if PYTEST_GOLDEN_MODULE is not None:
         return PYTEST_GOLDEN_MODULE
-    pytest_dir = Path(__file__).resolve().parents[1] / "pytest"
+    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
     module_path = pytest_dir / "kv_quant_sparse_flash_attention_golden.py"
     saved_generate_tensor_data = sys.modules.pop("generate_tensor_data", None)
-    inserted_tf_stub = False
-    if "tensorflow" not in sys.modules and importlib.util.find_spec("tensorflow") is None:
-        tensorflow_stub = type(sys)("tensorflow")
-        tensorflow_stub.bfloat16 = type("bfloat16", (), {"as_numpy_dtype": np.float32})()
-        sys.modules["tensorflow"] = tensorflow_stub
-        inserted_tf_stub = True
     sys.path.insert(0, str(pytest_dir))
     try:
         spec = importlib.util.spec_from_file_location(
@@ -51,8 +45,6 @@ def load_pytest_golden_module():
         sys.modules.pop("generate_tensor_data", None)
         if saved_generate_tensor_data is not None:
             sys.modules["generate_tensor_data"] = saved_generate_tensor_data
-        if inserted_tf_stub:
-            sys.modules.pop("tensorflow", None)
     PYTEST_GOLDEN_MODULE = module
     return PYTEST_GOLDEN_MODULE
 

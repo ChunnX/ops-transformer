@@ -22,16 +22,16 @@ PYTEST_GOLDEN_MODULE = None
 
 
 def load_pytest_golden_module():
-    """Load tests/pytest/quant_lightning_indexer_golden.py as the canonical CPU golden."""
+    """Load tests/pytest/lightning_indexer_golden.py as the canonical CPU golden."""
     global PYTEST_GOLDEN_MODULE
     if PYTEST_GOLDEN_MODULE is not None:
         return PYTEST_GOLDEN_MODULE
-    pytest_dir = Path(__file__).resolve().parents[1] / "pytest"
-    module_path = pytest_dir / "quant_lightning_indexer_golden.py"
+    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+    module_path = pytest_dir / "lightning_indexer_golden.py"
     sys.path.insert(0, str(pytest_dir))
     try:
         spec = importlib.util.spec_from_file_location(
-            f"qli_pytest_golden_{abs(hash(module_path))}", module_path
+            f"li_pytest_golden_{abs(hash(module_path))}", module_path
         )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -46,7 +46,7 @@ def load_pytest_golden_module():
 
 # ========================= TTK e2e adapter =========================
 # The CPU reference is loaded from tests/pytest; assets keeps only the TTK adapter layer.
-# The adapter below maps TTK API-style tensors to the GeneralizedQLI object.
+# The adapter below maps torch_npu API-style tensors to GeneralizedLI and normalizes return_value semantics.
 _TTK_V3_TOPK_SCORES = None
 
 
@@ -66,7 +66,7 @@ def get_topk_scores():
 
 __golden__ = {
     "e2e": {
-        "torch_npu.npu_quant_lightning_indexer": "npu_quant_lightning_indexer"
+        "torch_npu.npu_lightning_indexer": "npu_lightning_indexer"
     }
 }
 
@@ -117,22 +117,21 @@ def _ttk_restore_pa_bsnd(paged_tensor, block_table, act_k, block_size):
             if block_id < 0:
                 continue
             take = min(block_size, cur_k - copied)
-            restored[b_idx, :, copied:copied + take, ...] = src[block_id, :take, :, ...].permute(1, 0, *range(2, src.dim() - 1))
+            restored[b_idx, :, copied:copied + take, ...] = src[
+                block_id, :take, :, ...
+            ].permute(1, 0, *range(2, src.dim() - 1))
             copied += take
             if copied >= cur_k:
                 break
     return restored
 
 
-def npu_quant_lightning_indexer(query, key, weights, query_dequant_scale,
-                                key_dequant_scale, query_quant_mode=0, key_quant_mode=0,
-                                *, actual_seq_lengths_query=None,
-                                actual_seq_lengths_key=None, block_table=None,
-                                layout_query="BSND", layout_key="BSND", sparse_count=2048,
-                                sparse_mode=3, pre_tokens=(1 << 63) - 1,
-                                next_tokens=(1 << 63) - 1, query_dtype=None,
-                                key_dtype=None, **kwargs):
-    """Golden reference implementation for quantized LightningIndexer attention with TopK scoring."""
+def npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None,
+                          actual_seq_lengths_key=None, block_table=None,
+                          layout_query="BSND", layout_key="BSND", sparse_count=2048,
+                          sparse_mode=3, pre_tokens=(1 << 63) - 1,
+                          next_tokens=(1 << 63) - 1, return_value=False, **kwargs):
+    """Golden reference implementation for LightningIndexer attention with TopK scoring."""
     clear_topk_scores()
     q_shape = list(query.shape)
     k_shape = list(key.shape)
@@ -169,23 +168,28 @@ def npu_quant_lightning_indexer(query, key, weights, query_dequant_scale,
     block_num = int(kwargs.get("block_num", locals().get("block_num", 0)))
 
     golden_key = key
-    golden_key_scale = key_dequant_scale
     if layout_key == "PA_BSND":
         golden_key = _ttk_restore_pa_bsnd(key, block_table, act_k_forward, block_size)
-        golden_key_scale = _ttk_restore_pa_bsnd(key_dequant_scale, block_table, act_k_forward, block_size).squeeze(-1)
 
-    golden_cls = load_pytest_golden_module().GeneralizedQLI
+    golden_cls = load_pytest_golden_module().GeneralizedLI
     golden = golden_cls(batch_size, q_seq, k_seq, q_t_size, k_t_size,
-                            q_head_num, k_head_num, head_dim, block_size, block_num,
-                            query.dtype, weights.dtype, query_dequant_scale.dtype,
-                            torch.int32, act_q_forward, act_k_forward,
-                            int(query_quant_mode), int(key_quant_mode),
-                            layout_query, layout_key, int(sparse_count), int(sparse_mode))
+                           q_head_num, k_head_num, head_dim, block_size, block_num,
+                           query.dtype, weights.dtype, torch.int32,
+                           act_q_forward, act_k_forward, layout_query, layout_key,
+                           int(sparse_count), int(sparse_mode))
     fwd_act_q = act_q_forward if layout_query == "TND" else torch.tensor(act_q_forward, dtype=torch.int32)
     fwd_act_k = act_k_forward if layout_key == "TND" else torch.tensor(act_k_forward, dtype=torch.int32)
     indices, full_scores_bnsd = golden.forward(query, golden_key, weights,
-                                               query_dequant_scale, golden_key_scale,
                                                fwd_act_q, fwd_act_k, block_table)
+
     act_q_per_batch = _ttk_per_batch_from_prefix(act_q_forward) if layout_query == "TND" else act_q_forward
-    set_topk_scores(_ttk_scores_to_layout(golden, full_scores_bnsd, layout_query, act_q_per_batch))
-    return indices
+    scores_layout = _ttk_scores_to_layout(golden, full_scores_bnsd, layout_query, act_q_per_batch)
+    set_topk_scores(scores_layout)
+
+    return_value = bool(return_value or kwargs.get("return_values", False))
+    if return_value:
+        gather_idx = indices.clamp_min(0).to(torch.long)
+        values = torch.gather(scores_layout, -1, gather_idx).to(query.dtype)
+        values = torch.where(indices < 0, torch.full_like(values, -float('inf')), values)
+        return indices, values
+    return indices, torch.zeros(0, dtype=scores_layout.dtype)

@@ -16,16 +16,19 @@ import importlib.util
 from pathlib import Path
 
 
-def load_sibling_module(stem):
-    path = Path(__file__).with_name(f"{stem}.py")
-    spec = importlib.util.spec_from_file_location(f"sfa_assets_{stem}_{abs(hash(path))}", path)
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
+
+
+def load_impl_module(stem):
+    path = ASSET_IMPL_DIR / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(f"sfa_assets_impl_{stem}_{abs(hash(path))}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-golden_module = load_sibling_module("golden")
-inputs_module = load_sibling_module("inputs")
+golden_module = load_impl_module("golden")
+inputs_module = load_impl_module("inputs")
 
 
 class SparseFlashAttentionSpec:
