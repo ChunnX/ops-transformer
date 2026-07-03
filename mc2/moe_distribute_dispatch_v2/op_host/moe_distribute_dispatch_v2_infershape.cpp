@@ -152,7 +152,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     gert::Shape *epRecvCountShape = context->GetOutputShape(DISPATCH_OUTPUT_EP_RECV_COUNTS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epRecvCountShape);
     gert::Shape *tpRecvCountShape = context->GetOutputShape(DISPATCH_OUTPUT_TP_RECV_COUNTS_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, tpRecvCountShape);
+    // tpRecvCounts为预留输出（TP域通信不再支持），允许为nullptr，跳过shape推导
     gert::Shape *expandScalesShape = context->GetOutputShape(DISPATCH_OUTPUT_EXPAND_SCALES);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandScalesShape);
 
@@ -312,10 +312,12 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OP_LOGD(context->GetNodeName(), "epRecvCountShape shape is :%s after infershape.",
         Ops::Base::ToString(*epRecvCountShape).c_str());
 
-    tpRecvCountShape->SetDimNum(DIM_ONE);
-    tpRecvCountShape->SetDim(0U, *tpWorldSize);
-    OP_LOGD(context->GetNodeName(), "tpRecvCountShape shape is :%s after infershape.",
-        Ops::Base::ToString(*tpRecvCountShape).c_str());
+    if (tpRecvCountShape != nullptr) {
+        tpRecvCountShape->SetDimNum(DIM_ONE);
+        tpRecvCountShape->SetDim(0U, *tpWorldSize);
+        OP_LOGD(context->GetNodeName(), "tpRecvCountShape shape is :%s after infershape.",
+            Ops::Base::ToString(*tpRecvCountShape).c_str());
+    }
 
     expandScalesShape->SetDimNum(DIM_ONE);
     expandScalesShape->SetDim(0U, 0);
