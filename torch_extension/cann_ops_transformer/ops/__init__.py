@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------------------------------------
+                                                             # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -42,3 +42,4 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .block_sparse_attention import block_sparse_attention
