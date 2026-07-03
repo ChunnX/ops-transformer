@@ -54,6 +54,8 @@ public:
 
     ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+        const gert::Stride *strides, int32_t &index) const;
     template <typename T>
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const
     {
