@@ -13,12 +13,19 @@
  * \brief
  */
 
+#include <cstring>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
 namespace op_api {
 
 constexpr int64_t SMLAG_METADATA_SIZE = 1024;
+
+bool IsAscend950()
+{
+    const char *socName = aclrtGetSocName();
+    return socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
+}
 
 at::Tensor sparse_flash_mla_grad_metadata(
     int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, const c10::optional<at::Tensor> &cu_seqlens_q,
@@ -30,6 +37,10 @@ at::Tensor sparse_flash_mla_grad_metadata(
     int64_t cmp_topk, int64_t cmp_ratio, int64_t ori_mask_mode, int64_t cmp_mask_mode, int64_t ori_win_left,
     int64_t ori_win_right, c10::string_view layout_q, c10::string_view layout_kv, bool has_ori_kv, bool has_cmp_kv)
 {
+    if (!IsAscend950()) {
+        return at::Tensor();
+    }
+
     at::Device output_device = at::Device(std::string("npu"));
     if (cu_seqlens_q.has_value()) {
         output_device = cu_seqlens_q.value().device();
@@ -106,7 +117,10 @@ sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at::Ten
     const at::Tensor &ori_topk_length_const = ori_topk_length.value_or(at::Tensor());
     const at::Tensor &cmp_topk_length_const = cmp_topk_length.value_or(at::Tensor());
     const at::Tensor &sinks_const = sinks.value_or(at::Tensor());
-    const at::Tensor &metadata_const = metadata.value_or(at::Tensor());
+    at::Tensor metadata_const = metadata.value_or(at::Tensor());
+    if (!IsAscend950() && metadata_const.defined()) {
+        metadata_const = at::Tensor();
+    }
 
     c10::string_view layout_q_str_view = layout_q.value_or("BSND");
     char *layout_q_ptr = const_cast<char *>(layout_q_str_view.data());
