@@ -112,7 +112,7 @@ private:
         int32_t actualSeqLensK);
     DLIKGradConstInfo constInfo;
     TBuf<> gatherTbuf;
-    TQue<QuePosition::VECIN, 1> attnSoftmaxL1Que[3];
+    TQue<QuePosition::VECIN, 1> attnSoftmaxL1Que;
     TQue<QuePosition::VECOUT, 1> reduceSumOutQue[3];
     TQue<QuePosition::VECOUT, 1> reduceSumOtherOutQue[3];
     TQue<QuePosition::VECOUT, 1> softmaxReduceSumOutQue[3];
@@ -185,7 +185,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ke
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(this->attnSoftmaxL1Que, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32K);
+    pipe->InitBuffer(this->attnSoftmaxL1Que, 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->reduceSumOutQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reduceSumOutQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reduceSumOutQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);
@@ -206,8 +206,8 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->softmaxReduceSumOutQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->softmaxReduceSumOutQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
 
-    gatherKeyUb = gatherTbuf.Get<INPUT_T>();
-    gatherKeyIndexUb = gatherKeyUb;
+    // gatherKeyUb = gatherTbuf.Get<INPUT_T>();
+    // gatherKeyIndexUb = gatherKeyUb;
     auto dwUb0 = this->dwQue[0].template AllocTensor<T>();
     auto dwUb1 = this->dwQue[1].template AllocTensor<T>();
     auto dwUb2 = this->dwQue[2].template AllocTensor<T>();
@@ -222,9 +222,9 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     Duplicate(softmaxReduceSumUb1, 0.0f, 8);
     Duplicate(softmaxReduceSumUb2, 0.0f, 8);
 
-    this->dwQue.template FreeTensor(dwUb0);
-    this->dwQue.template FreeTensor(dwUb1);
-    this->dwQue.template FreeTensor(dwUb2);
+    this->dwQue[0].template FreeTensor(dwUb0);
+    this->dwQue[1].template FreeTensor(dwUb1);
+    this->dwQue[2].template FreeTensor(dwUb2);
     this->softmaxReduceSumOutQue[0].template FreeTensor(softmaxReduceSumUb0);
     this->softmaxReduceSumOutQue[1].template FreeTensor(softmaxReduceSumUb1);
     this->softmaxReduceSumOutQue[2].template FreeTensor(softmaxReduceSumUb2);
@@ -576,7 +576,8 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector1(
     DataCopyPad(reduceSumResGm[reduceSumOffset], reduceSumTensor, dataCopyParams);
     CrossCoreSetFlag<1, PIPE_MTE3>(EVENT_ID2);
     this->weightInQue[runInfo.sTaskIdMod3].template FreeTensor(weightInUb);
-    this->reduceSumOutQue.template FreeTensor(reduceSumTensor);
+    this->reduceSumOutQue[runInfo.taskIdMod3].template FreeTensor(reduceSumTensor);
+    // CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -709,8 +710,8 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
 
     if (runInfo.isLastBlock) {
-        this->dwQue.template EnQue(dwTensor);
-        this->dwQue.template DeQue<T>();
+        this->dwQue[runInfo.sTaskIdMod3].template EnQue(dwTensor);
+        this->dwQue[runInfo.sTaskIdMod3].template DeQue<T>();
         LocalTensor<T> dwOutTensor = dwOutQue.template AllocTensor<T>();
         CastDupVf<T, T>(dwOutTensor, dwTensor, runInfo.nIndexSize);
         this->dwOutQue.template EnQue(dwOutTensor);

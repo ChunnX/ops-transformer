@@ -189,7 +189,7 @@ struct DLIKGradKRunInfo {
     int32_t dRopeValue;
 };
 
-constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {0, 1, 2};
+constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {1, 2, 3};
 constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {8, 9, 10};
 
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
