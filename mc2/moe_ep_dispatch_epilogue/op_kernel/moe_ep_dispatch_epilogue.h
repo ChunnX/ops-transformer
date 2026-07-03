@@ -355,9 +355,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubCounter_.SetValue(e, static_cast<int32_t>(ubExpertPfx_.GetValue(e)));
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyParams counterCopyParams{1U, static_cast<uint16_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U};
-    DataCopyPadParams counterPadParams{false, 0, 0, 0};
-    DataCopyPad(hitCountGm_, ubCounter_, counterCopyParams, counterPadParams);
+    DataCopyExtParams counterCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(hitCountGm_[0], ubCounter_, counterCopyParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
