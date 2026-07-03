@@ -149,7 +149,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
             uint32_t sreg = static_cast<uint32_t>(cols_);
             __VEC_SCOPE__
             {
-                MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg;
+                MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg, safeScaleValueReg, oneReg;
                 MicroAPI::Duplicate(scaleValueReg, 0.0f);
                 MicroAPI::Duplicate(absReg, 0.0f);
                 MicroAPI::RegTensor<half> outRegF16;
@@ -157,6 +157,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::RegTensor<uint8_t> outRegI4;
                 MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
+                MicroAPI::MaskReg cmpMaskReg;
                 MicroAPI::MaskReg maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
                 MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
                 MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
@@ -178,7 +179,10 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
                 MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL1);
 
-                MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+                MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
+                MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegAll);
+                MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
+                MicroAPI::Div(inReg, inReg, safeScaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
@@ -199,7 +203,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
     uint32_t sreg;
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
+        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg, safeScaleValueReg, oneReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
         MicroAPI::RegTensor<int16_t> outRegI16;
@@ -207,7 +211,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
         MicroAPI::RegTensor<uint8_t> outRegI4;
         MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
-        MicroAPI::MaskReg maskRegInLoop;
+        MicroAPI::MaskReg maskRegInLoop, cmpMaskReg;
         MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
         MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
@@ -239,6 +243,11 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
         }
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
         MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
+            MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegAll);
+            MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
+        }
 
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
@@ -246,8 +255,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
+                MicroAPI::Div(inReg, inReg, safeScaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
@@ -257,6 +266,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
                     (__local_mem__ uint8_t *)outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegHalf);
             } else {
+                MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
                 MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
                 MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,

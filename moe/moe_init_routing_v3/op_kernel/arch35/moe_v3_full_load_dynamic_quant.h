@@ -141,7 +141,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
             uint32_t sreg = static_cast<uint32_t>(this->cols_);
             __VEC_SCOPE__
             {
-                MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg;
+                MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg, safeScaleValueReg, oneReg;
                 MicroAPI::Duplicate(scaleValueReg, 0.0f);
                 MicroAPI::Duplicate(absReg, 0.0f);
                 MicroAPI::RegTensor<half> outRegF16;
@@ -149,6 +149,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::RegTensor<uint8_t> outRegI4;
                 MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
+                MicroAPI::MaskReg cmpMaskReg;
                 MicroAPI::MaskReg maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
                 MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
                 MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
@@ -170,7 +171,10 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
                 MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL1);
 
-                MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+                MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
+                MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegAll);
+                MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
+                MicroAPI::Div(inReg, inReg, safeScaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
@@ -192,7 +196,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
     uint32_t sreg;
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
+        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg, safeScaleValueReg, oneReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
         MicroAPI::RegTensor<int16_t> outRegI16;
@@ -200,7 +204,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
         MicroAPI::RegTensor<uint8_t> outRegI4;
         MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
-        MicroAPI::MaskReg maskRegInLoop;
+        MicroAPI::MaskReg maskRegInLoop, cmpMaskReg;
         MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
         MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
@@ -232,6 +236,11 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
         }
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
         MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
+            MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegAll);
+            MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
+        }
 
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
@@ -239,8 +248,8 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
+                MicroAPI::Div(inReg, inReg, safeScaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
@@ -250,6 +259,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
                     (__local_mem__ uint8_t *)outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegHalf);
             } else {
+                MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
                 MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
                 MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
                 MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
@@ -307,27 +317,19 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         }
     }
     int32_t lastExpertIdx = -1;
-    LocalTensor<T> prefetchedInLocal;
-    bool hasPrefetched = false;
 
     for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
         int32_t srcIdx = sortedRowIdx.GetValue(i);
         int32_t expertIdx = curExpertId - this->expertStart_;
-        LocalTensor<T> inLocal;
-        if (hasPrefetched) {
-            inLocal = prefetchedInLocal;
-            hasPrefetched = false;
+        LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
+        if constexpr (IsSameType<T, float>::value) {
+            DataCopyPad(inLocal, xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
         } else {
-            inLocal = inputXInQueue_.AllocTensor<T>();
-            if constexpr (IsSameType<T, float>::value) {
-                DataCopyPad(inLocal, xGm_[srcIdx / this->k_ * this->cols_], copyInParams, {false, 0, 0, 0});
-            } else {
-                DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams,
-                            {false, 0, 0, 0});
-            }
-            inputXInQueue_.EnQue<T>(inLocal);
+            DataCopyPad(inLocal[colsAlign_], xGm_[srcIdx / this->k_ * this->cols_], copyInParams,
+                        {false, 0, 0, 0});
         }
+        inputXInQueue_.EnQue<T>(inLocal);
 
         if (this->isInputScale_) {
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
@@ -354,22 +356,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
             Compute<false>(smoothLocal);
         }
         inputXInQueue_.FreeTensor(inLocal);
-
-        if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            if (colsAsInt8_ < BLOCK_BYTES && i + 1 < endRowIdx && i + 1 < this->activeNum_) {
-                int32_t nextSrcIdx = sortedRowIdx.GetValue(i + 1);
-                prefetchedInLocal = inputXInQueue_.AllocTensor<T>();
-                if constexpr (IsSameType<T, float>::value) {
-                    DataCopyPad(prefetchedInLocal, xGm_[nextSrcIdx / this->k_ * this->cols_], copyInParams,
-                                {false, 0, 0, 0});
-                } else {
-                    DataCopyPad(prefetchedInLocal[colsAlign_], xGm_[nextSrcIdx / this->k_ * this->cols_],
-                                copyInParams, {false, 0, 0, 0});
-                }
-                inputXInQueue_.EnQue<T>(prefetchedInLocal);
-                hasPrefetched = true;
-            }
-        }
 
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
