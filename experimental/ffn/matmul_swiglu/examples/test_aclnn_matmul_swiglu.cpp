@@ -8,184 +8,218 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
-#include <memory>
+/*
+ * MatmulSwiglu 性能测试(方案 A: 端到端延迟 + 吞吐)。
+ * 对若干 [M,K,N] 形状: warmup 后连续发射 ITERS 次 kernel, 一次 SynchronizeStream,
+ * 用墙钟得平均端到端延迟(含 host tiling+launch), 并算 GFLOPS。纯 kernel 细分用 msprof(方案 B)。
+ * 数据类型默认 fp16(x/weight/y), bias 固定 fp32; 改 PERF_FP32=1 可切 fp32 对照。
+ */
+#include <acl/acl.h>
+#include <aclnnop/aclnn_matmul_swiglu.h>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <cstdio>
 #include <vector>
-#include "acl/acl.h"
-#include "aclnnop/aclnn_matmul_swiglu.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define PERF_FP32 0  // 0=fp16(默认), 1=fp32
+
+#define CHECK_RET(cond, expr)                    \
+    do {                                         \
+        if (!(cond)) {                           \
+            expr;                                \
+        }                                        \
     } while (0)
 
-#define LOG_PRINT(message, ...)          \
-    do {                                 \
-        printf(message, ##__VA_ARGS__);  \
-        fflush(stdout);                  \
+#define LOG(fmt, ...)               \
+    do {                            \
+        printf(fmt, ##__VA_ARGS__); \
+        fflush(stdout);             \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+namespace {
+#if PERF_FP32
+using XT = float;
+constexpr aclDataType kXDtype = ACL_FLOAT;
+#else
+using XT = uint16_t;  // fp16 存储
+constexpr aclDataType kXDtype = ACL_FLOAT16;
+
+// float -> IEEE754 half(round-to-nearest, 次正规flush为0), 仅用于造输入
+uint16_t FloatToHalf(float f)
 {
-    int64_t shapeSize = 1;
-    for (auto i : shape) {
-        shapeSize *= i;
+    uint32_t x;
+    std::memcpy(&x, &f, sizeof(x));
+    uint32_t sign = (x >> 16) & 0x8000U;
+    int32_t exp = static_cast<int32_t>((x >> 23) & 0xFFU) - 127 + 15;
+    uint32_t mant = x & 0x7FFFFFU;
+    if (exp <= 0) {
+        return static_cast<uint16_t>(sign);
     }
-    return shapeSize;
+    if (exp >= 31) {
+        return static_cast<uint16_t>(sign | 0x7C00U);
+    }
+    return static_cast<uint16_t>(sign | (static_cast<uint32_t>(exp) << 10) | (mant >> 13));
+}
+#endif
+
+XT MakeX(float v)
+{
+#if PERF_FP32
+    return v;
+#else
+    return FloatToHalf(v);
+#endif
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int64_t ShapeSize(const std::vector<int64_t>& s)
 {
-    auto ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
-    return 0;
+    int64_t n = 1;
+    for (auto d : s) {
+        n *= d;
+    }
+    return n;
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor)
+int CreateTensor(const std::vector<T>& host, const std::vector<int64_t>& shape, void** devAddr,
+                 aclDataType dtype, aclTensor** tensor)
 {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-
+    auto bytes = ShapeSize(shape) * static_cast<int64_t>(sizeof(T));
+    auto ret = aclrtMalloc(devAddr, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("aclrtMalloc failed %d\n", ret); return ret);
+    ret = aclrtMemcpy(*devAddr, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("aclrtMemcpy failed %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor returned nullptr.\n"); return -1);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *devAddr);
+    CHECK_RET(*tensor != nullptr, LOG("aclCreateTensor null\n"); return -1);
     return 0;
 }
 
-int aclnnMatmulSwigluTest(int32_t deviceId, aclrtStream& stream)
+struct Shape {
+    int64_t m;
+    int64_t k;
+    int64_t n;  // 输出宽度; weight 为 [K, 2N]
+};
+
+// 对单个形状测性能。warmup 次预热, iters 次计时。
+int RunShape(const Shape& sp, int warmup, int iters, aclrtStream stream)
 {
-    LOG_PRINT("[stage] Init ACL\n");
-    auto ret = Init(deviceId, &stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+    const std::vector<int64_t> xShape = {sp.m, sp.k};
+    const std::vector<int64_t> wShape = {sp.k, 2 * sp.n};
+    const std::vector<int64_t> bShape = {2 * sp.n};
+    const std::vector<int64_t> yShape = {sp.m, sp.n};
 
-    // 形状: x[M,K], weight[K,2N], bias[2N], 输出 y[M,N]
-    const int64_t M = 32, K = 128, N = 64;
-    std::vector<int64_t> xShape = {M, K};
-    std::vector<int64_t> wShape = {K, 2 * N};
-    std::vector<int64_t> bShape = {2 * N};
-    std::vector<int64_t> yShape = {M, N};
+    std::vector<XT> xHost(ShapeSize(xShape), MakeX(0.1f));
+    std::vector<XT> wHost(ShapeSize(wShape), MakeX(0.1f));
+    std::vector<float> bHost(ShapeSize(bShape), 0.0f);  // bias 固定 fp32
+    std::vector<XT> yHost(ShapeSize(yShape), MakeX(0.0f));
 
-    // fp32 验证: x/weight/y 为 fp32, bias 固定 fp32。x=w=0.1 时 gate=up=K*0.01=1.28,
-    // 每个 y 应≈SiLU(1.28)*1.28≈1.282
-    std::vector<float> xHost(GetShapeSize(xShape), 0.1f);
-    std::vector<float> wHost(GetShapeSize(wShape), 0.1f);
-    std::vector<float> bHost(GetShapeSize(bShape), 0.0f);
+    aclTensor *x = nullptr, *weight = nullptr, *bias = nullptr, *out = nullptr;
+    void *xDev = nullptr, *wDev = nullptr, *bDev = nullptr, *yDev = nullptr;
+    int ret = CreateTensor(xHost, xShape, &xDev, kXDtype, &x);
+    ret |= CreateTensor(wHost, wShape, &wDev, kXDtype, &weight);
+    ret |= CreateTensor(bHost, bShape, &bDev, ACL_FLOAT, &bias);
+    ret |= CreateTensor(yHost, yShape, &yDev, kXDtype, &out);
+    CHECK_RET(ret == 0, LOG("create tensor failed\n"); return -1);
 
-    aclTensor* x = nullptr;
-    aclTensor* weight = nullptr;
-    aclTensor* bias = nullptr;
-    aclTensor* out = nullptr;
-    void* xDev = nullptr;
-    void* wDev = nullptr;
-    void* biasDev = nullptr;
-    void* outDev = nullptr;
-
-    LOG_PRINT("[stage] Create x tensor\n");
-    ret = CreateAclTensor(xHost, xShape, &xDev, aclDataType::ACL_FLOAT, &x);
-    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> xPtr(x, aclDestroyTensor);
-    std::unique_ptr<void, aclError (*)(void*)> xDevPtr(xDev, aclrtFree);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    LOG_PRINT("[stage] Create weight tensor\n");
-    ret = CreateAclTensor(wHost, wShape, &wDev, aclDataType::ACL_FLOAT, &weight);
-    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> wPtr(weight, aclDestroyTensor);
-    std::unique_ptr<void, aclError (*)(void*)> wDevPtr(wDev, aclrtFree);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    LOG_PRINT("[stage] Create bias tensor\n");
-    ret = CreateAclTensor(bHost, bShape, &biasDev, aclDataType::ACL_FLOAT, &bias);
-    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> biasPtr(bias, aclDestroyTensor);
-    std::unique_ptr<void, aclError (*)(void*)> biasDevPtr(biasDev, aclrtFree);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    std::vector<float> outHost(GetShapeSize(yShape), 0.0f);
-    LOG_PRINT("[stage] Create output tensor\n");
-    ret = CreateAclTensor(outHost, yShape, &outDev, aclDataType::ACL_FLOAT, &out);
-    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outPtr(out, aclDestroyTensor);
-    std::unique_ptr<void, aclError (*)(void*)> outDevPtr(outDev, aclrtFree);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    LOG_PRINT("[stage] Tensor handles x=%p weight=%p bias=%p out=%p\n",
-              static_cast<void*>(x), static_cast<void*>(weight), static_cast<void*>(bias), static_cast<void*>(out));
-
-    // 调用 aclnnMatmulSwiglu 两段式接口。
-    // 生成的接口签名(见 op_api/include/aclnn_matmul_swiglu.h)为:
-    //   (x, weight, bias, transposeWeight, out, workspaceSize, executor)
-    // 即 输入 -> 属性 -> 输出。bias 虽为可选, 但自动生成的 GetWorkspaceSize 会对其做非空校验,
-    // 传 nullptr 会返回 161001 (ACLNN_ERR_PARAM_NULLPTR), 故这里传入一个全 0 的 bias。
-    uint64_t workspaceSize = 0;
+    // 先取一次 workspace 大小(各次相同), 预分配复用
+    uint64_t wsSize = 0;
     aclOpExecutor* executor = nullptr;
-    LOG_PRINT("[stage] GetWorkspaceSize\n");
-    ret = aclnnMatmulSwigluGetWorkspaceSize(x, weight, bias, false, out, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMatmulSwigluGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-    LOG_PRINT("[stage] Workspace size: %lu\n", workspaceSize);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        LOG_PRINT("[stage] Allocate workspace\n");
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("alloc workspace failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnMatmulSwigluGetWorkspaceSize(x, weight, bias, false, out, &wsSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("GetWorkspaceSize failed %d\n", ret); return ret);
+    void* ws = nullptr;
+    if (wsSize > 0) {
+        ret = aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG("alloc ws failed %d\n", ret); return ret);
     }
-    std::unique_ptr<void, aclError (*)(void*)> wsPtr(workspaceAddr, aclrtFree);
 
-    LOG_PRINT("[stage] Launch aclnnMatmulSwiglu\n");
-    ret = aclnnMatmulSwiglu(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMatmulSwiglu failed. ERROR: %d\n", ret); return ret);
+    // 每次迭代重新生成 executor(稳妥, 避免复用限制); GetWorkspaceSize 为 host 侧,
+    // 计时段内不入流, 墙钟主要反映连续 launch 的设备吞吐。
+    auto launch = [&]() -> int {
+        aclOpExecutor* exec = nullptr;
+        uint64_t sz = 0;
+        int r = aclnnMatmulSwigluGetWorkspaceSize(x, weight, bias, false, out, &sz, &exec);
+        if (r != ACL_SUCCESS) {
+            return r;
+        }
+        return aclnnMatmulSwiglu(ws, wsSize, exec, stream);
+    };
 
-    LOG_PRINT("[stage] Synchronize stream\n");
+    for (int i = 0; i < warmup; i++) {
+        ret = launch();
+        CHECK_RET(ret == ACL_SUCCESS, LOG("warmup launch failed %d\n", ret); return ret);
+    }
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("sync failed %d\n", ret); return ret);
 
-    auto size = GetShapeSize(yShape);
-    std::vector<float> resultData(size, 0.0f);
-    LOG_PRINT("[stage] Copy output to host\n");
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(float), outDev, size * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result failed. ERROR: %d\n", ret); return ret);
-    // 打印前若干元素 + 统计, 便于核对是否≈1.282(均匀输入下所有 y 应相等)
-    float ymin = resultData[0];
-    float ymax = resultData[0];
-    double ysum = 0.0;
-    for (auto v : resultData) {
-        ymin = v < ymin ? v : ymin;
-        ymax = v > ymax ? v : ymax;
-        ysum += v;
+    auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < iters; i++) {
+        ret = launch();
+        CHECK_RET(ret == ACL_SUCCESS, LOG("timed launch failed %d\n", ret); return ret);
     }
-    LOG_PRINT("y[0..3]=%.6f %.6f %.6f %.6f  (expect ~1.282)\n",
-              resultData[0], resultData[1], resultData[2], resultData[3]);
-    LOG_PRINT("y stats: min=%.6f max=%.6f mean=%.6f count=%ld\n",
-              ymin, ymax, ysum / static_cast<double>(size), static_cast<long>(size));
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("sync failed %d\n", ret); return ret);
+    auto t1 = std::chrono::steady_clock::now();
+
+    double totalUs = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    double avgUs = totalUs / iters;
+    // matmul FLOPs = 2 * M * (2N) * K; SwiGLU 逐元素开销可忽略
+    double flops = 2.0 * static_cast<double>(sp.m) * (2.0 * static_cast<double>(sp.n)) * static_cast<double>(sp.k);
+    double gflops = flops / (avgUs * 1e-6) / 1e9;
+
+    LOG("  M=%-5ld K=%-5ld N=%-6ld | avg %8.2f us | %8.1f GFLOPS\n", sp.m, sp.k, sp.n, avgUs, gflops);
+
+    if (ws != nullptr) {
+        aclrtFree(ws);
+    }
+    aclDestroyTensor(x);
+    aclDestroyTensor(weight);
+    aclDestroyTensor(bias);
+    aclDestroyTensor(out);
+    aclrtFree(xDev);
+    aclrtFree(wDev);
+    aclrtFree(bDev);
+    aclrtFree(yDev);
     return 0;
 }
+}  // namespace
 
 int main()
 {
-    int32_t deviceId = 0;
+    const int32_t deviceId = 0;
+    const int warmup = 10;
+    const int iters = 50;
+
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("aclInit failed %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("aclrtSetDevice failed %d\n", ret); return ret);
     aclrtStream stream = nullptr;
-    auto ret = aclnnMatmulSwigluTest(deviceId, stream);
-    if (ret != ACL_SUCCESS) {
-        LOG_PRINT("test failed. ERROR: %d\n", ret);
+    ret = aclrtCreateStream(&stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG("aclrtCreateStream failed %d\n", ret); return ret);
+
+    LOG("MatmulSwiglu 性能测试 (%s, warmup=%d iters=%d)\n", PERF_FP32 ? "fp32" : "fp16", warmup, iters);
+    LOG("端到端延迟(含 host tiling+launch); 纯 kernel 用 msprof 采集\n");
+
+    // 默认 sweep: 由小到大, N 为中间维(输出宽度), weight=[K,2N]
+    std::vector<Shape> shapes = {
+        {512, 2048, 2048},
+        {2048, 4096, 4096},
+        {4096, 4096, 11008},
+    };
+    for (const auto& sp : shapes) {
+        RunShape(sp, warmup, iters, stream);
     }
-    // 无论成功与否都释放 ACL 资源, 避免失败路径泄漏。
+
     if (stream != nullptr) {
         aclrtDestroyStream(stream);
     }
     aclrtResetDevice(deviceId);
     aclFinalize();
-    return ret;
+    return 0;
 }
