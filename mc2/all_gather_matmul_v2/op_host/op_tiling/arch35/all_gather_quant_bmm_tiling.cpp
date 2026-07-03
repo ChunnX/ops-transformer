@@ -642,7 +642,14 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     CutResult result = tileFormulate.GetTiling();
 
-    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) ||
+                     (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0 && rankSize_ <= COMM_MODE_RANKSIZE);
+
+    if (isCcuMode) {
+        AdjustCutResultForCCU(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    } else {
+        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+    }
 
     return result;
 }

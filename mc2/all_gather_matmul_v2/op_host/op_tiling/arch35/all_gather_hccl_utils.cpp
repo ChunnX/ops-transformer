@@ -270,7 +270,7 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
  *   - 大数据量：扩展到最多63次通信，仍优先使用优选候选值
  *   - 超大数据量：报错，无法同时满足256MB单次限制和63次总限制
  */
-void AdjustCutResultForHCCL(CutResult& cutRes,
+void AdjustCutResultForCCU(CutResult& cutRes,
                             uint64_t mValue, uint64_t kValue,
                             uint64_t dtypeSize, uint64_t rankDim,
                             const std::string& opName)
@@ -294,6 +294,49 @@ void AdjustCutResultForHCCL(CutResult& cutRes,
     }
 
     ApplyTileSplit(cutRes, mValue, tileM, kValue, dtypeSize, rankDim, opName);
+}
+
+void AdjustCutResultForAICPU(CutResult& cutRes,
+                              uint64_t mValue,
+                              uint64_t baseM,
+                              const std::string& opName)
+{
+    uint64_t currentTileCnt = cutRes.numLongTile + cutRes.numShortTile;
+    if (currentTileCnt <= AICPU_TARGET_TILE_CNT) {
+        OP_LOGD(opName.c_str(), "AICPU: currentTileCnt=%lu <= target=%lu, no adjustment needed",
+                currentTileCnt, AICPU_TARGET_TILE_CNT);
+        return;
+    }
+
+    uint64_t idealTileM = (mValue + AICPU_TARGET_TILE_CNT - 1) / AICPU_TARGET_TILE_CNT;
+
+    uint64_t alignedTileM = idealTileM;
+    if (baseM > 0) {
+        alignedTileM = ((idealTileM + baseM - 1) / baseM) * baseM;
+    }
+
+    uint64_t newTileM = std::max(alignedTileM, cutRes.longTileLen);
+
+    uint64_t numLongTile = mValue / newTileM;
+    uint64_t tailM = mValue - numLongTile * newTileM;
+
+    if (numLongTile == 0) {
+        numLongTile = 1;
+        newTileM = mValue;
+        tailM = 0;
+    }
+
+    cutRes.longTileLen = newTileM;
+    cutRes.numLongTile = numLongTile;
+    cutRes.shortTileLen = tailM;
+    cutRes.numShortTile = (tailM > 0) ? 1 : 0;
+    cutRes.totalTileCnt = numLongTile + cutRes.numShortTile;
+
+    OP_LOGD(opName.c_str(),
+            "AICPU adjusted: tileM=%lu, numLongTile=%lu, tailM=%lu, "
+            "totalTileCnt=%lu (was %lu), shortTileAtBack=%d",
+            newTileM, numLongTile, tailM, cutRes.totalTileCnt,
+            currentTileCnt, cutRes.shortTileAtBack);
 }
 
 }  // namespace optiling
