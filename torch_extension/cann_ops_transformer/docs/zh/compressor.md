@@ -495,7 +495,7 @@ cann_ops_transformer.compressor(
         def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None, 
                     seqused = None, start_pos = None, coff = 1, cache_mode = 1):
             cmp_kv = (
-                compressor(
+                torch.ops.cann_ops_transformer.compressor(
                     x,
                     wkv,
                     wgate,
