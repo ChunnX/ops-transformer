@@ -248,7 +248,7 @@ public:
                     auto finalStateFp32 = finalStateFp32_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                     RunStage1(cg);
                     SyncAll<false>();
-                    RunStage2Fp32(cg, curStateFp32, finalStateFp32);
+                    RunStage2(cg, curStateFp32, finalStateFp32);
                     SyncAll<false>();
                     RunStage3(cg);
                     SyncAll<false>();
@@ -288,30 +288,36 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
-                                     GlobalTensor<lowType> stateOut)
+    template <typename stateType>
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<stateType> stateIn,
+                                     GlobalTensor<stateType> stateOut)
     {
-        Stage2<lowType> stageTwoOp;
-        StageTwoParams initStageTwoParams{
-            qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
-            out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
-        stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
-        stageTwoOp.Process();
-        pipe_->Reset();
-    }
-
-    __aicore__ inline void RunStage2Fp32(const ChunkGroup& cg,
-                                          GlobalTensor<highType> stateFp32In,
-                                          GlobalTensor<highType> stateFp32Out)
-    {
-        Stage2<float> stageTwoOp;
-        StageTwoParams initStageTwoParams{
-            qPrime_, vInner_, gCum_, kCumDecay_,
-            stateBf16Wk_, stateDeltaWk_, kg_,
-            out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_,
-            stateFp32In, stateFp32Out};
+        Stage2<stateType> stageTwoOp;
+        StageTwoParams initStageTwoParams;
+        initStageTwoParams.qPrime = qPrime_;
+        initStageTwoParams.vInner = vInner_;
+        initStageTwoParams.gCum = gCum_;
+        initStageTwoParams.kCumdecay = kCumDecay_;
+        initStageTwoParams.kg = kg_;
+        initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
+        initStageTwoParams.ws = stageWsAddr_;
+        initStageTwoParams.mm1 = &stage2MT_;
+        initStageTwoParams.pipe = pipe_;
+        initStageTwoParams.cg = &cg;
+        initStageTwoParams.Nv = tiling_->nv;
+        initStageTwoParams.Nk = tiling_->nk;
+        initStageTwoParams.Dv = tiling_->dv;
+        initStageTwoParams.Dk = tiling_->dk;
+        initStageTwoParams.gOptional = gFlag_;
+        if constexpr (std::is_same_v<stateType, float>) {
+            initStageTwoParams.curState = stateBf16Wk_;
+            initStageTwoParams.finalState = stateDeltaWk_;
+            initStageTwoParams.stateFp32In = stateIn;
+            initStageTwoParams.stateFp32Out = stateOut;
+        } else {
+            initStageTwoParams.curState = stateIn;
+            initStageTwoParams.finalState = stateOut;
+        }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
