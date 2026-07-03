@@ -388,8 +388,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     mask_ub = T.alloc_ub(n_block, calc_dtype)
                     ones_ub = T.alloc_ub(n_block, calc_dtype)
-                    weight_ub2 = T.alloc_ub(vector_baseg, calc_dtype)
-                    weight_half_ub2 = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
@@ -406,15 +404,12 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
                     for g_id in range(g_num):
-                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub2)
-                        T.tile.cast(weight_ub2, weight_half_ub2, "CAST_NONE", vector_baseg)
-                        # barrier removed: cast→fill, VEC→VEC (different buffers)
                         T.tile.fill(weight_ub, 0)
 
                         for i in range(vector_baseg):
                             g_row = g_id * vector_baseg + i
                             T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_ub2[i])
+                            T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_2d_ub[g_row, :])
                             T.tile.mul(mask_ub, bmm2_ub[g_row, :], -10000.0)
                             T.tile.exp(mask_ub, mask_ub)
                             T.tile.sub(mask_ub, ones_ub, mask_ub)
