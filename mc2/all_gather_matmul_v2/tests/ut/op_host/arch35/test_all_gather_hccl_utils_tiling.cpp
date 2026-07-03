@@ -120,18 +120,72 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitExceedsLimitEarlyReturn)
     EXPECT_EQ(cut.longTileLen, 4096U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLFullPath)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUFullPath)
 {
     auto cut = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cut, 5000, 8192, 2, 8, "ut");
+    AdjustCutResultForCCU(cut, 5000, 8192, 2, 8, "ut");
     EXPECT_EQ(cut.longTileLen, 2048U);
     EXPECT_EQ(cut.shortTileLen, 904U);
     EXPECT_EQ(cut.numShortTile, 1U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLNoOp)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUNoOp)
 {
     auto cut = MakeCutResult(128);
-    AdjustCutResultForHCCL(cut, 512, 8192, 2, 8, "ut");
+    AdjustCutResultForCCU(cut, 512, 8192, 2, 8, "ut");
     EXPECT_EQ(cut.longTileLen, 128U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUReducesTileCount)
+{
+    CutResult cut{};
+    cut.longTileLen = 2048;
+    cut.numLongTile = 16;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 16;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 32768, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 5632U);
+    EXPECT_EQ(cut.numLongTile, 5U);
+    EXPECT_EQ(cut.shortTileLen, 4608U);
+    EXPECT_EQ(cut.numShortTile, 1U);
+    EXPECT_EQ(cut.totalTileCnt, 6U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUNoOpWhenTileCountSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 1024;
+    cut.numLongTile = 4;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 4;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 4096, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 1024U);
+    EXPECT_EQ(cut.numLongTile, 4U);
+    EXPECT_EQ(cut.totalTileCnt, 4U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUSingleBlockWhenMSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 256;
+    cut.numLongTile = 7;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 7;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 100, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 100U);
+    EXPECT_EQ(cut.numLongTile, 1U);
+    EXPECT_EQ(cut.shortTileLen, 0U);
+    EXPECT_EQ(cut.totalTileCnt, 1U);
 }
