@@ -29,6 +29,8 @@ extern "C" {
  * 仅支持三维, 数据格式支持ND，GroupedMatMul计算的右矩阵
  * @param [in] gmmXScale: 左矩阵的量化参数，数据类型支持float32, flaot8_e8m0。
  * @param [in] gmmWeightScale: 右矩阵的量化参数，数据类型为float32, flaot8_e8m0。
+ * @param [in] gmmXOffsetOptional: 可选输入，左矩阵的量化偏置，暂不支持。
+ * @param [in] gmmWeightOffsetOptional: 可选输入，右矩阵的量化偏置，暂不支持。
  * @param [in] sendCountsTensorOptional: 可选输入，计算输入，Tensor，数据类型支持int64，数据格式支持ND。
  * @param [in] recvCountsTensorOptional: 可选输入，计算输入，Tensor，数据类型支持int64，数据格式支持ND。
  * @param [in] mmXOptional: 可选输入，计算输入，Tensor，数据类型支持hifloat8, float8_e4m3fn, float8_e5m2,
@@ -37,6 +39,8 @@ extern "C" {
  * float4_e2m1, 与gmmWeight的数据类型保持一致。仅支持三维, 数据格式支持ND，并行进行的共享专家matmul计算中的右矩阵。
  * @param [in] mmXScaleOptional: 共享专家matmul计算中的左矩阵的量化参数，数据类型支持float32, flaot8_e8m0。
  * @param [in] mmWeightScaleOptional: 共享专家matmul计算中的右矩阵的量化参数，数据类型支持float32, flaot8_e8m0。
+ * @param [in] mmXOffsetOptional: 可选输入，共享专家matmul计算中的左矩阵的量化偏置，暂不支持。
+ * @param [in] mmWeightOffsetOptional: 可选输入，共享专家matmul计算中的右矩阵的量化偏置，暂不支持。
  * @param [in] gmmXQuantMode: 左矩阵的量化模式，支持以下模式：
  * - 0：无量化
  * - 1：PerTensor量化
@@ -85,12 +89,14 @@ extern "C" {
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
+    const aclTensor *gmmXOffsetOptional, const aclTensor *gmmWeightOffsetOptional,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
-    aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *mmXOffsetOptional, const aclTensor *mmWeightOffsetOptional, int64_t gmmXQuantMode,
+    int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+    const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight,
+    int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* *
  * @brief aclnnAlltoAllvGroupedMatMul的第二段接口，用于执行计算。
