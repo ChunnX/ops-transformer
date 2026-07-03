@@ -292,6 +292,7 @@ private:
     ge::graphStatus CheckSingleParaSeqused() const;
     ge::graphStatus CheckSingleParaStartPos() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
+    ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;
     ge::graphStatus CheckSingleParaCacheMode() const;
     ge::graphStatus CheckRequiredParaExistence() const;
