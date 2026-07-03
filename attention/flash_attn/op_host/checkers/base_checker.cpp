@@ -92,5 +92,30 @@ uint32_t FABaseChecker::GetTypeSize(ge::DataType dtype)
             return NUM_BYTES_FLOAT16;
     }
 }
+
+// 逐维比对strides与连续场景的期望stride, index返回首个非连续维, 全连续返回GRAPH_SUCCESS
+ge::graphStatus FABaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+        const gert::Stride *strides, int32_t &index) const
+{
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1; // 连续场景最后一维的stride默认为1
+    for (index = static_cast<int32_t>(tensorDimNum) - 1; index >= 0; index--) {
+        if (index == static_cast<int32_t>(tensorDimNum) - 1) {
+            if (strides->GetStride(index) != preStride) {
+                return ge::GRAPH_FAILED;
+            } else {
+                continue;
+            }
+        }
+        uint64_t tensorStride = inputShape.GetDim(index + 1) * preStride;
+        if (strides->GetStride(index) != tensorStride) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride = tensorStride;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 } // namespace flash_attn
 } // namespace optiling
