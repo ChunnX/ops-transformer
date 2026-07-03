@@ -107,9 +107,11 @@ def make_noncontiguous(tensor, nc_dims):
 
     Args:
         tensor: 连续的 torch.Tensor
-        nc_dims: 0 --> 仅 dim0 非连续 (pad dim1 后切片)
-                 1 --> 仅 dim1 非连续 (手动拷贝到flat buffer, dim0行连续+dim1行间gap)
-                 (0, 1) --> dim0 和 dim1 都非连续 (pad dim2 后切片)
+        nc_dims: 0     --> 仅 dim0 非连续 (pad dim1 后切片)
+                 (0,1) --> dim0+dim1 都非连续 (pad dim2 后切片)
+
+    Note: dim1-only 物理上不可行——dim1 stride 膨胀必然导致 dim0 stride 联动;
+          测试用例中所有 dim1 场景已移除。
 
     Returns:
         非连续 tensor view (shape 不变, .is_contiguous() == False)
@@ -127,18 +129,6 @@ def make_noncontiguous(tensor, nc_dims):
         ws[pad_dim] = slice(None, shape[pad_dim])
         p[tuple(ws)] = tensor
         return p[tuple(ws)]
-    elif nc_dims == 1:
-        # dim1-only: empty_strided创建真实非连续tensor, copy_填入数据, NPU/CPU通用
-        ndim = len(shape)
-        cstrides = [1] * ndim
-        for i in range(ndim - 2, -1, -1):
-            cstrides[i] = cstrides[i + 1] * shape[i + 1]
-        gap = cstrides[2] if ndim >= 3 else 1
-        tstrides = list(cstrides)
-        tstrides[1] = cstrides[1] + gap
-        result = torch.empty_strided(shape, tuple(tstrides), dtype=dtype, device=device)
-        result.copy_(tensor)
-        return result
     elif nc_dims == (0, 1):
         pad_dim = 2
         shp = list(shape)
