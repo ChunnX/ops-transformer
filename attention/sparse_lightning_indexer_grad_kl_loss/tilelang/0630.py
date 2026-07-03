@@ -316,9 +316,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
                     for g_id in range(G):
                         T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
-                    T.tile.exp(bmm1_ub, bmm1_ub)
-                    # barrier removed: exp→div loop, VEC→VEC sequential
-                    for g_id in range(G):
+                        T.tile.exp(bmm1_ub[g_id, :], bmm1_ub[g_id, :])
                         T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
                     # barrier removed: div→fill, VEC→VEC (different buffers)
                     T.tile.fill(p_reduced_tmp_ub, 0)
