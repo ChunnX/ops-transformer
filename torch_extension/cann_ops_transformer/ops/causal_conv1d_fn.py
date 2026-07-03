@@ -71,7 +71,6 @@ class CausalConv1dFnOpBuilder(OpBuilder):
 
 
 _causal_conv1d_fn_op_builder = CausalConv1dFnOpBuilder()
-_op_module = _causal_conv1d_fn_op_builder.load()
 
 
 @impl(AS_LIBRARY, _causal_conv1d_fn_op_builder.name, "PrivateUse1")
@@ -93,6 +92,7 @@ def _causal_conv1d_fn(
     num_computed_tokens: Optional[torch.Tensor] = None,
     block_size_to_align: int = 0,
 ) -> torch.Tensor:
+    _op_module = _causal_conv1d_fn_op_builder.load()
     return _op_module.causal_conv1d_fn(
         x, weight, bias, conv_states,
         query_start_loc, cache_indices,

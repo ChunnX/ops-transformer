@@ -115,7 +115,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
 
 # Instantiate the builder
 sparse_flash_mla_op_builder = SparseFlashMlaOpBuilder()
-op_module = sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, SMLA_METADATA_OP_NAME, "PrivateUse1")
@@ -150,6 +149,7 @@ def sparse_flash_mla_metadata(
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
 
+    op_module = sparse_flash_mla_op_builder.load()
     return op_module.sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
@@ -200,6 +200,7 @@ def sparse_flash_mla(q,
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = sparse_flash_mla_op_builder.load()
     return op_module.sparse_flash_mla(q,
                                                 ori_kv, cmp_kv,
                                                 ori_sparse_indices, cmp_sparse_indices,
