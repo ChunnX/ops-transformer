@@ -153,16 +153,6 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     }
     InitTilingData();
     isExistXCache_ = (xCache != nullptr);
-    if (constInfo.aiCoreIdx == 0) {
-        AscendC::PRINTF("[CompressorXCacheDebug] Init early batch=%d seqSize=%d hSize=%d cmpRatio=%d "
-                        "xCache=%d xCacheSize=%d xCacheReadSize=%d xCacheUpdateBatch=%d usedCore=%d\n",
-                        static_cast<int32_t>(constInfo.batchSize), static_cast<int32_t>(constInfo.sSize),
-                        static_cast<int32_t>(constInfo.hSize), static_cast<int32_t>(constInfo.cmpRatio),
-                        static_cast<int32_t>(isExistXCache_), static_cast<int32_t>(constInfo.xCacheSize),
-                        static_cast<int32_t>(constInfo.xCacheReadSize),
-                        static_cast<int32_t>(constInfo.xCacheUpdateBatchSize),
-                        static_cast<int32_t>(constInfo.usedCoreNum));
-    }
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
     tools_.toolParams_.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
@@ -183,7 +173,13 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
             blockVec_.InitParams(constInfo, tools_);
             blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
                             cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
-            blockVec_.InitBuffers(pipe_);
+            if (constInfo.batchSize == 0) {
+                if (constInfo.xCacheUpdateBatchSize > 0) {
+                    blockVec_.InitXCacheUpdateBuffers(pipe_);
+                }
+            } else {
+                blockVec_.InitBuffers(pipe_);
+            }
         }
     }
 
@@ -621,19 +617,12 @@ __aicore__ inline void CompressorKernel<COMP>::UpdateVec2Info(
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::Process()
 {
-    if (isExistXCache_) {
+    if (isExistXCache_ && constInfo.xCacheUpdateBatchSize > 0) {
         if ASCEND_IS_AIV {
-            if (constInfo.aiCoreIdx == 0) {
-                AscendC::PRINTF("[CompressorXCacheDebug] Process before UpdateXCache\n");
-            }
             blockVec_.UpdateXCache();
-            if (constInfo.aiCoreIdx == 0) {
-                AscendC::PRINTF("[CompressorXCacheDebug] Process after UpdateXCache\n");
-            }
         }
-        SyncAll();
-        if (constInfo.aiCoreIdx == 0) {
-            AscendC::PRINTF("[CompressorXCacheDebug] Process after SyncAll\n");
+        if (constInfo.batchSize > 0) {
+            SyncAll();
         }
     }
     // 所有batch的有效序列都为0时, 直接退出
