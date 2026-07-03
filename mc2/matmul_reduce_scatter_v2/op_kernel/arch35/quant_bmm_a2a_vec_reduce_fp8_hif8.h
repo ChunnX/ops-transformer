@@ -165,7 +165,12 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
         GM_ADDR curOutPtr = cGM_;       // reduceSum 输出地址, 即 output 地址
 
         // 主轮每轮数据量与偏移
-        const uint64_t tileElemCount     = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
+        const bool isSerial = (tiling.M == cfg.rankM);
+        const uint64_t tileElemCount     = isSerial
+            ? static_cast<uint64_t>(tiling.M / cfg.rankDim) * static_cast<uint64_t>(tiling.N)
+            : static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
+
+
         const uint64_t tileByteSize      = tileElemCount * sizeof(CType);
         const uint64_t tileStrideBytes   = tileByteSize * cfg.rankDim; // 输入指针步长 (连续，rankDim 份数据)
         
