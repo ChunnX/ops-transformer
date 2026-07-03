@@ -198,6 +198,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         uint32_t ubCounterBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(ubCounterBuf_, ubCounterBytes);
         ubCounter_ = ubCounterBuf_.Get<int32_t>();
+        // per-hit MTE3 写出 scratch(权重 1 float + 4元组 4 int32), 与 token 同管线避免跨管线时序
+        tpipe_->InitBuffer(ubStageWeightsBuf_, Ceil(sizeof(float), UB_ALIGN) * UB_ALIGN);
+        tpipe_->InitBuffer(ubStageMetaBuf_, Ceil(RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
+        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
+        ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
     }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -401,9 +406,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 // 原子抢占该专家段内的行号(返回旧值即写入行)。
                 int32_t row = AscendC::AtomicAdd<int32_t>(counterBase + localExpertId, 1);
                 uint32_t globalRow = static_cast<uint32_t>(row);
-                // AtomicAdd 在 S 管线产出 globalRow, 后续 MTE3 用其作 GM 地址,
-                // 需 S→MTE2 屏障保证 globalRow 就绪后再放行 MTE2/MTE3, 否则写到错误行。
-                SyncFunc<AscendC::HardEvent::S_MTE2>();
 
                 uint32_t slotIdx = slotStart + localSlot;
                 GM_ADDR slotAddr = srcRankBase + (int64_t)slotIdx * perSlotBytes_;
@@ -421,36 +423,41 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     DataCopyPadParams scalesPadParams{false, 0, 0, 0};
                     DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
                 }
+                // S: 拼权重 + 4元组到 UB scratch(LocalTensor SetValue, 非禁止的 GlobalTensor SetValue)
+                if constexpr (HasTopkWeights) {
+                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                    ubStageWeights_.SetValue(0, weights);
+                }
+                ubStageMeta_.SetValue(0, ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
+                ubStageMeta_.SetValue(1, ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
+                ubStageMeta_.SetValue(2, static_cast<int32_t>(topkIdx));
+                ubStageMeta_.SetValue(3, static_cast<int32_t>(slotIdx));
+                // 等 MTE2(ubToken_/ubScales_) 与 S(scratch 拼装) 都完成, 再放行 MTE3 写 GM
                 SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+                // MTE3: token/scales + 权重/4元组 同管线写出, 行号一致, 时序由硬件保序
                 DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
                 if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                     DataCopyParams scalesCopyParams{1U,
                         static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
                     DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                 }
-                SyncFunc<AscendC::HardEvent::MTE3_S>();
-
-                // 权重 + 4元组元数据: 标量 GM 写(S pipe), 行号离散故无法段内突发, 改为 per-hit 直写。
                 if constexpr (HasTopkWeights) {
-                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                    recvTopkWeightsGm_.SetValue(globalRow, weights);
+                    DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
+                    DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_, weightOutParams);
                 }
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0,
-                    ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1,
-                    ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2,
-                    static_cast<int32_t>(topkIdx));
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 3,
-                    static_cast<int32_t>(slotIdx));
-                SyncFunc<AscendC::HardEvent::S_MTE2>();
+                DataCopyExtParams metaOutParams{1U,
+                    static_cast<uint32_t>(RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+                DataCopyPad(recvSrcMetadataGm_[(int64_t)globalRow * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+                // scratch per-hit 复用: 等 MTE3 读完 scratch, 再放行下轮 S 写 scratch 与 MTE2 复用 ubToken_
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
                 SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
             }
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
-    // 确保标量 GM 写(权重/元组)在 kernel 结束前全部落地。
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    // 确保所有 MTE3 GM 写(token/权重/元组)在 kernel 结束前全部落地。
+    PipeBarrier<PIPE_ALL>();
 }
 
 }  // namespace MoeEpDispatchEpilogueImpl
