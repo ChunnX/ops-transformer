@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_block_cube_noquant_gqa_dn.h
- * \brief FANoQuantGqaBlockCubeDn —— 仅 useDn=true 路径的 Cube Block 模板（sync-only + matmul scaler）。
+ * \brief FANoQuantGqaBlockCubeDn —— 仅 useDn=true 路径的 Cube Block 模板（sync-only）。
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_DN_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_DN_H_
@@ -290,23 +290,7 @@ public:
         }
     }
 
-    // Cube 侧仅保留核间/核内同步与 matmul scaler（MMParam + scaleValue），不执行 GM 搬运 / Matmul / Fixpipe。
-    __aicore__ inline void TouchMatmulScalerBmm1(RunInfoX &runInfo)
-    {
-        MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                    (uint32_t)(constInfo.dSize), false, true);
-        (void)param;
-        (void)constInfo.scaleValue;
-    }
-
-    __aicore__ inline void TouchMatmulScalerBmm2(RunInfoX &runInfo)
-    {
-        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
-                                    (uint32_t)runInfo.actSingleLoopS2Size, true, false);
-        (void)param;
-        (void)constInfo.scaleValue;
-    }
-
+    // Cube 侧仅保留核间/核内同步，不执行 GM 搬运 / Matmul / Fixpipe。
     __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -322,7 +306,6 @@ public:
         WaitFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        TouchMatmulScalerBmm1(runInfo);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
@@ -353,6 +336,7 @@ public:
 
     __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId, RunInfoX &runInfo)
     {
+        (void)runInfo;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
 
@@ -361,7 +345,6 @@ public:
 
         WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-        TouchMatmulScalerBmm2(runInfo);
 
         SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
         vBufId = (vBufId + 1) % L1_KV_BUFCNT;
