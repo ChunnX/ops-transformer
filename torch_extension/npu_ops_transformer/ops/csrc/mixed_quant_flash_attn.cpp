@@ -28,7 +28,7 @@ npu_mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::T
                const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
                const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
                int64_t quant_mode, double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
-               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_out, int64_t return_softmax_lse)
+               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_out, bool return_softmax_lse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -76,7 +76,28 @@ npu_mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::T
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
 
-    ACLNN_CMD(aclnnMixedQuantFlashAttn, q, k, v, k_descale, v_descale, block_table, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask,
+
+    TensorWrapper wrapperK = {k, ACL_DT_UNDEFINED};
+    int64_t tempK = static_cast<int64_t>(k.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(k.scalar_type())] == ACL_UINT8) {
+        if (quant_mode == 1) {
+            wrapperK.dtype = ACL_FLOAT4_E2M1;
+        }
+    } else {
+        wrapperK.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(k.scalar_type())];
+    }
+
+    TensorWrapper wrapperV = {v, ACL_DT_UNDEFINED};
+    int64_t tempV = static_cast<int64_t>(v.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(v.scalar_type())] == ACL_UINT8) {
+        if (quant_mode == 1) {
+            wrapperV.dtype = ACL_FLOAT4_E2M1;
+        }
+    } else {
+        wrapperV.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(v.scalar_type())];
+    }
+
+    ACLNN_CMD(aclnnMixedQuantFlashAttn, q, wrapperK, wrapperV, k_descale, v_descale, block_table, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask,
               metadata, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
               layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
