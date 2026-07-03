@@ -1656,10 +1656,40 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
-            offsetA = 0;
-            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
-            offsetD = offsetPeerPerTokenScale + MB_SIZE;
-            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
+            // 布局：10MB reserved → A → scale → D → cumsum → flag
+            const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
+            const int64_t EP = params.EP;
+            const int64_t E = params.expertPerRank;
+            const int64_t M = params.maxOutputSize;
+            const int64_t h = params.problemShape.k();
+            const int64_t bs = params.problemShape.m();
+            const int64_t topK = params.topK;
+
+            constexpr bool RoutingIsQuant =
+                std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
+
+            // 尾部：CrossRankSync + tokenPerExpert
+            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+
+            // A: dispatch 数据区（量化时含行内 scale）
+            int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));
+
+            // scale: per-token 量化 scale 区（仅量化路径）
+            int64_t perTokenScaleSize = RoutingIsQuant ? (bs * topK * static_cast<int64_t>(sizeof(float))) : 0;
+
+            // D: 输出区
+            int64_t DSize = bs * topK * h * sizeof(int16_t);
+
+            offsetA = RESERVED_SPACE_SIZE;
+            if constexpr (RoutingIsQuant) {
+                offsetPeerPerTokenScale = offsetA + offsetASize;
+                offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
+            } else {
+                offsetPeerPerTokenScale = 0;
+                offsetD = offsetA + offsetASize;
+            }
+            offsetPeerTokenPerExpert = offsetD + DSize;
         }
     };
 
