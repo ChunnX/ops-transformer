@@ -289,6 +289,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
                 weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
+                weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 rsy_reduce_ub = T.alloc_ub(n_block, calc_dtype)
@@ -327,19 +328,20 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY + GlobalSoftmaxI max: fused into single K-block pass
+                    # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
                     T.barrier_all()
+                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
+                    for k in range(Nidx1):
+                        T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
+                    T.barrier_all()
+                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass, zero scalar loads
                     T.tile.fill(rsy_max_ub, -1e30)
                     for n_rsy in T.serial(n_num):
                         T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
-                        T.tile.fill(rsy_reduce_ub, 0)
-                        for g_id in range(g_num):
-                            for i in range(vector_baseg):
-                                T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_all_ub[g_id * vector_baseg + i])
-                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
-                            T.barrier_all()
+                        T.tile.mul(bmm2_ub, bmm2_ub, weight_2d_ub)
+                        T.reduce_sum(bmm2_ub, rsy_reduce_ub, 0)
                         T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
                         # Fused: update global max from rsy_reduce_ub (still in UB, no GM round-trip)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
@@ -347,7 +349,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         T.barrier_all()
-                        # barrier removed: next n_rsy's fill(rsy_reduce_ub) writes same buffer → barrier_all above covers it
+                        # barrier removed: next iteration's bmm2Res copy overwrites bmm2_ub
 
                     T.tile.fill(rsy_sum_ub, 0)
                     T.barrier_all()
