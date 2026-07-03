@@ -23,10 +23,10 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_KV_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 9;
+constexpr uint32_t ATTR_TOPK_INDEX = 0;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 3;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 4;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
 
@@ -49,9 +49,9 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KV_LAYOUT_INDEX);
+    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *sparse_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
+    const int64_t *sparse_count = attrs->GetInt(ATTR_TOPK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparse_count);
 
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
