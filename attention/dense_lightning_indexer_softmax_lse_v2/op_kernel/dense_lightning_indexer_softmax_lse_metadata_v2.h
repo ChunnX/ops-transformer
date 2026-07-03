@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_metadata.h
- * \brief Runtime metadata consumed by dense_lightning_indexer_softmax_lse.
+ * \file dense_lightning_indexer_softmax_lse_metadata_v2.h
+ * \brief Runtime metadata consumed by dense_lightning_indexer_softmax_lse_v2.
  */
-#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
-#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
+#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_H
+#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_H
 
 #include <cstdint>
 
@@ -25,7 +25,7 @@ constexpr uint32_t DLI_METADATA_MAX_CORE_NUM = 36;
 constexpr uint32_t DLI_METADATA_SIZE = 64;
 
 namespace detail {
-struct DenseLISoftmaxLseMetaData {
+struct DenseLISoftmaxLseV2MetaData {
     int32_t totalNum;
     int32_t blockSize;
     int32_t actualCoreNum;
@@ -33,8 +33,8 @@ struct DenseLISoftmaxLseMetaData {
 };
 } // namespace detail
 
-static_assert(DLI_METADATA_SIZE * sizeof(DLI_METADATA_T) >= sizeof(detail::DenseLISoftmaxLseMetaData));
+static_assert(DLI_METADATA_SIZE * sizeof(DLI_METADATA_T) >= sizeof(detail::DenseLISoftmaxLseV2MetaData));
 
 } // namespace optiling
 
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
+#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_H

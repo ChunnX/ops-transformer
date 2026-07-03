@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_metadata_proto.h
+ * \\file dense_lightning_indexer_softmax_lse_metadata_v2_proto.h
  * \brief
  */
-#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_PROTO_H
-#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_PROTO_H
+#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_PROTO_H
+#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
 
-REG_OP(DenseLightningIndexerSoftmaxLseMetadata)
+REG_OP(DenseLightningIndexerSoftmaxLseMetadataV2)
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_k, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
@@ -37,8 +37,8 @@ REG_OP(DenseLightningIndexerSoftmaxLseMetadata)
     .ATTR(layout_k, String, "BSND")
     .ATTR(mask_mode, Int, 0)
     .ATTR(cmp_ratio, Int, 1)
-    .OP_END_FACTORY_REG(DenseLightningIndexerSoftmaxLseMetadata)
+    .OP_END_FACTORY_REG(DenseLightningIndexerSoftmaxLseMetadataV2)
 
 } // namespace ge
 
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_PROTO_H
+#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_PROTO_H

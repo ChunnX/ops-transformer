@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,22 +9,22 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_metadata_aicpu.cpp
+ * \\file dense_lightning_indexer_softmax_lse_metadata_v2_aicpu.cpp
  * \brief
  */
 
 #include "log.h"
 #include "status.h"
 #include "cust_op/cust_cpu_utils.h"
-#include "../../dense_lightning_indexer_softmax_lse/op_kernel/dense_lightning_indexer_softmax_lse_metadata.h"
-#include "dense_lightning_indexer_softmax_lse_metadata_aicpu.h"
-#include "arch35/dense_lightning_indexer_softmax_lse_metadata_aicpu_arch35.h"
+#include "../../dense_lightning_indexer_softmax_lse_v2/op_kernel/dense_lightning_indexer_softmax_lse_metadata_v2.h"
+#include "dense_lightning_indexer_softmax_lse_metadata_v2_aicpu.h"
+#include "arch35/dense_lightning_indexer_softmax_lse_metadata_v2_aicpu_arch35.h"
 
 using namespace optiling;
 
 namespace aicpu {
 
-uint32_t DenseLightningIndexerSoftmaxLseMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel::Compute(CpuKernelContext &ctx)
 {
     if (!Prepare(ctx)) {
         return KERNEL_STATUS_PARAM_INVALID;
@@ -37,7 +37,7 @@ uint32_t DenseLightningIndexerSoftmaxLseMetadataCpuKernel::Compute(CpuKernelCont
     return KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool DenseLightningIndexerSoftmaxLseMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel::Prepare(CpuKernelContext &ctx)
 {
     cuSeqLensQuery_ = ctx.Input(0);
     cuSeqLensKey_ = ctx.Input(1);
@@ -83,7 +83,7 @@ bool DenseLightningIndexerSoftmaxLseMetadataCpuKernel::Prepare(CpuKernelContext 
     return ParamsCheck();
 }
 
-ValidSocVersion DenseLightningIndexerSoftmaxLseMetadataCpuKernel::ProcessSocVersion()
+ValidSocVersion DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel::ProcessSocVersion()
 {
     const std::string ascend950 = "Ascend950";
     if (socVersion_.find(ascend950) != std::string::npos) {
@@ -92,7 +92,7 @@ ValidSocVersion DenseLightningIndexerSoftmaxLseMetadataCpuKernel::ProcessSocVers
     return ValidSocVersion::ASCEND910;
 }
 
-bool DenseLightningIndexerSoftmaxLseMetadataCpuKernel::ParamsCheck()
+bool DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel::ParamsCheck()
 {
     KERNEL_CHECK_NULLPTR(metadata_, false, "metadata output is null");
     KERNEL_CHECK_NULLPTR(metadata_->GetData(), false, "metadata data is null");
@@ -174,6 +174,6 @@ bool DenseLightningIndexerSoftmaxLseMetadataCpuKernel::ParamsCheck()
     return true;
 }
 
-static const char *kernelType = "DenseLightningIndexerSoftmaxLseMetadata";
-REGISTER_CPU_KERNEL(kernelType, DenseLightningIndexerSoftmaxLseMetadataCpuKernel);
+static const char *kernelType = "DenseLightningIndexerSoftmaxLseMetadataV2";
+REGISTER_CPU_KERNEL(kernelType, DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel);
 } // namespace aicpu
