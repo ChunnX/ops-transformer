@@ -128,11 +128,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
     LoadAlign(vreg_qgather_idx, qGatherIdxUb);
@@ -480,10 +475,6 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -882,11 +873,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
@@ -1220,10 +1206,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
-    }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
