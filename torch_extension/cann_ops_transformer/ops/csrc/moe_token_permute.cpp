@@ -61,10 +61,9 @@ int64_t AlignUp(int64_t value, int64_t align)
 
 void CheckMoeTokenPermuteInputs(const at::Tensor &tokens, const at::Tensor &indices)
 {
-    TORCH_CHECK(tokens.dim() == DIM_TWO,
-        "tokens must be a 2D tensor, but got ", tokens.dim(), " dimensions.");
-    TORCH_CHECK(indices.dim() == DIM_ONE || indices.dim() == DIM_TWO,
-        "indices must be a 1D or 2D tensor, but got ", indices.dim(), " dimensions.");
+    TORCH_CHECK(tokens.dim() == DIM_TWO, "tokens must be a 2D tensor, but got ", tokens.dim(), " dimensions.");
+    TORCH_CHECK(indices.dim() == DIM_ONE || indices.dim() == DIM_TWO, "indices must be a 1D or 2D tensor, but got ",
+                indices.dim(), " dimensions.");
 }
 
 int64_t GetActualNumOutTokens(const at::Tensor &indices, c10::optional<int64_t> numOutTokens)
@@ -81,9 +80,9 @@ int64_t ResolveQuantMode(const at::Tensor &tokens, int64_t quantMode)
 {
     int64_t effectiveQuantMode = IsAscend950() ? quantMode : QUANT_MODE_NONE;
     TORCH_CHECK(effectiveQuantMode == QUANT_MODE_NONE || IsMxQuantMode(effectiveQuantMode),
-        "quant_mode only supports -1, 2, 3 or 9 on Ascend 950.");
+                "quant_mode only supports -1, 2, 3 or 9 on Ascend 950.");
     TORCH_CHECK(!tokens.requires_grad() || effectiveQuantMode == QUANT_MODE_NONE,
-        "moe_token_permute does not support autograd when quant_mode is 2, 3 or 9.");
+                "moe_token_permute does not support autograd when quant_mode is 2, 3 or 9.");
     return effectiveQuantMode;
 }
 
@@ -97,22 +96,18 @@ MoeTokenPermuteOutput CreateMoeTokenPermuteOutput(const at::Tensor &tokens, cons
     const c10::OptionalDeviceGuard deviceGuard(localDevice);
 
     if (quantMode == QUANT_MODE_MXFP8_E5M2) {
-        output.permutedTokens = at::empty(
-            {actualNumOutTokens, hiddenSize}, tokenOptions.dtype(at::kFloat8_e5m2));
+        output.permutedTokens = at::empty({actualNumOutTokens, hiddenSize}, tokenOptions.dtype(at::kFloat8_e5m2));
         int64_t scaleCols = AlignUp(CeilDiv(hiddenSize, MX_QUANT_BLOCK_SIZE), PAD_TO_EVEN_FACTOR);
-        output.expandedScale = at::empty(
-            {actualNumOutTokens, scaleCols}, tokenOptions.dtype(at::kFloat8_e8m0fnu));
+        output.expandedScale = at::empty({actualNumOutTokens, scaleCols}, tokenOptions.dtype(at::kFloat8_e8m0fnu));
     } else if (quantMode == QUANT_MODE_MXFP8_E4M3FN) {
-        output.permutedTokens = at::empty(
-            {actualNumOutTokens, hiddenSize}, tokenOptions.dtype(at::kFloat8_e4m3fn));
+        output.permutedTokens = at::empty({actualNumOutTokens, hiddenSize}, tokenOptions.dtype(at::kFloat8_e4m3fn));
         int64_t scaleCols = AlignUp(CeilDiv(hiddenSize, MX_QUANT_BLOCK_SIZE), PAD_TO_EVEN_FACTOR);
-        output.expandedScale = at::empty(
-            {actualNumOutTokens, scaleCols}, tokenOptions.dtype(at::kFloat8_e8m0fnu));
+        output.expandedScale = at::empty({actualNumOutTokens, scaleCols}, tokenOptions.dtype(at::kFloat8_e8m0fnu));
     } else if (quantMode == QUANT_MODE_MXFP4_E2M1) {
         TORCH_CHECK(hiddenSize % 2 == 0, "The hidden size must be even when quant_mode is 9.");
         output.permutedTokens = at::empty({actualNumOutTokens, hiddenSize / 2}, tokenOptions.dtype(at::kByte));
-        output.expandedScale = at::empty(
-            {actualNumOutTokens, CeilDiv(hiddenSize, MXFP4_SCALE_BLOCK_SIZE), 2}, tokenOptions.dtype(at::kByte));
+        output.expandedScale = at::empty({actualNumOutTokens, CeilDiv(hiddenSize, MXFP4_SCALE_BLOCK_SIZE), 2},
+                                         tokenOptions.dtype(at::kByte));
     } else {
         output.permutedTokens = at::empty({actualNumOutTokens, hiddenSize}, tokenOptions);
         output.expandedScale = at::empty({0}, tokenOptions.dtype(at::kFloat));
@@ -126,8 +121,7 @@ TensorWrapper MakeTensorWrapper(const at::Tensor &tensor)
     return {tensor, ConvertToAclDataType(tensor.scalar_type())};
 }
 
-void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &permutedTokensWrapper,
-                       TensorWrapper &expandedScaleWrapper)
+void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &permutedTokensWrapper, TensorWrapper &expandedScaleWrapper)
 {
     if (quantMode != QUANT_MODE_MXFP4_E2M1) {
         return;
@@ -135,40 +129,30 @@ void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &permutedTokensWrapper,
     permutedTokensWrapper.dtype = aclDataType::ACL_FLOAT4_E2M1;
     expandedScaleWrapper.dtype = aclDataType::ACL_FLOAT8_E8M0;
 }
-}  // namespace
+} // namespace
 
 namespace op_api {
-std::tuple<at::Tensor, at::Tensor, at::Tensor> moe_token_permute(
-    const at::Tensor &tokens,
-    const at::Tensor &indices,
-    c10::optional<int64_t> num_out_tokens,
-    bool padded_mode,
-    int64_t quant_mode)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> MoeTokenPermute(const at::Tensor &tokens, const at::Tensor &indices,
+                                                               c10::optional<int64_t> numOutTokens, bool paddedMode,
+                                                               int64_t quantMode)
 {
     CheckMoeTokenPermuteInputs(tokens, indices);
-    int64_t actual_num_out_tokens = GetActualNumOutTokens(indices, num_out_tokens);
-    int64_t effective_quant_mode = ResolveQuantMode(tokens, quant_mode);
-    auto output = CreateMoeTokenPermuteOutput(tokens, indices, actual_num_out_tokens, effective_quant_mode);
-    auto permuted_tokens_wrapper = MakeTensorWrapper(output.permutedTokens);
-    auto expanded_scale_wrapper = MakeTensorWrapper(output.expandedScale);
-    FixMxfp4AclDtypes(effective_quant_mode, permuted_tokens_wrapper, expanded_scale_wrapper);
+    int64_t actualNumOutTokens = GetActualNumOutTokens(indices, numOutTokens);
+    int64_t effectiveQuantMode = ResolveQuantMode(tokens, quantMode);
+    auto output = CreateMoeTokenPermuteOutput(tokens, indices, actualNumOutTokens, effectiveQuantMode);
+    auto permutedTokensWrapper = MakeTensorWrapper(output.permutedTokens);
+    auto expandedScaleWrapper = MakeTensorWrapper(output.expandedScale);
+    FixMxfp4AclDtypes(effectiveQuantMode, permutedTokensWrapper, expandedScaleWrapper);
 
-    ACLNN_CMD(aclnnMoeTokenPermuteV2,
-        tokens,
-        indices,
-        actual_num_out_tokens,
-        padded_mode,
-        effective_quant_mode,
-        permuted_tokens_wrapper,
-        output.sortedIndices,
-        expanded_scale_wrapper);
+    ACLNN_CMD(aclnnMoeTokenPermuteV2, tokens, indices, actualNumOutTokens, paddedMode, effectiveQuantMode,
+              permutedTokensWrapper, output.sortedIndices, expandedScaleWrapper);
 
-    return std::make_tuple(
-        std::move(output.permutedTokens), std::move(output.sortedIndices), std::move(output.expandedScale));
+    return std::make_tuple(std::move(output.permutedTokens), std::move(output.sortedIndices),
+                           std::move(output.expandedScale));
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("moe_token_permute", &moe_token_permute, "moe_token_permute");
+    m.def("moe_token_permute", &MoeTokenPermute, "moe_token_permute");
 }
-}  // namespace op_api
+} // namespace op_api
