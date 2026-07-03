@@ -151,8 +151,8 @@ def check_param_valid(
 # V scope 3: cast dQueryIndex FP32→FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2, -1],
-    workspace_idx=[11, 12, 13, 14, 15, 16, 17, 18],
+    out_idx=[-3, -2, -1],
+    workspace_idx=[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -474,6 +474,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
                     T.barrier_all()
 
+                    # Write partial Loss for MY K block only (single scalar per block)
+                    T.copy(loss_sum_ub[0:1], Loss_partial[bz, s1_id, n_idx_k])
+
                     # ============================================================
                     # V scope 1 continuation: Global sum of dWeight and Loss
                     # Each core sums across all n_num K blocks (redundant but avoids cross-core sync)
@@ -509,6 +512,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     
                     # Write final Loss for this s1_id
                     T.copy(loss_global_ub, LossOut[bz, s1_id])
+
+                T.set_cross_flag("V", 12)
 
             # ============================================================
             # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
@@ -811,8 +816,8 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         d_query_index = results[0]
         d_weight = results[1]
-        relu_grad = results[2]
-        loss_out_tensor = results[3]
+        loss_out_tensor = results[2]
+        relu_grad = relu_grad_ws  # 从 workspace cache 获取
 
         # DEBUG: compare kernel-gathered KeyIndex vs host-gathered KeyIndex
         _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"
