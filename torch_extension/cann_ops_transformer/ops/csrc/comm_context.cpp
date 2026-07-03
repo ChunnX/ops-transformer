@@ -268,7 +268,7 @@ public:
         layerMap_ = {}; // 清空layerMap，准备重新检查
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             ASCEND_LOGI("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
-            
+
             // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
             auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex],
                                                             &rankIdLists, &rankNumInLayer);
@@ -569,16 +569,16 @@ public:
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0),
           topoType_(TopoType::INTRA_SUPER_NODE) {}
 
-    at::Tensor create_context()
+    at::Tensor CreateContext()
     {
         EnsureResolved();
-        at::Tensor context = at::empty({context_tensor_size()}, at::TensorOptions().dtype(at::kInt)
+        at::Tensor context = at::empty({ContextTensorSize()}, at::TensorOptions().dtype(at::kInt)
             .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
         DispatchBuild(context);
         return context;
     }
 
-    void update_group(const std::string &group, at::Tensor &contextTensor)
+    void UpdateGroup(const std::string &group, at::Tensor &contextTensor)
     {
         group_ = group;
         cclBufferSize_ = 0;
@@ -586,11 +586,11 @@ public:
         DispatchBuild(contextTensor);
     }
 
-    int64_t ccl_buffer_size() const { return cclBufferSize_; }
+    int64_t CclBufferSize() const { return cclBufferSize_; }
     int64_t GetTopoType() const { return static_cast<int64_t>(topoType_); }
 
 private:
-    static int64_t context_tensor_size()
+    static int64_t ContextTensorSize()
     {
         return (sizeof(CommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
     }
@@ -639,9 +639,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
              py::arg("commAlg") = std::string("ub-mem"),
              py::arg("opName") = std::string("moe_dispatch_ffn_combine"))
-        .def("create_context", &CommContextManager::create_context)
-        .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
-        .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size)
+        .def("create_context", &CommContextManager::CreateContext)
+        .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def_property_readonly("ccl_buffer_size", &CommContextManager::CclBufferSize)
         .def_property_readonly("topo_type", &CommContextManager::GetTopoType);
 }
 } // op_api

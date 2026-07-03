@@ -138,30 +138,30 @@ void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &permutedTokensWrapper,
 }  // namespace
 
 namespace op_api {
-std::tuple<at::Tensor, at::Tensor, at::Tensor> moe_token_permute(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> MoeTokenPermute(
     const at::Tensor &tokens,
     const at::Tensor &indices,
-    c10::optional<int64_t> num_out_tokens,
-    bool padded_mode,
-    int64_t quant_mode)
+    c10::optional<int64_t> numOutTokens,
+    bool paddedMode,
+    int64_t quantMode)
 {
     CheckMoeTokenPermuteInputs(tokens, indices);
-    int64_t actual_num_out_tokens = GetActualNumOutTokens(indices, num_out_tokens);
-    int64_t effective_quant_mode = ResolveQuantMode(tokens, quant_mode);
-    auto output = CreateMoeTokenPermuteOutput(tokens, indices, actual_num_out_tokens, effective_quant_mode);
-    auto permuted_tokens_wrapper = MakeTensorWrapper(output.permutedTokens);
-    auto expanded_scale_wrapper = MakeTensorWrapper(output.expandedScale);
-    FixMxfp4AclDtypes(effective_quant_mode, permuted_tokens_wrapper, expanded_scale_wrapper);
+    int64_t actualNumOutTokens = GetActualNumOutTokens(indices, numOutTokens);
+    int64_t effectiveQuantMode = ResolveQuantMode(tokens, quantMode);
+    auto output = CreateMoeTokenPermuteOutput(tokens, indices, actualNumOutTokens, effectiveQuantMode);
+    auto permutedTokensWrapper = MakeTensorWrapper(output.permutedTokens);
+    auto expandedScaleWrapper = MakeTensorWrapper(output.expandedScale);
+    FixMxfp4AclDtypes(effectiveQuantMode, permutedTokensWrapper, expandedScaleWrapper);
 
     ACLNN_CMD(aclnnMoeTokenPermuteV2,
         tokens,
         indices,
-        actual_num_out_tokens,
-        padded_mode,
-        effective_quant_mode,
-        permuted_tokens_wrapper,
+        actualNumOutTokens,
+        paddedMode,
+        effectiveQuantMode,
+        permutedTokensWrapper,
         output.sortedIndices,
-        expanded_scale_wrapper);
+        expandedScaleWrapper);
 
     return std::make_tuple(
         std::move(output.permutedTokens), std::move(output.sortedIndices), std::move(output.expandedScale));
@@ -169,6 +169,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> moe_token_permute(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("moe_token_permute", &moe_token_permute, "moe_token_permute");
+    m.def("moe_token_permute", &MoeTokenPermute, "moe_token_permute");
 }
 }  // namespace op_api
