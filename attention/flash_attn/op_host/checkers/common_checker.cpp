@@ -421,6 +421,10 @@ ge::graphStatus CommonChecker::CheckShapeConsistency(const FaTilingInfo &faInfo)
 
 ge::graphStatus CommonChecker::CheckKVContiguous(const FaTilingInfo &faInfo) const
 {
+    // 老版本opbase不支持strides, key/value必然连续, 直接放过
+    if (faInfo.isTensorV1) {
+        return ge::GRAPH_SUCCESS;
+    }
     const gert::Shape &keyShape = faInfo.opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = faInfo.opParamInfo.value.shape->GetStorageShape();
     uint32_t keyDimNum = keyShape.GetDimNum();
