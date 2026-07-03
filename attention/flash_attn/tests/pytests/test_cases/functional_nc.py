@@ -11,11 +11,12 @@
 
 ####### 参数说明 ########
 # nc_kv_dims: 0 -> 仅dim0非连续; 1 -> 仅dim1非连续; (0,1) -> dim0和dim1都不连续
-# layout_kv: 覆盖 PA_BBND / PA_BNBD / PA_NZ（均走 offsetCalculator GM_KV_PA_BNBD 分支，stride 参数透传）
-# 非PA layout不在此文件覆盖：非连续输入会被CheckKVContiguous拦截，属于正常的checker行为
+# 拦截用例(REJ): CheckKVContiguous 会拒绝的场景，预期在 NPU compute 时报错
 
 TestCases = {
-    # ------ PA_BNBD: dim0 非连续 ------
+    # ================================================================
+    # 正常通过 — PA_BNBD（全三种轴组合的基准）
+    # ================================================================
     "NC_PA_BNBD_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                         "D": [128], "DV": [128], "Dtype": ["fp16"],
                         "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
@@ -23,7 +24,6 @@ TestCases = {
                         "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                         "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                         "nc_kv_dims": [0]},
-    # ------ PA_BNBD: dim1 非连续 ------
     "NC_PA_BNBD_dim1": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                         "D": [128], "DV": [128], "Dtype": ["fp16"],
                         "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
@@ -31,7 +31,6 @@ TestCases = {
                         "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                         "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                         "nc_kv_dims": [1]},
-    # ------ PA_BNBD: dim0+dim1 非连续 ------
     "NC_PA_BNBD_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                          "D": [128], "DV": [128], "Dtype": ["fp16"],
                          "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
@@ -39,7 +38,10 @@ TestCases = {
                          "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                          "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                          "nc_kv_dims": [(0, 1)]},
-    # ------ PA_BBND: dim0 非连续 ------
+
+    # ================================================================
+    # 正常通过 — PA_BBND（仅dim0合法）
+    # ================================================================
     "NC_PA_BBND_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                         "D": [128], "DV": [128], "Dtype": ["fp16"],
                         "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
@@ -47,23 +49,10 @@ TestCases = {
                         "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                         "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                         "nc_kv_dims": [0]},
-    # ------ PA_BBND: dim1 非连续 ------
-    "NC_PA_BBND_dim1": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
-                        "D": [128], "DV": [128], "Dtype": ["fp16"],
-                        "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
-                        "block_size": [128], "return_softmax_lse": [False],
-                        "mask_mode": [0], "win_left": [-1], "win_right": [-1],
-                        "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
-                        "nc_kv_dims": [1]},
-    # ------ PA_BBND: dim0+dim1 非连续 ------
-    "NC_PA_BBND_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
-                         "D": [128], "DV": [128], "Dtype": ["fp16"],
-                         "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
-                         "block_size": [128], "return_softmax_lse": [False],
-                         "mask_mode": [0], "win_left": [-1], "win_right": [-1],
-                         "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
-                         "nc_kv_dims": [(0, 1)]},
-    # ------ PA_NZ: dim0 非连续 ------
+
+    # ================================================================
+    # 正常通过 — PA_NZ（全三种轴组合的基准）
+    # ================================================================
     "NC_PA_NZ_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                       "D": [128], "DV": [128], "Dtype": ["fp16"],
                       "layout_q": ["BNSD"], "layout_kv": ["PA_NZ"], "layout_out": ["BNSD"],
@@ -71,7 +60,6 @@ TestCases = {
                       "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                       "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                       "nc_kv_dims": [0]},
-    # ------ PA_NZ: dim1 非连续 ------
     "NC_PA_NZ_dim1": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                       "D": [128], "DV": [128], "Dtype": ["fp16"],
                       "layout_q": ["BNSD"], "layout_kv": ["PA_NZ"], "layout_out": ["BNSD"],
@@ -79,7 +67,6 @@ TestCases = {
                       "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                       "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                       "nc_kv_dims": [1]},
-    # ------ PA_NZ: dim0+dim1 非连续 ------
     "NC_PA_NZ_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
                        "D": [128], "DV": [128], "Dtype": ["fp16"],
                        "layout_q": ["BNSD"], "layout_kv": ["PA_NZ"], "layout_out": ["BNSD"],
@@ -87,4 +74,97 @@ TestCases = {
                        "mask_mode": [0], "win_left": [-1], "win_right": [-1],
                        "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
                        "nc_kv_dims": [(0, 1)]},
+
+    # ================================================================
+    # 正常通过 — 参数变体（D=64 / bf16 / block_size=256）
+    # ================================================================
+    "NC_PA_BNBD_D64_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                            "D": [64], "DV": [64], "Dtype": ["fp16"],
+                            "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
+                            "block_size": [128], "return_softmax_lse": [False],
+                            "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                            "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                            "nc_kv_dims": [0]},
+    "NC_PA_BNBD_bf16_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                             "D": [128], "DV": [128], "Dtype": ["bf16"],
+                             "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
+                             "block_size": [128], "return_softmax_lse": [False],
+                             "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                             "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                             "nc_kv_dims": [0]},
+    "NC_PA_NZ_bs256_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                            "D": [128], "DV": [128], "Dtype": ["fp16"],
+                            "layout_q": ["BNSD"], "layout_kv": ["PA_NZ"], "layout_out": ["BNSD"],
+                            "block_size": [256], "return_softmax_lse": [False],
+                            "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                            "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                            "nc_kv_dims": [0]},
+    "NC_PA_BNBD_D64_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                             "D": [64], "DV": [64], "Dtype": ["fp16"],
+                             "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
+                             "block_size": [128], "return_softmax_lse": [False],
+                             "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                             "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                             "nc_kv_dims": [(0, 1)]},
+    "NC_PA_NZ_bf16_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                            "D": [128], "DV": [128], "Dtype": ["bf16"],
+                            "layout_q": ["BNSD"], "layout_kv": ["PA_NZ"], "layout_out": ["BNSD"],
+                            "block_size": [128], "return_softmax_lse": [False],
+                            "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                            "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                            "nc_kv_dims": [(0, 1)]},
+
+    # ================================================================
+    # 拦截用例 — CheckKVContiguous 拒绝
+    # ================================================================
+    # 非PA必须连续: BNSD dim0
+    "NC_REJ_nonPA_BNSD_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [512],
+                               "D": [128], "DV": [128], "Dtype": ["fp16"],
+                               "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+                               "return_softmax_lse": [False],
+                               "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                               "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                               "nc_kv_dims": [0]},
+    # 非PA必须连续: BNSD dim1
+    "NC_REJ_nonPA_BNSD_dim1": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [512],
+                               "D": [128], "DV": [128], "Dtype": ["fp16"],
+                               "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+                               "return_softmax_lse": [False],
+                               "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                               "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                               "nc_kv_dims": [1]},
+    # 非PA必须连续: BSND dim01（不同Q/KV layout）
+    "NC_REJ_nonPA_BSND_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [512],
+                                "D": [128], "DV": [128], "Dtype": ["fp16"],
+                                "layout_q": ["BSND"], "layout_kv": ["BSND"], "layout_out": ["BSND"],
+                                "return_softmax_lse": [False],
+                                "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                                "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                                "nc_kv_dims": [(0, 1)]},
+    # BBND仅dim0: dim1
+    "NC_REJ_PA_BBND_dim1": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                            "D": [128], "DV": [128], "Dtype": ["fp16"],
+                            "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
+                            "block_size": [128], "return_softmax_lse": [False],
+                            "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                            "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                            "nc_kv_dims": [1]},
+    # BBND仅dim0: dim01
+    "NC_REJ_PA_BBND_dim01": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
+                             "D": [128], "DV": [128], "Dtype": ["fp16"],
+                             "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
+                             "block_size": [128], "return_softmax_lse": [False],
+                             "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                             "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                             "nc_kv_dims": [(0, 1)]},
+    # 非PA: TND dim0（序列总长度场景）
+    "NC_REJ_nonPA_TND_dim0": {"B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [512],
+                              "D": [128], "DV": [128], "Dtype": ["fp16"],
+                              "layout_q": ["TND"], "layout_kv": ["TND"], "layout_out": ["TND"],
+                              "cu_seqlens_q": [[0, 64, 128]],
+                              "cu_seqlens_kv": [[0, 512, 1024]],
+                              "return_softmax_lse": [False],
+                              "mask_mode": [0], "win_left": [-1], "win_right": [-1],
+                              "q_range": [(-5.0, 5.0)], "k_range": [(-5.0, 5.0)], "v_range": [(-5.0, 5.0)],
+                              "nc_kv_dims": [0]},
 }
