@@ -208,8 +208,8 @@ static inline int64_t ParseSeqLength(const gert::Tensor *tensor, uint32_t dims, 
 void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaInfo)
 {
     const auto &params = fiaInfo.opParamInfo;
-    uint32_t qDims = params.actualSeqLengthsQ.tensor ? params.actualSeqLengthsQ.tensor->GetShapeSize() : 0;	 
-    uint32_t kvDims = params.actualSeqLengths.tensor ? params.actualSeqLengths.tensor->GetShapeSize() : 0;	 
+    uint32_t qDims = params.actualSeqLengthsQ.tensor ? params.actualSeqLengthsQ.tensor->GetShapeSize() : 0;
+    uint32_t kvDims = params.actualSeqLengths.tensor ? params.actualSeqLengths.tensor->GetShapeSize() : 0;
     uint32_t prefixDims = params.actualSharedPrefixLen.tensor ? params.actualSharedPrefixLen.tensor->GetShapeSize() : 0;
 
     InitTilingFlags(fiaInfo, params.actualSeqLengthsQ.tensor, qDims,
@@ -1062,10 +1062,10 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
             actualSeqLengthsKV -= fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
         }
     } else {
-        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&	 
-            fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths	 
-            actualSeqLengthsKV = fiaInfo.actualLenKvDims == NUM1 ?	 
-                                    fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :	 
+        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&
+            fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
+            actualSeqLengthsKV = fiaInfo.actualLenKvDims == NUM1 ?
+                                    fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :
                                     fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
         } else {
             actualSeqLengthsKV = fiaInfo.kvListSeqLens.size() == NUM1 ?
@@ -1756,13 +1756,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaT
     const auto &shape = attenMaskTensor->GetStorageShape();
     uint64_t maskDimNum = shape.GetDimNum();
     uint64_t maskBatch = (maskDimNum != 2 || fiaInfo.s1Size == 1) ? shape.GetDim(0) : 1;
-    uint64_t maskS1Size = shape.GetDim(maskDimNum - 2);	 
+    uint64_t maskS1Size = shape.GetDim(maskDimNum - 2);
     uint64_t maskS2Size = shape.GetDim(maskDimNum - 1);
     inputParams.set_attenMaskShapeType(maskBatch > 1 ? 1 : 2);
     singleCoreParams.set_attenMaskBatch(maskBatch);
     inputParams.set_attenMaskS1Size(maskS1Size);
-    inputParams.set_attenMaskS2Size(maskS2Size);	 
-    baseParams.set_maskQsSize(maskS1Size);	 
+    inputParams.set_attenMaskS2Size(maskS2Size);
+    baseParams.set_maskQsSize(maskS1Size);
     baseParams.set_maskKVsSize(maskS2Size);
     return ge::GRAPH_SUCCESS;
 }
