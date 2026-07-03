@@ -40,6 +40,14 @@ public:
             matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
             mmInfo_.inMatrixADtypeSize = 1;
             mmInfo_.inMatrixBDtypeSize = 1;
+            // fp4属量化dtype, 但公共层 SetCalcType 不识别fp4(ConvertGeTypeToMmType无fp4映射→DT_MAX),
+            // 致 calcType_=FP16、CUBE_CALC_PER_CYCLE_MAP 查表落空→computesPerCycle 退回默认4096
+            // (fp8 拿到 8192), totalMatmulTime 被高估2x。此处把fp4归类为QUANT并覆盖 computesPerCycle
+            // =2*COMPUTES_PER_CYCLE(=8192), 与fp8查表结果一致; calcType_=QUANT 同时让 L2_PARAMETER_MAP
+            // 命中 "4_1_1_1_2"(frontUtil也与fp8对齐)。GetMachineParameters 已在基类构造时按FP16跑过, 此处覆盖。
+            matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+            matmulPerf_.mmShapeInfo_.computesPerCycle = 2 * MatmulPerformance::COMPUTES_PER_CYCLE;
+            mmInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
         } else {
             commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
         }
