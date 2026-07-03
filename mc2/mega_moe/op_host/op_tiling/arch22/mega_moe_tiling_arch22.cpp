@@ -1020,6 +1020,7 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     MegaMoeA2A3TilingData &info)
 {
     const char *nodeName = K_INNER_DEBUG;
+    // info.cclBufferSize是winIn和winOut空间之和（两者相等），这里只通过winIn校验
     int64_t cclBufferSize = info.cclBufferSize / 2;
     OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).",
         cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
@@ -1032,7 +1033,7 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     bool isW4A8 = (info.isW4A8 != 0U);
 
     std::string socVersion = mc2tiling::GetSocVersion(context);
-    bool isA3 = (socVersion != "Ascend910B");
+    bool isA3 = (socVersion == "Ascend910_93");
 
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(maxRecvTokenNum, h,
         epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3,
