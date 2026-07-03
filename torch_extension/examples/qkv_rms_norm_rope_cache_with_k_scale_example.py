@@ -149,6 +149,32 @@ def make_varied_tnd_to_ntd_seq_lens(case: Case, index: int) -> Tuple[int, ...]:
     return tuple(varied)
 
 
+def performance_t16384_tnd_to_ntd_cases(seed: int) -> Tuple[Case, ...]:
+    specs = (
+        ("n64_kv8_perf_t16384_dpad_tnd_to_ntd", (64, 8, 8)),
+        ("n16_kv2_perf_t16384_dpad_tnd_to_ntd", (16, 2, 2)),
+        ("n8_kv1_perf_t16384_dpad_tnd_to_ntd", (8, 1, 1)),
+    )
+    return tuple(
+        Case(
+            name=name,
+            batch_seq_lens=(16384,),
+            actual_seq_lens=(16384,),
+            n_q=heads[0],
+            n_k=heads[1],
+            n_v=heads[2],
+            qkv_layout="TND",
+            q_out_layout="NTD",
+            slot_pattern="random",
+            seed=seed + index,
+            block_num=1024,
+            cache_stride="d_pad",
+            cache_pad=8,
+        )
+        for index, (name, heads) in enumerate(specs)
+    )
+
+
 def build_cases() -> Tuple[Case, ...]:
     n16_specs = (
         ("decode1", (1,), (1,), "linear"),
@@ -326,7 +352,9 @@ def build_cases() -> Tuple[Case, ...]:
                 )
             )
             seed += 1
-    return with_tnd_to_ntd_cases(cases)
+    cases = list(with_tnd_to_ntd_cases(cases))
+    cases.extend(performance_t16384_tnd_to_ntd_cases(seed))
+    return tuple(cases)
 
 
 CASES = build_cases()
@@ -723,6 +751,12 @@ def assert_shapes(case: Case, outputs: Dict[str, torch.Tensor]):
     assert outputs["q_scale"].dtype == torch.float32, f"{case.name}: q_scale dtype mismatch: {outputs['q_scale'].dtype}"
 
 
+def warmup_perf_all(device: str) -> None:
+    x = torch.zeros((16384, 16384), dtype=torch.float32, device=device)
+    _ = torch.all(x, dim=0)
+    torch.npu.synchronize()
+
+
 def print_case_results(case: Case, results: List[MatchResult]) -> None:
     print(
         f"[CASE] {case.name} qkv_layout={case.qkv_layout} "
@@ -795,6 +829,8 @@ def parse_args():
     parser.add_argument("--float-rtol", type=float, default=1e-2)
     parser.add_argument("--max-diff-lines", type=int, default=20,
                         help="maximum mismatch detail lines to print per output; set 0 to disable")
+    parser.add_argument("--perf-warmup-all", action="store_true",
+                        help="run a large torch.all warmup before selected cases; intended for msprof runs")
     return parser.parse_args()
 
 
@@ -812,6 +848,9 @@ def main():
     unknown = sorted(set(selected_names) - set(case_map))
     if unknown:
         raise ValueError(f"unknown case(s): {unknown}; available: {list(case_map)}")
+
+    if args.perf_warmup_all:
+        warmup_perf_all(args.device)
 
     return run_selected_cases(selected_names, case_map, args)
 
