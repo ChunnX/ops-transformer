@@ -355,48 +355,52 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_LOGE(K_INNER_DEBUG, "CheckEpWorldSizeAttr failed."),
         return GRAPH_FAILED);
 
-    // 3. max_recv_token_num
+    // 3. ccl_buffer_size
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is null."), return GRAPH_FAILED);
+
+    // 4. max_recv_token_num
     OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckMaxRecvTokenNumAttr failed."),
         return GRAPH_FAILED);
 
-    // 4-5. dispatch_quant_mode && dispatch_quant_out_dtype
+    // 5-6. dispatch_quant_mode && dispatch_quant_out_dtype
     OP_TILING_CHECK(CheckDispatchQuantAttrs(context, dispatchQuantModePtr,
         dispatchQuantOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantAttrs failed."),
         return GRAPH_FAILED);
 
-    // 6. combine_quant_mode
+    // 7. combine_quant_mode
     OP_TILING_CHECK(CheckCombineQuantModeAttr(combineQuantModePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckCombineQuantModeAttr failed."),
         return GRAPH_FAILED);
 
-    // 7. num_max_token_per_rank
+    // 8. num_max_token_per_rank
     OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."),
         return GRAPH_FAILED);
 
-    // 8. activation
+    // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."),
         return GRAPH_FAILED);
 
-    // 9. activation_clamp
+    // 10. activation_clamp
     OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."),
         return GRAPH_FAILED);
 
-    // 10. activation_out_dtype
+    // 11. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."),
         return GRAPH_FAILED);
 
-    // 11. transpose_weight1/2
+    // 12. transpose_weight1/2
     OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."),
         return GRAPH_FAILED);
 
-    // 12. weight1_interleave
+    // 13. weight1_interleave
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."),
         return GRAPH_FAILED);
@@ -1020,6 +1024,7 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     MegaMoeA2A3TilingData &info)
 {
     const char *nodeName = K_INNER_DEBUG;
+    // info.cclBufferSize是winIn和winOut空间之和（两者相等），这里只通过winIn校验
     int64_t cclBufferSize = info.cclBufferSize / 2;
     OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).",
         cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
@@ -1032,7 +1037,7 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     bool isW4A8 = (info.isW4A8 != 0U);
 
     std::string socVersion = mc2tiling::GetSocVersion(context);
-    bool isA3 = (socVersion != "Ascend910B");
+    bool isA3 = (socVersion == "Ascend910_93");
 
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(maxRecvTokenNum, h,
         epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3,
