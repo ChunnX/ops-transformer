@@ -41,6 +41,7 @@ static const std::string KEY_ROPE_NAME = "key_rope";
 static const std::string ATTEN_OUT_NAME = "attention_out";
 static const std::string SOFTMAX_MAX_NAME = "softmax_max";
 static const std::string SOFTMAX_SUM_NAME = "softmax_sum";
+static const std::string SINKS_NAME = "sinks";
 
 constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
@@ -55,6 +56,7 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {ATTEN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {SOFTMAX_MAX_NAME, {ge::DT_FLOAT}},
     {SOFTMAX_SUM_NAME, {ge::DT_FLOAT}},
+    {SINKS_NAME, {ge::DT_FLOAT}},
     {SPARSE_INDICES_NAME, {ge::DT_INT32}},
     {BLOCK_TABLE_NAME, {ge::DT_INT32}},
 };
@@ -1082,6 +1084,30 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSumShape()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus SFATilingCheck::CheckSinks() const
+{
+    if (opParamInfo_.sinks.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(kvLayout_ == SFALayout::PA_BSND,
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, SINKS_NAME.c_str(), SFALayoutToSerialString(kvLayout_).c_str(),
+            "when sinks is not null, layout_kv do not support PA_BSND"),
+        return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sinks.desc, SINKS_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    const gert::Shape &sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
+    OP_CHECK_IF(sinksShape.GetDimNum() != DIM_NUM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, SINKS_NAME.c_str(),
+            std::to_string(sinksShape.GetDimNum()).c_str(), "The shape dim of sinks must be 1"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sinksShape.GetShapeSize() != n1Size_,
+        OP_LOGE_FOR_INVALID_SHAPE(opName_, SINKS_NAME.c_str(), GetShapeStr(sinksShape).c_str(),
+            GetShapeStr(gert::Shape({n1Size_})).c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus SFATilingCheck::CheckAttenOut()
 {
     if (ge::GRAPH_SUCCESS !=
@@ -1477,7 +1503,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
 ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquant() const
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantShape() || ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantLayout() ||
-        ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantDtype() || ge::GRAPH_SUCCESS != CheckFeatureMlaNoquantPa()) {
+        ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantDtype() || ge::GRAPH_SUCCESS != CheckFeatureMlaNoquantPa() ||
+        ge::GRAPH_SUCCESS != CheckSinks()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1690,6 +1717,8 @@ void SFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INPUT_INDEX);
     opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INPUT_INDEX);
     opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INPUT_INDEX);
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INPUT_INDEX);
+    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INPUT_INDEX);
 }
 
 void SFAInfoParser::GetInputParaInfo()
