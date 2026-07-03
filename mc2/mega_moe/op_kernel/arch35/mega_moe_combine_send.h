@@ -204,7 +204,7 @@ __aicore__ inline void PollNotifyAndSendData(
                     params.tilingData->bs * params.tilingData->expertPerRank +
                     slotIdx * (maxDataLengthPerBlock + ALIGN_32);
                 gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
-                Ascendc::Nop<800>();
+                AscendC::Nop<800>();
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
