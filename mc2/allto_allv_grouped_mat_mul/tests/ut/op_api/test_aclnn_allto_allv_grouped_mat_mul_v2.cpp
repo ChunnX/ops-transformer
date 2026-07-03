@@ -57,7 +57,7 @@ TEST_F(L2AlltoAllvGroupedMatMulV2Test, Test)
 	bool permuteOutFlag = false;
 	TensorDesc gmmY_desc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
 	auto ut = OP_API_UT(aclnnAlltoAllvGroupedMatMulV2, INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
-						"test_allto_allv_grouped_mat_mul_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+						"test_allto_allv_grouped_mat_mul_ep_group", "ai_cpu", epWorldSize, sendCounts, recvCounts,
 						transGmmWeight, transMmWeight, permuteOutFlag),
 						OUTPUT(gmmY_desc, nullptr, nullptr));
 	uint64_t workspace_size = 0;
