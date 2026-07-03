@@ -22,9 +22,9 @@ MAX_DIFF_LINES=${MAX_DIFF_LINES:-0}
 EXAMPLE=${EXAMPLE:-torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py}
 
 DEFAULT_CASES=(
-    n64_kv8_long16384_dpad_tnd_to_ntd
-    n16_kv2_long16384_dpad_tnd_to_ntd
-    n8_kv1_long16384_dpad_tnd_to_ntd
+    n64_kv8_perf_t16384_dpad_tnd_to_ntd
+    n16_kv2_perf_t16384_dpad_tnd_to_ntd
+    n8_kv1_perf_t16384_dpad_tnd_to_ntd
 )
 
 CASES=()
@@ -37,9 +37,9 @@ Usage:
                                                  [--aic-metrics GROUP] [-- EXTRA_ARGS...]
 
 Default cases:
-  n64_kv8_long16384_dpad_tnd_to_ntd  # T=16384, Nq=64, Nk=Nv=8
-  n16_kv2_long16384_dpad_tnd_to_ntd  # T=16384, Nq=16, Nk=Nv=2
-  n8_kv1_long16384_dpad_tnd_to_ntd   # T=16384, Nq=8,  Nk=Nv=1
+  n64_kv8_perf_t16384_dpad_tnd_to_ntd  # T=16384, Nq=64, Nk=Nv=8
+  n16_kv2_perf_t16384_dpad_tnd_to_ntd  # T=16384, Nq=16, Nk=Nv=2
+  n8_kv1_perf_t16384_dpad_tnd_to_ntd   # T=16384, Nq=8,  Nk=Nv=1
 
 Environment overrides:
   REPO, CANN_ENV, PYTHON, TORCH_EXTENSIONS_DIR, OUTPUT_ROOT, AIC_METRICS, MAX_DIFF_LINES, EXAMPLE
@@ -117,6 +117,7 @@ for case_name in "${CASES[@]}"; do
     msprof --output="${case_output}" --ascendcl=on --runtime-api=on --task-time=on --ai-core=on \
         --aic-metrics="${AIC_METRICS}" --python-path="${PYTHON_BIN}" \
         "${PYTHON_BIN}" "${EXAMPLE}" --case "${case_name}" --max-diff-lines "${MAX_DIFF_LINES}" \
+        --perf-warmup-all \
         "${EXTRA_ARGS[@]}" 2>&1 | tee "${log_file}"
 done
 
