@@ -15,7 +15,7 @@
 #include "aclnn_mega_moe.h"
 
 using namespace op;
-using namespace std;
+using namespace std; 
 
 class AclnnMegaMoeTest : public testing::Test {
 protected:

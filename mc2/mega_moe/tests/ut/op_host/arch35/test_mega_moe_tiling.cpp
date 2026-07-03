@@ -98,7 +98,7 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
         {
             {{{256, 5120}, {256, 5120}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
+        }, 
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
