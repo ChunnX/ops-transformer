@@ -119,27 +119,27 @@ def run_case(params: dict,
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
                    for k, v in primary_out_raw.items()}
-    del primary_out_raw
+    del dev_inputs, primary_out_raw
     primary.clear_cache()
 
     # --- kvcache 非连续 self-consistency check ---
     nc_kv_dims = params.get("nc_kv_dims")
     nc_attn_result = None
     if nc_kv_dims is not None:
-        # 在 NPU 上直接从 dev_inputs 的 k/v 构造非连续 view, 避免 .to(npu) 破坏 stride
-        nc_dev_inputs = {}
-        for k, v in dev_inputs.items():
-            if isinstance(v, torch.Tensor) and k in ("k", "v"):
-                nc_dev_inputs[k] = make_noncontiguous(v, nc_kv_dims)
-            else:
-                nc_dev_inputs[k] = v
+        nc_cpu_inputs = {
+            k: make_noncontiguous(v if isinstance(v, torch.Tensor) else v, nc_kv_dims)
+                if k in ("k", "v") else v
+            for k, v in cpu_inputs.items()
+        }
+        nc_dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
+                         for k, v in nc_cpu_inputs.items()}
         print(f"  [nc_check] nc_kv_dims={nc_kv_dims} "
               f"k_contig={nc_dev_inputs['k'].is_contiguous()} "
               f"k_stride={nc_dev_inputs['k'].stride()} "
               f"v_contig={nc_dev_inputs['v'].is_contiguous()} "
               f"v_stride={nc_dev_inputs['v'].stride()}")
-        assert torch.equal(nc_dev_inputs["k"], dev_inputs["k"]), "k NC后数据与连续时不一致"
-        assert torch.equal(nc_dev_inputs["v"], dev_inputs["v"]), "v NC后数据与连续时不一致"
+        assert torch.equal(nc_cpu_inputs["k"], cpu_inputs["k"]), "k NC后数据与连续时不一致"
+        assert torch.equal(nc_cpu_inputs["v"], cpu_inputs["v"]), "v NC后数据与连续时不一致"
         nc_raw = primary.compute(nc_dev_inputs, params)
         nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
         del nc_dev_inputs, nc_raw
@@ -159,8 +159,6 @@ def run_case(params: dict,
             "fail_ratio": 0.0 if exact_match else float((diff > 0).sum().item()) / contig_f.numel(),
         }
         del nc_cpu
-
-    del dev_inputs
 
     dev_raw = primary_out["out"]
     dev_out = dev_raw
