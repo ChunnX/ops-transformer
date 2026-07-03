@@ -63,8 +63,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_gmm_x = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(nullptr, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(nullptr, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -107,8 +107,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_gmm_weight = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, nullptr, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, nullptr, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -151,8 +151,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_gmm_x_scale = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, nullptr, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, nullptr, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -195,8 +195,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_gmm_weight_scale = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, nullptr, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, nullptr, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -239,8 +239,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_not_null_send_tensor = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, sendCountsTensorOptional, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -283,8 +283,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_not_null_recv_tensor = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, recvCountsTensorOptional, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, recvCountsTensorOptional, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -327,8 +327,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_not_null_permuteout_false = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, 0),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -371,8 +371,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_permuteout_true = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutOptional),
         OUTPUT(gmmY, mmYOptional, nullptr)
@@ -415,8 +415,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_quant_mode_not_vaild = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, 0, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, 0, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutOptional),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -459,8 +459,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_null_gmm_y = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(nullptr, mmYOptional, permuteOutOptional)
@@ -506,8 +506,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_trans_not_contiguous = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -552,8 +552,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut_mm_trans_not_contiguous = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
@@ -596,8 +596,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, nullptr)
@@ -641,8 +641,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, nullptr)
@@ -687,8 +687,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, nullptr)
@@ -734,8 +734,8 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
 
     auto ut = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMul,
-        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
-              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, nullptr, nullptr, mmXOptional,
+              mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, nullptr, nullptr, gmmXQuantMode, gmmWeightQuantMode,
               mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, nullptr)
