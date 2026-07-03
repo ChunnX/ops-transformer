@@ -239,6 +239,10 @@ def get_param_fus(input_tensor_dict, params):
     fa_param["k_rope_dtype"] = trans_input_dtype(params["dtype_input"]["key_rope"])
     fa_param["k_rope_tensor"] = input_tensor_dict["key_rope"]
 
+    fa_param["sinks_shape"] = params["shape_input"].get("sinks")
+    fa_param["sinks_dtype"] = trans_input_dtype(params["dtype_input"].get("sinks", "fp32"))
+    fa_param["sinks_tensor"] = input_tensor_dict.get("sinks")
+
     fa_param["out_shape"] = fa_param["q_shape"]
     fa_param["out_dtype"] = trans_input_dtype(params["dtype_output"][0])
     fa_param["softmax_max_shape"] = params["shape_output"]["softmax_max"]
@@ -283,6 +287,10 @@ def generate_input_tensors(params):
     for key in tensor_keys:
         raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
 
+    sinks = None
+    if params.get("use_sinks", False):
+        sinks = generate_tensor_data.gen_tensor_data(params, "sinks").to("npu")
+
     result = {
         "query": raw["query"],
         "key": raw["key"],
@@ -291,6 +299,7 @@ def generate_input_tensors(params):
         "block_table": raw["block_table"],
         "query_rope": raw["query_rope"],
         "key_rope": raw["key_rope"],
+        "sinks": sinks,
         "scale_value": params["scalevalue"],
         "sparse_block_size": params["sparse_blocksize"],
         "layout_query": params["layout_query"],
@@ -526,12 +535,18 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
     return emptyFlag, k_sparse, v_sparse
 
 
-def softmax(x):
+def softmax(x, sinks=None):
     x = x.float()
-    x_max = x.max(dim=-1, keepdim=True).values
+    if sinks is not None:
+        sinks = sinks.float().unsqueeze(1)
+        x_max = torch.max(torch.cat([x, sinks], dim=-1), dim=-1, keepdim=True).values
+    else:
+        x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x - x_max
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
+    if sinks is not None:
+        x_sum = x_sum + torch.exp(sinks - x_max)
     ans = y / x_sum
     return ans, x_max, x_sum
 
@@ -550,6 +565,9 @@ def _t_increattention_bnsd(fa_param):
     out_shape_bnsd[-1] = fa_param["v_bnsd_shape"][-1]
     sparse_mode = fa_param["sparse_mode"]
     g = numheads // numKeyValueHeads
+    sinks_tensor = fa_param.get("sinks_tensor")
+    if sinks_tensor is not None:
+        sinks_tensor = sinks_tensor.cpu().float()
 
     q_bnsd_tensor = fa_param["q_bnsd_tensor"].float()
     k_bnsd_tensor = fa_param["k_bnsd_tensor"].float()
@@ -559,6 +577,16 @@ def _t_increattention_bnsd(fa_param):
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
     softmax_max = torch.zeros(fa_param["softmax_max_shape"], dtype=torch.float32)
     softmax_sum = torch.zeros(fa_param["softmax_sum_shape"], dtype=torch.float32)
+
+    def set_softmax_lse(batch_idx, n2_idx, s1_idx, q_last_prefill, max_value, sum_value):
+        if not fa_param["return_softmax_lse"]:
+            return
+        if fa_param["layout_query"] == "BSND":
+            softmax_max[batch_idx, n2_idx, s1_idx, :] = max_value
+            softmax_sum[batch_idx, n2_idx, s1_idx, :] = sum_value
+        else:
+            softmax_max[n2_idx, q_last_prefill + s1_idx, :] = max_value
+            softmax_sum[n2_idx, q_last_prefill + s1_idx, :] = sum_value
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
@@ -575,11 +603,16 @@ def _t_increattention_bnsd(fa_param):
                 emptyFlag, k_sparse, v_sparse = gatherKV(k_bnsd_tensor, v_bnsd_tensor, sparse_indices_Indices,
                                                          sparse_blocksize, sparse_blockcount, batch, n2Idx, s1Idx,
                                                          curr_actualSeq, curr_actualSeq_q, sparse_mode)
+                cur_sinks = None
+                if sinks_tensor is not None:
+                    cur_sinks = sinks_tensor[n2Idx * g: (n2Idx + 1) * g]
                 if emptyFlag:
+                    if cur_sinks is not None:
+                        set_softmax_lse(batch, n2Idx, s1Idx, qLastPrefill, cur_sinks, torch.ones_like(cur_sinks))
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                softmax_res, x_max, x_sum = softmax(scaleRes)
+                softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
                 if fa_param["q_dtype"] == "float16":
                     bmm2Res = torch.matmul(softmax_res.to(torch.float16).float(), v_sparse.float())
                 elif fa_param["q_dtype"] == "bfloat16":
@@ -587,13 +620,7 @@ def _t_increattention_bnsd(fa_param):
                 else:
                     bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-                if fa_param["return_softmax_lse"]:
-                    if fa_param["layout_query"] == "BSND":
-                        softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
-                        softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
-                    else:
-                        softmax_max[n2Idx, qLastPrefill + s1Idx, :] = x_max[:, 0]
-                        softmax_sum[n2Idx, qLastPrefill + s1Idx, :] = x_sum[:, 0]
+                set_softmax_lse(batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0])
     return y, softmax_max, softmax_sum
 
 
