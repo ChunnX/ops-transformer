@@ -196,10 +196,10 @@ def _softmax_p_from_scores_fp32(s_fp32):
 def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value):
   """Single KV block: QK -> SM -> PV. Returns row-normalized O_tmp and LSE."""
   s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t())
-  print("s_fp32:", s_fp32[0][:16])
+  #print("s_fp32:", s_fp32[0][:16])
   s_fp32 = s_fp32* scale_value
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)
-  print("p_bf16:", p_bf16[0][:16])
+  #print("p_bf16:", p_bf16[0][:16])
   #print("row_sum_fp32:", row_sum_fp32[:16])
 
   o_unnorm_fp32 = torch.matmul(p_bf16.float(), v_bf16.float())

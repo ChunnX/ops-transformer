@@ -402,3 +402,4 @@ Golden 不模拟 Cube tile 搬运；SM/PV 统计量在 fp32 计算，仅 P 矩�
 - score/softmax UB 复用
 - 空 CSR 行 task 负载均衡
 - Regbase优化
+- QK、PV都是小矩阵乘，单次mmad可以完成

@@ -48,6 +48,8 @@ constexpr int ATTR_BLOCK_SIZE_INDEX = 2;
 constexpr int ATTR_TOP_K_INDEX = 3;
 constexpr int ATTR_INNER_PRECISE_INDEX = 4;
 
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+
 namespace optiling {
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
@@ -167,6 +169,7 @@ ge::graphStatus SASAPrefillTiling::CalculateTaskSplit(gert::TilingContext *conte
     if (blockDim_ == 0) {
         blockDim_ = 1;
     }
+    printf("[SASAPrefillTiling] blockDim=%u\n", blockDim_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -244,6 +247,9 @@ ge::graphStatus SASAPrefillTiling::GetTiling(gert::TilingContext *context,
 ge::graphStatus SASAPrefillTiling::SetTilingData(gert::TilingContext *context,
     SparseAttentionScorePrefillTilingData &tilingData)
 {
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context->SetScheduleMode(BATCH_MODE_SCHEDULE);
+
     // Set block dim computed from both Phase1 and Phase2 task counts.
     context->SetBlockDim(blockDim_);
 

@@ -118,12 +118,9 @@ public:
                     uint32_t groupSize,
                     uint32_t numRows,
                     uint32_t validSize,
-                    uint32_t causalValidLen,
                     uint32_t sColsAligned,
                     Arch::CrossCoreFlag &mm1ToSmFlag,
-                    Arch::CrossCoreFlag &smToMm2Flag,
-                    uint32_t sDumpId = 0U,
-                    uint32_t pDumpId = 0U)
+                    Arch::CrossCoreFlag &smToMm2Flag)
     {
         uint32_t ubSBufId = mm1ToSmFlag.id;
         uint32_t mCopyOffset = RoundUp(groupSize, FLOAT_BLOCK_SIZE) / 2;
@@ -131,10 +128,6 @@ public:
         m = AscendC::GetSubBlockIdx() == 0 ? m : groupSize - m;
 
         WaitVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
-        // if (sDumpId != 0U && numRows > 0U && m > 0U) {
-        //     AscendC::DumpTensor(ubSBuf, sDumpId, 16);
-        // }
         if (numRows == 0U || m == 0U) {
             SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
@@ -142,18 +135,7 @@ public:
             return;
         }
 
-        uint32_t maskLen = sColsAligned - causalValidLen;
         uint32_t numRowsRound = RoundUp(numRows, FLOAT_BLOCK_SIZE);
-
-        if (maskLen > 0U) {
-            for (uint32_t row = 0; row < numRows; row++) {
-                AscendC::Duplicate(
-                    ubSBuf[row * sColsAligned + causalValidLen], MIN_VALUE_FP32,
-                    static_cast<int32_t>(maskLen));
-            }
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-
         AscendC::Muls(
             ubSBuf, ubSBuf, scale_,
             static_cast<int32_t>(numRows * sColsAligned));
@@ -163,12 +145,12 @@ public:
         AscendC::LocalTensor<float> tvUb = tmpBuf_[TV_UB_OFFSET];
         AscendC::LocalTensor<float> tvScratch = tmpBuf_[TV_UB_OFFSET + REDUCE_SCRATCH_OFFSET];
 
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
+
         CalcRowMaxTail(ubSBuf, rowMaxUb, tvUb, tvScratch,
             numRows, numRowsRound, validSize, sColsAligned);
-        //AscendC::DumpTensor(rowMaxUb, 456, 16);
         SubtractRowMaxAndExp(ubSBuf, rowMaxUb, tvUb,
             numRows, numRowsRound, validSize, sColsAligned);
-        //AscendC::DumpTensor(ubSBuf, 456, 16);
         CalcRowSumTail(ubSBuf, rowSumBuf_, tvUb, tvScratch,
             numRows, numRowsRound, validSize, sColsAligned);
         CalcLse(rowMaxUb, rowSumBuf_, lseBuf_, numRows);
@@ -184,7 +166,6 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-
         WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
         // if (pDumpId != 0U && m > 0U) {
         //     AscendC::PipeBarrier<PIPE_V>();
@@ -192,7 +173,7 @@ public:
         // }
         CopyUbZNToL1(l1PTile, ubPBuf, numRows, rowsAligned, groupSize, validSize);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
-        SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+        SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);   
     }
 
 private:
