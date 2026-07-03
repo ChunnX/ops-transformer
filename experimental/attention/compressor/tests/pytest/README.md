@@ -35,6 +35,7 @@
 - test_compressor_single.py                 # 测试单用例运行主程序
 - compressor_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
 - test_compressor_paramset.py               # 单用例入参配置
+- test_compressor_grouped_decode_xcache.py  # grouped decode x_cache单算子板上用例
 
 批量用例测试:
 - test_compressor_batch.py                  # 用例批量测试主程序并生成excel文件保存结果
