@@ -43,6 +43,7 @@ constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 constexpr static int64_t BLOCK_SIZE = 32;
 constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
 constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
+constexpr static int64_t RECOMPUTE_UB_HEADROOM_BYTES = 10240;
 
 static const std::vector<std::string> inputNames = {
     "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
@@ -337,7 +338,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
 
-    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
+    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_UB_HEADROOM_BYTES - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
     int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
 
     OP_CHECK_IF(
