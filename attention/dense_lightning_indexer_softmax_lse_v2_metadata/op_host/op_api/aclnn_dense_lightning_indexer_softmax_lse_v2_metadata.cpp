@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_dense_lightning_indexer_softmax_lse_metadata.cpp
+ * \\file aclnn_dense_lightning_indexer_softmax_lse_v2_metadata.cpp
  * \brief
  */
 
-#include "aclnn_dense_lightning_indexer_softmax_lse_metadata.h"
-#include "l0_dense_lightning_indexer_softmax_lse_metadata.h"
+#include "aclnn_dense_lightning_indexer_softmax_lse_v2_metadata.h"
+#include "l0_dense_lightning_indexer_softmax_lse_v2_metadata.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -33,7 +33,7 @@ static aclnnStatus ParamsCheck(const aclTensor* metadata)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
+aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensKOptional,
     const aclTensor* seqUsedQOptional,
@@ -53,7 +53,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
     uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
-    L2_DFX_PHASE_1(aclnnDenseLightningIndexerSoftmaxLseMetadata,
+    L2_DFX_PHASE_1(aclnnDenseLightningIndexerSoftmaxLseV2Metadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
                           cmpResidualKOptional, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim,
                           layoutQ, layoutK, maskMode, cmpRatio),
@@ -96,7 +96,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
         CHECK_RET(cmpResidualKContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto output = l0op::DenseLightningIndexerSoftmaxLseMetadata(
+    auto output = l0op::DenseLightningIndexerSoftmaxLseV2Metadata(
         cuSeqLensQContiguous, cuSeqLensKContiguous, seqUsedQContiguous, seqUsedKContiguous, cmpResidualKContiguous,
         batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, layoutQ, layoutK, maskMode, cmpRatio,
         socVersion, aicCoreNum, metadata, uniqueExecutor.get());
@@ -108,10 +108,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
 }
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnDenseLightningIndexerSoftmaxLseMetadata(void *workspace, uint64_t workspaceSize,
+aclnnDenseLightningIndexerSoftmaxLseV2Metadata(void *workspace, uint64_t workspaceSize,
                                              aclOpExecutor *executor, aclrtStream stream)
 {
-    L2_DFX_PHASE_2(aclnnDenseLightningIndexerSoftmaxLseMetadata);
+    L2_DFX_PHASE_2(aclnnDenseLightningIndexerSoftmaxLseV2Metadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
