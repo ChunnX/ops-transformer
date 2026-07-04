@@ -2125,7 +2125,7 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPreSfmgTiling()
     } else {
         normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
     }
-    fBaseParams.sfmgNormalAxisSize = normalAxisSize; 
+    fBaseParams.sfmgNormalAxisSize = normalAxisSize;
 
     // 计算单核的计算量
     int64_t normalCoreSize = CeilCommon(normalAxisSize, static_cast<int64_t>(fBaseParams.coreNum));
