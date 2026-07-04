@@ -397,9 +397,15 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_INPUT(opName_, "group"),
                     return ge::GRAPH_FAILED);
-    if (commMode != nullptr && strnlen(commMode, 1UL) > 0) { // 不为空字符串
-        OP_LOGI(opName_, "The current soc only support default communication engine.");
-    }
+
+    // A2的comm_mode只支持aiv
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"),
+                    return ge::GRAPH_FAILED);
+    const size_t maxLength = 4UL;
+    OP_TILING_CHECK((strncmp(commMode, "aiv", maxLength) != 0),
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commMode, "aiv"),
+                    return ge::GRAPH_FAILED);
+
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(SUPPORT_RANK_SIZE_910B.find(info.worldSize) == SUPPORT_RANK_SIZE_910B.end(),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "world_size", std::to_string(info.worldSize).c_str(), "2/4/8"),
