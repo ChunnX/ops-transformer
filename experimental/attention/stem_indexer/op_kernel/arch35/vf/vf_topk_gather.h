@@ -645,7 +645,7 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
-    uint32_t outputOffset = (uint32_t)vfLoop * 64u;
+    uint32_t outputOffset = tmpIdxOffset;
 
     for (uint16_t m = 0; m < loopM; ++m) {
         __ubuf__ uint32_t* roundOutputValueBuf = outputValueBuf + m * outputOffset;
