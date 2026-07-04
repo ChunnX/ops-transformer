@@ -56,7 +56,8 @@ public:
     __aicore__ inline void ComputeTile(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
                                        LocalTensor<float> qkAfterCubeUb)
     {
-        const uint32_t l0cBufferId = static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t l0cBufferId = static_cast<uint32_t>(l0cBufferUseId_ &
+                                                           (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
         const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
@@ -64,6 +65,7 @@ public:
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
         FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
         FixpipeSegmentToAivUb(kRows, qRowsPerAiv, l0cBufferId, kL0cOffset, qkAfterCubeUb);
+        ++l0cBufferUseId_;
     }
 
 private:

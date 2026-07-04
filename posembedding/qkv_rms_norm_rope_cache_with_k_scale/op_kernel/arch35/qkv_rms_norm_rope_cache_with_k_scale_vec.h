@@ -82,8 +82,8 @@ public:
     __aicore__ inline void ComputeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
                                        const LocalTensor<float> &qkPreprocessUb, uint32_t outputBufferId)
     {
-        const uint32_t inputBufferId =
-            static_cast<uint32_t>((inputBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t inputBufferId = static_cast<uint32_t>(inputBufferUseId_ &
+                                                             (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         if (tile.aivTokenSize == 0U) {
             return;
         }
@@ -105,15 +105,16 @@ public:
             return;
         }
 
-        const uint32_t inputBufferId =
-            static_cast<uint32_t>((inputBufferUseId_ - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
-        const uint32_t vOutBufferId =
-            static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t inputBufferId = static_cast<uint32_t>(inputBufferUseId_ &
+                                                             (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t vOutBufferId = static_cast<uint32_t>(vOutBufferUseId_ &
+                                                            (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         QuantVToFp8(tile, inputBufferId, vOutBufferId);
         SetAndWaitVToMte3Ready();
         ScatterVCache(tile, vOutBufferId);
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
+        ++vOutBufferUseId_;
     }
 
     __aicore__ inline void PostprocessQk(const TileParam &tile, const LocalTensor<float> &qkAfterCubeUb,
@@ -124,8 +125,8 @@ public:
         }
 
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
-        const uint32_t vOutBufferId =
-            static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t vOutBufferId = static_cast<uint32_t>(vOutBufferUseId_ &
+                                                            (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         const LocalTensor<float> qkScaleStaging =
             vOutDbPoolUb_[vOutBufferId * QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS].template ReinterpretCast<float>();
@@ -139,6 +140,7 @@ public:
         ScatterKOutputs(tile, qkAfterCubeUb, kScale);
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
+        ++vOutBufferUseId_;
     }
 
     __aicore__ inline void WaitVToMte2InputBufferReusable()
@@ -149,9 +151,10 @@ public:
 
     __aicore__ inline void SetVToMte2InputBufferReusable()
     {
-        const uint32_t inputBufferId =
-            static_cast<uint32_t>((inputBufferUseId_ - 1U) & (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
+        const uint32_t inputBufferId = static_cast<uint32_t>(inputBufferUseId_ &
+                                                             (QKV_K_SCALE_DOUBLE_BUFFER_NUM - 1U));
         SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
+        ++inputBufferUseId_;
     }
 
 private:
