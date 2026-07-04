@@ -590,9 +590,9 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return false);
     OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) ||
-        (std::strncmp(commMode_, "ai_cpu", CMP_MAX_LEN) == 0) || (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0)),
+        (std::strncmp(commMode_, "ai_cpu", CMP_MAX_LEN) == 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
-        "The value of comm_mode must be ccu, ai_cpu or empty string"),
+        "The value of comm_mode must be ccu, ai_cpu"),
         return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), OP_LOGE(opName_, "GetRankSize failed."),
         return false);
@@ -711,10 +711,6 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     if (npuArch_ == NpuArch::DAV_3510) {
         if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0) { // empty string
-            if (rankSize_ <= COMM_MODE_RANKSIZE) {
-                commMode = Mc2Comm::COMM_MODE_CCU;
-            }
         }
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
