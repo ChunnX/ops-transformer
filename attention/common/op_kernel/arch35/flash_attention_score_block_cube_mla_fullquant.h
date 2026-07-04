@@ -559,8 +559,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
             runInfo.s1RealSize, constInfo.dSize, constInfo.mm1Ka);
 
         LocalTensor<bfloat16_t> mm1ARopeTensor  = mm1A.GetTensor<bfloat16_t>(offsetQRopeByElement); 
-        CopyToL1Nd2Nz<bfloat16_t>(mm1ARopeTensor,this->queryRopeGm.gmTensor[runInfo.qRopeOffset],
-            runInfo.s1RealSize, constInfo.dSizeRope, constInfo.mm1RopeKa); 
+        CopyToL1Nd2Nz<bfloat16_t>(mm1ARopeTensor, this->queryRopeGm.gmTensor[runInfo.qRopeOffset],
+            runInfo.s1RealSize, constInfo.dSizeRope, constInfo.mm1RopeKa);
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非s2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
@@ -637,7 +637,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
                          0,    // isLeftTranspose
                          1,    // isRightTranspose
                          1,
-                         0 //累加Nope的L0C
+                         0 // 累加Nope的L0C
                         };
     MatmulFull<bfloat16_t, bfloat16_t, T, 64, 128, 64, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<bfloat16_t>(offsetQRopeByElement), mm1B.GetTensor<bfloat16_t>(offsetKRopeByElement),
@@ -654,15 +654,18 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipec310Params.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;
     // 源NZ矩阵中相邻Z排布的起始地址偏移
-    fixpipec310Params.srcStride = (fixpipec310Params.mSize + 15) >> 4 << 4; // 15, 4: L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) ，对齐到16
-    fixpipec310Params.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
+    fixpipec310Params.srcStride =
+        (fixpipec310Params.mSize + 15) >> 4 << 4;  // 15, 4: L0C上matmul结果相邻连续数据片断间隔, 单位为16 *sizeof(T) ，对齐到16
+    fixpipec310Params.dstStride =
+        s2BaseSize;  // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
     fixpipec310Params.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipec310Params.params.ndNum = 1;
     fixpipec310Params.params.srcNdStride = 0;
     fixpipec310Params.params.dstNdStride = 0;
 
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipec310Params); // 将matmul结果从L0C搬运到UB
-    mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
+                                        fixpipec310Params);  // 将matmul结果从L0C搬运到UB
+    mm1ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }
 

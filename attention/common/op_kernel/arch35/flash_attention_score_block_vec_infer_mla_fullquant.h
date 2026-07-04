@@ -156,7 +156,6 @@ private:
     __aicore__ inline void ReduceFDDataCopyOut(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
         LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
         uint32_t actualColumnCount);
-
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -189,7 +188,7 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSh
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
-     if constexpr (POST_QUANT) {
+    if constexpr (POST_QUANT) {
         sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
         sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
     }
@@ -242,7 +241,6 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSh
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
     }
-
 }
 
 TEMPLATES_DEF_NO_DEFAULT
