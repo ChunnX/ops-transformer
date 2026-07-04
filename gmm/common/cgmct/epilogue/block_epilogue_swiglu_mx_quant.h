@@ -127,6 +127,10 @@ public:
     using DataTypeX1Scale = DataTypeX1Scale_;
     using DataTypeX2Scale = DataTypeX2Scale_;
 
+    // 输出为FP4类型(e2m1/e1m2)的编译期标记
+    static constexpr bool IS_FP4_OUT = AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
+                                         AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value;
+
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BaseOffset = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
@@ -276,13 +280,12 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         uint64_t alignedDataBlockNum = CeilDiv(Align64(static_cast<uint64_t>(singleN_)), DATA_BlOCK_SIZE);
         // UB中每行按64对齐存放，srcStride用于跳过行尾补齐的DataBlock: 对齐后块数 - 原始singleN块数
         ub2GmParams.srcStride = (alignedDataBlockNum - actualDataBlockNum);
-        if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value) {
+        if constexpr (IS_FP4_OUT) {
             ub2GmParams.srcStride = ub2GmParams.srcStride >> 1;
         }
     }
 
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+    if constexpr (IS_FP4_OUT) {
         ub2GmParams.blockLen = ub2GmParams.blockLen >> 1;
         ub2GmParams.dstStride = ub2GmParams.dstStride >> 1;
         offset = offset >> 1;
@@ -596,8 +599,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     }
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+    if constexpr (IS_FP4_OUT) {
         ComputeDataForQuantTargetFp4(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     }
     return;

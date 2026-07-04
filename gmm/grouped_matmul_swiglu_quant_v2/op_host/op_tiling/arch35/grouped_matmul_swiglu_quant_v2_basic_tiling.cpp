@@ -31,7 +31,7 @@ constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 3;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
-constexpr size_t MXFP4_ND_N_ALIGN = 4;
+constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
 } // namespace
 
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
