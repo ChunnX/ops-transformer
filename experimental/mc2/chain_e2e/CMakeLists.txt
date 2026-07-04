@@ -34,6 +34,7 @@ set(MPI_LINK_TARGET ${MPI_C_LIB})
 
 # ---- CCU 门控：默认 OFF(a5 shell)。ON 时编入两个 CCU kernel 源 ----
 option(CHAIN_CCU_A6 "Enable a6-only CCU kernels + real cross-card write" OFF)
+option(CHAIN_DUMP "分段 host 交付自检(需 CHAIN_CCU_A6=ON；-DCHAIN_DUMP=ON 开)" OFF)
 set(DRIVER_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/chain_e2e_driver.cpp)
 if(CHAIN_CCU_A6)
     list(APPEND DRIVER_SRCS
@@ -53,6 +54,9 @@ if(CHAIN_CCU_A6)
     #   (return HCCL_SUCCESS 不建微码) → 驱动 launch 空 kernel → HcclCcuKernelLaunch ret=4(HCCL_E_INTERNAL)。
     #   旧版只传 CHAIN_CCU_A6，漏了这俩——正是 ret=4 根因。
     target_compile_definitions(chain_e2e_driver PRIVATE CHAIN_CCU_A6 DISPATCH_CCU_A6 COMBINE_CCU_A6)
+endif()
+if(CHAIN_DUMP)
+    target_compile_definitions(chain_e2e_driver PRIVATE CHAIN_DUMP)   # 分段 dump 仅在 CHAIN_CCU_A6 也开时生效(见驱动 #if)
 endif()
 
 # ---- CANN / hcomm 头根自动定位（多候选 PATH_SUFFIXES 兜 a5/a6 布局）----

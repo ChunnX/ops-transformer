@@ -453,6 +453,65 @@ int LaunchCombineTeardownAclnn(aclrtStream stream, const ChainCfg &c, ChainGm &g
 // bf16(uint16 高 16 位) → float。
 [[maybe_unused]] float Bf16ToFloat(uint16_t b) { uint32_t bits = (uint32_t)b << 16; float f; std::memcpy(&f, &bits, 4); return f; }
 
+#if defined(CHAIN_DUMP) && defined(CHAIN_CCU_A6)
+// ★ 分段自检（host 侧、零侵入算子；须与 -DCHAIN_CCU_A6 同开、a6 上跑）：拷回数据区按块打印交付状态，
+//   一次 a6 跑即定位 cross 投递在哪段(dispatch/combine)、payload 还是 scale 变 0。
+//   解码：payload 首字节 exp 位 = 7+源rank（PrepChain expBase=7+rank）；scale 字节应∈{126,127,128}，=0 即未交付。
+uint32_t DumpRowNz(const std::vector<uint8_t> &v, uint64_t off, uint64_t n)
+{
+    uint32_t nz = 0; for (uint64_t k = 0; k < n; ++k) if (v[off + k]) ++nz; return nz;
+}
+void DumpDispatchRegion(const ChainCfg &c, uint32_t rankId, ChainGm &g)
+{
+    const uint64_t hB = c.hB(), sB = c.sB(); const uint32_t R = c.R, E = c.E, bs = c.bs, GE = c.GE();
+    const uint64_t rows = c.dataRows();
+    std::vector<uint8_t> hD(rows * hB), hS(rows * sB); std::vector<int32_t> hW(GE);
+    (void)aclrtMemcpy(hD.data(), rows * hB, g.dataRegion,  rows * hB, ACL_MEMCPY_DEVICE_TO_HOST);
+    (void)aclrtMemcpy(hS.data(), rows * sB, g.scaleRegion, rows * sB, ACL_MEMCPY_DEVICE_TO_HOST);
+    (void)aclrtMemcpy(hW.data(), GE * sizeof(int32_t), g.wishCnt, GE * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    uint32_t badD = 0, badS = 0;
+    printf("[rank %u][DUMP① dispatch_setup后] dataRegion 各块(le,src)交付:\n", rankId);
+    for (uint32_t le = 0; le < E; ++le) for (uint32_t src = 0; src < R; ++src) {
+        uint32_t blk = le * R + src; int32_t cnt = hW[blk]; if (cnt <= 0) continue;
+        uint64_t r0 = (uint64_t)blk * bs;
+        uint32_t dNz = DumpRowNz(hD, r0 * hB, hB), sNz = DumpRowNz(hS, r0 * sB, sB);
+        uint8_t d0 = hD[r0 * hB], s0 = hS[r0 * sB]; int dec = (int)(d0 >> 3) - 7; bool self = (src == rankId);
+        printf("  blk(le=%u,src=%u)[%s] cnt=%d | payload nz=%u/%llu 0x%02x(exp->src%d) | scale nz=%u/%llu 0x%02x%s\n",
+               le, src, self ? "self " : "cross", cnt, dNz, (unsigned long long)hB, d0, dec,
+               sNz, (unsigned long long)sB, s0, (!self && (dNz == 0 || sNz == 0)) ? "  <<< CROSS未交付" : "");
+        if (!self && dNz == 0) ++badD;
+        if (!self && sNz == 0) ++badS;
+    }
+    printf("[rank %u][DUMP①] cross块: payload全0=%u scale全0=%u\n", rankId, badD, badS);
+}
+void DumpCombineRegion(const ChainCfg &c, uint32_t rankId, ChainGm &g)
+{
+    const uint64_t hB = c.hB(), sB = c.sB(); const uint32_t E = c.E, bs = c.bs, GE = c.GE();
+    const uint64_t rows = c.dataRows();
+    std::vector<uint8_t> hD(rows * hB), hS(rows * sB);
+    (void)aclrtMemcpy(hD.data(), rows * hB, g.combineData,  rows * hB, ACL_MEMCPY_DEVICE_TO_HOST);
+    (void)aclrtMemcpy(hS.data(), rows * sB, g.combineScale, rows * sB, ACL_MEMCPY_DEVICE_TO_HOST);
+    uint32_t badD = 0, badS = 0;
+    printf("[rank %u][DUMP③ combine_setup后] combineData 各块 ge 交付(本卡token送回):\n", rankId);
+    for (uint32_t ge = 0; ge < GE; ++ge) {
+        bool has = false;
+        for (uint32_t i = 0; i < bs && !has; ++i) for (uint32_t j = 0; j < c.topk; ++j)
+            if ((uint32_t)g.hExpertIds[i * c.topk + j] == ge) { has = true; break; }
+        if (!has) continue;
+        uint64_t r0 = (uint64_t)ge * bs;
+        uint32_t dNz = DumpRowNz(hD, r0 * hB, hB), sNz = DumpRowNz(hS, r0 * sB, sB);
+        uint8_t d0 = hD[r0 * hB], s0 = hS[r0 * sB]; int dec = (int)(d0 >> 3) - 7;
+        uint32_t owner = ge / E; bool self = (owner == rankId);
+        printf("  blk ge=%u(owner卡%u)[%s] | payload nz=%u/%llu 0x%02x(exp->src%d) | scale nz=%u/%llu 0x%02x%s\n",
+               ge, owner, self ? "self回" : "cross回", dNz, (unsigned long long)hB, d0, dec,
+               sNz, (unsigned long long)sB, s0, (!self && (dNz == 0 || sNz == 0)) ? "  <<< CROSS回未交付" : "");
+        if (!self && dNz == 0) ++badD;
+        if (!self && sNz == 0) ++badS;
+    }
+    printf("[rank %u][DUMP③] cross回块: payload全0=%u scale全0=%u\n", rankId, badD, badS);
+}
+#endif  // CHAIN_DUMP
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -520,10 +579,16 @@ int main(int argc, char **argv)
     // ---- 串 4 算子（每段后同步 + 跨 rank barrier 保 CCU 两卡对齐）----
     if (LaunchDispatchSetupCcu(comm, stream, c, g) != 0)   { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
     ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
+#if defined(CHAIN_DUMP) && defined(CHAIN_CCU_A6)
+    DumpDispatchRegion(c, rankId, g);   // ★ 分段自检①：dispatch cross 的 payload/scale 到没到
+#endif
     if (LaunchDispatchTeardownAclnn(stream, c, g) != 0)    { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
     ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
     if (LaunchCombineSetupCcu(comm, stream, c, g) != 0)    { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
     ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
+#if defined(CHAIN_DUMP) && defined(CHAIN_CCU_A6)
+    DumpCombineRegion(c, rankId, g);    // ★ 分段自检③：combine cross 回传的 payload/scale 到没到
+#endif
     if (LaunchCombineTeardownAclnn(stream, c, g) != 0)     { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
     ACLCHECK(aclrtSynchronizeStream(stream));
 

@@ -102,7 +102,7 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     CcuRep::Variable tokBothVar  = CreateVariable(); tokBothVar  = hBytesVar + scaleBytesVar;                 // h + h/32
 
     // ============ 2.5. Clear 上轮 0.5RTT 状态 ============
-    CHK_RET(clearallpeersarriveNotify(DISPATCH_SETUP_CCU_TAG));
+    CHK_RET(ClearAllPeersArriveNotify(DISPATCH_SETUP_CCU_TAG));
 
     // ============ 3. PreSync：广播本卡 data/scale 接收区 addr+token 给对端（4 XN 槽）============
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
@@ -120,18 +120,27 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     }
 
     // ============ 5. PreCount：读 routeTable dstRank 累加 sendBytesPerPeer（每 token = payload+scale 字节）============
+    // ★ 指令收敛（修 ret=7=HCCL_E_UNAVAIL）：原 host for(i<bs)×for(j<topK) 把循环体静态展开成
+    //   O(bs·topK·R) 份：每个 CCU_IF 内部申请 1 个 XN(跳转 targetVar，ccu_kernel.cc IfBegin)、数据面原语按发射
+    //   次数占 XN/CKE → register 期 CheckResIfAvailable(ccu_kernel_mgr.cc:208) 统计 xnReq/ckeReq 超 die 容量 →
+    //   UNAVAIL(7)。a6 实测 xnReq[366] ckeReq[33] not enough（xn=res_.variable.size、cke=completedEvent+localNotify）。
+    //   改成 CCU_WHILE 运行时循环：body(含 for(r)CCU_IF+数据面原语)只发一份 → XN/CKE 塌回 O(R)、与能过 register 的
+    //   O(R) 基线(ops-transformer_correct)同阶。语义等价：仍逐 (i,j) token 累加、运行期由计数器完成 bs·topK 迭代。
+    //   跨迭代 Variable 累加=DSL 循环范式(先例 mesh1d addr+=stride / jump cnt+=one)；a6 建议最小实验坐实寄存器持久。
+    //   bs_,topK_≥1 恒真；标准式 CCU_WHILE(=CcuWhileBegin 头判)对 0 迭代安全，无需前置守门。
     CcuRep::Variable rankVarA   = CreateVariable();
     CcuRep::Variable routeAddrA = CreateVariable(); routeAddrA = routeTableAddrVar_;
-    for (uint32_t i = 0; i < bs_; ++i) {
-        for (uint32_t j = 0; j < topK_; ++j) {
-            LoadVariable(routeAddrA, rankVarA);       // 读 dstRank（行首字段）
-            routeAddrA += rowStrideVar;               // 跳到下一行（3×int64）
-            for (uint32_t r = 0; r < epWorldSize_; ++r) {
-                CCU_IF(rankVarA == r) {
-                    sendBytesPerPeer_[r] = sendBytesPerPeer_[r] + tokBothVar;
-                }
+    CcuRep::Variable oneVarA    = CreateVariable(); oneVarA = static_cast<uint64_t>(1);
+    CcuRep::Variable cntA       = CreateVariable(); cntA    = static_cast<uint64_t>(0);
+    CCU_WHILE(cntA != static_cast<uint64_t>(bs_) * static_cast<uint64_t>(topK_)) {   // 先扩宽再乘，杜绝 uint32 中间溢出
+        LoadVariable(routeAddrA, rankVarA);       // 读 dstRank（行首字段）
+        routeAddrA += rowStrideVar;               // 跳到下一行（3×int64）
+        for (uint32_t r = 0; r < epWorldSize_; ++r) {
+            CCU_IF(rankVarA == r) {
+                sendBytesPerPeer_[r] = sendBytesPerPeer_[r] + tokBothVar;
             }
         }
+        cntA += oneVarA;                          // 运行期计数：0→bs·topK
     }
 
     // ============ 6. RecordExpectCount（逐对端 SetMask(1)+WaitEvent 串行）============
@@ -152,10 +161,18 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     CcuRep::Variable xScaleRow  = CreateVariable(); xScaleRow  = xScaleAddrVar_;  // per-i scale 源行
     localSrcData_.token  = xDataTokenVar_;
     localSrcScale_.token = xScaleTokenVar_;
-    for (uint32_t i = 0; i < bs_; ++i) {
+    // ★ 指令收敛（修 ret=7）：原 host for(i<bs)×for(j<topK) 展开 O(bs·topK·R) 条微码 → register 撑爆 CCU 资源。
+    //   改成【嵌套 CCU_WHILE 运行时循环】：外层 i、内层 j 各只发一份 body，register 期资源塌回 O(R)。
+    //   保 per-i 源行推进语义（源行按 i 走、topk 个 j 共用 → 外层步进 xDataRow/xScaleRow）。
+    //   cntJ 每个外层 i 重置 0（等价 host for(j=0)）；for(r)CCU_IF 保留（channel 编译期常量、不可运行时索引）。
+    CcuRep::Variable oneVarB = CreateVariable(); oneVarB = static_cast<uint64_t>(1);
+    CcuRep::Variable cntI    = CreateVariable(); cntI    = static_cast<uint64_t>(0);
+    CcuRep::Variable cntJ    = CreateVariable();
+    CCU_WHILE(cntI != static_cast<uint64_t>(bs_)) {
         localSrcData_.addr  = xDataRow;               // token i 的 payload 源（topk 个 j 共用）
         localSrcScale_.addr = xScaleRow;
-        for (uint32_t j = 0; j < topK_; ++j) {
+        cntJ = static_cast<uint64_t>(0);              // 每个外层 i 重置 j 计数（= host for(j=0)）
+        CCU_WHILE(cntJ != static_cast<uint64_t>(topK_)) {
             LoadVariable(routeAddrB, rankVarB);   routeAddrB += elem8Var;   // dstRank
             LoadVariable(routeAddrB, dataOffVar); routeAddrB += elem8Var;   // dataDstByteOff
             LoadVariable(routeAddrB, scaleOffVar);routeAddrB += elem8Var;   // scaleDstByteOff
@@ -187,15 +204,17 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
                     }
                 }
             }
+            cntJ += oneVarB;                          // 运行期内层计数：0→topK
         }
         xDataRow  += hBytesVar;      // 下一 token 源行
         xScaleRow += scaleBytesVar;
+        cntI += oneVarB;             // 运行期外层计数：0→bs
     }
 
     // ============ 9. WaitallpeersarriveNotify（等本卡收齐：totalCntXn 达 R-1）============
     CcuRep::Variable arriveTargetVar = CreateVariable();
     arriveTargetVar = static_cast<uint64_t>(epWorldSize_ - 1U);
-    CHK_RET(WaitallpeersarriveNotify(arriveTargetVar, DISPATCH_SETUP_CCU_TAG));
+    CHK_RET(WaitAllPeersArriveNotify(arriveTargetVar, DISPATCH_SETUP_CCU_TAG));
 
     // ============ 10. ready[0..R)=1（本卡收齐后本地置位，teardown AIV 轮询）============
     CcuRep::Variable readyAddr = CreateVariable(); readyAddr = commCmdInfoAddrVar_;   // ready 区从偏移 0 起
