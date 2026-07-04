@@ -68,6 +68,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         isShared = false;
     }
 
+    
     // 检查shape各维度并赋值h,k
     OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, localMoeExpertNum),
         OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);

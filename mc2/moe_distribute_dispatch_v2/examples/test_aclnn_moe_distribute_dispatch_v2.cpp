@@ -23,6 +23,8 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
 #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+#include "aclnnop/aclnn_moe_distribute_dispatch.h"
+#include "aclnnop/aclnn_moe_distribute_combine.h"
 
 
 #define CHECK_RET(cond, return_expr) \
@@ -171,7 +173,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int64_t> expertScalesShape{BS, K};
     std::vector<int64_t> expandXShape{A, H};
     std::vector<int64_t> dynamicScalesShape{A};
-    std::vector<int64_t> expandIdxShape{A * 128};
+    std::vector<int64_t> expandIdxShape{BS * K};
     std::vector<int64_t> expertTokenNumsShape{localExpertNum};
     std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
     std::vector<int64_t> tpRecvCountsShape{1};
@@ -243,7 +245,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     /* 依次执行dispatchV2及combineV2算子 */
     // 调用dispatchV2算子第一阶段接口
-    ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
+    ret = aclnnMoeDistributeDispatchGetWorkspaceSize(
         x, expertIds, 
         (quantMode > 0 ? scales : nullptr), nullptr, 
         expertScales, 
@@ -251,7 +253,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         moeExpertNum, nullptr, 0,
         0, expertShardType, sharedExpertNum,
         sharedExpertRankNum, quantMode, globalBS,
-        expertTokenNumsType, commAlg.c_str(),
+        expertTokenNumsType,
         expandX, dynamicScales,
         expandIdx, expertTokenNums,
         epRecvCounts, tpRecvCounts,
@@ -268,7 +270,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
     }
     // 调用dispatchV2算子第二阶段接口
-    ret = aclnnMoeDistributeDispatchV2(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
+    ret = aclnnMoeDistributeDispatch(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2 failed. ret = %d\n", ret); return ret);
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
@@ -278,12 +280,12 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     );
 
     // 调用combineV2算子第一阶段接口
-    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
+    ret = aclnnMoeDistributeCombineGetWorkspaceSize(
         expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr,
         hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, nullptr, 0, 0,
         expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
-        commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
+        x, &combineV2WorkspaceSize, &combineV2Executor);
     CHECK_RET(
         ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
@@ -294,7 +296,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
     }
     // 调用combineV2算子第二阶段接口
-    ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
+    ret = aclnnMoeDistributeCombine(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
