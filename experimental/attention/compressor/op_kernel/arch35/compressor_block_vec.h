@@ -256,6 +256,12 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     if (isExistXCache_) {
         xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
         xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+        if (constInfo_.aiCoreIdx == 0) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] VecInit xCache=1 xCacheSlotMapping=%d\n",
+                            static_cast<int32_t>(xCacheSlotMapping != nullptr));
+        }
+    } else if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] VecInit xCache=0\n");
     }
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
@@ -281,6 +287,9 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
 {
     if (!isExistXCache_) {
+        if (constInfo_.aiCoreIdx == 0) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache skip: xCache absent\n");
+        }
         return;
     }
     constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
@@ -294,21 +303,54 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
         aivCoreIdx = constInfo_.aiCoreIdx * subBlockNum + subBlockIdx;
         aivCoreNum = constInfo_.usedCoreNum * subBlockNum;
     }
+    if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache enter batch=%d updateBatch=%d hSize=%d xCacheSize=%d "
+                        "hBlockNum=%d totalTaskNum=%d usedCore=%d cmpRatio=%d seqSize=%d xCacheReadSize=%d\n",
+                        static_cast<int32_t>(constInfo_.batchSize),
+                        static_cast<int32_t>(constInfo_.xCacheUpdateBatchSize),
+                        static_cast<int32_t>(constInfo_.hSize), static_cast<int32_t>(constInfo_.xCacheSize),
+                        static_cast<int32_t>(hBlockNum), static_cast<int32_t>(totalTaskNum),
+                        static_cast<int32_t>(constInfo_.usedCoreNum), static_cast<int32_t>(constInfo_.cmpRatio),
+                        static_cast<int32_t>(constInfo_.sSize), static_cast<int32_t>(constInfo_.xCacheReadSize));
+    }
     for (uint32_t taskIdx = aivCoreIdx; taskIdx < totalTaskNum; taskIdx += aivCoreNum) {
         uint32_t bIdx = taskIdx / hBlockNum;
         uint32_t hBlockIdx = taskIdx % hBlockNum;
         uint32_t hStart = hBlockIdx * COPY_BASE;
         uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
         uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
-        LocalTensor<X_T> inputUb = xCacheUpdateBuf.Get<X_T>();
-        DataCopy(inputUb, xGm_[bIdx * constInfo_.hSize + hStart], hDealSize);
+        uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
+        uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
+        bool dumpTask = taskIdx < 2;
+        if (dumpTask) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache task=%d core=%d bIdx=%d hBlockIdx=%d slot=%d "
+                            "hStart=%d hDealSize=%d srcOffset=%d dstOffset=%d\n",
+                            static_cast<int32_t>(taskIdx), static_cast<int32_t>(aivCoreIdx),
+                            static_cast<int32_t>(bIdx), static_cast<int32_t>(hBlockIdx), static_cast<int32_t>(slot),
+                            static_cast<int32_t>(hStart), static_cast<int32_t>(hDealSize),
+                            static_cast<int32_t>(srcOffset), static_cast<int32_t>(dstOffset));
+        }
+        LocalTensor<X_T> inputUb =
+            constInfo_.batchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
+        DataCopy(inputUb, xGm_[srcOffset], hDealSize);
         event_t eventMte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
         SetFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
         WaitFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
-        DataCopy(xCacheGm_[static_cast<uint64_t>(slot) * constInfo_.hSize + hStart], inputUb, hDealSize);
+        if (dumpTask) {
+            uint32_t dumpSize = min(hDealSize, static_cast<uint32_t>(16));
+            DumpTensorForDim2(inputUb, static_cast<uint32_t>(0x5801 + taskIdx), dumpSize, 1, dumpSize);
+        }
+        DataCopy(xCacheGm_[dstOffset], inputUb, hDealSize);
         event_t eventMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
         SetFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
         WaitFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+        if (dumpTask) {
+            uint32_t dumpSize = min(hDealSize, static_cast<uint32_t>(16));
+            DumpTensorForDim2(xCacheGm_[dstOffset], static_cast<uint32_t>(0x5901 + taskIdx), dumpSize, 1, dumpSize);
+        }
+    }
+    if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache exit\n");
     }
 }
 

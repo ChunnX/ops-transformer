@@ -24,6 +24,18 @@
 
 using namespace AscendC;
 
+#ifndef COMPRESSOR_XCACHE_DEBUG_PRINTF
+#define COMPRESSOR_XCACHE_DEBUG_PRINTF 0
+#endif
+
+#if COMPRESSOR_XCACHE_DEBUG_PRINTF
+#define COMPRESSOR_XCACHE_PRINTF(...) AscendC::PRINTF(__VA_ARGS__)
+#else
+#define COMPRESSOR_XCACHE_PRINTF(...) \
+    do {                              \
+    } while (0)
+#endif
+
 namespace Compressor {
 template <typename T>
 __aicore__ inline T CeilDivT(T num1, T num2)
@@ -412,36 +424,64 @@ template <typename T>
 __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
                                          uint32_t col)
 {
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3003) || (__NPU_ARCH__ == 3113))
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+#else
+    (void)tensor;
+    (void)desc;
+    (void)dumpSize;
+    (void)row;
+    (void)col;
+#endif
 }
 
 template <typename T>
 __aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
                                          uint32_t col)
 {
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3003) || (__NPU_ARCH__ == 3113))
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+#else
+    (void)tensor;
+    (void)desc;
+    (void)dumpSize;
+    (void)row;
+    (void)col;
+#endif
 }
 
 template <typename T>
 __aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
 {
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3003) || (__NPU_ARCH__ == 3113))
     uint32_t col = 32 / sizeof(T);
     uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+#else
+    (void)tensor;
+    (void)desc;
+    (void)dumpSize;
+#endif
 }
 
 template <typename T>
 __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
 {
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3003) || (__NPU_ARCH__ == 3113))
     uint32_t col = 32 / sizeof(T);
     uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+#else
+    (void)tensor;
+    (void)desc;
+    (void)dumpSize;
+#endif
 }
 
 } // namespace Compressor

@@ -33,7 +33,7 @@ class CompressorTools {
 public:
     __aicore__ inline CompressorTools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
+    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
