@@ -83,15 +83,25 @@ CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
 {
     constexpr uint32_t COMM_RANKDIM_FOUR = 4;
     constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    uint8 commMode = mc2tiling::A5_AICPU_TS_ENGINE;
+    MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                    commMode);
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
         TopoType topoType =
             contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
         // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950,
+                                              commMode);
         return tiling.GetTiling();
     } else {
-        // 调用父类的通用实现
-        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+                                               nowSocVersion, true);
+        if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
+            constexpr uint64_t FP_AICPU_TILING_MAX_NUM = 5;
+            alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(FP_AICPU_TILING_MAX_NUM);
+        }
+        alltoallMatmulTileFormulate.GetTiling();
+        return alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
 }
 
@@ -230,8 +240,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
                                                         hcclServerType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint8_t commMode =
-        (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
             NON_QUANT_MODE, x2TransposeFlag, biasDType, commMode, tilingKey);
