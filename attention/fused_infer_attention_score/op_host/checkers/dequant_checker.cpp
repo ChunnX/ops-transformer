@@ -2253,7 +2253,7 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantMixed(const FiaTilin
     OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 &&
         (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
-            ToString(inputKvType).c_str(), "The datatype of query and attention_out must be FLOAT16"
+            ToString(inputKvType).c_str(), "The datatype of query and attention_out must be FLOAT16 "
             "when keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode "
             "and the datatype of key is INT8"),
         return ge::GRAPH_FAILED);
