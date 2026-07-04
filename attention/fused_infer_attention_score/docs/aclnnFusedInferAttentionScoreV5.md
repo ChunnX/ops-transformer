@@ -896,7 +896,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
+        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
         <td>-</td>
     </tr>
     <tr>
