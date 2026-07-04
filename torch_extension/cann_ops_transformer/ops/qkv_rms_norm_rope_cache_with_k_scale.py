@@ -77,7 +77,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             return q_out, q_scale, torch.empty_like(k_cache), torch.empty_like(v_cache), torch.empty_like(k_scale_cache)
 
 
-def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(qkv, head_nums, layout_qkv, layout_q_out):
+def _get_q_head_num_for_meta(head_nums):
     if head_nums is None:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: head_nums must not be None")
     if len(head_nums) < 1:
@@ -86,28 +86,42 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(qkv, head_nums, layout_qk
     n_q = head_nums[0]
     if n_q <= 0:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: head_nums[0] must be greater than 0")
+    return n_q
+
+
+def _normalize_layout_for_meta(layout, default_layout, attr_name):
+    layout = default_layout if layout is None or layout == "" else layout
+    if layout not in (QKV_LAYOUT_TND, QKV_LAYOUT_NTD):
+        raise RuntimeError(f"qkv_rms_norm_rope_cache_with_k_scale: {attr_name} must be TND or NTD")
+    return layout
+
+
+def _normalize_meta_layouts(layout_qkv, layout_q_out):
+    return (
+        _normalize_layout_for_meta(layout_qkv, QKV_LAYOUT_TND, "layout_qkv"),
+        _normalize_layout_for_meta(layout_q_out, QKV_LAYOUT_NTD, "layout_q_out"),
+    )
+
+
+def _get_qkv_shape_for_meta(qkv, layout_qkv, n_q):
     if qkv.dim() < 3:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: qkv must be at least 3D")
-    layout_qkv = QKV_LAYOUT_TND if layout_qkv is None or layout_qkv == "" else layout_qkv
-    layout_q_out = QKV_LAYOUT_NTD if layout_q_out is None or layout_q_out == "" else layout_q_out
-    if layout_qkv not in (QKV_LAYOUT_TND, QKV_LAYOUT_NTD):
-        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: layout_qkv must be TND or NTD")
-    if layout_q_out not in (QKV_LAYOUT_TND, QKV_LAYOUT_NTD):
-        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: layout_q_out must be TND or NTD")
 
     is_ntd = layout_qkv == QKV_LAYOUT_NTD
-    q_out_is_ntd = layout_q_out == QKV_LAYOUT_NTD
-    head_dim = 0 if is_ntd else 1
-    token_dim = 1 if is_ntd else 0
-    token_num = qkv.size(token_dim)
+    head_axis = 0 if is_ntd else 1
+    token_axis = 1 if is_ntd else 0
+    token_num = qkv.size(token_axis)
     head_size = qkv.size(2)
     if token_num <= 0 or head_size <= 0:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: qkv token and head dimensions must be positive")
-    if qkv.size(head_dim) < n_q:
+    if qkv.size(head_axis) < n_q:
         raise RuntimeError(
             "qkv_rms_norm_rope_cache_with_k_scale: qkv head dimension must be greater than or equal to head_nums[0]")
+    return token_num, head_size
 
-    if q_out_is_ntd:
+
+def _make_meta_output_tensors(n_q, token_num, head_size, layout_q_out):
+    if layout_q_out == QKV_LAYOUT_NTD:
         q_out_shape = (n_q, token_num, head_size)
         q_scale_shape = (n_q, token_num)
     else:
@@ -118,6 +132,13 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(qkv, head_nums, layout_qk
     q_out = torch.empty(q_out_shape, dtype=torch.float8_e4m3fn, device="meta")
     q_scale = torch.empty(q_scale_shape, dtype=torch.float32, device="meta")
     return q_out, q_scale
+
+
+def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(qkv, head_nums, layout_qkv, layout_q_out):
+    n_q = _get_q_head_num_for_meta(head_nums)
+    layout_qkv, layout_q_out = _normalize_meta_layouts(layout_qkv, layout_q_out)
+    token_num, head_size = _get_qkv_shape_for_meta(qkv, layout_qkv, n_q)
+    return _make_meta_output_tensors(n_q, token_num, head_size, layout_q_out)
 
 
 qkv_rms_norm_rope_cache_with_k_scale_op_builder = QkvRmsNormRopeCacheWithKScaleOpBuilder()

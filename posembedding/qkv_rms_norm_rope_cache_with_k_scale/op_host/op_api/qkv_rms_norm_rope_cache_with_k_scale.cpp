@@ -39,12 +39,11 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
     const char *layoutQkvAttr = GetLayoutOrDefault(layoutQkv, DEFAULT_QKV_LAYOUT);
     const char *layoutQOutAttr = GetLayoutOrDefault(layoutQOut, DEFAULT_Q_OUT_LAYOUT);
     L0_DFX(QkvRmsNormRopeCacheWithKScale, qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
-           queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvAttr, layoutQOutAttr,
-           epsilon);
+           queryStartLoc, seqLens, rotationOptional, vScaleOptional, headNums, layoutQkvAttr, layoutQOutAttr, epsilon);
 
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
-                           OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                    seqLens, rotationOptional, vScaleOptional),
+                           OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
+                                    queryStartLoc, seqLens, rotationOptional, vScaleOptional),
                            OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache),
                            OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon));
     if (ret != ACLNN_SUCCESS) {

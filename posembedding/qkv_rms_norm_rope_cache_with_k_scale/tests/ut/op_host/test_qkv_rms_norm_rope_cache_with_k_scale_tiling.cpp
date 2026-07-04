@@ -14,10 +14,8 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
-#include <cstring>
 #include <fstream>
 #include <map>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -27,8 +25,6 @@
 #include "gmm_csv_parse_utils.h"
 #include "op_common/op_host/util/math_util.h"
 #include "tiling_case_executor.h"
-#include "platform/platform_infos_def.h"
-#include "base/registry/op_impl_space_registry_v2.h"
 
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
@@ -75,14 +71,6 @@ struct TilingRunOptions {
     std::string socVersion = "Ascend950";
 };
 
-struct TensorSpec {
-    gert::StorageShape shape;
-    ge::DataType dtype = ge::DT_FLOAT;
-    ge::Format format = ge::FORMAT_ND;
-    bool isView = false;
-    gert::Stride stride;
-};
-
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, uint64_t aicNum = 32);
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, const TilingRunOptions &options);
 
@@ -113,26 +101,6 @@ void SetShape(TensorContractInfo &tensor, const std::vector<int64_t> &dims)
     tensor.shapePresent = true;
 }
 
-template <typename... Args>
-gert::Stride Stride(Args... strides)
-{
-    gert::Stride stride;
-    stride.SetDimNum(sizeof...(strides));
-    int64_t index = 0;
-    ((stride.SetStride(index, static_cast<int64_t>(strides)), ++index), ...);
-    return stride;
-}
-
-void SetStride(TensorContractInfo &tensor, const std::vector<int64_t> &strides)
-{
-    tensor.stride = gert::Stride();
-    tensor.stride.SetDimNum(strides.size());
-    for (uint64_t i = 0; i < strides.size(); ++i) {
-        tensor.stride.SetStride(static_cast<int64_t>(i), strides[i]);
-    }
-    tensor.stridePresent = true;
-}
-
 void RefreshShapes(ContractInput &input)
 {
     const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
@@ -146,16 +114,8 @@ void RefreshShapes(ContractInput &input)
     SetShape(input.cosSin, input.maxSeqLen, input.headDim);
     SetShape(input.slotMapping, input.totalTokens);
     SetShape(input.kCache, input.blockNum, input.numKHeads, input.blockSize, input.headDim);
-    input.kCache.stride = Stride(input.numKHeads * input.blockSize * input.headDim,
-        input.blockSize * input.headDim, input.headDim, 1);
-    input.kCache.stridePresent = true;
     SetShape(input.vCache, input.blockNum, input.numVHeads, input.blockSize, input.headDim);
-    input.vCache.stride = Stride(input.numVHeads * input.blockSize * input.headDim,
-        input.blockSize * input.headDim, input.headDim, 1);
-    input.vCache.stridePresent = true;
     SetShape(input.kScaleCache, input.blockNum, input.numKHeads, input.blockSize, 1);
-    input.kScaleCache.stride = Stride(input.numKHeads * input.blockSize, input.blockSize, 1, 1);
-    input.kScaleCache.stridePresent = true;
     SetShape(input.queryStartLoc, static_cast<uint64_t>(input.batch) + 1);
     SetShape(input.seqLens, static_cast<uint64_t>(input.batch));
     SetShape(input.rotation, input.headDim, input.headDim);
@@ -163,7 +123,7 @@ void RefreshShapes(ContractInput &input)
 }
 
 ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, uint64_t numKHeads = 2,
-    uint64_t numVHeads = 2, uint64_t headDim = 128)
+                         uint64_t numVHeads = 2, uint64_t headDim = 128)
 {
     ContractInput input;
     input.totalTokens = totalTokens;
@@ -222,8 +182,8 @@ optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo BuildCompileInfo(const Tiling
 {
     optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo compileInfo;
     compileInfo.aicNum = static_cast<uint32_t>(options.aicNum);
-    compileInfo.aivNum = static_cast<uint32_t>(
-        options.aivNumPresent ? options.aivNum : options.aicNum * QkvTiling::AIV_PER_AIC);
+    compileInfo.aivNum =
+        static_cast<uint32_t>(options.aivNumPresent ? options.aivNum : options.aicNum * QkvTiling::AIV_PER_AIC);
     compileInfo.ubSize = 262144U;
     compileInfo.l1Size = 524288U;
     compileInfo.l0cSize = 131072U;
@@ -231,67 +191,58 @@ optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo BuildCompileInfo(const Tiling
     return compileInfo;
 }
 
-TensorSpec MakeTensorSpec(const TensorContractInfo &tensor)
+gert::TilingContextPara::TensorDescription MakeTensorDesc(const TensorContractInfo &tensor)
 {
-    TensorSpec spec;
-    spec.shape = MakeStorageShape(tensor.shape);
-    spec.dtype = tensor.dtype;
-    spec.format = ge::FORMAT_ND;
-    spec.isView = tensor.stridePresent;
-    spec.stride = tensor.stride;
-    return spec;
+    return {MakeStorageShape(tensor.shape), tensor.dtype, ge::FORMAT_ND};
 }
 
-TensorSpec MakeEmptyTensorSpec(ge::DataType dtype)
+gert::TilingContextPara::TensorDescription MakeEmptyTensorDesc(ge::DataType dtype)
 {
-    TensorSpec spec;
-    spec.shape = gert::StorageShape();
-    spec.dtype = dtype;
-    spec.format = ge::FORMAT_ND;
-    return spec;
+    return {gert::StorageShape(), dtype, ge::FORMAT_ND};
 }
 
-std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
+std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputDescs(const ContractInput &input)
 {
-    std::vector<TensorSpec> inputs;
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
     inputs.reserve(12U);
-    inputs.push_back(MakeTensorSpec(input.qkv));
-    inputs.push_back(MakeTensorSpec(input.qGamma));
-    inputs.push_back(MakeTensorSpec(input.kGamma));
-    inputs.push_back(MakeTensorSpec(input.cosSin));
-    inputs.push_back(MakeTensorSpec(input.slotMapping));
-    inputs.push_back(MakeTensorSpec(input.kCache));
-    inputs.push_back(MakeTensorSpec(input.vCache));
-    inputs.push_back(MakeTensorSpec(input.kScaleCache));
-    inputs.push_back(MakeTensorSpec(input.queryStartLoc));
-    inputs.push_back(MakeTensorSpec(input.seqLens));
-    inputs.push_back(input.rotation.shapePresent ? MakeTensorSpec(input.rotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
-    inputs.push_back(input.vScale.shapePresent ? MakeTensorSpec(input.vScale) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
+    inputs.push_back(MakeTensorDesc(input.qkv));
+    inputs.push_back(MakeTensorDesc(input.qGamma));
+    inputs.push_back(MakeTensorDesc(input.kGamma));
+    inputs.push_back(MakeTensorDesc(input.cosSin));
+    inputs.push_back(MakeTensorDesc(input.slotMapping));
+    inputs.push_back(MakeTensorDesc(input.kCache));
+    inputs.push_back(MakeTensorDesc(input.vCache));
+    inputs.push_back(MakeTensorDesc(input.kScaleCache));
+    inputs.push_back(MakeTensorDesc(input.queryStartLoc));
+    inputs.push_back(MakeTensorDesc(input.seqLens));
+    inputs.push_back(input.rotation.shapePresent ? MakeTensorDesc(input.rotation) :
+                                                   MakeEmptyTensorDesc(ge::DT_UNDEFINED));
+    inputs.push_back(input.vScale.shapePresent ? MakeTensorDesc(input.vScale) : MakeEmptyTensorDesc(ge::DT_UNDEFINED));
     return inputs;
 }
 
-std::vector<TensorSpec> BuildTilingOutputSpecs(const ContractInput &input)
+std::vector<gert::TilingContextPara::TensorDescription> BuildTilingOutputDescs(const ContractInput &input)
 {
     const bool isTnd = input.layoutQOut == TEST_LAYOUT_TND;
-    std::vector<TensorSpec> outputs;
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
     outputs.reserve(5U);
     gert::Shape qOutShape;
     qOutShape.AppendDim(static_cast<int64_t>(isTnd ? input.totalTokens : input.numQHeads));
     qOutShape.AppendDim(static_cast<int64_t>(isTnd ? input.numQHeads : input.totalTokens));
     qOutShape.AppendDim(static_cast<int64_t>(input.headDim));
-    outputs.push_back({MakeStorageShape(qOutShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND, false, gert::Stride()});
+    outputs.push_back({MakeStorageShape(qOutShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND});
     gert::Shape scaleShape;
     scaleShape.AppendDim(static_cast<int64_t>(isTnd ? input.totalTokens : input.numQHeads));
     scaleShape.AppendDim(static_cast<int64_t>(isTnd ? input.numQHeads : input.totalTokens));
-    outputs.push_back({MakeStorageShape(scaleShape), ge::DT_FLOAT, ge::FORMAT_ND, false, gert::Stride()});
-    outputs.push_back(MakeTensorSpec(input.kCache));
-    outputs.push_back(MakeTensorSpec(input.vCache));
-    outputs.push_back(MakeTensorSpec(input.kScaleCache));
+    outputs.push_back({MakeStorageShape(scaleShape), ge::DT_FLOAT, ge::FORMAT_ND});
+    outputs.push_back(MakeTensorDesc(input.kCache));
+    outputs.push_back(MakeTensorDesc(input.vCache));
+    outputs.push_back(MakeTensorDesc(input.kScaleCache));
     return outputs;
 }
 
-std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
-    const ContractInput &input, const TilingRunOptions &options)
+std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(const ContractInput &input,
+                                                              const TilingRunOptions &options)
 {
     std::vector<int64_t> headNums;
     if (options.headNumsPresent) {
@@ -308,177 +259,22 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     attrs.push_back(gert::TilingContextPara::OpAttr(
         "head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)));
     if (options.layoutQkvPresent) {
-        const std::string layoutQkv =
-            options.layoutQkvOverridePresent ? options.layoutQkvOverride :
-                                               (input.layoutQkv == TEST_LAYOUT_TND ? "TND" : "NTD");
+        const std::string layoutQkv = options.layoutQkvOverridePresent ?
+                                          options.layoutQkvOverride :
+                                          (input.layoutQkv == TEST_LAYOUT_TND ? "TND" : "NTD");
         attrs.push_back(gert::TilingContextPara::OpAttr(
             "layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQkv)));
     }
     if (options.layoutQkvPresent && options.layoutQOutPresent) {
-        const std::string layoutQOut =
-            options.layoutQOutOverridePresent ? options.layoutQOutOverride :
-                                                (input.layoutQOut == TEST_LAYOUT_TND ? "TND" : "NTD");
+        const std::string layoutQOut = options.layoutQOutOverridePresent ?
+                                           options.layoutQOutOverride :
+                                           (input.layoutQOut == TEST_LAYOUT_TND ? "TND" : "NTD");
         attrs.push_back(gert::TilingContextPara::OpAttr(
             "layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQOut)));
         attrs.push_back(
             gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
     }
     return attrs;
-}
-
-std::unique_ptr<gert::Tensor> MakeTensor(const TensorSpec &spec)
-{
-    return std::make_unique<gert::Tensor>(spec.shape, gert::StorageFormat(spec.format, spec.format,
-        gert::ExpandDimsType()), gert::TensorPlacement::kOnHost, spec.dtype, nullptr);
-}
-
-std::unique_ptr<gert::TensorV2> MakeViewTensor(const TensorSpec &spec)
-{
-    return std::make_unique<gert::TensorV2>(spec.shape, gert::StorageFormat(spec.format, spec.format,
-        gert::ExpandDimsType()), gert::TensorPlacement::kOnHost, spec.dtype, nullptr, nullptr, spec.stride, 0);
-}
-
-void BuildTensorLists(const std::vector<TensorSpec> &specs, std::vector<uint32_t> &irInstances,
-    std::vector<gert::Tensor *> &tensors, std::vector<std::unique_ptr<gert::Tensor>> &tensorKeepAlive,
-    std::vector<std::unique_ptr<gert::TensorV2>> &viewTensorKeepAlive)
-{
-    irInstances.reserve(specs.size());
-    tensors.reserve(specs.size());
-    for (const auto &spec : specs) {
-        if (spec.shape.GetStorageShape().GetDimNum() == 0) {
-            irInstances.push_back(0U);
-            continue;
-        }
-        irInstances.push_back(1U);
-        if (spec.isView) {
-            auto tensor = MakeViewTensor(spec);
-            tensors.push_back(reinterpret_cast<gert::Tensor *>(tensor.get()));
-            viewTensorKeepAlive.push_back(std::move(tensor));
-        } else {
-            auto tensor = MakeTensor(spec);
-            tensors.push_back(tensor.get());
-            tensorKeepAlive.push_back(std::move(tensor));
-        }
-    }
-}
-
-void AppendAttrs(gert::TilingContextFaker &contextFaker, const std::vector<gert::TilingContextPara::OpAttr> &attrs)
-{
-    for (const auto &attrInfo : attrs) {
-        switch (attrInfo.attr_.type_) {
-            case Ops::Transformer::AnyValue::ValueType::VT_BOOL:
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<bool *>(attrInfo.attr_.valuePtr_.get()));
-                break;
-            case Ops::Transformer::AnyValue::ValueType::VT_INT:
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<int64_t *>(attrInfo.attr_.valuePtr_.get()));
-                break;
-            case Ops::Transformer::AnyValue::ValueType::VT_FLOAT:
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<float *>(attrInfo.attr_.valuePtr_.get()));
-                break;
-            case Ops::Transformer::AnyValue::ValueType::VT_STRING:
-                contextFaker.Attr(attrInfo.attrName_,
-                    ge::AscendString(reinterpret_cast<std::string *>(attrInfo.attr_.valuePtr_.get())->c_str()));
-                break;
-            case Ops::Transformer::AnyValue::ValueType::VT_LIST_INT:
-                contextFaker.Attr(attrInfo.attrName_,
-                    *reinterpret_cast<std::vector<int64_t> *>(attrInfo.attr_.valuePtr_.get()));
-                break;
-            default:
-                throw std::invalid_argument("unsupported qkv tiling attr type");
-        }
-    }
-}
-
-void InitPlatformInfo(gert::TilingContext *context, const TilingRunOptions &options)
-{
-    const std::string npuArch = options.socVersion == "Ascend950" ? "3510" : "2201";
-    std::map<std::string, std::string> socInfos = {
-        {"ai_core_cnt", std::to_string(options.aicNum)},
-        {"cube_core_cnt", std::to_string(options.aicNum)},
-        {"vector_core_cnt", std::to_string(options.aicNum * QkvTiling::AIV_PER_AIC)},
-        {"core_type_list", "CubeCore,VectorCore"},
-        {"l2_size", "33554432"},
-    };
-    std::map<std::string, std::string> aicoreSpec = {
-        {"ub_size", "262144"},
-        {"l1_size", "524288"},
-        {"l0_a_size", "65536"},
-        {"l0_b_size", "65536"},
-        {"l0_c_size", "131072"},
-        {"bt_size", "0"},
-        {"load3d_constraints", "1"},
-        {"cube_freq", "cube_freq"},
-    };
-    std::map<std::string, std::string> intrinsics = {
-        {"Intrinsic_data_move_l12ub", "float16"},
-        {"Intrinsic_data_move_l0c2ub", "float16"},
-    };
-    std::map<std::string, std::string> versions = {
-        {"NpuArch", npuArch},
-        {"Short_SoC_version", options.socVersion},
-    };
-    context->GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);
-    context->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicoreSpec);
-    context->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-    context->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-    context->GetPlatformInfo()->SetPlatformRes("version", versions);
-}
-
-bool ExecuteQkvTiling(const ContractInput &input, const TilingRunOptions &options,
-    optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo, TilingInfo &tilingInfo)
-{
-    gert::TilingContextFaker contextFaker;
-    auto inputSpecs = BuildTilingInputSpecs(input);
-    auto outputSpecs = BuildTilingOutputSpecs(input);
-    std::vector<uint32_t> inputIrInstances;
-    std::vector<uint32_t> outputIrInstances;
-    std::vector<gert::Tensor *> inputTensors;
-    std::vector<gert::Tensor *> outputTensors;
-    std::vector<std::unique_ptr<gert::Tensor>> inputTensorKeepAlive;
-    std::vector<std::unique_ptr<gert::Tensor>> outputTensorKeepAlive;
-    std::vector<std::unique_ptr<gert::TensorV2>> inputViewTensorKeepAlive;
-    std::vector<std::unique_ptr<gert::TensorV2>> outputViewTensorKeepAlive;
-    BuildTensorLists(inputSpecs, inputIrInstances, inputTensors, inputTensorKeepAlive, inputViewTensorKeepAlive);
-    BuildTensorLists(outputSpecs, outputIrInstances, outputTensors, outputTensorKeepAlive, outputViewTensorKeepAlive);
-    contextFaker.IrInstanceNum(inputIrInstances, outputIrInstances)
-        .InputTensors(inputTensors)
-        .OutputTensors(outputTensors);
-    AppendAttrs(contextFaker, BuildTilingAttrs(input, options));
-
-    fe::PlatFormInfos platformInfo;
-    platformInfo.Init();
-    auto tilingData = gert::TilingData::CreateCap(4096);
-    auto workspaceHolder = gert::ContinuousVector::Create<size_t>(4096);
-    auto *workspace = reinterpret_cast<gert::ContinuousVector *>(workspaceHolder.get());
-    auto contextHolder = contextFaker.SetOpType("QkvRmsNormRopeCacheWithKScale")
-                             .CompileInfo(&compileInfo)
-                             .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
-                             .TilingData(tilingData.get())
-                             .Workspace(workspace)
-                             .Build();
-    auto *tilingContext = contextHolder.GetContext();
-    InitPlatformInfo(tilingContext, options);
-
-    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto tilingFunc = spaceRegistry->GetOpImpl("QkvRmsNormRopeCacheWithKScale")->tiling;
-    if (tilingFunc(tilingContext) != ge::GRAPH_SUCCESS) {
-        return false;
-    }
-
-    tilingInfo.tilingKey = tilingContext->GetTilingKey();
-    tilingInfo.blockNum = tilingContext->GetBlockDim();
-    size_t workspaceCount = tilingContext->GetWorkspaceNum();
-    if (workspaceCount > 0U) {
-        auto workspaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
-        for (size_t i = 0U; i < workspaceCount; ++i) {
-            tilingInfo.workspaceSizes.push_back(workspaceSizes[i]);
-        }
-    }
-    auto rawTilingData = tilingContext->GetRawTilingData();
-    tilingInfo.tilingData = std::make_unique<uint8_t[]>(rawTilingData->GetDataSize());
-    tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
-    std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
-    return true;
 }
 
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, uint64_t aicNum)
@@ -491,7 +287,10 @@ bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, u
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, const TilingRunOptions &options)
 {
     auto compileInfo = BuildCompileInfo(options);
-    return ExecuteQkvTiling(input, options, compileInfo, tilingInfo);
+    gert::TilingContextPara tilingContextPara("QkvRmsNormRopeCacheWithKScale", BuildTilingInputDescs(input),
+                                              BuildTilingOutputDescs(input), BuildTilingAttrs(input, options),
+                                              &compileInfo, options.socVersion, options.aicNum, compileInfo.ubSize);
+    return ExecuteTiling(tilingContextPara, tilingInfo);
 }
 
 bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success, const TilingInfo &tilingInfo)
@@ -512,10 +311,9 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success,
     const int64_t expectedWorkspace = static_cast<int64_t>(RESERVED_WORKSPACE_SIZE + TEST_OP_WORKSPACE_SIZE);
     return tilingInfo.blockNum == item.coreGroupNum && tilingInfo.workspaceSizes[0] == expectedWorkspace &&
            tilingData->totalTokens == item.totalTokens && tilingData->qHeadNum == item.numQHeads &&
-           tilingData->kvHeadNum == item.numKHeads &&
-           tilingData->headDim == item.headDim && tilingData->blockSize == TEST_BLOCK_SIZE &&
-           tilingData->tokenTile == item.tokenTile && tilingData->coreTokenTile == item.coreTokenTile &&
-           tilingData->coreGroupNum == item.coreGroupNum;
+           tilingData->kvHeadNum == item.numKHeads && tilingData->headDim == item.headDim &&
+           tilingData->blockSize == TEST_BLOCK_SIZE && tilingData->tokenTile == item.tokenTile &&
+           tilingData->coreTokenTile == item.coreTokenTile && tilingData->coreGroupNum == item.coreGroupNum;
 }
 
 uint64_t ParseU64(const std::string &value, uint64_t defaultValue = 0)
@@ -664,11 +462,6 @@ void ApplyTensorUpdate(ContractInput &input, const std::string &update)
         tensor->dtype = ops::ut::ParseGeDtype(value);
     } else if (field == "present") {
         tensor->shapePresent = ops::ut::ParseBool(value);
-    } else if (field == "stride") {
-        SetStride(*tensor, ops::ut::ParseI64List(value));
-    } else if (field == "strideDimNum") {
-        tensor->stride.SetDimNum(ParseU64(value));
-        tensor->stridePresent = true;
     } else {
         throw std::invalid_argument("unknown tensor update field: " + trimmed);
     }
@@ -809,9 +602,9 @@ std::vector<CsvTilingCase> LoadCsvTilingCases(const std::string &csvFilePath)
 
 const std::vector<CsvTilingCase> &GetCsvTilingCases()
 {
-    static const auto cases = LoadCsvTilingCases(ops::ut::ResolveCsvPath(
-        "test_qkv_rms_norm_rope_cache_with_k_scale_tiling.csv",
-        "posembedding/qkv_rms_norm_rope_cache_with_k_scale/tests/ut/op_host", __FILE__));
+    static const auto cases = LoadCsvTilingCases(
+        ops::ut::ResolveCsvPath("test_qkv_rms_norm_rope_cache_with_k_scale_tiling.csv",
+                                "posembedding/qkv_rms_norm_rope_cache_with_k_scale/tests/ut/op_host", __FILE__));
     return cases;
 }
 
@@ -821,7 +614,7 @@ std::string MakeCsvTilingCaseName(const testing::TestParamInfo<CsvTilingCase> &i
 }
 
 uint64_t ExpectTileFromSpec(const CsvTilingCase &item, const ContractInput &input, const TilingData &tiling,
-    const std::string &prefix)
+                            const std::string &prefix)
 {
     const uint64_t tokenOffset = item.SpecU64(prefix + "TokenOffset");
     const uint64_t inputSize = item.SpecU64(prefix + "InputSize");
@@ -844,8 +637,7 @@ void ExpectTilingKey(const CsvTilingCase &item, const ContractInput &input, cons
         input.layoutQkv == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
     const uint64_t expectedLayoutQOut =
         input.layoutQOut == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
-    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey),
-        EncodeQkvKScaleTilingKey(expectedLayout, expectedLayoutQOut))
+    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), EncodeQkvKScaleTilingKey(expectedLayout, expectedLayoutQOut))
         << "caseName=" << item.caseName;
 }
 
@@ -885,13 +677,13 @@ void ExpectCoreLocalTilesFromSpec(const CsvTilingCase &item, const ContractInput
 
 bool IsKnownSpecKey(const std::string &key)
 {
-    return key == "tileTokenOffset" || key == "tileInputSize" || key == "tileExpectOffset" ||
-           key == "tileExpectSize" || key == "tileExpectRowSize" || key == "coreIndex" ||
-           key == "rangeBegin" || key == "rangeEnd" || key == "lastCoreIndex" || key == "lastBegin" ||
-           key == "lastEnd" || key == "coveredEnd" || key == "tile0TokenOffset" || key == "tile0InputSize" ||
-           key == "tile0ExpectOffset" || key == "tile0ExpectSize" || key == "tile0ExpectRowSize" ||
-           key == "tile1TokenOffset" || key == "tile1InputSize" || key == "tile1ExpectOffset" ||
-           key == "tile1ExpectSize" || key == "tile1ExpectRowSize";
+    return key == "tileTokenOffset" || key == "tileInputSize" || key == "tileExpectOffset" || key == "tileExpectSize" ||
+           key == "tileExpectRowSize" || key == "coreIndex" || key == "rangeBegin" || key == "rangeEnd" ||
+           key == "lastCoreIndex" || key == "lastBegin" || key == "lastEnd" || key == "coveredEnd" ||
+           key == "tile0TokenOffset" || key == "tile0InputSize" || key == "tile0ExpectOffset" ||
+           key == "tile0ExpectSize" || key == "tile0ExpectRowSize" || key == "tile1TokenOffset" ||
+           key == "tile1InputSize" || key == "tile1ExpectOffset" || key == "tile1ExpectSize" ||
+           key == "tile1ExpectRowSize";
 }
 
 void ExpectCsvSpecChecks(const CsvTilingCase &item, const ContractInput &input, const TilingData &tiling)
@@ -973,8 +765,8 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
     ExpectCsvSpecChecks(item, input, tiling);
 }
 
-INSTANTIATE_TEST_SUITE_P(CsvCases, QkvRmsNormRopeCacheWithKScaleCsvTiling,
-    testing::ValuesIn(GetCsvTilingCases()), MakeCsvTilingCaseName);
+INSTANTIATE_TEST_SUITE_P(CsvCases, QkvRmsNormRopeCacheWithKScaleCsvTiling, testing::ValuesIn(GetCsvTilingCases()),
+                         MakeCsvTilingCaseName);
 
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
 {
@@ -1011,10 +803,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
                     results[threadIdx].failedIteration = iter;
                     results[threadIdx].success = success;
                     results[threadIdx].blockNum = tilingInfo.blockNum;
-                    if (success && tilingInfo.tilingDataSize >= sizeof(optiling::QkvRmsNormRopeCacheWithKScaleTilingData) &&
+                    if (success &&
+                        tilingInfo.tilingDataSize >= sizeof(optiling::QkvRmsNormRopeCacheWithKScaleTilingData) &&
                         tilingInfo.tilingData != nullptr) {
-                        const auto *tilingData = reinterpret_cast<const optiling::QkvRmsNormRopeCacheWithKScaleTilingData *>(
-                            tilingInfo.tilingData.get());
+                        const auto *tilingData =
+                            reinterpret_cast<const optiling::QkvRmsNormRopeCacheWithKScaleTilingData *>(
+                                tilingInfo.tilingData.get());
                         results[threadIdx].tokenTile = tilingData->tokenTile;
                         results[threadIdx].coreTokenTile = tilingData->coreTokenTile;
                         results[threadIdx].coreGroupNum = tilingData->coreGroupNum;
@@ -1033,10 +827,8 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
     for (uint32_t threadIdx = 0U; threadIdx < THREAD_COUNT; ++threadIdx) {
         EXPECT_TRUE(results[threadIdx].ok)
             << "threadIdx=" << threadIdx << " failedCase=" << results[threadIdx].failedCase
-            << " failedIteration=" << results[threadIdx].failedIteration
-            << " success=" << results[threadIdx].success
-            << " blockNum=" << results[threadIdx].blockNum
-            << " tokenTile=" << results[threadIdx].tokenTile
+            << " failedIteration=" << results[threadIdx].failedIteration << " success=" << results[threadIdx].success
+            << " blockNum=" << results[threadIdx].blockNum << " tokenTile=" << results[threadIdx].tokenTile
             << " coreTokenTile=" << results[threadIdx].coreTokenTile
             << " coreGroupNum=" << results[threadIdx].coreGroupNum;
     }
