@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file aclnn_dense_lightning_indexer_softmax_lse_metadata.h
+ * \\file aclnn_dense_lightning_indexer_softmax_lse_v2_metadata.h
  * \brief
  */
-#ifndef ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
-#define ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
+#ifndef ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_V2_METADATA_H
+#define ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_V2_METADATA_H
 
 #include "aclnn/aclnn_base.h"
 #include "opdev/op_executor.h"
@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
+aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensKOptional,
     const aclTensor* seqUsedQOptional,
@@ -43,7 +43,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
     aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnDenseLightningIndexerSoftmaxLseMetadata(void *workspace,
+aclnnDenseLightningIndexerSoftmaxLseV2Metadata(void *workspace,
                                              uint64_t workspaceSize,
                                              aclOpExecutor *executor,
                                              aclrtStream stream);
@@ -52,4 +52,4 @@ aclnnDenseLightningIndexerSoftmaxLseMetadata(void *workspace,
 }
 #endif
 
-#endif // ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_H
+#endif // ACLNN_DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_V2_METADATA_H
