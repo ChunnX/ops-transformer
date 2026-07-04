@@ -315,11 +315,11 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         return;
     }
 
-    // Phase 2: 轮询 notify 计数并 URMA 发送数据
-    PollNotifyAndSendData<ElementMMadOut2>(
-        startRankId, completedRank, processRankNum, rankId,
-        maxDataLengthPerBlock, maxDataSizePerToken,
-        sendTokenCnt, totalTokenCnt, sendTensor, params);
+    // // Phase 2: 轮询 notify 计数并 URMA 发送数据
+    // PollNotifyAndSendData<ElementMMadOut2>(
+    //     startRankId, completedRank, processRankNum, rankId,
+    //     maxDataLengthPerBlock, maxDataSizePerToken,
+    //     sendTokenCnt, totalTokenCnt, sendTensor, params);
 
     // Phase 3: drain 本核负责的 rank 的 urma 发送
     DrainUrmaConnections(startRankId, endRankId, rankId, params);
