@@ -19,6 +19,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "flash_attn_tiling_info_parser.h"
+#include "flash_attn_tiling_utils.h"
 
 using std::map;
 using std::pair;
@@ -328,6 +329,32 @@ ge::graphStatus FaInfoParser::GetS1Size()
     return ge::GRAPH_SUCCESS;
 }
 
+void FaInfoParser::GetKvIsContiguous()
+{
+    // 老版本opbase不支持strides, 无法判NC, 放过
+    if (isTensorV1_ || keyStrides_ == nullptr || valueStrides_ == nullptr) {
+        return;
+    }
+    if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
+        // 非PA场景: kv连续性是checker负责校验, parser只负责识别
+        return;
+    }
+    // PA场景: 检测kv是否非连续, 是则标记NON_CONTIGUOUS并记dimIndex供checker复用
+    int32_t keyDimIdx = 0;
+    int32_t valDimIdx = 0;
+    const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
+    bool keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
+                      ge::GRAPH_SUCCESS);
+    bool valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
+                      ge::GRAPH_SUCCESS);
+    if (!keyContig || !valContig) {
+        kvStorageMode_ = KvStorageMode::NON_CONTIGUOUS;
+        keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
+        valueNonContigDim_ = valContig ? -1 : valDimIdx;
+    }
+}
+
 void FaInfoParser::GetKvStorageMode()
 {
     bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
@@ -338,6 +365,7 @@ void FaInfoParser::GetKvStorageMode()
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
+    GetKvIsContiguous();
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
@@ -503,8 +531,9 @@ ge::graphStatus FaInfoParser::GetActualSeqInfo()
 
 void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
 {
-    // PagedAttention 参数组
-    faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
+    // PagedAttention 参数组 (NON_CONTIGUOUS也是PA场景)
+    faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION ||
+                                kvStorageMode_ == KvStorageMode::NON_CONTIGUOUS);
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 
@@ -541,6 +570,7 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+    faInfo.kvStorageMode = kvStorageMode_;
     faInfo.emptyTensorFlag = emptyTensorFlag_;
 
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
@@ -551,6 +581,8 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.keyStrides = keyStrides_;
     faInfo.valueStrides = valueStrides_;
     faInfo.isTensorV1 = isTensorV1_;
+    faInfo.keyNonContigDim = keyNonContigDim_;
+    faInfo.valueNonContigDim = valueNonContigDim_;
 
     GenerateFeatureInfo(faInfo);
     GenerateLayoutInfo(faInfo);
@@ -594,6 +626,9 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
+        return ge::GRAPH_FAILED;
+    }
     GetKvStorageMode();
     if (emptyTensorFlag_) {
         return ge::GRAPH_SUCCESS;
@@ -629,10 +664,6 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
     GetKeyTSize();
 
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
-        return ge::GRAPH_FAILED;
-    }
-
-    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
 
