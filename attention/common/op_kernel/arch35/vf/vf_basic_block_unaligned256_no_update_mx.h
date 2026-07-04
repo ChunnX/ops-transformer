@@ -290,7 +290,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         ExpSub(vreg_exp_odd_1, vreg_input_x2, vreg_max_brc, preg_all_b32);
         ExpSub(vreg_exp_even_2, vreg_input_x3, vreg_max_brc, preg_all_b32);
         ExpSub(vreg_exp_odd_2, vreg_input_x4, vreg_max_brc, preg_all_b32);
-        Add(vreg_exp_sum_1, vreg_exp_even_1, vreg_exp_odd_1, preg_all_b32); // x_sum = sum(x_exp, axis=-1, keepdims=True)
+        // x_sum = sum(x_exp, axis=-1, keepdims=True)
+        Add(vreg_exp_sum_1, vreg_exp_even_1, vreg_exp_odd_1, preg_all_b32);
         Add(vreg_exp_sum_2, vreg_exp_even_2, vreg_exp_odd_2, preg_all_b32);
         Add(vreg_exp_sum_3, vreg_exp_sum_1, vreg_exp_sum_2, preg_all_b32);
         Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum_3,
