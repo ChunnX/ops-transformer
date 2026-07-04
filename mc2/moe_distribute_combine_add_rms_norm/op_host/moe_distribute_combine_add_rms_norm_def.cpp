@@ -15,6 +15,7 @@
 
 #include "register/op_def_registry.h"
 
+
 namespace ops {
 class MoeDistributeCombineAddRmsNorm : public OpDef {
 public:
