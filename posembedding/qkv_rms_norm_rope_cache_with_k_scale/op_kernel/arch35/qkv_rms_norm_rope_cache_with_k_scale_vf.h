@@ -99,11 +99,12 @@ __simd_callee__ inline void RopeCastBf16D128(MicroAPI::RegTensor<bfloat16_t> &ou
     MicroAPI::Cast<bfloat16_t, float, QKV_K_SCALE_CAST_F32_TO_BF16>(outHighBf16, outHigh, maskHalf);
 }
 
-__simd_callee__ inline void
-ScatterNzBf16D128(__ubuf__ bfloat16_t *outBf16Nz, MicroAPI::RegTensor<bfloat16_t> &outLowBf16,
-                  MicroAPI::RegTensor<bfloat16_t> &outHighBf16, MicroAPI::RegTensor<uint16_t> &nzIndex,
-                  uint16_t tokenIdx, uint16_t headIdx, uint32_t outputTokenStride, uint32_t outputHeadStride,
-                  uint32_t halfDOffset, MicroAPI::MaskReg bf16HighBitMask)
+__simd_callee__ inline void ScatterNzBf16D128(__ubuf__ bfloat16_t *outBf16Nz,
+                                              MicroAPI::RegTensor<bfloat16_t> &outLowBf16,
+                                              MicroAPI::RegTensor<bfloat16_t> &outHighBf16,
+                                              MicroAPI::RegTensor<uint16_t> &nzIndex, uint16_t tokenIdx,
+                                              uint16_t headIdx, uint32_t outputTokenStride, uint32_t outputHeadStride,
+                                              uint32_t halfDOffset, MicroAPI::MaskReg bf16HighBitMask)
 {
     const uint32_t rowOutOffset =
         (static_cast<uint32_t>(tokenIdx) * outputTokenStride + static_cast<uint32_t>(headIdx) * outputHeadStride) *
@@ -174,17 +175,15 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaLow, gamma);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaHigh, gamma + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE);
     MicroAPI::LoadAlign<uint16_t>(nzIndex, nzScatterIndex);
-    const uint32_t halfDOffset =
-        (QKV_K_SCALE_D128_HALF_SIZE / QKV_K_SCALE_NZ_C0) * outputRowStride * QKV_K_SCALE_NZ_C0;
+    const uint32_t halfDOffset = (QKV_K_SCALE_D128_HALF_SIZE / QKV_K_SCALE_NZ_C0) * outputRowStride * QKV_K_SCALE_NZ_C0;
 
     for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
         MicroAPI::RegTensor<float> cosValue;
         MicroAPI::RegTensor<float> sinValue;
-        MicroAPI::AddrReg cosSinAddrReg =
-            MicroAPI::CreateAddrReg<float>(tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
+        MicroAPI::AddrReg cosSinAddrReg = MicroAPI::CreateAddrReg<float>(tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(cosValue, cosSin, cosSinAddrReg);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
-            sinValue, cosSin + QKV_K_SCALE_D128_HALF_SIZE, cosSinAddrReg);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sinValue, cosSin + QKV_K_SCALE_D128_HALF_SIZE,
+                                                                  cosSinAddrReg);
 
         for (uint16_t headIdx = 0U; headIdx < headSize; ++headIdx) {
             MicroAPI::RegTensor<bfloat16_t> xLowBf16;

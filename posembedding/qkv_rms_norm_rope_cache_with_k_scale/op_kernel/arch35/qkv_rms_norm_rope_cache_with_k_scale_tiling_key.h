@@ -34,8 +34,7 @@ ASCENDC_TPL_ARGS_DECL(QkvRmsNormRopeCacheWithKScale,
                                             QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128),
                       ASCENDC_TPL_UINT_DECL(QKV_LAYOUT, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, QKV_K_SCALE_LAYOUT_NTD,
                                             QKV_K_SCALE_LAYOUT_TND),
-                      ASCENDC_TPL_UINT_DECL(Q_OUT_LAYOUT, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST,
-                                            QKV_K_SCALE_LAYOUT_NTD,
+                      ASCENDC_TPL_UINT_DECL(Q_OUT_LAYOUT, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, QKV_K_SCALE_LAYOUT_NTD,
                                             QKV_K_SCALE_LAYOUT_TND));
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(

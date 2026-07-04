@@ -89,8 +89,7 @@ uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numK
 uint64_t CalcQkPreprocessNzBytes(uint64_t rowCount)
 {
     const uint64_t rowStride =
-        Ops::Base::CeilAlign(rowCount - 1,
-                             QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) +
+        Ops::Base::CeilAlign(rowCount - 1, QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_UB_NZ_STRIDE_ALIGN) +
         1;
     const uint64_t blockCount =
         (QkvRmsNormRopeCacheWithKScaleBaseTiling::QK_PREPROCESS_NZ_D_BLOCKS - 1) * rowStride + rowCount;
@@ -491,13 +490,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMinimumTokenTil
                     opName_, "Nq+Nk", std::to_string(numQkHeads).c_str(),
                     ("nq plus nk must be less than or equal to " + std::to_string(QK_OUTPUT_ROWS_PER_AIV)).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qkPreprocessBytes > QK_PREPROCESS_UB_BYTES,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "Q/K preprocess UB bytes", std::to_string(qkPreprocessBytes).c_str(),
-                    ("Q/K rope preprocess UB footprint must be less than or equal to " +
-                     std::to_string(QK_PREPROCESS_UB_BYTES))
-                        .c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        qkPreprocessBytes > QK_PREPROCESS_UB_BYTES,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "Q/K preprocess UB bytes", std::to_string(qkPreprocessBytes).c_str(),
+            ("Q/K rope preprocess UB footprint must be less than or equal to " + std::to_string(QK_PREPROCESS_UB_BYTES))
+                .c_str()),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         numQkvHeads > QKV_INPUT_ROWS_PER_AIV,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -538,8 +537,8 @@ bool QkvRmsNormRopeCacheWithKScaleBaseTiling::TrySelectTokenTile(uint64_t tokenT
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%llu tokenTile=%llu rowTile=%llu "
             "rowTileAligned=%llu qkAlignedRows=%llu qkPreprocessBytes=%llu fitsUb=%u fitsSideBySideL0c=%u "
             "accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, qkPreprocessBytes,
-            fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, qkPreprocessBytes, fitsUb ? 1U : 0U,
+            fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
     return accepted;
 }
 
@@ -811,8 +810,8 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
             "layout_qkv=%s layout_q_out=%s epsilon=%f T=%llu batch=%llu headDim=%llu maxSeqLen=%llu blockNum=%llu "
             "blockSize=%llu aicNum=%llu.",
             input_.numQHeads, input_.numKHeads, input_.numVHeads, LayoutName(input_.layoutQkv),
-            LayoutName(input_.layoutQOut), epsilon_, input_.totalTokens, input_.batch, input_.headDim,
-            input_.maxSeqLen, input_.blockNum, input_.blockSize, aicNum_);
+            LayoutName(input_.layoutQOut), epsilon_, input_.totalTokens, input_.batch, input_.headDim, input_.maxSeqLen,
+            input_.blockNum, input_.blockSize, aicNum_);
     LogTensorInfo("qkv", input_.qkv);
     LogTensorInfo("qGamma", input_.qGamma);
     LogTensorInfo("kGamma", input_.kGamma);

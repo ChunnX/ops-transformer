@@ -356,8 +356,7 @@ private:
         const bool isNtd = std::strcmp(layoutQkv, QKV_LAYOUT_NTD) == 0;
         isTnd = std::strcmp(layoutQkv, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_qkv", layoutQkv,
-                                                  "layout_qkv must be NTD or TND");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_qkv", layoutQkv, "layout_qkv must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -442,8 +441,8 @@ private:
         }
         const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
         if (unlikely(actualSeqLensShape.GetDimNum() != RANK_1D ||
-                    actualSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
-                    cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
+                     actualSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
+                         cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
             const std::string incorrectShape = ShapeToString(params_.actualSeqLens);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "actualSeqLens", incorrectShape.c_str(),
                                                   "actualSeqLens must have shape [cuSeqLens.shape[0] - 1]");

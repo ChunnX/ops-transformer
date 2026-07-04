@@ -45,8 +45,8 @@ std::string ResolveLayout(const c10::optional<c10::string_view> &layout, const c
 
 QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
                                at::IntArrayRef head_nums, const std::string &layout_qkv,
-                               const std::string &layout_q_out,
-                               const c10::optional<at::Tensor> &rotation, const c10::optional<at::Tensor> &v_scale)
+                               const std::string &layout_q_out, const c10::optional<at::Tensor> &rotation,
+                               const c10::optional<at::Tensor> &v_scale)
 {
     TORCH_CHECK(head_nums.size() == HEAD_NUMS_SIZE,
                 "qkv_rms_norm_rope_cache_with_k_scale: head_nums must have exactly 3 elements.");
@@ -67,8 +67,7 @@ QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_l
     const bool q_out_is_tnd = layout_q_out == QKV_LAYOUT_TND;
     const bool q_out_is_ntd = layout_q_out == QKV_LAYOUT_NTD;
     TORCH_CHECK(q_out_is_tnd || q_out_is_ntd,
-                "qkv_rms_norm_rope_cache_with_k_scale: layout_q_out must be TND or NTD, but got ", layout_q_out,
-                ".");
+                "qkv_rms_norm_rope_cache_with_k_scale: layout_q_out must be TND or NTD, but got ", layout_q_out, ".");
 
     const int64_t head_dim = is_tnd ? DIM_1 : DIM_0;
     TORCH_CHECK(qkv.size(head_dim) == n_q + n_k + n_v,
@@ -128,13 +127,13 @@ std::tuple<at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale(
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
     const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
     at::IntArrayRef head_nums, const c10::optional<c10::string_view> &layout_qkv,
-    const c10::optional<c10::string_view> &layout_q_out,
-    const c10::optional<at::Tensor> &rotation, const c10::optional<at::Tensor> &v_scale, double epsilon)
+    const c10::optional<c10::string_view> &layout_q_out, const c10::optional<at::Tensor> &rotation,
+    const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(
-        qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation, v_scale);
+    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str,
+                                                  layout_q_out_str, rotation, v_scale);
     auto outputs = MakeOutputs(qkv, params);
     at::Tensor q_out = std::get<0>(outputs);
     at::Tensor q_scale = std::get<1>(outputs);
@@ -150,13 +149,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> qkv_rms_n
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
     const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
     at::IntArrayRef head_nums, const c10::optional<c10::string_view> &layout_qkv,
-    const c10::optional<c10::string_view> &layout_q_out,
-    const c10::optional<at::Tensor> &rotation, const c10::optional<at::Tensor> &v_scale, double epsilon)
+    const c10::optional<c10::string_view> &layout_q_out, const c10::optional<at::Tensor> &rotation,
+    const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(
-        qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation, v_scale);
+    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str,
+                                                  layout_q_out_str, rotation, v_scale);
 
     at::Tensor k_cache_clone = k_cache.clone();
     at::Tensor v_cache_clone = v_cache.clone();

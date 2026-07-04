@@ -91,8 +91,7 @@ private:
                                    uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
                                    uint64_t tokenTile, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
                                    uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
-                                   uint64_t kScaleCacheStrideHead,
-                                   uint64_t kScaleCacheStrideToken, float epsilon)
+                                   uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
         tileCount_ = 0U;
         outputBufferUseId_ = 0U;

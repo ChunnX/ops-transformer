@@ -309,8 +309,7 @@ private:
                                      kPreprocessRowStride_);
     }
 
-    __aicore__ inline void BuildRopeNzScatterIndexTable(const LocalTensor<uint16_t> &scatterIndex,
-                                                        uint32_t rowStride)
+    __aicore__ inline void BuildRopeNzScatterIndexTable(const LocalTensor<uint16_t> &scatterIndex, uint32_t rowStride)
     {
         for (uint32_t dim = 0U; dim < QKV_K_SCALE_D128_HALF_SIZE; ++dim) {
             const uint32_t dBlock = dim / QKV_K_SCALE_NZ_C0;

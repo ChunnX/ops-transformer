@@ -119,8 +119,8 @@ static ge::graphStatus ParseLayoutQkv(gert::InferShapeContext *context, const ge
     return ge::GRAPH_FAILED;
 }
 
-static ge::graphStatus ParseLayoutQOut(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
-                                       bool qkvIsNtd, bool &qOutIsNtd)
+static ge::graphStatus ParseLayoutQOut(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool qkvIsNtd,
+                                       bool &qOutIsNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= Q_OUT_LAYOUT_ATTR_INDEX) {
         qOutIsNtd = true;
