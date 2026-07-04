@@ -216,30 +216,10 @@ public:
     {
         (void)l1PTensor;
         (void)bmm1UbTensor;
+        (void)loop;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        int64_t stage1Offset = loop & (DB - 1);
-        WaitFlag<HardEvent::MTE3_V>(stage1Offset == 0 ? stage1OutBufFreeEventId0 : stage1OutBufFreeEventId1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        SetFlag<HardEvent::V_MTE3>(stage1OutBufReadyEventId0 + stage1Offset);
-        WaitFlag<HardEvent::V_MTE3>(stage1OutBufReadyEventId0 + stage1Offset);
-        SetFlag<HardEvent::MTE3_V>(stage1Offset == 0 ? stage1OutBufFreeEventId0 : stage1OutBufFreeEventId1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
-        Vec1TailSyncOnly();
-    }
-
-    __aicore__ inline void Vec1TailSyncOnly()
-    {
-        if (this->isFd && constInfo.isSoftmaxLseEnable) {
-            WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-            SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-        } else if (constInfo.isSoftmaxLseEnable) {
-            WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-            SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-        }
-        if (constInfo.learnableSinkFlag) {
-            WaitFlag<HardEvent::MTE2_V>(sinkBufReadyEventId);
-            SetFlag<HardEvent::MTE2_V>(sinkBufReadyEventId);
-        }
     }
 
     template <typename BmmResT>
@@ -247,9 +227,7 @@ public:
     {
         (void)bmm2ResTensor;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-        WaitFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-        SetFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);
     }
 
     __aicore__ inline void ClearOutput()
@@ -407,8 +385,7 @@ public:
         }
     }
 
-    // 反向同步事件预置 SetFlag：完全静态、直接使用编译期常量（参考 quant_flash_attn AllocEventID 风格）
-    // 这里预置的都是 *FreeEventId* 类事件，让对应 buff 首轮 Wait 能立即通过
+    // FlashDecode 切换前仍需预置 stage2OutBuf 等 HardEvent；FA 主路径 ProcessVec1/2 仅做 CrossCore 同步。
     __aicore__ inline void AllocEventID()
     {
         SetFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);
