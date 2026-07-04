@@ -395,7 +395,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
         crossCoreSyncBufId++;
     }
-    uint32_t fdStagingOffset = 0U;
+    int64_t fdStagingOffset = 0U;
     if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
         constexpr uint32_t S2_REAL_BUF_LEN = 128U;

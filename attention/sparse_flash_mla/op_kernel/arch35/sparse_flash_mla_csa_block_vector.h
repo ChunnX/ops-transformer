@@ -147,12 +147,12 @@ private:
         return static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
     }
 
-    __aicore__ inline uint32_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
+    __aicore__ inline int64_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
     {
-        uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
-            static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+        int64_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
+            static_cast<int64_t>(runInfo.firstHalfMRealSize) : 0L;
         if constexpr (IS_SPLIT_G) {
-            stagingMOffset += static_cast<uint32_t>(runInfo.goIdx);
+            stagingMOffset += static_cast<int64_t>(runInfo.goIdx);
         }
         return stagingMOffset;
     }
@@ -646,7 +646,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
-        uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+        int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
         // printf("[vec1-stageLse] bo=%lld s1o=%lld s2lc=%lld/%lld wsIdx=%u mOff=%u halfM=%d\n",
             // (int64_t)runInfo.boIdx, (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount,
@@ -739,7 +739,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         if (runInfo.isS2Split) {
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
-            uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+            int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             // // printf("CSABlockVec::ProcessVec2: workspaceIdx=%u, stagingMOffset=%u, RealSize=%u\n",
             // workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize));
             AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,

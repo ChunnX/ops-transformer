@@ -163,12 +163,12 @@ private:
         return workspaceIdx;
     }
 
-    __aicore__ inline uint32_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
+    __aicore__ inline int64_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
     {
-        uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
-            static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+        int64_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
+            static_cast<int64_t>(runInfo.firstHalfMRealSize) : 0L;
         if constexpr (IS_SPLIT_G) {
-            stagingMOffset += static_cast<uint32_t>(runInfo.goIdx);
+            stagingMOffset += static_cast<int64_t>(runInfo.goIdx);
         }
         return stagingMOffset;
     }
@@ -1169,7 +1169,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
-        uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+        int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->dequantScaleBuff.template Get<float>();
         AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
             workspaceIdx, stagingMOffset, runInfo.halfMRealSize,
@@ -1219,7 +1219,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         if (runInfo.isS2Split) {
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
-            uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+            int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,
                 workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
                 static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
@@ -1255,8 +1255,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
     AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
         fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
-        static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
-        static_cast<uint32_t>(constInfo.dSizeV),
+        static_cast<int64_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
+        static_cast<int64_t>(constInfo.dSizeV),
         accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
         vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
 

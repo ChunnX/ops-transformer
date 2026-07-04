@@ -355,12 +355,12 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-    uint32_t fdStagingOffset = 0U;
+    int64_t fdStagingOffset = 0U;
     if constexpr (IS_SPLIT_G) {
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
         constexpr uint32_t S2_REAL_BUF_LEN = 128U;
-        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        uint32_t v0LogicalSlotCount = GetBlockNum() >> 1U;
+        int64_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
+        int64_t v0LogicalSlotCount = GetBlockNum() >> 1U;
         fdStagingOffset = v0ResSize * TRIPLE_BUFFER_NUM * v0LogicalSlotCount;
         fdStagingOffset += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * GetBlockNum();
     }

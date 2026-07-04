@@ -228,28 +228,29 @@ class GeneralizedSFA:
         row_sum = torch.ones((q_curr_fp32.size(0)), dtype=torch.float32)
         row_max = cur_sinks.clone().to(dtype=torch.float32)
         cur_attn_out = torch.zeros((q_curr_fp32.size(0), q_curr_fp32.size(1)), dtype=torch.float32)
-        segments = []
-        ori_start = min(start_token, ori_len)
-        ori_end = min(end_token, ori_len)
-        if ori_end > ori_start:
-            segments.append(cur_ori_k_fp32[ori_start:ori_end, :])
-        cmp_start = max(start_token - ori_len, 0)
-        cmp_end = min(end_token - ori_len, cmp_len)
-        if cur_cmp_k_fp32 is not None and cmp_end > cmp_start:
-            segments.append(cur_cmp_k_fp32[cmp_start:cmp_end, :])
-        for segment in segments:
-            for offset in range(0, segment.size(0), S2_BASE_SIZE):
-                k_tile = segment[offset:offset + S2_BASE_SIZE, :]
-                v_tile = k_tile.clone()
-                scale_res = torch.matmul(q_curr_fp32, k_tile.T) * self.softmax_scale
-                row_max_old = row_max.clone()
-                row_max_tmp = torch.max(scale_res, dim=1)[0]
-                row_max = torch.max(row_max, row_max_tmp)
-                update_mul = torch.exp(row_max_old - row_max)
-                cur_softmax_res = torch.exp(scale_res - row_max.unsqueeze(1))
-                row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
-                cur_o = torch.matmul(cur_softmax_res.to(dtype=q_curr_fp32.dtype), v_tile)
-                cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
+        segment = []
+        if start_token == 0:
+            ori_start = min(start_token, ori_len)
+            ori_end = min(end_token, ori_len)
+            if ori_end > ori_start:
+                segment=cur_ori_k_fp32[ori_start:ori_end, :]
+        else:
+            cmp_start = max(start_token - 128, 0)
+            cmp_end = min(end_token - 128, cmp_len)
+            if cur_cmp_k_fp32 is not None and cmp_end > cmp_start:
+                segment=cur_cmp_k_fp32[cmp_start:cmp_end, :]
+        for offset in range(0, segment.size(0), S2_BASE_SIZE):
+            k_tile = segment[offset:offset + S2_BASE_SIZE, :]
+            v_tile = k_tile.clone()
+            scale_res = torch.matmul(q_curr_fp32, k_tile.T) * self.softmax_scale
+            row_max_old = row_max.clone()
+            row_max_tmp = torch.max(scale_res, dim=1)[0]
+            row_max = torch.max(row_max, row_max_tmp)
+            update_mul = torch.exp(row_max_old - row_max)
+            cur_softmax_res = torch.exp(scale_res - row_max.unsqueeze(1))
+            row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+            cur_o = torch.matmul(cur_softmax_res.to(dtype=q_curr_fp32.dtype), v_tile)
+            cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
         return row_max, row_sum, cur_attn_out / row_sum.unsqueeze(1)
 
     def _run_fd_golden(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_split_ranges):
@@ -257,6 +258,7 @@ class GeneralizedSFA:
         partial_sum = []
         partial_out = []
         for split_idx, s2_range in enumerate(s2_split_ranges):
+            # import pdb;pdb.set_trace()
             row_max, row_sum, out = self._run_online_softmax_range(
                 q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_range["S2_START"], s2_range["S2_END"])
             partial_max.append(row_max)
@@ -407,17 +409,17 @@ class GeneralizedSFA:
                             softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
                             softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
                     elif RUN_MODE == 1:
-                        bn2_idx = self._bn2_idx(i_B, i_N2)
-                        s2_split_ranges = self._get_s2_split_ranges_for_row(bn2_idx, i_S1)
-                        if s2_split_ranges:
-                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                            cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
-                            fd_out, fd_max, fd_sum = self._run_fd_golden(
-                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, s2_split_ranges)
-                            attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
-                            if return_softmax_lse:
-                                softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
-                            continue
+                        # bn2_idx = self._bn2_idx(i_B, i_N2)
+                        # s2_split_ranges = self._get_s2_split_ranges_for_row(bn2_idx, i_S1)
+                        # if s2_split_ranges:
+                        #     cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                        #     cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
+                        #     fd_out, fd_max, fd_sum = self._run_fd_golden(
+                        #         q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, s2_split_ranges)
+                        #     attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
+                        #     if return_softmax_lse:
+                        #         softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
+                        #     continue
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
                             total_s2_loop_time = 0
