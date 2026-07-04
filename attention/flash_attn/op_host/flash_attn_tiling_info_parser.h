@@ -52,6 +52,7 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
+    void GetKvIsContiguous();
     ge::graphStatus GetStrides();
 
     void SetFaShape();
@@ -106,6 +107,8 @@ public:
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
     bool isTensorV1_ = false;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
 
     // Layout
     FaLayout layoutQ_ = FaLayout::BSND;
