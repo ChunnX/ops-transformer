@@ -1299,15 +1299,17 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSy(SLIKLLossGradRunIn
     int64_t nLoopSize = CeilDiv(constInfo.gSizeQueryIndex, nSplitSize);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
     for (int64_t n = 0; n < nLoopSize; n++) {
+        int64_t curNSize = Min(nSplitSize, static_cast<int64_t>(constInfo.gSizeQueryIndex) - n * nSplitSize);
         int64_t bmm2Offset = n * nSplitSize * topKSize; // 4 * 2048
-        DataCopyExtParams copyBmm2Params(static_cast<uint16_t>(nSplitSize), static_cast<uint32_t>(realKSize * sizeof(T)), static_cast<uint32_t>((topKSize - realKSize) * sizeof(T)), 0, 0);
+        DataCopyExtParams copyBmm2Params(static_cast<uint16_t>(curNSize), static_cast<uint32_t>(realKSize * sizeof(T)),
+                            static_cast<uint32_t>((topKSize - realKSize) * sizeof(T)), 0, 0);
         DataCopyPadExtParams<T> copyBmm2PadParams(true, 0, (uint8_t)(realKSizeAlign - realKSize), 0.0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
         AscendC::DataCopyPad<T>(reluResUb, bmm2ResGm[bmm2ResOffset + bmm2Offset], copyBmm2Params, copyBmm2PadParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
         int64_t weightOffset = !constInfo.subBlockIdx * constInfo.gSizeQueryIndexAlign16;
-        for (int32_t i = 0; i < nSplitSize; i++) {
+        for (int32_t i = 0; i < curNSize; i++) {
             float weightValue = weightUb[weightOffset].GetValue(n*nSplitSize + i);
             int64_t mulOffset = i * realKSizeAlign;
             event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
@@ -1320,7 +1322,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSy(SLIKLLossGradRunIn
         LocalTensor<T> reduceUb = nSplitSize > 1 ? reduceSumYResTmpBuffer : reluResUb;
         if (nSplitSize > 1) {
             // 使用高阶API做自选维度的reduce 不支持源操作数与目的操作数地址重叠。不支持sharedTmpBuffer与源操作数和目的操作数地址重叠。
-            uint32_t reduceShape[] = { static_cast<uint32_t>(nSplitSize), static_cast<uint32_t>(realKSizeAlign) };
+            uint32_t reduceShape[] = { static_cast<uint32_t>(curNSize), static_cast<uint32_t>(realKSizeAlign) };
             constexpr bool isReuse = true;
             AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, isReuse>(reduceUb, reluResUb, reduceSumTmpBuffer, reduceShape, true);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
