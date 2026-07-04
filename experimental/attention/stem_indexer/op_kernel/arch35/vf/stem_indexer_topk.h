@@ -171,24 +171,25 @@ public:
                                                idx0Local, idx1Local, idx2Local, idx3Local,
                                                nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, batchRowNum * topkAlign);
+            for (uint32_t m = 0; m < batchRowNum; ++m) {
+                AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
+            }
         } else if (loopIdx == 0) {
             SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                               idx0Local, idx1Local, idx2Local, idx3Local,
                                               nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
-                AscendC::DataCopy(hisIndexLocal[1][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
-                PipeBarrier<PIPE_V>();
+                // 输出到 globalIndexLocal(hisIndexLocal[0])，给下一轮 gather 和 CopyOutFourRows 用
+                AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
                 AscendC::DataCopy(mrgValueLocal[(mBaseIdx + m) * mrgRowStride], hisValueLocal[m * topkAlign], topkAlign);
-                PipeBarrier<PIPE_V>();
             }
         } else {
             SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                               idx0Local, idx1Local, idx2Local, idx3Local,
                                               nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
             PipeBarrier<PIPE_V>();
-            // gather: 输出到 indicesOutLocal(hisIndexLocal[1])，输入从 globalIndexLocal(hisIndexLocal[0])
+            // gather: 从 globalIndexLocal(hisIndexLocal[0]) 读上轮结果，输出到 indicesOutLocal(hisIndexLocal[1])
             for (uint32_t m = 0; m < batchRowNum; ++m) {
                 uint32_t mInnerIdx = mBaseIdx + m;
                 SITopkb32gather::SiTopKGatherVF(
@@ -201,8 +202,9 @@ public:
                     loopIdx * trunkLen - topkAlign,
                     validLen);
                 PipeBarrier<PIPE_V>();
+                // 拷回 globalIndexLocal(hisIndexLocal[0])，给下一轮/CopyOutFourRows 用
+                AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], hisIndexLocal[1][m * topkAlign], topkAlign);
                 AscendC::DataCopy(mrgValueLocal[mInnerIdx * mrgRowStride], hisValueLocal[m * topkAlign], topkAlign);
-                PipeBarrier<PIPE_V>();
             }
         }
     }
