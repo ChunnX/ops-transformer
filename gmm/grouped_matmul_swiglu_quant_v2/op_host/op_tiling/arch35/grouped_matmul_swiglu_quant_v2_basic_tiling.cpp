@@ -298,7 +298,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp8WeightNz() const
 {
-    return IsFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    return IsMXFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
@@ -332,9 +332,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNdDtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input() const
+bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input()
 {
     return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMXFp8Input() const
+{
+    return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype) && inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
@@ -462,7 +467,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
                     return false);
     }
     // MXFP8、ND场景下，N需满足2对齐。
-    if (IsFp8Input()) {
+    if (IsMXFp8Input()) {
         OP_CHECK_IF(inputParams_.nSize % EVEN_FACTOR != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                           "when using the ND format with FP8 data type, n axis element "
