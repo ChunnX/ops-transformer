@@ -2169,6 +2169,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);
 
+    if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
+        gsMergeFlag_ && !dnFlag_ && (((fiaInfo.s1Size * fiaInfo.gSize + 1) / 2) + fiaInfo.gSize - 1) /
+        fiaInfo.gSize * fiaInfo.gSize > sOuterFactor_ && fiaInfo.s1Size > 1) {
+        pfaMergeFlag_ = false;
+        gsMergeFlag_ = false;
+    }
+
     OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
                 return ge::GRAPH_FAILED);
 
