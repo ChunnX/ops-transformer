@@ -50,6 +50,7 @@ set(src_files
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_arch38.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tiling_sink_registry.cpp
+  ${OPBASE_SOURCE_PATH}/src/op_common/log/log.cpp
 )
 
 foreach(f ${src_files})
@@ -97,6 +98,7 @@ if (BUILD_OPEN_PROJECT)
     ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/include/base
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+    ${OPBASE_SOURCE_PATH}/include
     ${OPBASE_SOURCE_PATH}/include/op_common
     ${OPBASE_SOURCE_PATH}/pkg_inc/op_common
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
