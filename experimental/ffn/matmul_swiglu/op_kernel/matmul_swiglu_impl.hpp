@@ -28,8 +28,9 @@ namespace NsMatmulSwiglu {
 using namespace AscendC;
 using namespace matmul;
 
-template <typename xType, typename cType /*fp32 累加*/>
-class MatmulSwigluKernel {
+// xType: 输入/输出数据类型; cType: matmul 累加与中间数据类型(固定 fp32)
+template <typename xType, typename cType>
+class MatmulSwigluImpl {
 public:
     using AType    = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
     using BType    = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
@@ -39,7 +40,7 @@ public:
     Matmul<AType, BType, CTypeMm, BiasType> mm;  // 单 matmul: x[M,K] @ weight[K,2N] -> [M,2N]
     TPipe pipe;
 
-    __aicore__ inline MatmulSwigluKernel() {}
+    __aicore__ inline MatmulSwigluImpl() {}
 
     // userWs: GetUserWorkspace(workspace) 得到的用户 workspace 指针(存 [M,2N] fp32 中间结果)
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y, GM_ADDR userWs,

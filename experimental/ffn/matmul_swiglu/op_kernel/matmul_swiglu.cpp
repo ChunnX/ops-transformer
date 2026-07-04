@@ -33,7 +33,7 @@ extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, G
     GET_TILING_DATA_WITH_STRUCT(optiling::MatmulSwigluTilingData, tilingDataIn, tiling);
     const optiling::MatmulSwigluTilingData* __restrict__ tilingData = &tilingDataIn;
     // 数据类型由编译期 DTYPE_X 决定; cube 累加固定 fp32。方案一: 单 matmul + 向量 SwiGLU。
-    NsMatmulSwiglu::MatmulSwigluKernel<DTYPE_X, float> op;
+    NsMatmulSwiglu::MatmulSwigluImpl<DTYPE_X, float> op;
     REGIST_MATMUL_OBJ(&op.pipe, GetSysWorkSpacePtr(), op.mm, &tilingData->mmTiling);
     op.Init(x, weight, bias, y, userWs, tilingData);
     op.Process();
