@@ -165,7 +165,7 @@ private:
     uint32_t copyTmpBaseAddr_ = 0;
     uint32_t relayRecordBytes_ = 0;
     uint32_t sendWorkspaceRecordBytes_ = 0;
-    uint32_t sendWorkspaceServerBytes_ = 0;
+    uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
@@ -309,7 +309,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     relayRecordBytes_ = Ops::Base::CeilAlign(
         mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32), static_cast<uint32_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
-    sendWorkspaceServerBytes_ = ALIGN_32 + m_ * sendWorkspaceRecordBytes_;
+    sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) +
+        static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
 }
 
 // =================================================================================================
@@ -939,9 +940,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantProcessInRa
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
         srcGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.aGmAddr +
-            (curentOffset + index) * H * sizeof(bfloat16_t)));
+            static_cast<uint64_t>(curentOffset + index) * H * sizeof(bfloat16_t)));
         dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.quantTokenScalePtr +
-            (curentOffset + index) * mxQuantTokenScaleAlignBytes_));
+            static_cast<uint64_t>(curentOffset + index) * mxQuantTokenScaleAlignBytes_));
         auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
         auto xInTensor = (index % DOUBLE_BUFFER == 0) ? xInTensor1_ : xInTensor2_;
         auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
