@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,4 +9,4 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse_metadata ACLNNTYPE aclnn)
+add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse_metadata_v2 ACLNNTYPE aclnn)
