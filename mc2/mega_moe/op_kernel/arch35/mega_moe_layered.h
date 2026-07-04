@@ -94,8 +94,8 @@ private:
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void ResetDispatchState();
     __aicore__ inline void DispatchTokenToRmtServer(int32_t localExpertId);
-    __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum,
-        int32_t roundTag);
+    __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t computeCoreStart,
+        uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal,
         int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
     __aicore__ inline void DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
@@ -251,7 +251,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
-    rankPerServer_ = mc2Context_->rankSizePerServer;
+    rankPerServer_ = mc2Context_->rankSizePerServer / 2;
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
@@ -735,9 +735,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeT
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeKernel(
-    int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag)
+    int32_t localExpertId, uint32_t computeCoreStart, uint32_t realComputeCoreNum, int32_t roundTag)
 {
-    uint32_t computeIdx = blockIdx_;
+    uint32_t computeIdx = blockIdx_ - computeCoreStart;
     uint32_t baseTokenNum = m_ / realComputeCoreNum;
     uint32_t tokenRemainder = m_ % realComputeCoreNum;
     uint32_t tokenNumInCore = baseTokenNum + static_cast<uint32_t>(computeIdx < tokenRemainder);
@@ -864,14 +864,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToR
 {
     uint32_t senderCoreLimit = (serverNum_ < MAX_CORENUM_USE_SEND) ? serverNum_ : MAX_CORENUM_USE_SEND;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
-    uint32_t senderCoreStart = blockNum_ - senderCoreNum;
+    uint32_t senderCoreStart = 0;
+    uint32_t computeCoreStart = senderCoreNum;
     uint32_t realComputeCoreNum = blockNum_ - senderCoreNum;
     int32_t roundTag = localExpertId + 1;
 
-    if (blockIdx_ < senderCoreStart) {
-        DispatchComputeKernel(localExpertId, realComputeCoreNum, roundTag);
-    } else {
+    if (blockIdx_ < senderCoreNum) {
         DispatchSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
+    } else {
+        DispatchComputeKernel(localExpertId, computeCoreStart, realComputeCoreNum, roundTag);
     }
 }
 
@@ -1731,13 +1732,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
-    SyncAll<true>();
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
     InitCombineBuffers();
-
+    SyncAll<true>();
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
         if (GetSubBlockIdx() == 1) {
             LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));

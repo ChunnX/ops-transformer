@@ -171,7 +171,8 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    int64_t topoType = TILINGKEY_TPL_MTE;
+    // int64_t topoType = TILINGKEY_TPL_MTE;
+    int64_t topoType = TILINGKEY_TPL_URMA;
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
 }
@@ -1033,7 +1034,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
-    tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    tilingData->topoType = 1;//*attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
@@ -1056,7 +1057,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     context->SetTilingKey(tilingKey);
 
     // WorkspaceSize
-    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
+    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData, 2);
     OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
