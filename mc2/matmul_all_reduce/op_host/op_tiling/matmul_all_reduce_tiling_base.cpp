@@ -1652,19 +1652,18 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName_,
-        "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    if (commModeStr == nullptr) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+        OP_LOGI(opName_, "The input attr comm_mode is nullptr, commMode will use default AICPU.");
+    }
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, commMode will be set to AICPU.");
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
         OP_LOGI(opName_, "The input attr comm_mode is ccu, commMode will be set to CCU.");
-    } else if (std::strcmp(commModeStr, "") == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-        OP_LOGI(opName_, "The input attr comm_mode is empty string, commMode will be set to CCU.");
     } else {
-        OP_LOGE(opName_, "The input attr comm_mode %s is invalid.", commModeStr);
+        OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "'ai_cpu' or 'ccu'");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1672,37 +1671,30 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
 uint8_t MatmulAllReduceTilingBase::GetCommMode() const
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return Mc2Comm::COMM_MODE_CCU);
+    OP_TILING_CHECK(attrs == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return Mc2Comm::COMM_MODE_AICPU);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName_,
-        "commModeStr is nullptr, commMode will be set to ccu."), return Mc2Comm::COMM_MODE_CCU);
-    if (std::strcmp(commModeStr, "ai_cpu") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, TilingKey Do AICPU");
+    if (commModeStr == nullptr) {
+        OP_LOGI(opName_, "TilingKey Do AICPU");
         return Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strcmp(commModeStr, "ccu") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is ccu, TilingKey Do CCU");
-        return Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strcmp(commModeStr, "") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is empty string, TilingKey Do CCU");
+    }
+    if (std::strcmp(commModeStr, "ccu") == 0) {
+        OP_LOGI(opName_, "TilingKey Do CCU");
         return Mc2Comm::COMM_MODE_CCU;
     }
-    OP_LOGI(opName_, "Default TilingKey Do CCU");
-    return Mc2Comm::COMM_MODE_CCU;
+    OP_LOGI(opName_, "TilingKey Do AICPU");
+    return Mc2Comm::COMM_MODE_AICPU;
 }
 ge::graphStatus MatmulAllReduceTilingBase::CheckCommModeA2() const
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    if (commModeStr == nullptr) {
+    if (commModeStr == nullptr || std::strcmp(commModeStr, "ai_cpu") == 0) {
         return ge::GRAPH_SUCCESS;
     } else {
-        if (std::strcmp(commModeStr, "") == 0) {
-            return ge::GRAPH_SUCCESS;
-        } else {
-            OP_LOGE(opName_, "The input attr comm_mode %s is invalid.", commModeStr);
-            return ge::GRAPH_FAILED;
-        }
+        OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "nullptr or 'ai_cpu'");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }

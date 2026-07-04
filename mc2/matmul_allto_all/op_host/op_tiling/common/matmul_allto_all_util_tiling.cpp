@@ -74,17 +74,14 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "comm_mode attr"),
                     return ge::GRAPH_FAILED);
 
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+        commMode = mc2tiling::A5_AICPU_TS_ENGINE;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        uint32_t rankDim = contextInfo.args_.rankDim;
-        commMode = (rankDim <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
-        OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+        commMode = mc2tiling::A5_CCU_ENGINE;
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr, "The value of comm_mode must be '', 'ai_cpu' or 'ccu'");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr,
+                                              "The value of comm_mode must be 'ai_cpu' or 'ccu'");
         return ge::GRAPH_FAILED;
     }
 
