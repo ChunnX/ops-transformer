@@ -23,6 +23,7 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/op_impl_registry.h>
 #include "register/tilingdata_base.h"
+#include "../op_kernel/quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_info_parser.h"
 
 namespace optiling {
@@ -30,6 +31,16 @@ constexpr uint32_t BSA_MAX_CORE_NUM = 48U;
 constexpr uint32_t BSA_CORE_SPLIT_NUM = BSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t BSA_BLOCK_SIZE = 128U;
 constexpr uint32_t BSA_D_SIZE = 128U;
+constexpr uint32_t BSA_QUANT_MODE_FP8 = 1U;
+constexpr uint32_t BSA_QUANT_MODE_MXFP8_FULL_QUANT = 2U;
+constexpr uint32_t BSA_MASK_MODE_NONE = 0U;
+constexpr uint32_t BSA_MASK_MODE_CAUSAL = 3U;
+constexpr uint32_t BSA_MASK_MODE_MAX = 4U;
+constexpr uint32_t BSA_MXFP8_PA_BLOCK_SIZE = 512U;
+constexpr uint32_t BSA_MXFP8_SCALE_GROUP_SIZE = 64U;
+constexpr uint32_t BSA_MXFP8_SCALE_LAST_DIM = 2U;
+constexpr uint32_t BSA_MXFP8_PER_TOKEN_GROUP_MODE = 6U;
+constexpr uint32_t BSA_MXFP8_PER_CHANNEL_GROUP_MODE = 8U;
 
 inline uint32_t BSACeilDiv(uint32_t value, uint32_t divisor)
 {
@@ -251,13 +262,17 @@ private:
     void FillMultiCoreParams();
     void FillDropmaskParams();
     void FillInitOutputParams();
+    void FillMxTilingData();
     void CalcTilingKey();
     void CalcWorkspaceSize();
     void PrintAllTilingData();
+    void PrintMxTilingData();
+    ge::graphStatus SaveTilingData();
 
     gert::TilingContext *context_ = nullptr;
     QuantBlockSparseAttnTilingInfo *tilingInfo_ = nullptr;
     QuantBlockSparseAttnTilingData tilingData_;
+    QuantBlockSparseAttnMxTilingData mxTilingData_;
     uint32_t usedCoreNum_ = 0;
     uint64_t totalTaskNum_ = 0;
     uint64_t tilingKey_ = 0;

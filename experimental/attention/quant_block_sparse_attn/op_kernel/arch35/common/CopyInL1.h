@@ -212,6 +212,116 @@ __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const
 }
 
 template<typename INPUT_T>
+__aicore__ inline void CopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor,
+    const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
+{
+    // MXFP8 scale 为 fp8_e8m0，但 scale 搬运路径按 bf16 粒度执行。
+    // 两个 e8m0 元素 reinterpret 成一个 bf16 元素，因此构造 ND2NZ 参数时
+    // nValue/srcDValue 需要除以 2。
+    // 主要用于 value scale：GM [T/64, N, DV, 2] -> L1 NZ-like scale layout。
+    Nd2NzParams gm2L1Nd2NzParams;
+    gm2L1Nd2NzParams.ndNum = 1;
+    gm2L1Nd2NzParams.nValue = nValue / 2;
+    gm2L1Nd2NzParams.dValue = dValue;
+    gm2L1Nd2NzParams.srcNdMatrixStride = 0;
+    gm2L1Nd2NzParams.srcDValue = srcDValue;
+    gm2L1Nd2NzParams.dstNzC0Stride = nValue / 2;
+    gm2L1Nd2NzParams.dstNzNStride = 1;
+    gm2L1Nd2NzParams.dstNzMatrixStride = gm2L1Nd2NzParams.nValue;
+
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, gm2L1Nd2NzParams);
+}
+
+template<typename INPUT_T>
+__aicore__ inline void CopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor,
+    const GlobalTensor<INPUT_T> &gmTensor, uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
+{
+    // DN2NZ 版本用于跟随 BMM1 转置操作数的 scale。
+    // Q/K scale GM shape 为 [T, N, D/64, 2]；reinterpret 为 bf16 后，
+    // 最后一维两个 e8m0 元素变成一个拷贝元素。这样可以保证 Q/K 按转置语义
+    // 被 MX LoadData 消费时，scale layout 与数据 layout 对齐。
+    Dn2NzParams gm2L1Dn2NzParams;
+    gm2L1Dn2NzParams.dnNum = 1;
+    gm2L1Dn2NzParams.nValue = nValue / 2;
+    gm2L1Dn2NzParams.dValue = dValue;
+    gm2L1Dn2NzParams.srcDnMatrixStride = 0;
+    gm2L1Dn2NzParams.srcDValue = srcDValue / 2;
+    gm2L1Dn2NzParams.dstNzC0Stride = nValue / 2;
+    gm2L1Dn2NzParams.dstNzNStride = 1;
+    gm2L1Dn2NzParams.dstNzMatrixStride = gm2L1Dn2NzParams.nValue;
+
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, gm2L1Dn2NzParams);
+}
+
+template<typename L1Type>
+__aicore__ inline void GmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor,
+    GlobalTensor<L1Type>& gmTensor, GlobalTensor<int32_t>& blockTableGm, const PAShape &shape,
+    const Position &startPos)
+{
+    // PA scale helper，用于 token-major 的 Q/K 类 scale：
+    //   GM 逻辑 shape：[physicalToken, N, D/64, 2]
+    //   PA 查表流程：逻辑 token 偏移 -> block_table -> 物理 block id
+    //   L1 拷贝方式：DN2NZ，因为对应的数据操作数按转置方式加载。
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
+    uint32_t curS2Idx = startPos.s2Offset;
+    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
+    while (copyFinishRowCnt < shape.copyRowNum) {
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;
+        uint32_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
+        }
+
+        uint64_t offset = idInBlockTable * shape.pageStride + static_cast<uint64_t>(remainRowCnt) * shape.rowStride +
+                          static_cast<uint64_t>(startPos.n2Idx) * shape.headDim + startPos.dIdx;
+        CopyScaleToL1Dn2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], shape.actHeadDim,
+                           copyRowCnt, shape.rowStride);
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
+}
+
+template<typename L1Type>
+__aicore__ inline void GmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor,
+    GlobalTensor<L1Type>& gmTensor, GlobalTensor<int32_t>& blockTableGm, const PAShape &shape,
+    const Position &startPos)
+{
+    // PA scale helper，用于 value per-channel-group scale：
+    //   GM 逻辑 shape：[physicalToken/64, N, DV, 2]
+    //   每个拷贝行覆盖 64 个 value token。
+    // 这里使用 ND2NZ，因为 V 在 BMM2 中作为非转置右操作数被消费。
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch;
+    uint32_t curS2Idx = startPos.s2Offset;
+    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
+    while (copyFinishRowCnt < shape.copyRowNum) {
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;
+        uint32_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
+        }
+
+        uint64_t offset = idInBlockTable * shape.pageStride + static_cast<uint64_t>(remainRowCnt) * shape.rowStride +
+                          static_cast<uint64_t>(startPos.n2Idx) * shape.headDim + startPos.dIdx;
+        CopyScaleToL1Nd2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], copyRowCnt,
+                           shape.actHeadDim, shape.rowStride);
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
+}
+
+template<typename INPUT_T>
 __aicore__ inline void CopyToL1Nd2NzGS1Merge(const LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmTensor,
     uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride) // BSNGD 合轴拷贝
 {
