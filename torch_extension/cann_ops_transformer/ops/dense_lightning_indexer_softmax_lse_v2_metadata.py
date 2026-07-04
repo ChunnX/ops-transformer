@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+﻿# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -17,21 +17,21 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 
 DLI_METADATA_SIZE = 64
-DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_metadata"
+DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_v2_metadata"
 
 
-class DenseLightningIndexerSoftmaxLseMetadataOpBuilder(OpBuilder):
+class DenseLightningIndexerSoftmaxLseV2MetadataOpBuilder(OpBuilder):
     def __init__(self):
-        super(DenseLightningIndexerSoftmaxLseMetadataOpBuilder, self).__init__(
-            "dense_lightning_indexer_softmax_lse_metadata"
+        super(DenseLightningIndexerSoftmaxLseV2MetadataOpBuilder, self).__init__(
+            "dense_lightning_indexer_softmax_lse_v2_metadata"
         )
 
     def sources(self):
-        return ["ops/csrc/dense_lightning_indexer_softmax_lse_metadata.cpp"]
+        return ["ops/csrc/dense_lightning_indexer_softmax_lse_v2_metadata.cpp"]
 
     def schema(self) -> str:
         return (
-            "dense_lightning_indexer_softmax_lse_metadata("
+            "dense_lightning_indexer_softmax_lse_v2_metadata("
             "int num_heads_q, int num_heads_k, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int? batch_size=None, "
@@ -42,7 +42,7 @@ class DenseLightningIndexerSoftmaxLseMetadataOpBuilder(OpBuilder):
 
     def register_meta(self):
         @torch.library.register_fake("cann_ops_transformer::" + DLI_METADATA_OP_NAME)
-        def dense_lightning_indexer_softmax_lse_metadata_meta(
+        def dense_lightning_indexer_softmax_lse_v2_metadata_meta(
             num_heads_q,
             num_heads_k,
             head_dim,
@@ -63,12 +63,12 @@ class DenseLightningIndexerSoftmaxLseMetadataOpBuilder(OpBuilder):
             return torch.empty((DLI_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
 
-dense_lightning_indexer_softmax_lse_metadata_op_builder = DenseLightningIndexerSoftmaxLseMetadataOpBuilder()
-op_module = dense_lightning_indexer_softmax_lse_metadata_op_builder.load()
+dense_lightning_indexer_softmax_lse_v2_metadata_op_builder = DenseLightningIndexerSoftmaxLseV2MetadataOpBuilder()
+op_module = dense_lightning_indexer_softmax_lse_v2_metadata_op_builder.load()
 
 
 @impl(AS_LIBRARY, DLI_METADATA_OP_NAME, "PrivateUse1")
-def dense_lightning_indexer_softmax_lse_metadata(
+def dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -86,7 +86,7 @@ def dense_lightning_indexer_softmax_lse_metadata(
     mask_mode=None,
     cmp_ratio=None,
 ):
-    """DenseLightningIndexerSoftmaxLse 的前置 metadata 算子，封装 aclnnDenseLightningIndexerSoftmaxLseMetadata。
+    """DenseLightningIndexerSoftmaxLse 的前置 metadata 算子，封装 aclnnDenseLightningIndexerSoftmaxLseV2Metadata。
 
     根据主算子的 shape、layout、mask 等信息，计算分核负载均衡 metadata，
     输出固定 shape (64,) 的 int32 张量，供主算子 metadataOptional 输入使用。
@@ -119,7 +119,7 @@ def dense_lightning_indexer_softmax_lse_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    return op_module.dense_lightning_indexer_softmax_lse_metadata(
+    return op_module.dense_lightning_indexer_softmax_lse_v2_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -139,7 +139,7 @@ def dense_lightning_indexer_softmax_lse_metadata(
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + DLI_METADATA_OP_NAME, None)
-def dense_lightning_indexer_softmax_lse_metadata_fallback(
+def dense_lightning_indexer_softmax_lse_v2_metadata_fallback(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -157,7 +157,7 @@ def dense_lightning_indexer_softmax_lse_metadata_fallback(
     mask_mode=None,
     cmp_ratio=None,
 ):
-    return dense_lightning_indexer_softmax_lse_metadata(
+    return dense_lightning_indexer_softmax_lse_v2_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -176,4 +176,4 @@ def dense_lightning_indexer_softmax_lse_metadata_fallback(
     )
 
 
-torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse_metadata)
+torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse_v2_metadata)

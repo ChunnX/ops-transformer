@@ -1,4 +1,4 @@
-import os
+﻿import os
 import contextlib
 import torch
 import torch_npu
@@ -47,7 +47,7 @@ def print_metadata(tag, metadata):
 print("=" * 60)
 print("场景 1: BSND + seqused_q")
 print("=" * 60)
-metadata_bsnd = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+metadata_bsnd = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     seqused_q=torch.tensor([128, 100, 64, 32], dtype=torch.int32).npu(),
     batch_size=4, max_seqlen_q=128, max_seqlen_k=128,
@@ -58,7 +58,7 @@ print_metadata("BSND + seqused_q", metadata_bsnd)
 print("=" * 60)
 print("场景 2: TND + cu_seqlens_q")
 print("=" * 60)
-metadata_tnd = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+metadata_tnd = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     cu_seqlens_q=torch.tensor([0, 128, 228, 292, 324], dtype=torch.int32).npu(),
     cu_seqlens_k=torch.tensor([0, 128, 228, 292, 324], dtype=torch.int32).npu(),
@@ -69,7 +69,7 @@ print_metadata("TND + cu_seqlens_q", metadata_tnd)
 print("=" * 60)
 print("场景 3: BSND 纯 attr (无 tensor 输入)")
 print("=" * 60)
-metadata_attr = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+metadata_attr = torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     batch_size=2, max_seqlen_q=256, max_seqlen_k=256,
     layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
@@ -83,14 +83,14 @@ print("=" * 60)
 print("异常场景测试")
 print("=" * 60)
 
-expect_fail("seqused_q 长度不等于 batch_size", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("seqused_q 长度不等于 batch_size", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     seqused_q=torch.tensor([128, 100, 64], dtype=torch.int32).npu(),
     batch_size=4, max_seqlen_q=128, max_seqlen_k=128,
     layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
 ))
 
-expect_fail("cu_seqlens_q 长度不等于 batch_size+1", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("cu_seqlens_q 长度不等于 batch_size+1", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     cu_seqlens_q=torch.tensor([0, 128, 228, 292], dtype=torch.int32).npu(),
     cu_seqlens_k=torch.tensor([0, 128, 228, 292, 324], dtype=torch.int32).npu(),
@@ -98,7 +98,7 @@ expect_fail("cu_seqlens_q 长度不等于 batch_size+1", lambda: torch.ops.cann_
     layout_q="TND", layout_k="TND", mask_mode=0, cmp_ratio=1,
 ))
 
-expect_fail("TND 缺少 cu_seqlens_k", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("TND 缺少 cu_seqlens_k", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     cu_seqlens_q=torch.tensor([0, 128, 228, 292, 324], dtype=torch.int32).npu(),
     cu_seqlens_k=None,
@@ -106,25 +106,25 @@ expect_fail("TND 缺少 cu_seqlens_k", lambda: torch.ops.cann_ops_transformer.de
     layout_q="TND", layout_k="TND", mask_mode=0, cmp_ratio=1,
 ))
 
-expect_fail("num_heads_q 不能被 num_heads_k 整除", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("num_heads_q 不能被 num_heads_k 整除", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=7, num_heads_k=4, head_dim=128,
     batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
     layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
 ))
 
-expect_fail("mask_mode 非法", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("mask_mode 非法", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
     layout_q="BSND", layout_k="BSND", mask_mode=1, cmp_ratio=1,
 ))
 
-expect_fail("cmp_ratio 超范围", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("cmp_ratio 超范围", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
     layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=0,
 ))
 
-expect_fail("cmp_residual_k 长度不等于 batch_size", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+expect_fail("cmp_residual_k 长度不等于 batch_size", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_v2_metadata(
     num_heads_q=8, num_heads_k=4, head_dim=128,
     cmp_residual_k=torch.tensor([2, 3, 4], dtype=torch.int32).npu(),
     batch_size=4, max_seqlen_q=128, max_seqlen_k=128,
