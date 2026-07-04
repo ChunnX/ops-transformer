@@ -29,10 +29,13 @@ public:
     ge::graphStatus Process();
 
 private:
+    ge::graphStatus CheckAttrs() const;
     ge::graphStatus CheckDtype() const;
+    ge::graphStatus CheckScaleDtype() const;
     ge::graphStatus CheckBlockSize() const;
     ge::graphStatus CheckShapeConsistency() const;
     ge::graphStatus CheckMaskMode() const;
+    ge::graphStatus CheckMXFP8FullQuantShape() const;
 
     const QuantBlockSparseAttnTilingInfo &tilingInfo_;
 };
