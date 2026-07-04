@@ -157,21 +157,6 @@ public:
 
         addrL1 += L1_KV_BUFCNT * L1_K_SLOT_BYTES;
         l1VTensor = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_KV_BUFCNT * L1_V_SLOT_BYTES);
-
-        constexpr uint32_t FA_L0_BUF_SIZE = 32U * 1024U;
-        mmL0ABuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
-                                      l0aBufFreeEventId0, l0aBufFreeEventId0,
-                                      l0aBufFreeEventId1, l0aBufFreeEventId1);
-
-        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-            mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, l0bBufFreeEventId0, l0bBufFreeEventId0);
-        } else {
-            mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
-                                          l0bBufFreeEventId0, l0bBufFreeEventId0,
-                                          l0bBufFreeEventId1, l0bBufFreeEventId1);
-        }
-
-        l0CTensor = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_SLOT_BYTES);
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -229,94 +214,18 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
-        SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0);
-        if constexpr (!L1Q_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId1);
-        }
-        SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0);
-        if constexpr (!L1KV_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId1);
-        }
-        SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0);
-        if constexpr (!L1KV_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId1);
-        }
-        SetFlag<HardEvent::M_MTE1>(l0aBufFreeEventId0);
-        SetFlag<HardEvent::M_MTE1>(l0aBufFreeEventId1);
-        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-            SetFlag<HardEvent::M_MTE1>(l0bBufFreeEventId0);
-        } else {
-            SetFlag<HardEvent::M_MTE1>(l0bBufFreeEventId0);
-            SetFlag<HardEvent::M_MTE1>(l0bBufFreeEventId1);
-        }
-        if constexpr (L0C_IS_4BUFF) {
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0);
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId1);
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId2);
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId3);
-        } else {
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0);
-            SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId1);
-        }
     }
 
     __aicore__ inline void FreeEventID()
     {
-        if constexpr (L1Q_IS_SINGLE) {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0);
-        } else {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0);
-            WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId1);
-        }
-        if constexpr (L1KV_IS_SINGLE) {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0);
-            WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0);
-        } else {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0);
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId1);
-            WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0);
-            WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId1);
-        }
-        mmL0ABuffers.UninitStaticDirect();
-        mmL0BBuffers.UninitStaticDirect();
-        if constexpr (L0C_IS_4BUFF) {
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0);
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId1);
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId2);
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId3);
-        } else {
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0);
-            WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId1);
-        }
     }
 
-    // Cube 侧仅保留核间/核内同步，不执行 GM 搬运 / Matmul / Fixpipe。
+    // Cube 侧仅保留核间同步，不执行 GM 搬运 / Matmul / Fixpipe / 核内 HardEvent 同步。
     __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1)
     {
-        WaitFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-        SetFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-
-        WaitFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-        SetFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(l1QBufFreeEventId0 + qBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(l1KBufFreeEventId0 + kBufId);
-
-        WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-
-        SetFlag<HardEvent::MTE1_MTE2>(l1QBufFreeEventId0 + qBufId);
-        qBufId = (qBufId + 1) % L1_Q_BUFCNT;
-        SetFlag<HardEvent::MTE1_MTE2>(l1KBufFreeEventId0 + kBufId);
-        kBufId = (kBufId + 1) % L1_KV_BUFCNT;
-
-        SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-        WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-
+        PipeBarrier<PIPE_FIX>();
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
-
-        SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        cBufId = (cBufId + 1) % L0C_BUFCNT;
-
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
     }
@@ -330,27 +239,14 @@ public:
 
     __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId)
     {
+        PipeBarrier<PIPE_MTE1>();
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-
-        WaitFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-        SetFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-
-        WaitFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(l1VBufFreeEventId0 + vBufId);
-
-        SetFlag<HardEvent::MTE1_MTE2>(l1VBufFreeEventId0 + vBufId);
-        vBufId = (vBufId + 1) % L1_KV_BUFCNT;
-        SetFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-        WaitFlag<HardEvent::M_FIX>(l0cBufFreeEventId0 + cBufId);
-
         if constexpr (bmm2Write2Ub) {
+            PipeBarrier<PIPE_FIX>();
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
         }
-
-        SetFlag<HardEvent::FIX_M>(l0cBufFreeEventId0 + cBufId);
-        cBufId = (cBufId + 1) % L0C_BUFCNT;
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
     }
