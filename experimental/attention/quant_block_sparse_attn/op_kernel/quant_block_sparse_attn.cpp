@@ -53,7 +53,8 @@ using namespace AscendC;
     } while (0)
 
 
-template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE>
+template <uint32_t QKV_DTYPE, uint32_t QUANT_MODE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE,
+          bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
     __gm__ uint8_t *vScale, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
@@ -75,7 +76,13 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
-    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                bsaIsPa, bsaUseDn);
+    if constexpr (QUANT_MODE == BSA_TPL_QUANT_MODE_MXFP8_FULL_QUANT) {
+        BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
+                    S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                    bsaIsPa, bsaUseDn);
+    } else {
+        BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
+                    S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                    bsaIsPa, bsaUseDn);
+    }
 }

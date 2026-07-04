@@ -92,7 +92,8 @@ void QuantBlockSparseAttnTiling::FillSparseParams()
 void QuantBlockSparseAttnTiling::FillInputParams()
 {
     const auto &info = *tilingInfo_;
-    const uint8_t compatMaskMode = (info.maskModeVal == 3U) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
+    const uint8_t compatMaskMode =
+        (info.maskModeVal == BSA_MASK_MODE_CAUSAL) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
     auto &inputParams = tilingData_.inputParamsRegbase;
     inputParams.set_bSize(info.bSize);
     inputParams.set_t1Size(info.qTokenNum);
@@ -226,8 +227,8 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
 void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
-    tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
-                                    info.returnSoftmaxLseVal ? 1U : 0U);
+    tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.quantModeVal, info.layoutQValue,
+                                    BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U);
 }
 
 void QuantBlockSparseAttnTiling::CalcWorkspaceSize()

@@ -128,6 +128,7 @@ struct QuantBlockSparseAttnTilingInfo {
 
     ge::DataType qDtype = ge::DT_UNDEFINED;
     ge::DataType kvDtype = ge::DT_UNDEFINED;
+    ge::DataType vDtype = ge::DT_UNDEFINED;
 
     float softmaxScaleVal = 1.0F;
     uint32_t maskModeVal = 0;

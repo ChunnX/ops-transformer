@@ -37,22 +37,22 @@ public:
             .IgnoreContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("v_descale")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("p_scale")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_q")

@@ -29,26 +29,47 @@ QuantBlockSparseAttnCheck::QuantBlockSparseAttnCheck(const QuantBlockSparseAttnT
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
 {
-    if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.qDtype != ge::DT_HIFLOAT8) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", std::to_string(static_cast<int>(tilingInfo_.qDtype)),
-                                  "FLOAT8_E4M3FN or HIFLOAT8");
-        return ge::GRAPH_FAILED;
-    }
-    if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.kvDtype != ge::DT_HIFLOAT8) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", std::to_string(static_cast<int>(tilingInfo_.kvDtype)),
-                                  "FLOAT8_E4M3FN or HIFLOAT8");
-        return ge::GRAPH_FAILED;
+    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+        if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN || tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN ||
+            tilingInfo_.vDtype != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE_FOR_INVALID_DTYPE(
+                kOpName, "query/key/value",
+                std::to_string(static_cast<int>(tilingInfo_.qDtype)) + "/" +
+                    std::to_string(static_cast<int>(tilingInfo_.kvDtype)) + "/" +
+                    std::to_string(static_cast<int>(tilingInfo_.vDtype)),
+                "FLOAT8_E4M3FN in quant_mode=2 MXFP8 full-quant scenario");
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    } else {
+        if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.qDtype != ge::DT_HIFLOAT8) {
+            OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", std::to_string(static_cast<int>(tilingInfo_.qDtype)),
+                                      "FLOAT8_E4M3FN or HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.kvDtype != ge::DT_HIFLOAT8) {
+            OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", std::to_string(static_cast<int>(tilingInfo_.kvDtype)),
+                                      "FLOAT8_E4M3FN or HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (tilingInfo_.vDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.vDtype != ge::DT_HIFLOAT8) {
+            OP_LOGE_FOR_INVALID_DTYPE(kOpName, "value", std::to_string(static_cast<int>(tilingInfo_.vDtype)),
+                                      "FLOAT8_E4M3FN or HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 {
-    if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo_.kvBlockSizeVal != BSA_BLOCK_SIZE) {
-        OP_LOGE_FOR_INVALID_VALUE(kOpName, "q_block_size/kv_block_size",
-                                  std::to_string(tilingInfo_.qBlockSizeVal) + "/" +
-                                      std::to_string(tilingInfo_.kvBlockSizeVal),
-                                  std::to_string(BSA_BLOCK_SIZE));
+    const uint32_t expectedKVBlockSize =
+        (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) ? BSA_MXFP8_PA_BLOCK_SIZE : BSA_BLOCK_SIZE;
+    if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo_.kvBlockSizeVal != expectedKVBlockSize) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "q_block_size/kv_block_size",
+            std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
+            "must be " + std::to_string(BSA_BLOCK_SIZE) + "/" + std::to_string(expectedKVBlockSize));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -93,7 +114,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckMaskMode() const
 {
-    if (tilingInfo_.maskModeVal > 4U) {
+    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT &&
+        tilingInfo_.maskModeVal != BSA_MASK_MODE_CAUSAL) {
+        OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal),
+                                  std::to_string(BSA_MASK_MODE_CAUSAL));
+        return ge::GRAPH_FAILED;
+    }
+    if (tilingInfo_.maskModeVal > BSA_MASK_MODE_MAX) {
         OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal), "0, 1, 2, 3 or 4");
         return ge::GRAPH_FAILED;
     }
