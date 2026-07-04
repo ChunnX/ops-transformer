@@ -16,6 +16,7 @@
 #define ALLTO_ALL_MATMUL_FIT_BALANCE_TILING_H
 
 #include "mc2/common/op_host/op_tiling/mc2_fit_based_balance_tiling.h"
+#include "mc2/common/op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace MC2Tiling {
 class AlltoAllMatmulFitBalanceTiling : public Mc2FitBasedBalanceTiling {
@@ -28,9 +29,10 @@ public:
     };
     explicit AlltoAllMatmulFitBalanceTiling(QuantType matmulQuantType, const mc2tiling::TilingArgs &args,
                                             TopoType topoType = TopoType::STANDARD_CARD,
-                                            SocVersion socVersion = SocVersion::SOC950)
+                                            SocVersion socVersion = SocVersion::SOC950,
+                                            uint8_t commMode = mc2tiling::A5_AICPU_TS_ENGINE)
         : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, topoType, socVersion),
-          matmulQuantType_(matmulQuantType)
+          matmulQuantType_(matmulQuantType), commMode_(commMode)
     {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
         commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
@@ -56,6 +58,8 @@ protected:
     uint32_t GetRank();
     double totalMatmulTime_ = 0.0;
     double totalTpTime_ = 0.0;
+    uint64_t alltoallMaxTilingNum_ = MAX_TILE_CNT;
+    uint8_t commMode_ = mc2tiling::A5_AICPU_TS_ENGINE;
 };
 } // namespace MC2Tiling
 #endif // ALLTO_ALL_FIT_BALANCE_TILING_H
