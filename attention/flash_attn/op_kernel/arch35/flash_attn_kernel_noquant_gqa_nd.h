@@ -826,3 +826,4 @@ public:
 } // namespace BaseApi
 
 #endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
