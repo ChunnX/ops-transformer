@@ -187,8 +187,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
                 vreg_src_x_unroll_new, preg_tail_n);
 
             Max(vreg_max_tmp, vreg_src_x, vreg_src_x_unroll_new, preg_all_float);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_src_max,
-                                                                                              vreg_max_tmp, preg_all_float);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_src_max, vreg_max_tmp, preg_all_float);
         }
         if constexpr (hasSink) {
             Max(vreg_src_max, vreg_src_max, vreg_sink_input, preg_all_float);
