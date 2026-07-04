@@ -163,7 +163,7 @@ private:
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
+    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));   //大小：2(开dB) * 2 * 64 * 256 * 4 = 256KB
     resMm1Local_ = resMm1Buf_.Get<QK_T>();// qk
 
     pipe->InitBuffer(vBiasBuf_, 2 * s2BaseSize_ * sizeof(float));   // 大小：2(开dB) * kbSize(256) * 4 = 4KB 
@@ -182,10 +182,10 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(s2BlockValidLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
     s2BlockValidLenLocal_ = s2BlockValidLenBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));
+    pipe->InitBuffer(indicesOutBuf_, SIKernel::SITopk<uint32_t>::MAX_LOOP_M * MAX_TOPK_COUNT * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, trunkLen_ * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
+    pipe->InitBuffer(scoreOutBuf_, SIKernel::SITopk<uint32_t>::MAX_LOOP_M * trunkLen_* sizeof(SCORE_T));
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetReUseSharedTmpBufferSize();
@@ -210,7 +210,7 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     qHeadNum_ = constInfo.qHeadNum;
     // define MMBase para
     s1BaseSize_ = constInfo.s1BaseSize;  // 4
-    s2BaseSize_ = constInfo.s2BaseSize;  // 128
+    s2BaseSize_ = constInfo.s2BaseSize;  // 256
     mBaseSize_ = constInfo.mBaseSize;
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
@@ -517,13 +517,13 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::RunTopKFourRows(
     const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop,
     uint32_t mBaseIdx, uint32_t batchRowNum, int64_t curAivGS1Idx, uint64_t shortCircuitMask,
-    AscendC::DataCopyParams &copyOutParams,
-    AscendC::DataCopyParams &indiceLenCopyParams)
+    AscendC::DataCopyParams &copyOutParams, AscendC::DataCopyParams &indiceLenCopyParams)
 {
     if (batchRowNum == 0U) {
         return;
     }
 
+    // padding（各行按自身 s2BlockValidLen 补齐到 trunkLen，非零行结果一致）
     if (isFirstS2InnerLoop) {
         vector1::PadMrgFourRowsFirstS2RangeVF(mrgValueLocal_, topkNumLocal_, s2BlockValidLenLocal_,
                                               mBaseIdx, batchRowNum, MAX_TOPK_COUNT + trunkLen_,
@@ -534,24 +534,20 @@ __aicore__ inline void SIVector<SIT>::RunTopKFourRows(
                                                  MAX_TOPK_COUNT + trunkLen_, trunkLen_);
     }
 
+    uint32_t inputOffset = isFirstS2InnerLoop ? TOPK_ALIGN_SIZE : 0U;
+    uint32_t validLen = isFirstS2InnerLoop ? trunkLen_ : (TOPK_ALIGN_SIZE + trunkLen_);
+
     LocalTensor<uint32_t> reuseMm1ResLocal =
         resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
     PipeBarrier<PIPE_V>();
-    if (isFirstS2InnerLoop) {
-        topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
-                           reuseMm1ResLocal, globalIndexLocal_,
-                           topkNumLocal_, s2BlockValidLenLocal_,
-                           batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                           TOPK_ALIGN_SIZE,
-                           info.s2Idx, info.s2LoopEnd + 1);
-    } else {
-        topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
-                           reuseMm1ResLocal, globalIndexLocal_,
-                           topkNumLocal_, s2BlockValidLenLocal_,
-                           batchRowNum, mBaseIdx, MAX_TOPK_COUNT + trunkLen_,
-                           0U,
-                           info.s2Idx, info.s2LoopEnd + 1);
-    }
+
+    topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_,
+                       reuseMm1ResLocal, globalIndexLocal_,
+                       topkNumLocal_,
+                       mBaseIdx, batchRowNum, MAX_TOPK_COUNT + trunkLen_,
+                       inputOffset, validLen,
+                       info.s2Idx, info.s2LoopEnd + 1);
+
     CopyOutFourRows(info, mBaseIdx, batchRowNum, curAivGS1Idx, shortCircuitMask,
                     isLastS2InnerLoop, copyOutParams, indiceLenCopyParams);
 }
