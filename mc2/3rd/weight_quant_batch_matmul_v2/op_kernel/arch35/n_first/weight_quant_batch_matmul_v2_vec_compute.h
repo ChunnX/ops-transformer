@@ -16,7 +16,6 @@
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_VEC_COMPUTE_H
 
 #include "anti_quant_y_vf.h"
-#include "basic_block_config.h"
 #include "basic_block_vf_mx.h"
 #include "basic_block_vf_nd.h"
 #include "basic_block_vf_nz.h"

@@ -22,7 +22,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "lib/matmul_intf.h"
 
 namespace Mc2BatchMatMulV3Advanced {
 

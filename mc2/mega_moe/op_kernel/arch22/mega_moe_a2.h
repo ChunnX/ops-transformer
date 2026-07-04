@@ -29,7 +29,6 @@ using namespace AscendC;
 #endif
 
 #include "mega_moe_tiling_a2a3.h"
-#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 
 #include "template_linear_algebra_v2/catlass.hpp"
 #include "template_linear_algebra_v2/arch/arch.hpp"
@@ -62,7 +61,6 @@ using namespace AscendC;
 #include "mega_moe_kernel_a2_int8.hpp"
 #include "mega_moe_kernel_a2_bf16.hpp"
 #include "mega_moe_kernel_a2_bf16_w4a8.hpp"
-#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 namespace MegaMoeA2Impl {
 

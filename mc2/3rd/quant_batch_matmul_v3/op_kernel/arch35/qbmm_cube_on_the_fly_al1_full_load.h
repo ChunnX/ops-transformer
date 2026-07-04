@@ -16,8 +16,6 @@
 #define MC2_QBMM_CUBE_ON_THE_FLY_AL1_FULL_LOAD_H
 
 #include "qbmm_cube_on_the_fly.h"
-#include "qbmm_asw_block.h"
-#include "../quant_batch_matmul_v3_base.h"
 #include "qbmm_api_utils.h"
 
 namespace Mc2QuantBatchMatmulV3 {

@@ -15,8 +15,6 @@
 #ifndef MC2_QBMM_PERBLOCK_API_UTILS_H
 #define MC2_QBMM_PERBLOCK_API_UTILS_H
 
-#include "qbmm_asw_block.h"
-#include "../quant_batch_matmul_v3_base.h"
 #include "qbmm_perblock_api_param_utils.h"
 
 namespace Mc2QuantBatchMatmulV3 {
