@@ -52,6 +52,26 @@ struct MMParam {
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
+__aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
+                                      bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
+                                      uint32_t unitFlag = 0, uint32_t realM = 0)
+{
+    // MX 调用点使用的小型构造函数，用于让 matmul 维度和转置标志更易读。
+    // 在 MX 路径中，这些标志描述的是 LoadDataToL0*Mx 消费的 L1 视图，
+    // 并不表示额外启动一个显式转置 kernel。
+    MMParam param;
+    param.singleM = singleM;
+    param.singleN = singleN;
+    param.singleK = singleK;
+    param.isLeftTranspose = isLeftTranspose;
+    param.isRightTranspose = isRightTranspose;
+    param.cmatrixInitVal = cmatrixInitVal;
+    param.isOutKFisrt = isOutKFisrt;
+    param.unitFlag = unitFlag;
+    param.realM = realM;
+    return param;
+}
+
 enum class ABLayout {
     MK = 0,
     KM = 1,
@@ -500,6 +520,23 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
     l0bBuffer.Set<HardEvent::M_MTE1>();
+}
+
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
+          typename L0ADType = A, typename L0BDType = B>
+__aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                    L0AType &aL0BuffsDb, L0BType &bL0BuffsDb,
+                                    const LocalTensor<C> &cL0Tensor, MMParam &param,
+                                    const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
+{
+    // 对现有 MatmulFull 模板的 MX 包装。它与普通 fp8 matmul 的关键差异是：
+    // A/B scale tensor 会被透传，同时 L0ADType/L0BDType 可指定为 mx_fp8_e4m3_t，
+    // 从而在 L1->L0 LoadData 阶段选择硬件随路反量化。
+    MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL, L0AType, L0BType, AScaleType, BScaleType, L0ADType,
+               L0BDType>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param, aScaleL1Tensor,
+                         bScaleL1Tensor);
 }
 
 // 切K
