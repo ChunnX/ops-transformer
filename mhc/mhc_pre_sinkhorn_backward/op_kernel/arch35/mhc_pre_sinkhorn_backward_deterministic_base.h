@@ -185,7 +185,7 @@ __aicore__ inline void CopyOutBuf(
 // ============================================================
 template <typename U, bool ISPRE>
 __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *zAddr, __local_mem__ U *gradZAddr,
-                                   uint64_t bsLen, uint64_t n, uint64_t vRegSize, float hcEps)
+                                   uint64_t bsLen, uint64_t n, uint64_t rowStride, uint64_t vRegSize, float hcEps)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
     uint16_t vfLoopCnt = (n + vfLen - 1) / vfLen;
@@ -196,9 +196,9 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
         AscendC::MicroAPI::MaskReg maskReg;
         uint32_t maskLen = static_cast<uint32_t>(n);
         for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
-            __local_mem__ U *zRow = zAddr + bs * n;
+            __local_mem__ U *zRow = zAddr + bs * rowStride;
             __local_mem__ U *gradHRow = gradHAddr + bs * n;
-            __local_mem__ U *gradZRow = gradZAddr + bs * n;
+            __local_mem__ U *gradZRow = gradZAddr + bs * rowStride;
             for (uint16_t i = 0; i < vfLoopCnt; i++) {
                 maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 MicroAPI::Duplicate(onesReg, U(1), maskReg);
@@ -231,7 +231,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
 // ============================================================
 template <typename U>
 __aicore__ inline void ComputeGradBias(__local_mem__ U *gradBiasAddr, __local_mem__ U *gradZAddr, uint64_t bsLen,
-                                       uint64_t colLen, uint64_t vRegSize)
+                                       uint64_t colLen, uint64_t rowStride, uint64_t vRegSize)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
     uint16_t loopCnt = (colLen + vfLen - 1) / vfLen;
@@ -247,7 +247,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U *gradBiasAddr, __local_me
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
             for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
-                auto gradZAddrStart = gradZAddr + j * colLen + i * vfLen;
+                auto gradZAddrStart = gradZAddr + j * rowStride + i * vfLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
                 AscendC::MicroAPI::Add(gradBiasReg, gradBiasReg, gradZReg, maskReg);
@@ -263,7 +263,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U *gradBiasAddr, __local_me
 template <typename U>
 __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr, __local_mem__ U *gradZAddr,
                                         __local_mem__ U *gradAlphaAddr, uint64_t bsLen, uint64_t colLen,
-                                        uint64_t vRegSize)
+                                        uint64_t rowStride, uint64_t vRegSize)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
     uint16_t vfLoopCnt = (colLen + vfLen - 1) / vfLen;
@@ -276,8 +276,8 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
         MicroAPI::Duplicate(gradAlphaSumReg, U(0), OneMaskReg);
         uint32_t maskLen = static_cast<uint32_t>(colLen);
         for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
-            __local_mem__ U *noRow = normOutForwardPartAddr + bs * colLen;
-            __local_mem__ U *gradZRow = gradZAddr + bs * colLen;
+            __local_mem__ U *noRow = normOutForwardPartAddr + bs * rowStride;
+            __local_mem__ U *gradZRow = gradZAddr + bs * rowStride;
             for (uint16_t i = 0; i < vfLoopCnt; i++) {
                 maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 AscendC::MicroAPI::AddrReg noOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
@@ -294,46 +294,56 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
 }
 
 // ============================================================
-// ComputeZAndForwardPart: z = hcBeforeNorm * invRms + bias, normOut = sigmoid(z) * alpha
+// ComputeZAndForwardPart
+//   normOut = hc * invRms
+//   z       = normOut * alpha + bias
+//
+//   UB 布局: [bsLen, rowStride], 尾轴 colLen 对齐到 nAlign
+//   hc/bias: 输入 (bias 每 BS 共用同一份)
+//   z/normOut: 输出
 // ============================================================
 template <typename U>
-__aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_mem__ U *normOutForwardAddr,
-                                              __local_mem__ U *biasAddr, uint64_t bsLen, uint64_t colLen,
-                                              uint64_t cLenAlign, uint64_t vRegSize, const U &alpha)
+__aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_mem__ U *normOutAddr,
+                                              __local_mem__ U *hcAddr, __local_mem__ U *biasAddr,
+                                              __local_mem__ U *invRmsAddr,
+                                              uint64_t bsLen, uint64_t colLen, uint64_t rowStride,
+                                              uint64_t vRegSize, const U &alpha)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
-    uint16_t vfLoopCnt = (colLen + vfLen - 1) / vfLen;
+    uint16_t vfLoopCnt = static_cast<uint16_t>((colLen + vfLen - 1) / vfLen);
+    uint32_t maskLen = static_cast<uint32_t>(colLen);
+
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<U> zReg, normOutForwardReg;
-        AscendC::MicroAPI::RegTensor<U> biasReg, invRmsReg, alphaReg, onesReg;
+        AscendC::MicroAPI::RegTensor<U> hcReg, zReg, biasReg, normOutReg;
+        AscendC::MicroAPI::RegTensor<U> invRmsReg, alphaReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
-        MicroAPI::Duplicate(onesReg, U(1), allMaskReg);
-        MicroAPI::Duplicate(alphaReg, alpha, allMaskReg);
-        uint32_t maskLen = static_cast<uint32_t>(colLen);
+        AscendC::MicroAPI::MaskReg allMask = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
+
+        MicroAPI::Duplicate(alphaReg, alpha, allMask);
+
         for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
-            __local_mem__ U *zRow = zAddr + bs * cLenAlign;
-            __local_mem__ U *noRow = normOutForwardAddr + bs * cLenAlign;
-            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
-                                           AscendC::MicroAPI::MemType::SCALAR_LOAD>();
-            U invRms = *zRow;
-            AscendC::MicroAPI::Duplicate(invRmsReg, invRms, allMaskReg);
-            for (uint16_t i = 0; i < vfLoopCnt; i++) {
+            __local_mem__ U *hcBase = hcAddr + bs * rowStride;
+            __local_mem__ U *zBase  = zAddr + bs * rowStride;
+            __local_mem__ U *noBase = normOutAddr + bs * rowStride;
+
+            MicroAPI::Duplicate(invRmsReg, invRmsAddr[bs], allMask);
+
+            for (uint16_t vf = 0; vf < vfLoopCnt; vf++) {
                 maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-                AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-                AscendC::MicroAPI::AddrReg biasOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-                AscendC::MicroAPI::DataCopy(zReg, zRow, zOfst);
-                AscendC::MicroAPI::DataCopy(biasReg, biasAddr, biasOfst);
-                AscendC::MicroAPI::Mul(zReg, zReg, invRmsReg, maskReg);
+                AscendC::MicroAPI::AddrReg ofs = AscendC::MicroAPI::CreateAddrReg<U>(vf, vfLen);
+
+                AscendC::MicroAPI::DataCopy(hcReg, hcBase, ofs);
+                AscendC::MicroAPI::DataCopy(biasReg, biasAddr, ofs);
+
+                // normOut = hc * invRms
+                AscendC::MicroAPI::Mul(normOutReg, hcReg, invRmsReg, maskReg);
+                // z = normOut * alpha + bias
+                AscendC::MicroAPI::Mul(zReg, normOutReg, alphaReg, maskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, maskReg);
-                AscendC::MicroAPI::Neg(zReg, zReg, maskReg);
-                AscendC::MicroAPI::Exp(zReg, zReg, maskReg);
-                AscendC::MicroAPI::Add(zReg, zReg, onesReg, maskReg);
-                AscendC::MicroAPI::Div(zReg, onesReg, zReg, maskReg);
-                AscendC::MicroAPI::Mul(normOutForwardReg, zReg, alphaReg, maskReg);
-                AscendC::MicroAPI::DataCopy(zRow + i * vfLen, zReg, maskReg);
-                AscendC::MicroAPI::DataCopy(noRow + i * vfLen, normOutForwardReg, maskReg);
+
+                AscendC::MicroAPI::DataCopy(zBase + vf * vfLen, zReg, maskReg);
+                AscendC::MicroAPI::DataCopy(noBase + vf * vfLen, normOutReg, maskReg);
             }
         }
     }
