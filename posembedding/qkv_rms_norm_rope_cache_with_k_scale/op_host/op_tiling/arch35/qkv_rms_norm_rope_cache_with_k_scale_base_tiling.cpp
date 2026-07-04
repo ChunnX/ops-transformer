@@ -31,8 +31,8 @@ constexpr uint64_t SLOT_MAPPING_INDEX = 4;
 constexpr uint64_t K_CACHE_INDEX = 5;
 constexpr uint64_t V_CACHE_INDEX = 6;
 constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
-constexpr uint64_t CU_SEQ_LENS_INDEX = 8;
-constexpr uint64_t ACTUAL_SEQ_LENS_INDEX = 9;
+constexpr uint64_t QUERY_START_LOC_INDEX = 8;
+constexpr uint64_t SEQ_LENS_INDEX = 9;
 constexpr uint64_t ROTATION_INDEX = 10;
 constexpr uint64_t V_SCALE_INDEX = 11;
 
@@ -200,8 +200,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
         {"kGamma", &input_.kGamma, ge::DT_FLOAT},
         {"cosSin", &input_.cosSin, ge::DT_FLOAT},
         {"slotMapping", &input_.slotMapping, ge::DT_INT32},
-        {"cuSeqLens", &input_.cuSeqLens, ge::DT_INT32},
-        {"actualSeqLens", &input_.actualSeqLens, ge::DT_INT32},
+        {"queryStartLoc", &input_.queryStartLoc, ge::DT_INT32},
+        {"seqLens", &input_.seqLens, ge::DT_INT32},
         {"kCache", &input_.kCache, ge::DT_FLOAT8_E4M3FN},
         {"vCache", &input_.vCache, ge::DT_FLOAT8_E4M3FN},
         {"kScaleCache", &input_.kScaleCache, ge::DT_FLOAT},
@@ -227,27 +227,27 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForD
                 OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cosSin",
                                              (std::to_string(input_.cosSin.shape.GetDimNum()) + "D").c_str(), "2D"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!input_.cuSeqLens.shapePresent || input_.cuSeqLens.shape.GetDimNum() != 1,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cuSeqLens",
-                                             (std::to_string(input_.cuSeqLens.shape.GetDimNum()) + "D").c_str(), "1D"),
+    OP_CHECK_IF(!input_.queryStartLoc.shapePresent || input_.queryStartLoc.shape.GetDimNum() != 1,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "queryStartLoc",
+                                             (std::to_string(input_.queryStartLoc.shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.cuSeqLens.shape.GetDim(0) < 2,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cuSeqLens",
-                                                      Ops::Base::ToString(input_.cuSeqLens.shape).c_str(),
+    OP_CHECK_IF(input_.queryStartLoc.shape.GetDim(0) < 2,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "queryStartLoc",
+                                                      Ops::Base::ToString(input_.queryStartLoc.shape).c_str(),
                                                       "dim 0 must be greater than or equal to 2"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!input_.actualSeqLens.shapePresent || input_.actualSeqLens.shape.GetDimNum() != 1,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "actualSeqLens",
-                                             (std::to_string(input_.actualSeqLens.shape.GetDimNum()) + "D").c_str(),
+    OP_CHECK_IF(!input_.seqLens.shapePresent || input_.seqLens.shape.GetDimNum() != 1,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "seqLens",
+                                             (std::to_string(input_.seqLens.shape.GetDimNum()) + "D").c_str(),
                                              "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        input_.actualSeqLens.shape.GetDim(0) != input_.cuSeqLens.shape.GetDim(0) - 1,
+        input_.seqLens.shape.GetDim(0) != input_.queryStartLoc.shape.GetDim(0) - 1,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            opName_, "actualSeqLens, cuSeqLens",
-            (Ops::Base::ToString(input_.actualSeqLens.shape) + ", " + Ops::Base::ToString(input_.cuSeqLens.shape))
+            opName_, "seqLens, queryStartLoc",
+            (Ops::Base::ToString(input_.seqLens.shape) + ", " + Ops::Base::ToString(input_.queryStartLoc.shape))
                 .c_str(),
-            "dim 0 of actualSeqLens must be equal to dim 0 of cuSeqLens minus 1"),
+            "dim 0 of seqLens must be equal to dim 0 of queryStartLoc minus 1"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.kCache.shapePresent || input_.kCache.shape.GetDimNum() != 4,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "kCache",
@@ -318,15 +318,15 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositionInputSh
                     opName_, "slotMapping", Ops::Base::ToString(input_.slotMapping.shape).c_str(),
                     ("dim 0 must be equal to totalTokens " + std::to_string(input_.totalTokens)).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(static_cast<uint64_t>(input_.cuSeqLens.shape.GetDim(0)) != input_.batch + 1,
+    OP_CHECK_IF(static_cast<uint64_t>(input_.queryStartLoc.shape.GetDim(0)) != input_.batch + 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "cuSeqLens", Ops::Base::ToString(input_.cuSeqLens.shape).c_str(),
+                    opName_, "queryStartLoc", Ops::Base::ToString(input_.queryStartLoc.shape).c_str(),
                     ("dim 0 must be equal to batch plus 1, batch is " + std::to_string(input_.batch)).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.actualSeqLens.shape.GetDim(0) <= 0 ||
-                    static_cast<uint64_t>(input_.actualSeqLens.shape.GetDim(0)) != input_.batch,
+    OP_CHECK_IF(input_.seqLens.shape.GetDim(0) <= 0 ||
+                    static_cast<uint64_t>(input_.seqLens.shape.GetDim(0)) != input_.batch,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "actualSeqLens", Ops::Base::ToString(input_.actualSeqLens.shape).c_str(),
+                    opName_, "seqLens", Ops::Base::ToString(input_.seqLens.shape).c_str(),
                     ("dim 0 must be greater than 0 and equal to batch " + std::to_string(input_.batch)).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -820,8 +820,8 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
     LogTensorInfo("kCache", input_.kCache);
     LogTensorInfo("vCache", input_.vCache);
     LogTensorInfo("kScaleCache", input_.kScaleCache);
-    LogTensorInfo("cuSeqLens", input_.cuSeqLens);
-    LogTensorInfo("actualSeqLens", input_.actualSeqLens);
+    LogTensorInfo("queryStartLoc", input_.queryStartLoc);
+    LogTensorInfo("seqLens", input_.seqLens);
     LogTensorInfo("rotation", input_.rotation);
     LogTensorInfo("vScale", input_.vScale);
 }
@@ -958,7 +958,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(
 {
     const auto &qkvShape = input_.qkv.shape;
     const auto &cosSinShape = input_.cosSin.shape;
-    const auto &cuSeqLensShape = input_.cuSeqLens.shape;
+    const auto &queryStartLocShape = input_.queryStartLoc.shape;
     const auto &kCacheShape = input_.kCache.shape;
     const bool isNtd = input_.layoutQkv == QKV_K_SCALE_LAYOUT_NTD;
     const int64_t qkvHeadDim = qkvShape.GetDim(isNtd ? 0 : 1);
@@ -977,7 +977,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(
                 return ge::GRAPH_FAILED);
     input_.totalTokens = static_cast<uint64_t>(qkvTokenDim);
     input_.headDim = static_cast<uint64_t>(qkvShape.GetDim(2));
-    input_.batch = static_cast<uint64_t>(cuSeqLensShape.GetDim(0)) - 1;
+    input_.batch = static_cast<uint64_t>(queryStartLocShape.GetDim(0)) - 1;
     input_.maxSeqLen = static_cast<uint64_t>(cosSinShape.GetDim(0));
     input_.blockNum = static_cast<uint64_t>(kCacheShape.GetDim(0));
     input_.blockSize = static_cast<uint64_t>(kCacheShape.GetDim(2));
@@ -1007,11 +1007,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillRequiredTensorInput
                 OP_LOGE(context_, "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context_, opName_, K_SCALE_CACHE_INDEX, input_.kScaleCache) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ToTensorInfo(context_, opName_, "cuSeqLens", CU_SEQ_LENS_INDEX, input_.cuSeqLens) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse cuSeqLens tensor info."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ToTensorInfo(context_, opName_, "actualSeqLens", ACTUAL_SEQ_LENS_INDEX, input_.actualSeqLens) !=
+    OP_CHECK_IF(ToTensorInfo(context_, opName_, "queryStartLoc", QUERY_START_LOC_INDEX, input_.queryStartLoc) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "failed to parse queryStartLoc tensor info."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ToTensorInfo(context_, opName_, "seqLens", SEQ_LENS_INDEX, input_.seqLens) !=
                     ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse actualSeqLens tensor info."), return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse seqLens tensor info."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

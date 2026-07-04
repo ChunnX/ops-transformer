@@ -18,8 +18,8 @@ namespace l0op {
 std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
-                              aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLens,
-                              const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
+                              aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *queryStartLoc,
+                              const aclTensor *seqLens, const aclTensor *rotationOptional,
                               const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *layoutQkv,
                               const char *layoutQOut, float epsilon, aclTensor *qOut, aclTensor *qScale,
                               aclOpExecutor *executor);

@@ -37,7 +37,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "qkv_rms_norm_rope_cache_with_k_scale("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor(a!) k_cache, Tensor(b!) v_cache, Tensor(c!) k_scale_cache, "
-            "Tensor cu_seq_lens, Tensor actual_seq_lens, int[] head_nums, "
+            "Tensor query_start_loc, Tensor seq_lens, int[] head_nums, "
             "*, "
             "Tensor? rotation=None, Tensor? v_scale=None, "
             "str? layout_qkv=\"TND\", str? layout_q_out=\"NTD\", "
@@ -45,7 +45,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "qkv_rms_norm_rope_cache_with_k_scale_functional("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor k_cache, Tensor v_cache, Tensor k_scale_cache, "
-            "Tensor cu_seq_lens, Tensor actual_seq_lens, int[] head_nums, "
+            "Tensor query_start_loc, Tensor seq_lens, int[] head_nums, "
             "*, "
             "Tensor? rotation=None, Tensor? v_scale=None, "
             "str? layout_qkv=\"TND\", str? layout_q_out=\"NTD\", "
@@ -59,7 +59,7 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, OP_NAME, "Meta")
         def qkv_rms_norm_rope_cache_with_k_scale_meta(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache,
-                                                       v_cache, k_scale_cache, cu_seq_lens, actual_seq_lens,
+                                                       v_cache, k_scale_cache, query_start_loc, seq_lens,
                                                        head_nums, *, rotation=None, v_scale=None,
                                                        layout_qkv=QKV_LAYOUT_TND, layout_q_out=QKV_LAYOUT_NTD,
                                                        epsilon=1e-6):
@@ -68,8 +68,8 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
 
         @impl(AS_LIBRARY, FUNCTIONAL_OP_NAME, "Meta")
         def qkv_rms_norm_rope_cache_with_k_scale_functional_meta(qkv, q_gamma, k_gamma, cos_sin, slot_mapping,
-                                                                  k_cache, v_cache, k_scale_cache, cu_seq_lens,
-                                                                  actual_seq_lens, head_nums, *, rotation=None,
+                                                                  k_cache, v_cache, k_scale_cache, query_start_loc,
+                                                                  seq_lens, head_nums, *, rotation=None,
                                                                   v_scale=None, layout_qkv=QKV_LAYOUT_TND,
                                                                   layout_q_out=QKV_LAYOUT_NTD, epsilon=1e-6):
             q_out, q_scale = _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
@@ -128,7 +128,7 @@ op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()
 def qkv_rms_norm_rope_cache_with_k_scale(
     qkv: torch.Tensor, q_gamma: torch.Tensor, k_gamma: torch.Tensor, cos_sin: torch.Tensor,
     slot_mapping: torch.Tensor, k_cache: torch.Tensor, v_cache: torch.Tensor, k_scale_cache: torch.Tensor,
-    cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor, head_nums: List[int],
+    query_start_loc: torch.Tensor, seq_lens: torch.Tensor, head_nums: List[int],
     *, rotation: Optional[torch.Tensor] = None, v_scale: Optional[torch.Tensor] = None,
     layout_qkv: Optional[str] = QKV_LAYOUT_TND, layout_q_out: Optional[str] = QKV_LAYOUT_NTD,
     epsilon: float = 1e-6,
@@ -138,14 +138,14 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     """
     return op_module.qkv_rms_norm_rope_cache_with_k_scale(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
-        cu_seq_lens, actual_seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)
+        query_start_loc, seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)
 
 
 @impl(AS_LIBRARY, FUNCTIONAL_OP_NAME, "PrivateUse1")
 def qkv_rms_norm_rope_cache_with_k_scale_functional(
     qkv: torch.Tensor, q_gamma: torch.Tensor, k_gamma: torch.Tensor, cos_sin: torch.Tensor,
     slot_mapping: torch.Tensor, k_cache: torch.Tensor, v_cache: torch.Tensor, k_scale_cache: torch.Tensor,
-    cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor, head_nums: List[int],
+    query_start_loc: torch.Tensor, seq_lens: torch.Tensor, head_nums: List[int],
     *, rotation: Optional[torch.Tensor] = None, v_scale: Optional[torch.Tensor] = None,
     layout_qkv: Optional[str] = QKV_LAYOUT_TND, layout_q_out: Optional[str] = QKV_LAYOUT_NTD,
     epsilon: float = 1e-6,
@@ -155,4 +155,4 @@ def qkv_rms_norm_rope_cache_with_k_scale_functional(
     """
     return op_module.qkv_rms_norm_rope_cache_with_k_scale_functional(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
-        cu_seq_lens, actual_seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)
+        query_start_loc, seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)

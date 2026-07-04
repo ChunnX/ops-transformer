@@ -169,8 +169,8 @@ int main()
     std::vector<int64_t> kCacheShape = {BlockNum, Nk, BlockSize, D};
     std::vector<int64_t> vCacheShape = {BlockNum, Nv, BlockSize, D};
     std::vector<int64_t> kScaleCacheShape = {BlockNum, Nk, BlockSize, 1};
-    std::vector<int64_t> cuSeqLensShape = {Batch + 1};
-    std::vector<int64_t> actualSeqLensShape = {Batch};
+    std::vector<int64_t> queryStartLocShape = {Batch + 1};
+    std::vector<int64_t> seqLensShape = {Batch};
     std::vector<int64_t> rotationShape = {D, D};
     std::vector<int64_t> vScaleShape = {Nv};
     std::vector<int64_t> qOutShape = {T, Nq, D};
@@ -189,8 +189,8 @@ int main()
     std::vector<uint8_t> kCacheHostData(GetShapeSize(kCacheShape), 0);
     std::vector<uint8_t> vCacheHostData(GetShapeSize(vCacheShape), 0);
     std::vector<float> kScaleCacheHostData(GetShapeSize(kScaleCacheShape), 0.0f);
-    std::vector<int32_t> cuSeqLensHostData = {0, T};
-    std::vector<int32_t> actualSeqLensHostData = {T};
+    std::vector<int32_t> queryStartLocHostData = {0, T};
+    std::vector<int32_t> seqLensHostData = {T};
     std::vector<uint16_t> rotationHostData(GetShapeSize(rotationShape), FloatToBf16(0.0f));
     for (int64_t i = 0; i < D; ++i) {
         rotationHostData[i * D + i] = FloatToBf16(1.0f);
@@ -207,14 +207,14 @@ int main()
     TensorResource kCache;
     TensorResource vCache;
     TensorResource kScaleCache;
-    TensorResource cuSeqLens;
-    TensorResource actualSeqLens;
+    TensorResource queryStartLoc;
+    TensorResource seqLens;
     TensorResource rotation;
     TensorResource vScale;
     TensorResource qOut;
     TensorResource qScale;
     resource.tensors = {&qkv,         &qGamma,    &kGamma,        &cosSin,   &slotMapping, &kCache, &vCache,
-                        &kScaleCache, &cuSeqLens, &actualSeqLens, &rotation, &vScale,      &qOut,   &qScale};
+                        &kScaleCache, &queryStartLoc, &seqLens, &rotation, &vScale,      &qOut,   &qScale};
 
     ret = CreateAclTensor(qkvHostData, qkvShape, ACL_BF16, qkv);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
@@ -232,9 +232,9 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
     ret = CreateAclTensor(kScaleCacheHostData, kScaleCacheShape, ACL_FLOAT, kScaleCache);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
-    ret = CreateAclTensor(cuSeqLensHostData, cuSeqLensShape, ACL_INT32, cuSeqLens);
+    ret = CreateAclTensor(queryStartLocHostData, queryStartLocShape, ACL_INT32, queryStartLoc);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
-    ret = CreateAclTensor(actualSeqLensHostData, actualSeqLensShape, ACL_INT32, actualSeqLens);
+    ret = CreateAclTensor(seqLensHostData, seqLensShape, ACL_INT32, seqLens);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
     ret = CreateAclTensor(rotationHostData, rotationShape, ACL_BF16, rotation);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
@@ -256,7 +256,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
-        kScaleCache.tensor, cuSeqLens.tensor, actualSeqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
+        kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
         layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
     CHECK_RET(status == ACL_SUCCESS,
               LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);

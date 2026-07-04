@@ -29,10 +29,10 @@
   y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
   $$
 
-  第`b`个batch中第`i`个token的RoPE位置由`cuSeqLens`和`actualSeqLens`确定：
+  第`b`个batch中第`i`个token的RoPE位置由`queryStartLoc`和`seqLens`确定：
 
   $$
-  position = actualSeqLens[b] - (cuSeqLens[b + 1] - cuSeqLens[b]) + i
+  position = seqLens[b] - (queryStartLoc[b + 1] - queryStartLoc[b]) + i
   $$
 
   Q/K分支执行RoPE，`cosSin[..., :D/2]`为cos，`cosSin[..., D/2:]`为sin；V分支不执行RoPE：
@@ -91,8 +91,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     aclTensor         *kCacheRef,
     aclTensor         *vCacheRef,
     aclTensor         *kScaleCacheRef,
-    const aclTensor   *cuSeqLens,
-    const aclTensor   *actualSeqLens,
+    const aclTensor   *queryStartLoc,
+    const aclTensor   *seqLens,
     const aclTensor   *rotationOptional,
     const aclTensor   *vScaleOptional,
     const aclIntArray *headNums,
@@ -221,20 +221,20 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>√</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">cuSeqLens（const aclTensor*）</td>
+      <td style="white-space: nowrap">queryStartLoc（const aclTensor*）</td>
       <td>输入</td>
-      <td>当前调用内各batch token数的前缀和，对应公式中的<code>cuSeqLens</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需大于等于2。</li><li><code>cuSeqLens[0]</code>应为0，<code>cuSeqLens[Batch]</code>应为<code>T</code>。</li></ul></td>
+      <td>当前调用内各batch token数的前缀和，对应公式中的<code>queryStartLoc</code>。</td>
+      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需大于等于2。</li><li><code>queryStartLoc[0]</code>应为0，<code>queryStartLoc[Batch]</code>应为<code>T</code>。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td><code>[Batch+1]</code></td>
       <td>×</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">actualSeqLens（const aclTensor*）</td>
+      <td style="white-space: nowrap">seqLens（const aclTensor*）</td>
       <td>输入</td>
-      <td>每个batch追加本次token后的实际序列长度，对应公式中的<code>actualSeqLens</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需等于<code>cuSeqLens.shape[0]-1</code>。</li></ul></td>
+      <td>每个batch追加本次token后的实际序列长度，对应公式中的<code>seqLens</code>。</td>
+      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需等于<code>queryStartLoc.shape[0]-1</code>。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td><code>[Batch]</code></td>
@@ -364,7 +364,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_PARAM_NULLPTR</td>
       <td style="white-space: nowrap">161001</td>
-      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>cuSeqLens</code>、<code>actualSeqLens</code>、<code>rotationOptional</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>qScale</code>、<code>workspaceSize</code>或<code>executor</code>为空指针。</td>
+      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>queryStartLoc</code>、<code>seqLens</code>、<code>rotationOptional</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>qScale</code>、<code>workspaceSize</code>或<code>executor</code>为空指针。</td>
     </tr>
     <tr>
       <td rowspan="5" style="white-space: nowrap">ACLNN_ERR_PARAM_INVALID</td>
@@ -450,7 +450,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
 - 输入值域限制：
-  - `actualSeqLens[b]`必须满足`actualSeqLens[b] >= cuSeqLens[b+1] - cuSeqLens[b]`。若`actualSeqLens[b]`小于该batch本次调用的token数，行为未定义。
+  - `seqLens[b]`必须满足`seqLens[b] >= queryStartLoc[b+1] - queryStartLoc[b]`。若`seqLens[b]`小于该batch本次调用的token数，行为未定义。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用示例
@@ -621,8 +621,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       std::vector<int64_t> kCacheShape = {BlockNum, Nk, BlockSize, D};
       std::vector<int64_t> vCacheShape = {BlockNum, Nv, BlockSize, D};
       std::vector<int64_t> kScaleCacheShape = {BlockNum, Nk, BlockSize, 1};
-      std::vector<int64_t> cuSeqLensShape = {Batch + 1};
-      std::vector<int64_t> actualSeqLensShape = {Batch};
+      std::vector<int64_t> queryStartLocShape = {Batch + 1};
+      std::vector<int64_t> seqLensShape = {Batch};
       std::vector<int64_t> rotationShape = {D, D};
       std::vector<int64_t> vScaleShape = {Nv};
       std::vector<int64_t> qOutShape = {T, Nq, D};
@@ -641,8 +641,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       std::vector<uint8_t> kCacheHostData(GetShapeSize(kCacheShape), 0);
       std::vector<uint8_t> vCacheHostData(GetShapeSize(vCacheShape), 0);
       std::vector<float> kScaleCacheHostData(GetShapeSize(kScaleCacheShape), 0.0f);
-      std::vector<int32_t> cuSeqLensHostData = {0, T};
-      std::vector<int32_t> actualSeqLensHostData = {T};
+      std::vector<int32_t> queryStartLocHostData = {0, T};
+      std::vector<int32_t> seqLensHostData = {T};
       std::vector<uint16_t> rotationHostData(GetShapeSize(rotationShape), FloatToBf16(0.0f));
       for (int64_t i = 0; i < D; ++i) {
           rotationHostData[i * D + i] = FloatToBf16(1.0f);
@@ -659,14 +659,14 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       TensorResource kCache;
       TensorResource vCache;
       TensorResource kScaleCache;
-      TensorResource cuSeqLens;
-      TensorResource actualSeqLens;
+      TensorResource queryStartLoc;
+      TensorResource seqLens;
       TensorResource rotation;
       TensorResource vScale;
       TensorResource qOut;
       TensorResource qScale;
       resource.tensors = {&qkv,         &qGamma,       &kGamma,  &cosSin, &slotMapping, &kCache, &vCache,
-                          &kScaleCache, &cuSeqLens,     &actualSeqLens, &rotation, &vScale, &qOut, &qScale};
+                          &kScaleCache, &queryStartLoc,     &seqLens, &rotation, &vScale, &qOut, &qScale};
 
       ret = CreateAclTensor(qkvHostData, qkvShape, ACL_BF16, qkv);
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
@@ -684,9 +684,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
       ret = CreateAclTensor(kScaleCacheHostData, kScaleCacheShape, ACL_FLOAT, kScaleCache);
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
-      ret = CreateAclTensor(cuSeqLensHostData, cuSeqLensShape, ACL_INT32, cuSeqLens);
+      ret = CreateAclTensor(queryStartLocHostData, queryStartLocShape, ACL_INT32, queryStartLoc);
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
-      ret = CreateAclTensor(actualSeqLensHostData, actualSeqLensShape, ACL_INT32, actualSeqLens);
+      ret = CreateAclTensor(seqLensHostData, seqLensShape, ACL_INT32, seqLens);
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
       ret = CreateAclTensor(rotationHostData, rotationShape, ACL_BF16, rotation);
       CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
@@ -708,7 +708,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     uint64_t workspaceSize = 0;
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
-        kScaleCache.tensor, cuSeqLens.tensor, actualSeqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
+        kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
           layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
       CHECK_RET(status == ACL_SUCCESS,
                 LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);

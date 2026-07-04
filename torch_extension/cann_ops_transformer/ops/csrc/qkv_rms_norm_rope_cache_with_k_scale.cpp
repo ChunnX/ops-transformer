@@ -43,7 +43,7 @@ std::string ResolveLayout(const c10::optional<c10::string_view> &layout, const c
     return std::string(layout.value());
 }
 
-QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
+QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &query_start_loc, const at::Tensor &seq_lens,
                                at::IntArrayRef head_nums, const std::string &layout_qkv,
                                const std::string &layout_q_out, const c10::optional<at::Tensor> &rotation,
                                const c10::optional<at::Tensor> &v_scale)
@@ -73,10 +73,10 @@ QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_l
     TORCH_CHECK(qkv.size(head_dim) == n_q + n_k + n_v,
                 "qkv_rms_norm_rope_cache_with_k_scale: qkv head dimension must equal Nq+Nk+Nv, but got ",
                 qkv.size(head_dim), " vs expected ", n_q + n_k + n_v, ".");
-    TORCH_CHECK(cu_seq_lens.dim() == DIM_1 && cu_seq_lens.size(DIM_0) >= 2,
-                "qkv_rms_norm_rope_cache_with_k_scale: cu_seq_lens must be 1D with length >= 2.");
-    TORCH_CHECK(actual_seq_lens.dim() == DIM_1 && actual_seq_lens.size(DIM_0) == cu_seq_lens.size(DIM_0) - 1,
-                "qkv_rms_norm_rope_cache_with_k_scale: actual_seq_lens must be 1D with length cu_seq_lens.size(0)-1.");
+    TORCH_CHECK(query_start_loc.dim() == DIM_1 && query_start_loc.size(DIM_0) >= 2,
+                "qkv_rms_norm_rope_cache_with_k_scale: query_start_loc must be 1D with length >= 2.");
+    TORCH_CHECK(seq_lens.dim() == DIM_1 && seq_lens.size(DIM_0) == query_start_loc.size(DIM_0) - 1,
+                "qkv_rms_norm_rope_cache_with_k_scale: seq_lens must be 1D with length query_start_loc.size(0)-1.");
 
     TORCH_CHECK(rotation.has_value() && rotation.value().defined(),
                 "qkv_rms_norm_rope_cache_with_k_scale: rotation is required.");
@@ -107,8 +107,8 @@ std::tuple<at::Tensor, at::Tensor> MakeOutputs(const at::Tensor &qkv, const QkvK
 
 void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma,
                        const at::Tensor &cos_sin, const at::Tensor &slot_mapping, const at::Tensor &k_cache,
-                       const at::Tensor &v_cache, const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_lens,
-                       const at::Tensor &actual_seq_lens, at::IntArrayRef head_nums, const std::string &layout_qkv,
+                       const at::Tensor &v_cache, const at::Tensor &k_scale_cache, const at::Tensor &query_start_loc,
+                       const at::Tensor &seq_lens, at::IntArrayRef head_nums, const std::string &layout_qkv,
                        const std::string &layout_q_out, const at::Tensor &rotation, const at::Tensor &v_scale,
                        double epsilon, at::Tensor &q_out, at::Tensor &q_scale)
 {
@@ -117,7 +117,7 @@ void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const a
     float epsilon_value = static_cast<float>(epsilon);
 
     ACLNN_CMD(aclnnQkvRmsNormRopeCacheWithKScale, qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
-              k_scale_cache, cu_seq_lens, actual_seq_lens, rotation, v_scale, head_nums, layout_qkv_ptr,
+              k_scale_cache, query_start_loc, seq_lens, rotation, v_scale, head_nums, layout_qkv_ptr,
               layout_q_out_ptr, epsilon_value, q_out, q_scale);
 }
 } // namespace
@@ -125,21 +125,21 @@ void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const a
 std::tuple<at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale(
     const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma, const at::Tensor &cos_sin,
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
-    const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
+    const at::Tensor &k_scale_cache, const at::Tensor &query_start_loc, const at::Tensor &seq_lens,
     at::IntArrayRef head_nums, const c10::optional<c10::string_view> &layout_qkv,
     const c10::optional<c10::string_view> &layout_q_out, const c10::optional<at::Tensor> &rotation,
     const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str,
+    const QkvKScaleParams params = ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str,
                                                   layout_q_out_str, rotation, v_scale);
     auto outputs = MakeOutputs(qkv, params);
     at::Tensor q_out = std::get<0>(outputs);
     at::Tensor q_scale = std::get<1>(outputs);
 
-    RunQkvKScaleAclnn(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache, cu_seq_lens,
-                      actual_seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(), v_scale.value(),
+    RunQkvKScaleAclnn(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache, query_start_loc,
+                      seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(), v_scale.value(),
                       epsilon, q_out, q_scale);
     return {q_out, q_scale};
 }
@@ -147,14 +147,14 @@ std::tuple<at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale(
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale_functional(
     const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma, const at::Tensor &cos_sin,
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
-    const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_lens, const at::Tensor &actual_seq_lens,
+    const at::Tensor &k_scale_cache, const at::Tensor &query_start_loc, const at::Tensor &seq_lens,
     at::IntArrayRef head_nums, const c10::optional<c10::string_view> &layout_qkv,
     const c10::optional<c10::string_view> &layout_q_out, const c10::optional<at::Tensor> &rotation,
     const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
     const std::string layout_qkv_str = ResolveLayout(layout_qkv, DEFAULT_QKV_LAYOUT);
     const std::string layout_q_out_str = ResolveLayout(layout_q_out, DEFAULT_Q_OUT_LAYOUT);
-    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str,
+    const QkvKScaleParams params = ValidateInputs(qkv, query_start_loc, seq_lens, head_nums, layout_qkv_str,
                                                   layout_q_out_str, rotation, v_scale);
 
     at::Tensor k_cache_clone = k_cache.clone();
@@ -165,7 +165,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> qkv_rms_n
     at::Tensor q_scale = std::get<1>(outputs);
 
     RunQkvKScaleAclnn(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache_clone, v_cache_clone, k_scale_cache_clone,
-                      cu_seq_lens, actual_seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(),
+                      query_start_loc, seq_lens, head_nums, layout_qkv_str, layout_q_out_str, rotation.value(),
                       v_scale.value(), epsilon, q_out, q_scale);
     return {q_out, q_scale, k_cache_clone, v_cache_clone, k_scale_cache_clone};
 }

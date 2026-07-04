@@ -12,7 +12,7 @@
 
 The default run covers generated inplace cases across NTD/TND input layouts,
 TND input to NTD output layout conversion with varied T axes, Nq/Nk/Nv
-combinations, multi-batch prefix sums, non-contiguous slots, actual_seq_lens
+combinations, multi-batch prefix sums, non-contiguous slots, seq_lens
 history offsets, T axes greater than 5k, and strided cache views. Each case
 runs the torch NPU interface and prints match rates against a CPU golden
 implementation.
@@ -40,7 +40,7 @@ FP8_E4M3FN_MAX = 448.0
 class Case:
     name: str
     batch_seq_lens: Tuple[int, ...]
-    actual_seq_lens: Tuple[int, ...]
+    seq_lens: Tuple[int, ...]
     n_q: int
     n_k: int
     n_v: int
@@ -85,15 +85,15 @@ def with_tnd_to_ntd_cases(cases: List[Case]) -> Tuple[Case, ...]:
         if not case.name.endswith("_tnd"):
             raise ValueError(f"{case.name}: TND base case name must end with _tnd")
 
-        varied_seq_lens = make_varied_tnd_to_ntd_seq_lens(case, index)
-        history_offsets = tuple(actual - current for current, actual in zip(case.batch_seq_lens, case.actual_seq_lens))
-        varied_actual_seq_lens = tuple(current + offset for current, offset in zip(varied_seq_lens, history_offsets))
+        varied_batch_seq_lens = make_varied_tnd_to_ntd_batch_seq_lens(case, index)
+        history_offsets = tuple(actual - current for current, actual in zip(case.batch_seq_lens, case.seq_lens))
+        varied_seq_lens = tuple(current + offset for current, offset in zip(varied_batch_seq_lens, history_offsets))
         extended.append(
             replace(
                 case,
                 name=f"{case.name[:-4]}_tnd_to_ntd",
-                batch_seq_lens=varied_seq_lens,
-                actual_seq_lens=varied_actual_seq_lens,
+                batch_seq_lens=varied_batch_seq_lens,
+                seq_lens=varied_seq_lens,
                 layout_q_out="NTD",
                 seed=case.seed + 100000,
             )
@@ -108,7 +108,7 @@ def max_slot_tokens(case: Case) -> int:
     return capacity
 
 
-def make_varied_tnd_to_ntd_seq_lens(case: Case, index: int) -> Tuple[int, ...]:
+def make_varied_tnd_to_ntd_batch_seq_lens(case: Case, index: int) -> Tuple[int, ...]:
     old_total = sum(case.batch_seq_lens)
     min_total = len(case.batch_seq_lens)
     max_total = max_slot_tokens(case)
@@ -160,7 +160,7 @@ def performance_t16384_tnd_to_ntd_cases(seed: int) -> Tuple[Case, ...]:
         Case(
             name=name,
             batch_seq_lens=(16384,),
-            actual_seq_lens=(16384,),
+            seq_lens=(16384,),
             n_q=heads[0],
             n_k=heads[1],
             n_v=heads[2],
@@ -181,7 +181,7 @@ def precision_mb20_t16384_cases(seed: int) -> Tuple[Case, ...]:
                       64, 1536, 999, 2, 301, 819, 1234, 455, 688, 1394)
     history_offsets = (4096, 0, 8192, 512, 17, 2048, 0, 4096, 128, 3000,
                        0, 1024, 4096, 8192, 513, 0, 256, 2048, 1, 4096)
-    actual_seq_lens = tuple(seq_len + offset for seq_len, offset in zip(batch_seq_lens, history_offsets))
+    seq_lens = tuple(seq_len + offset for seq_len, offset in zip(batch_seq_lens, history_offsets))
     specs = (
         ("n16_kv2_mb20_t16384_dpad_ntd", "NTD", ""),
         ("n16_kv2_mb20_t16384_dpad_tnd", "TND", ""),
@@ -191,7 +191,7 @@ def precision_mb20_t16384_cases(seed: int) -> Tuple[Case, ...]:
         Case(
             name=name,
             batch_seq_lens=batch_seq_lens,
-            actual_seq_lens=actual_seq_lens,
+            seq_lens=seq_lens,
             n_q=16,
             n_k=2,
             n_v=2,
@@ -211,7 +211,7 @@ def default_layout_case(seed: int) -> Case:
     return Case(
         name="n16_kv2_default_layout_tnd_to_ntd",
         batch_seq_lens=(19,),
-        actual_seq_lens=(19,),
+        seq_lens=(19,),
         n_q=16,
         n_k=2,
         n_v=2,
@@ -292,7 +292,7 @@ def build_cases() -> Tuple[Case, ...]:
                     Case(
                         name=f"{heads_name}_{suffix}_{layout.lower()}",
                         batch_seq_lens=seq_lens,
-                        actual_seq_lens=actual_lens,
+                        seq_lens=actual_lens,
                         n_q=heads[0],
                         n_k=heads[1],
                         n_v=heads[2],
@@ -312,7 +312,7 @@ def build_cases() -> Tuple[Case, ...]:
                     Case(
                         name=f"{heads_name}_{suffix}_{layout.lower()}",
                         batch_seq_lens=seq_lens,
-                        actual_seq_lens=actual_lens,
+                        seq_lens=actual_lens,
                         n_q=heads[0],
                         n_k=heads[1],
                         n_v=heads[2],
@@ -331,7 +331,7 @@ def build_cases() -> Tuple[Case, ...]:
                 Case(
                     name=f"n64_kv8_{suffix}_{layout.lower()}",
                     batch_seq_lens=seq_lens,
-                    actual_seq_lens=actual_lens,
+                    seq_lens=actual_lens,
                     n_q=64,
                     n_k=8,
                     n_v=8,
@@ -350,7 +350,7 @@ def build_cases() -> Tuple[Case, ...]:
                 Case(
                     name=f"n64_kv8_{suffix}_{layout.lower()}",
                     batch_seq_lens=seq_lens,
-                    actual_seq_lens=actual_lens,
+                    seq_lens=actual_lens,
                     n_q=64,
                     n_k=8,
                     n_v=8,
@@ -369,7 +369,7 @@ def build_cases() -> Tuple[Case, ...]:
                 Case(
                     name=f"n16_kv2_{suffix}_{layout.lower()}",
                     batch_seq_lens=seq_lens,
-                    actual_seq_lens=actual_lens,
+                    seq_lens=actual_lens,
                     n_q=16,
                     n_k=2,
                     n_v=2,
@@ -388,7 +388,7 @@ def build_cases() -> Tuple[Case, ...]:
                 Case(
                     name=f"n8_kv1_{suffix}_{layout.lower()}",
                     batch_seq_lens=seq_lens,
-                    actual_seq_lens=actual_lens,
+                    seq_lens=actual_lens,
                     n_q=8,
                     n_k=1,
                     n_v=1,
@@ -413,7 +413,7 @@ def build_cases() -> Tuple[Case, ...]:
 CASES = build_cases()
 
 
-def make_cu_seq_lens(seq_lens: Iterable[int]) -> torch.Tensor:
+def make_query_start_loc(seq_lens: Iterable[int]) -> torch.Tensor:
     prefix = [0]
     for seq_len in seq_lens:
         prefix.append(prefix[-1] + int(seq_len))
@@ -452,10 +452,10 @@ def validate_case(case: Case) -> None:
         raise ValueError(f"{case.name}: layout_qkv=NTD with layout_q_out=TND is not supported")
     if case.n_k != case.n_v:
         raise ValueError(f"{case.name}: Nk and Nv must match")
-    if len(case.actual_seq_lens) != len(case.batch_seq_lens):
-        raise ValueError(f"{case.name}: actual_seq_lens length must match batch_seq_lens length")
-    if any(actual_len < batch_len for batch_len, actual_len in zip(case.batch_seq_lens, case.actual_seq_lens)):
-        raise ValueError(f"{case.name}: actual_seq_lens values must be >= current batch token counts")
+    if len(case.seq_lens) != len(case.batch_seq_lens):
+        raise ValueError(f"{case.name}: seq_lens length must match batch_seq_lens length")
+    if any(actual_len < batch_len for batch_len, actual_len in zip(case.batch_seq_lens, case.seq_lens)):
+        raise ValueError(f"{case.name}: seq_lens values must be >= current batch token counts")
     if case.cache_stride not in ("contiguous", "d_pad"):
         raise ValueError(f"{case.name}: cache_stride must be contiguous or d_pad")
     if case.cache_stride == "d_pad" and case.cache_pad <= 0:
@@ -505,7 +505,7 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
     qkv = (torch.randn(qkv_shape, generator=generator, dtype=torch.float32) * 0.5).to(torch.bfloat16)
     q_gamma = torch.rand((HEAD_SIZE,), generator=generator, dtype=torch.float32) + 0.5
     k_gamma = torch.rand((HEAD_SIZE,), generator=generator, dtype=torch.float32) + 0.5
-    cos_sin = torch.randn((max(case.actual_seq_lens), HEAD_SIZE), generator=generator, dtype=torch.float32)
+    cos_sin = torch.randn((max(case.seq_lens), HEAD_SIZE), generator=generator, dtype=torch.float32)
     slot_mapping = make_slot_mapping(case, total_tokens, generator)
     k_cache = torch.zeros((case.block_num, case.n_k, case.block_size, HEAD_SIZE), dtype=torch.float32).to(
         torch.float8_e4m3fn
@@ -514,8 +514,8 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
         torch.float8_e4m3fn
     )
     k_scale_cache = torch.zeros((case.block_num, case.n_k, case.block_size, 1), dtype=torch.float32)
-    cu_seq_lens = make_cu_seq_lens(case.batch_seq_lens)
-    actual_seq_lens = torch.tensor(case.actual_seq_lens, dtype=torch.int32)
+    query_start_loc = make_query_start_loc(case.batch_seq_lens)
+    seq_lens = torch.tensor(case.seq_lens, dtype=torch.int32)
     rotation = torch.eye(HEAD_SIZE, dtype=torch.float32).to(torch.bfloat16)
     v_scale = torch.rand((case.n_v,), generator=generator, dtype=torch.float32) + 0.5
 
@@ -528,8 +528,8 @@ def make_cpu_inputs(case: Case) -> Dict[str, object]:
         "k_cache": k_cache,
         "v_cache": v_cache,
         "k_scale_cache": k_scale_cache,
-        "cu_seq_lens": cu_seq_lens,
-        "actual_seq_lens": actual_seq_lens,
+        "query_start_loc": query_start_loc,
+        "seq_lens": seq_lens,
         "head_nums": [case.n_q, case.n_k, case.n_v],
         "layout_qkv": case.layout_qkv,
         "layout_q_out": case.layout_q_out or case.layout_qkv,
@@ -555,9 +555,9 @@ def to_npu_inputs(cpu_inputs: Dict[str, object], case: Case, device: str) -> Dic
     return npu_inputs
 
 
-def resolve_positions(cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor) -> torch.Tensor:
-    cu = cu_seq_lens.to(torch.int64)
-    actual = actual_seq_lens.to(torch.int64)
+def resolve_positions(query_start_loc: torch.Tensor, seq_lens: torch.Tensor) -> torch.Tensor:
+    cu = query_start_loc.to(torch.int64)
+    actual = seq_lens.to(torch.int64)
     total_tokens = int(cu[-1].item())
     positions = torch.empty((total_tokens,), dtype=torch.int64)
     for batch_idx in range(actual.numel()):
@@ -569,8 +569,8 @@ def resolve_positions(cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor) 
     return positions
 
 
-def apply_rope(x: torch.Tensor, cos_sin: torch.Tensor, cu_seq_lens: torch.Tensor, actual_seq_lens: torch.Tensor):
-    positions = resolve_positions(cu_seq_lens, actual_seq_lens)
+def apply_rope(x: torch.Tensor, cos_sin: torch.Tensor, query_start_loc: torch.Tensor, seq_lens: torch.Tensor):
+    positions = resolve_positions(query_start_loc, seq_lens)
     if int(positions.min().item()) < 0 or int(positions.max().item()) >= cos_sin.shape[0]:
         raise ValueError("cos_sin does not cover all RoPE positions")
 
@@ -608,8 +608,8 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     k_cache = cpu_inputs["k_cache"].clone()
     v_cache = cpu_inputs["v_cache"].clone()
     k_scale_cache = cpu_inputs["k_scale_cache"].clone()
-    cu_seq_lens = cpu_inputs["cu_seq_lens"]
-    actual_seq_lens = cpu_inputs["actual_seq_lens"]
+    query_start_loc = cpu_inputs["query_start_loc"]
+    seq_lens = cpu_inputs["seq_lens"]
     rotation = cpu_inputs["rotation"].to(torch.float32)
     v_scale = cpu_inputs["v_scale"].to(torch.float32)
     n_q, n_k, n_v = cpu_inputs["head_nums"]
@@ -631,8 +631,8 @@ def golden_outputs(cpu_inputs: Dict[str, object]):
     q_norm = q / q_rms * q_gamma[None, None, :]
     k_norm = k / k_rms * k_gamma[None, None, :]
 
-    q_rope = apply_rope(q_norm, cos_sin, cu_seq_lens, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
-    k_rope = apply_rope(k_norm, cos_sin, cu_seq_lens, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
+    q_rope = apply_rope(q_norm, cos_sin, query_start_loc, seq_lens).to(torch.bfloat16).to(torch.float32)
+    k_rope = apply_rope(k_norm, cos_sin, query_start_loc, seq_lens).to(torch.bfloat16).to(torch.float32)
     q_after_cube = q_rope @ rotation
     k_after_cube = k_rope @ rotation
     qk_after_cube = torch.cat((q_after_cube, k_after_cube), dim=1)
@@ -682,8 +682,8 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
             npu_inputs["k_cache"],
             npu_inputs["v_cache"],
             npu_inputs["k_scale_cache"],
-            npu_inputs["cu_seq_lens"],
-            npu_inputs["actual_seq_lens"],
+            npu_inputs["query_start_loc"],
+            npu_inputs["seq_lens"],
             npu_inputs["head_nums"],
             rotation=npu_inputs["rotation"],
             v_scale=npu_inputs["v_scale"],
@@ -819,7 +819,7 @@ def print_case_results(case: Case, results: List[MatchResult]) -> None:
         f"[CASE] {case.name} layout_qkv={case.layout_qkv} "
         f"layout_q_out={case.layout_q_out or case.layout_qkv} omit_layout_args={case.omit_layout_args} "
         f"heads=({case.n_q},{case.n_k},{case.n_v}) "
-        f"seq={case.batch_seq_lens} actual_seq={case.actual_seq_lens} slot={case.slot_pattern} "
+        f"query_lens={case.batch_seq_lens} seq_lens={case.seq_lens} slot={case.slot_pattern} "
         f"cache_stride={case.cache_stride} cache_pad={case.cache_pad}"
     )
     for result in results:

@@ -83,8 +83,8 @@
 | k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, D]`，支持非连续Tensor。 | FLOAT8_E4M3FN | ND |
 | v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`，支持非连续Tensor。 | FLOAT8_E4M3FN | ND |
 | k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`，支持非连续Tensor。 | FLOAT | ND |
-| cu_seq_lens | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
-| actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
+| query_start_loc | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
+| seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
 | rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。当前不支持不传或空Tensor。 | BFLOAT16 | ND |
 | v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。当前不支持不传或空Tensor。 | FLOAT | ND |
 | q_out | 输出 | Q分支FP8 E4M3FN量化输出。`layout_q_out="TND"`时shape为`[T, Nq, D]`，`layout_q_out="NTD"`时shape为`[Nq, T, D]`。 | FLOAT8_E4M3FN | ND |
@@ -107,8 +107,8 @@
     - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1。
     - `k_cache`和`v_cache`前三维stride必须一致。
 - 输入值域限制：
-  - `cu_seq_lens`表示当前调用内token的batch前缀和，`cu_seq_lens[0]`应为0，`cu_seq_lens[Batch]`应等于`T`。
-  - `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_lens[b+1] - cu_seq_lens[b]) + i`得到；调用方需保证`actual_seq_lens[b] >= cu_seq_lens[b+1] - cu_seq_lens[b]`。若`actual_seq_lens[b]`小于该batch本次调用的token数，行为未定义。
+  - `query_start_loc`表示当前调用内token的batch前缀和，`query_start_loc[0]`应为0，`query_start_loc[Batch]`应等于`T`。
+  - `seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`seq_lens[b] - (query_start_loc[b+1] - query_start_loc[b]) + i`得到；调用方需保证`seq_lens[b] >= query_start_loc[b+1] - query_start_loc[b]`。若`seq_lens[b]`小于该batch本次调用的token数，行为未定义。
   - `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 - 输入属性限制：

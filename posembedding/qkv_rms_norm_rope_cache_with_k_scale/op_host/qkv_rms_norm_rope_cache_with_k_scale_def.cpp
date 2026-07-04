@@ -39,12 +39,12 @@ public:
             .DataType(fp32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
-        this->Input("cu_seq_lens")
+        this->Input("query_start_loc")
             .ParamType(REQUIRED)
             .DataType(int32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
-        this->Input("actual_seq_lens")
+        this->Input("seq_lens")
             .ParamType(REQUIRED)
             .DataType(int32Types)
             .Format(ndFormats)

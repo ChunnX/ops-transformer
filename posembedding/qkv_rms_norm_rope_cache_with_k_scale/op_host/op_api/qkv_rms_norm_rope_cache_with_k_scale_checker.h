@@ -47,8 +47,8 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     aclTensor *kCache{nullptr};
     aclTensor *vCache{nullptr};
     aclTensor *kScaleCache{nullptr};
-    const aclTensor *cuSeqLens{nullptr};
-    const aclTensor *actualSeqLens{nullptr};
+    const aclTensor *queryStartLoc{nullptr};
+    const aclTensor *seqLens{nullptr};
     // Optional inputs (required in first phase, but declared as optional in def)
     const aclTensor *rotationOptional{nullptr};
     const aclTensor *vScaleOptional{nullptr};
@@ -91,8 +91,8 @@ public:
     static constexpr uint64_t CACHE_HEAD_INDEX = 1;
     static constexpr uint64_t CACHE_BLOCK_SIZE_INDEX = 2;
     static constexpr uint64_t CACHE_HEAD_DIM_INDEX = 3;
-    static constexpr int64_t MIN_CU_SEQ_LENS_SIZE = 2;
-    static constexpr int64_t ACTUAL_SEQ_LENS_BATCH_DIFF = 1;
+    static constexpr int64_t MIN_QUERY_START_LOC_SIZE = 2;
+    static constexpr int64_t SEQ_LENS_BATCH_DIFF = 1;
     static constexpr int64_t K_SCALE_CACHE_SCALE_DIM = 1;
     static constexpr const char *QKV_LAYOUT_NTD = "NTD";
     static constexpr const char *QKV_LAYOUT_TND = "TND";
@@ -106,8 +106,8 @@ public:
     inline static const std::vector<op::DataType> SLOT_MAPPING_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> CACHE_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
     inline static const std::vector<op::DataType> K_SCALE_CACHE_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::vector<op::DataType> CU_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
-    inline static const std::vector<op::DataType> ACTUAL_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> QUERY_START_LOC_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> ROTATION_TYPE_LIST = {op::DataType::DT_BF16};
     inline static const std::vector<op::DataType> V_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
     inline static const std::vector<op::DataType> Q_OUT_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
@@ -258,8 +258,8 @@ private:
             {"kCacheRef", params_.kCache, "kCacheRef can not be nullptr"},
             {"vCacheRef", params_.vCache, "vCacheRef can not be nullptr"},
             {"kScaleCacheRef", params_.kScaleCache, "kScaleCacheRef can not be nullptr"},
-            {"cuSeqLens", params_.cuSeqLens, "cuSeqLens can not be nullptr"},
-            {"actualSeqLens", params_.actualSeqLens, "actualSeqLens can not be nullptr"},
+            {"queryStartLoc", params_.queryStartLoc, "queryStartLoc can not be nullptr"},
+            {"seqLens", params_.seqLens, "seqLens can not be nullptr"},
             {"rotationOptional", params_.rotationOptional, "rotationOptional can not be nullptr"},
             {"vScaleOptional", params_.vScaleOptional, "vScaleOptional can not be nullptr"},
             {"headNums", params_.headNums, "headNums can not be nullptr"},
@@ -289,8 +289,8 @@ private:
             {"kCacheRef", params_.kCache, &CACHE_TYPE_LIST},
             {"vCacheRef", params_.vCache, &CACHE_TYPE_LIST},
             {"kScaleCacheRef", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
-            {"cuSeqLens", params_.cuSeqLens, &CU_SEQ_LENS_TYPE_LIST},
-            {"actualSeqLens", params_.actualSeqLens, &ACTUAL_SEQ_LENS_TYPE_LIST},
+            {"queryStartLoc", params_.queryStartLoc, &QUERY_START_LOC_TYPE_LIST},
+            {"seqLens", params_.seqLens, &SEQ_LENS_TYPE_LIST},
             {"rotationOptional", params_.rotationOptional, &ROTATION_TYPE_LIST},
             {"vScaleOptional", params_.vScaleOptional, &V_SCALE_TYPE_LIST},
             {"qOut", params_.qOut, &Q_OUT_TYPE_LIST},
@@ -431,21 +431,21 @@ private:
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
-        const auto &cuSeqLensShape = params_.cuSeqLens->GetViewShape();
-        if (unlikely(cuSeqLensShape.GetDimNum() != RANK_1D ||
-                     cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_CU_SEQ_LENS_SIZE)) {
-            const std::string incorrectShape = ShapeToString(params_.cuSeqLens);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "cuSeqLens", incorrectShape.c_str(),
-                                                  "cuSeqLens must be a 1D tensor with length >= 2");
+        const auto &queryStartLocShape = params_.queryStartLoc->GetViewShape();
+        if (unlikely(queryStartLocShape.GetDimNum() != RANK_1D ||
+                     queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_QUERY_START_LOC_SIZE)) {
+            const std::string incorrectShape = ShapeToString(params_.queryStartLoc);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "queryStartLoc", incorrectShape.c_str(),
+                                                  "queryStartLoc must be a 1D tensor with length >= 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
-        if (unlikely(actualSeqLensShape.GetDimNum() != RANK_1D ||
-                     actualSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
-                         cuSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
-            const std::string incorrectShape = ShapeToString(params_.actualSeqLens);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "actualSeqLens", incorrectShape.c_str(),
-                                                  "actualSeqLens must have shape [cuSeqLens.shape[0] - 1]");
+        const auto &seqLensShape = params_.seqLens->GetViewShape();
+        if (unlikely(seqLensShape.GetDimNum() != RANK_1D ||
+                     seqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
+                         queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) - SEQ_LENS_BATCH_DIFF)) {
+            const std::string incorrectShape = ShapeToString(params_.seqLens);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "seqLens", incorrectShape.c_str(),
+                                                  "seqLens must have shape [queryStartLoc.shape[0] - 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -576,8 +576,8 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"cuSeqLens", params_.cuSeqLens},
-            {"actualSeqLens", params_.actualSeqLens},
+            {"queryStartLoc", params_.queryStartLoc},
+            {"seqLens", params_.seqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},
@@ -604,8 +604,8 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"cuSeqLens", params_.cuSeqLens},
-            {"actualSeqLens", params_.actualSeqLens},
+            {"queryStartLoc", params_.queryStartLoc},
+            {"seqLens", params_.seqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},

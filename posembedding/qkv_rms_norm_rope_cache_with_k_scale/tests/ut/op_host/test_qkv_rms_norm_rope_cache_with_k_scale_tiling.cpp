@@ -156,8 +156,8 @@ void RefreshShapes(ContractInput &input)
     SetShape(input.kScaleCache, input.blockNum, input.numKHeads, input.blockSize, 1);
     input.kScaleCache.stride = Stride(input.numKHeads * input.blockSize, input.blockSize, 1, 1);
     input.kScaleCache.stridePresent = true;
-    SetShape(input.cuSeqLens, static_cast<uint64_t>(input.batch) + 1);
-    SetShape(input.actualSeqLens, static_cast<uint64_t>(input.batch));
+    SetShape(input.queryStartLoc, static_cast<uint64_t>(input.batch) + 1);
+    SetShape(input.seqLens, static_cast<uint64_t>(input.batch));
     SetShape(input.rotation, input.headDim, input.headDim);
     SetShape(input.vScale, input.numVHeads);
 }
@@ -184,8 +184,8 @@ ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, ui
     input.kCache.dtype = ge::DT_FLOAT8_E4M3FN;
     input.vCache.dtype = ge::DT_FLOAT8_E4M3FN;
     input.kScaleCache.dtype = ge::DT_FLOAT;
-    input.cuSeqLens.dtype = ge::DT_INT32;
-    input.actualSeqLens.dtype = ge::DT_INT32;
+    input.queryStartLoc.dtype = ge::DT_INT32;
+    input.seqLens.dtype = ge::DT_INT32;
     input.rotation.dtype = ge::DT_BF16;
     input.vScale.dtype = ge::DT_FLOAT;
     RefreshShapes(input);
@@ -263,8 +263,8 @@ std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
     inputs.push_back(MakeTensorSpec(input.kCache));
     inputs.push_back(MakeTensorSpec(input.vCache));
     inputs.push_back(MakeTensorSpec(input.kScaleCache));
-    inputs.push_back(MakeTensorSpec(input.cuSeqLens));
-    inputs.push_back(MakeTensorSpec(input.actualSeqLens));
+    inputs.push_back(MakeTensorSpec(input.queryStartLoc));
+    inputs.push_back(MakeTensorSpec(input.seqLens));
     inputs.push_back(input.rotation.shapePresent ? MakeTensorSpec(input.rotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     inputs.push_back(input.vScale.shapePresent ? MakeTensorSpec(input.vScale) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     return inputs;
@@ -605,11 +605,11 @@ TensorContractInfo *FindTensor(ContractInput &input, const std::string &name)
     if (name == "kScaleCache") {
         return &input.kScaleCache;
     }
-    if (name == "cuSeqLens") {
-        return &input.cuSeqLens;
+    if (name == "queryStartLoc") {
+        return &input.queryStartLoc;
     }
-    if (name == "actualSeqLens") {
-        return &input.actualSeqLens;
+    if (name == "seqLens") {
+        return &input.seqLens;
     }
     if (name == "rotation") {
         return &input.rotation;
