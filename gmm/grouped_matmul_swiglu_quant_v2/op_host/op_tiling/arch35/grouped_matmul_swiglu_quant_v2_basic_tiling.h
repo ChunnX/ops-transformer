@@ -72,7 +72,8 @@ private:
     bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
-    bool IsFp8Input() const;
+    bool IsFp8Input();
+    bool IsMXFp8Input() const;
     bool IsMxFp4WeightNz() const;
     bool IsMxFp8WeightNz() const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;

@@ -31,7 +31,7 @@ constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 3;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
-constexpr size_t MXFP4_ND_N_ALIGN = 4;
+constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
 } // namespace
 
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
@@ -298,7 +298,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp8WeightNz() const
 {
-    return IsFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    return IsMXFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
@@ -332,9 +332,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNdDtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input() const
+bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input()
 {
     return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMXFp8Input() const
+{
+    return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype) && inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
@@ -439,11 +444,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
     // MXFP4、NZ场景下，N需满足128对齐。
     if (IsMxFp4WeightNz()) {
         OP_CHECK_IF(
-            inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
-                                                  "when using the weightNZ format with FP4 data type, n axis element "
-                                                  "number of weight must be an integer multiple of 128"),
-            return false);
+                    inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                        "when using the weightNZ format with FP4 data type, n axis element "
+                                                        "number of weight must be an integer multiple of 128"),
+                    return false);
     }
     // MXFP8、NZ场景下，N需满足64对齐。
     if (IsMxFp8WeightNz()) {
@@ -462,7 +467,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
                     return false);
     }
     // MXFP8、ND场景下，N需满足2对齐。
-    if (IsFp8Input()) {
+    if (IsMXFp8Input()) {
         OP_CHECK_IF(inputParams_.nSize % EVEN_FACTOR != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                           "when using the ND format with FP8 data type, n axis element "
