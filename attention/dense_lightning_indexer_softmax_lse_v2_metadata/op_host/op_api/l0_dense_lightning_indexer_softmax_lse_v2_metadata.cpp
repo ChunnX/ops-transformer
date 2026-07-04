@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file l0_dense_lightning_indexer_softmax_lse_metadata.cpp
+ * \\file l0_dense_lightning_indexer_softmax_lse_v2_metadata.cpp
  * \brief
  */
 
-#include "l0_dense_lightning_indexer_softmax_lse_metadata.h"
+#include "l0_dense_lightning_indexer_softmax_lse_v2_metadata.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
@@ -24,9 +24,9 @@
 using namespace op;
 
 namespace l0op {
-OP_TYPE_REGISTER(DenseLightningIndexerSoftmaxLseMetadata);
+OP_TYPE_REGISTER(DenseLightningIndexerSoftmaxLseV2Metadata);
 
-const aclTensor* DenseLightningIndexerSoftmaxLseMetadata(
+const aclTensor* DenseLightningIndexerSoftmaxLseV2Metadata(
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensKOptional,
     const aclTensor* seqUsedQOptional,
@@ -47,15 +47,15 @@ const aclTensor* DenseLightningIndexerSoftmaxLseMetadata(
     const aclTensor* metadata,
     aclOpExecutor* executor)
 {
-    L0_DFX(DenseLightningIndexerSoftmaxLseMetadata, cuSeqLensQOptional, cuSeqLensKOptional,
+    L0_DFX(DenseLightningIndexerSoftmaxLseV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional,
            seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional,
            batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, layoutQ, layoutK, maskMode,
            cmpRatio, socVersion, aicCoreNum, metadata);
 
-    static internal::AicpuTaskSpace space("DenseLightningIndexerSoftmaxLseMetadata");
+    static internal::AicpuTaskSpace space("DenseLightningIndexerSoftmaxLseV2Metadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-        DenseLightningIndexerSoftmaxLseMetadata,
+        DenseLightningIndexerSoftmaxLseV2Metadata,
         OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_k", "num_heads_q", "num_heads_k", "head_dim",
                        "layout_q", "layout_k", "mask_mode", "cmp_ratio", "soc_version", "aic_core_num"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional),
@@ -63,7 +63,7 @@ const aclTensor* DenseLightningIndexerSoftmaxLseMetadata(
         OP_ATTR(batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, layoutQ, layoutK, maskMode,
                 cmpRatio, socVersion, aicCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
-             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "DenseLightningIndexerSoftmaxLseMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
+             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "DenseLightningIndexerSoftmaxLseV2Metadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
     return metadata;
 }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -15,7 +15,7 @@
 namespace op_api {
 constexpr int64_t DLI_METADATA_SIZE = 64;
 
-at::Device get_dense_lightning_indexer_softmax_lse_metadata_device(
+at::Device get_dense_lightning_indexer_softmax_lse_v2_metadata_device(
     const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_k,
     const c10::optional<at::Tensor> &seqused_q,
@@ -40,7 +40,7 @@ at::Device get_dense_lightning_indexer_softmax_lse_metadata_device(
     return at::Device(torch_npu::utils::get_npu_device_type());
 }
 
-at::Tensor dense_lightning_indexer_softmax_lse_metadata(
+at::Tensor dense_lightning_indexer_softmax_lse_v2_metadata(
     int64_t num_heads_q,
     int64_t num_heads_k,
     int64_t head_dim,
@@ -67,7 +67,7 @@ at::Tensor dense_lightning_indexer_softmax_lse_metadata(
 
     at::Tensor output{nullptr};
     {
-        auto local_device = get_dense_lightning_indexer_softmax_lse_metadata_device(
+        auto local_device = get_dense_lightning_indexer_softmax_lse_v2_metadata_device(
             cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k);
         const c10::OptionalDeviceGuard device_guard(local_device);
         output = at::empty(
@@ -78,7 +78,7 @@ at::Tensor dense_lightning_indexer_softmax_lse_metadata(
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
     char *layout_k_ptr = const_cast<char *>(layout_k.c_str());
 
-    ACLNN_CMD(aclnnDenseLightningIndexerSoftmaxLseMetadata,
+    ACLNN_CMD(aclnnDenseLightningIndexerSoftmaxLseV2Metadata,
         cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
         batch_size, max_seqlen_q, max_seqlen_k, num_heads_q, num_heads_k, head_dim,
         layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, output);
@@ -89,9 +89,9 @@ at::Tensor dense_lightning_indexer_softmax_lse_metadata(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def(
-        "dense_lightning_indexer_softmax_lse_metadata",
-        &dense_lightning_indexer_softmax_lse_metadata,
-        "dense_lightning_indexer_softmax_lse_metadata");
+        "dense_lightning_indexer_softmax_lse_v2_metadata",
+        &dense_lightning_indexer_softmax_lse_v2_metadata,
+        "dense_lightning_indexer_softmax_lse_v2_metadata");
 }
 
 }  // namespace op_api
