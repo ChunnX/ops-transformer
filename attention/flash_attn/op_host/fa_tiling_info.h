@@ -150,7 +150,8 @@ enum class FaQuantMode : uint32_t {
 
 enum class KvStorageMode : uint32_t {
     BATCH_CONTINUOUS = 0,
-    PAGE_ATTENTION = 1
+    PAGE_ATTENTION = 1,
+    NON_CONTIGUOUS = 2 /* PA场景下kv非连续 */
 };
 
 enum class FaTilingInOutMode : uint32_t {
@@ -253,6 +254,7 @@ public:
 
     // Others Flag
     bool batchContinuousFlag = true;
+    KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     bool softmaxLseFlag = false;
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
@@ -262,6 +264,9 @@ public:
     const gert::Stride *keyStrides = nullptr;
     const gert::Stride *valueStrides = nullptr;
     bool isTensorV1 = false;
+    // 非连续场景下首个非连续维, -1表示连续, 由parser计算供checker复用
+    int32_t keyNonContigDim = -1;
+    int32_t valueNonContigDim = -1;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
