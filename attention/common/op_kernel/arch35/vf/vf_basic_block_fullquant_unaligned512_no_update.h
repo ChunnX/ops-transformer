@@ -105,7 +105,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_src_x_unroll_2, preg_all);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all); // 只剩8行的8个max值
-        ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
+        ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll,
+                                                            vreg_max_tmp_unroll, preg_all);
         Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
         Sub(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_ln_p_scale, preg_all);
         StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -154,13 +155,13 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-            // cast & or
-            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
+            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);  // Cast
             Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0, (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
-                (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0,
+               (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
+               (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_1_f8_1,
                 (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0,
@@ -201,7 +202,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_src_x_1, vreg_max, preg_all);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_src_x_1, vreg_max, preg_all);
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_1, vreg_src_x_unroll_1, vreg_max, preg_all);
-            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_src_x_unroll_1, vreg_max, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_src_x_unroll_1,
+                                                vreg_max, preg_all);
 
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_src_x_2, vreg_max_2, preg_all);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_src_x_2, vreg_max_2, preg_all);
@@ -212,19 +214,16 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_3_1, preg_all);
-
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_0_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-
             Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
             Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0, (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
-                (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0,
+            (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_1_f8_1,
                 (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_0,
@@ -241,8 +240,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
 
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_0, (RegTensor<uint8_t>&)vreg_exp_0_f8_2,
-                (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_0,
+                (RegTensor<uint8_t>&)vreg_exp_0_f8_2, (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_1_f8_2,
                 (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_0,
