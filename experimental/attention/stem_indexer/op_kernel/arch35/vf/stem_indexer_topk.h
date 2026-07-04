@@ -45,6 +45,15 @@ public:
 
     static constexpr uint32_t MAX_LOOP_M = 4;
 
+    // reuseMm1ResLocal 内的复用偏移（uint32_t 元素数）
+    // idx0~idx3: 4 * 4*256 = 4096
+    // histograms: 4*256 = 1024
+    // nkValue: 4*64 = 256
+    // tmpIndex: 4*256 = 1024
+    // 合计 6400，之后排布 indicesOut(1024) 和 scoreOut(1024)
+    static constexpr uint32_t REUSE_INDICES_OUT_OFFSET = 6400;
+    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET = 7424;
+
     __aicore__ inline uint32_t GetReUseSharedTmpBufferSize()
     {
         // MAX_LOOP_M * 256：histogramsLocal
