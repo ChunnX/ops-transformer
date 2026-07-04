@@ -16,7 +16,6 @@
 #ifndef QUANT_BMM_A2A_VEC_REDUCE_FP8_HIF8_H
 #define QUANT_BMM_A2A_VEC_REDUCE_FP8_HIF8_H
 
-#include "lib/hccl/hccl.h"
 #include "../common_def.h"
 #include "../../../common/op_kernel/mc2_common_def.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
