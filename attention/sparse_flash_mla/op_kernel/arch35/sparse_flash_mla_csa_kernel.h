@@ -487,10 +487,8 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                 this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
             }
         }
-        printf("[TEST]no load\n");
         return;
     }
-    printf("[TEST]has load\n");
 
     // 从meta data解析分核信息
     uint32_t bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
@@ -502,7 +500,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
     uint32_t firstFdDataWorkspaceIdx =
         metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
     
-    printf("csa firstFdDataWorkspaceIdx idx: %d\n", firstFdDataWorkspaceIdx);
     uint32_t s2LoopLimit = 0;
 
     if (nextGs1Idx != 0 || s2EndIdx != 0) {
@@ -741,9 +738,9 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
-    printf("csa fdRunInfo: coreEnable: %d, bn2Idx: %d, mIdx: %d, workspaceIdx: %d, workspaceNum: %d, mStartIdx: %d, mNum: %d\n",
-        fdRunInfo.coreEnable, fdRunInfo.bn2Idx, fdRunInfo.mIdx, fdRunInfo.workspaceIdx,
-        fdRunInfo.workspaceNum, fdRunInfo.mStartIdx, fdRunInfo.mNum);
+    // printf("csa fdRunInfo: coreEnable: %d, bn2Idx: %d, mIdx: %d, workspaceIdx: %d, workspaceNum: %d, mStartIdx: %d, mNum: %d\n",
+    //     fdRunInfo.coreEnable, fdRunInfo.bn2Idx, fdRunInfo.mIdx, fdRunInfo.workspaceIdx,
+    //     fdRunInfo.workspaceNum, fdRunInfo.mStartIdx, fdRunInfo.mNum);
 }
 
 template <typename CubeBlockType, typename VecBlockType>

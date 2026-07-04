@@ -223,8 +223,10 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
                 dealRowCount * layout.broadcastElems);
             DataCopy(blockSumUb[dstOffset], sumGm[srcOffset],
                 dealRowCount * layout.broadcastElems);
-            printf("sum: \n");
-            DumpTensor(sumGm[srcOffset], 110, dealRowCount * layout.broadcastElems);
+            // printf("[fd] moveIn max/sum split=%u/%u chunk=%u startRow=%u dealRow=%u\n",
+                // splitIdx, workspaceNum, chunkIdx, startRow, dealRowCount);
+            DumpTensor(blockMaxUb[dstOffset], 110, dealRowCount * layout.broadcastElems);
+            DumpTensor(blockSumUb[dstOffset], 111, dealRowCount * layout.broadcastElems);
         }
         SetFlag<HardEvent::MTE2_V>(mte2ToVId);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
@@ -249,16 +251,14 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            printf("move in, GM: \n");
-            DumpTensor(stagingOutGm[outSrcOffset], 115, 16);
-            // printf("outSrcOffset: %d, addr: 0x%x\n", outSrcOffset, stagingOutGm[outSrcOffset].GetPhyAddr());
-            printf("move in, UB: \n");
-            DumpTensor(partialOFp32, 116, 16);
-            // DumpTensor(blockSumUb, 114, 16);
+            // printf("[fd] moveIn partialO split=%u/%u chunk=%u startRow=%u dealRow=%u\n",
+                // splitIdx, workspaceNum, chunkIdx, startRow, dealRowCount);
+            // DumpTensor(partialOFp32, 116, dealRowCount * D_ALIGN);
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
-            printf("after reduce: \n");
-            DumpTensor(chunkAccumO, 117, 16);
+            // printf("[fd] afterReduce chunkAccumO split=%u/%u chunk=%u startRow=%u dealRow=%u\n",
+                // splitIdx, workspaceNum, chunkIdx, startRow, dealRowCount);
+            // DumpTensor(chunkAccumO, 117, dealRowCount * D_ALIGN);
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
         }
 

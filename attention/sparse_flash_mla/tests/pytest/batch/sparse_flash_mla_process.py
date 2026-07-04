@@ -124,7 +124,7 @@ def call_npu(input_data):
             layout_kv=layout_kv,
             has_ori_kv=ori_kv != None,
             has_cmp_kv=cmp_kv != None)
-
+    torch.npu.synchronize()
     # 统一调用 sparse_flash_mla，所有参数可选带默认值
     print("sparse_flash_mla...")
     npu_result, softmax_lse = torch.ops.cann_ops_transformer.sparse_flash_mla(q,

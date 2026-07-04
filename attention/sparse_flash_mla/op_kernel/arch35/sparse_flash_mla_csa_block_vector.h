@@ -546,6 +546,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
 
     runInfo.s2RealSizeUpdate = runInfo.s2RealSize;
 
+    // printf("[cube1] bo=%lld n2=%lld go=%lld s1o=%lld s2lc=%lld/%lld isCmp=%d sub=%u halfM=%d m=%d s2Real=%d s2Base=%d\n",
+        // (int64_t)runInfo.boIdx, (int64_t)runInfo.n2oIdx, (int64_t)runInfo.goIdx,
+        // (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount, (int64_t)runInfo.s2LoopLimit,
+        // (int32_t)runInfo.isCmp, (uint32_t)constInfo.subBlockIdx,
+        // (int32_t)runInfo.halfMRealSize, (int32_t)runInfo.mRealSize,
+        // (int32_t)runInfo.s2RealSize, (int32_t)s2BaseSize);
+    // DumpTensor(mmRes, 10, runInfo.halfMRealSize * s2BaseSize);
+
     // loopCount = 0 但传入sinks时走update分支，maxUb通过sinks初始化，sumUb初始化为1.0
     if (runInfo.s2LoopCount == 0 && !isSinks) {
         if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
@@ -604,6 +612,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     }
     bmm1ResBuf.SetCrossCore();
 
+    // printf("[vec1] bo=%lld n2=%lld go=%lld s1o=%lld s2lc=%lld/%lld isCmp=%d sub=%u halfM=%d m=%d s2Real=%d s2Upd=%d\n",
+        // (int64_t)runInfo.boIdx, (int64_t)runInfo.n2oIdx, (int64_t)runInfo.goIdx,
+        // (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount, (int64_t)runInfo.s2LoopLimit,
+        // (int32_t)runInfo.isCmp, (uint32_t)constInfo.subBlockIdx,
+        // (int32_t)runInfo.halfMRealSize, (int32_t)runInfo.mRealSize,
+        // (int32_t)runInfo.s2RealSize, (int32_t)runInfo.s2RealSizeUpdate);
+    // DumpTensor(stage1CastTensor, 30, runInfo.halfMRealSize * s2BaseSize);
+    // DumpTensor(maxUb, 31, runInfo.halfMRealSize);
+    // DumpTensor(sumUb, 32, runInfo.halfMRealSize);
+
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
@@ -630,9 +648,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
         uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
         LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
-        printf("CSABlockVec::ProcessVec1: workspaceIdx=%u, stagingMOffset=%u, halfMRealSize=%u\n",
-            workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.halfMRealSize));
-        DumpTensor(sumUb, 100, 8*32);
+        // printf("[vec1-stageLse] bo=%lld s1o=%lld s2lc=%lld/%lld wsIdx=%u mOff=%u halfM=%d\n",
+            // (int64_t)runInfo.boIdx, (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount,
+            // (int64_t)runInfo.s2LoopLimit, workspaceIdx, stagingMOffset,
+            // (int32_t)runInfo.halfMRealSize);
+        // DumpTensor(maxUb, 101, runInfo.halfMRealSize);
+        // DumpTensor(sumUb, 100, runInfo.halfMRealSize);
         AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
             workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.halfMRealSize),
             maxUb, sumUb, tmpUb, vToMte3Id[1], mte3ToVId[1]);
@@ -669,6 +690,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    // printf("[cube2] bo=%lld n2=%lld go=%lld s1o=%lld s2lc=%lld/%lld isCmp=%d sub=%u halfM=%d m=%d s2Real=%d dAlign=%u\n",
+        // (int64_t)runInfo.boIdx, (int64_t)runInfo.n2oIdx, (int64_t)runInfo.goIdx,
+        // (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount, (int64_t)runInfo.s2LoopLimit,
+        // (int32_t)runInfo.isCmp, (uint32_t)constInfo.subBlockIdx,
+        // (int32_t)runInfo.halfMRealSize, (int32_t)runInfo.mRealSize,
+        // (int32_t)runInfo.s2RealSize, (uint32_t)dTemplateAlign64);
+    // DumpTensor(mmRes, 20, runInfo.vec2MRealSize * dTemplateAlign64);
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
@@ -692,6 +720,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         }
     }
 
+    // printf("[vec2] bo=%lld n2=%lld go=%lld s1o=%lld s2lc=%lld/%lld isCmp=%d sub=%u vec2M=%d isLast=%d dAlign=%u\n",
+        // (int64_t)runInfo.boIdx, (int64_t)runInfo.n2oIdx, (int64_t)runInfo.goIdx,
+        // (int64_t)runInfo.s1oIdx, (int64_t)runInfo.s2LoopCount, (int64_t)runInfo.s2LoopLimit,
+        // (int32_t)runInfo.isCmp, (uint32_t)constInfo.subBlockIdx,
+        // (int32_t)runInfo.vec2MRealSize,
+        // (int32_t)(runInfo.s2LoopCount == runInfo.s2LoopLimit), (uint32_t)dTemplateAlign64);
+    // DumpTensor(vec2ResUb, 40, runInfo.vec2MRealSize * dTemplateAlign64);
+
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -704,8 +740,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
             uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            printf("CSABlockVec::ProcessVec2: workspaceIdx=%u, stagingMOffset=%u, RealSize=%u\n",
-            workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize));
+            // // printf("CSABlockVec::ProcessVec2: workspaceIdx=%u, stagingMOffset=%u, RealSize=%u\n",
+            // workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize));
             AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,
                 workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
                 static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
@@ -750,14 +786,18 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         static_cast<uint32_t>(constInfo.dSizeV),
         accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
         vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
-    printf("CSABlockVec::ProcessFlashDecode: workspaceIdx=%u, workspaceNum=%u, mStartIdx=%u, mNum=%u, dSizeV=%u\n",
-        fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
-        static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
-        static_cast<uint32_t>(constInfo.dSizeV));
+    // // printf("CSABlockVec::ProcessFlashDecode: workspaceIdx=%u, workspaceNum=%u, mStartIdx=%u, mNum=%u, dSizeV=%u\n",
+    //     fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
+    //     static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
+    //     static_cast<uint32_t>(constInfo.dSizeV));
     RunInfo runInfo;
     runInfo.vec2MRealSize = fdRunInfo.mNum;
     runInfo.attentionOutOffset = attentionOutOffset;
-    DumpTensor(accumulatedO, 200, 16);
+    // printf("[fd] bn2=%lld mIdx=%lld wsIdx=%lld/%lld mStart=%lld mNum=%lld dSizeV=%lld attnOutOff=%lld\n",
+        // (int64_t)fdRunInfo.bn2Idx, (int64_t)fdRunInfo.mIdx, (int64_t)fdRunInfo.workspaceIdx,
+        // (int64_t)fdRunInfo.workspaceNum, (int64_t)fdRunInfo.mStartIdx, (int64_t)fdRunInfo.mNum,
+        // (int64_t)constInfo.dSizeV, (int64_t)attentionOutOffset);
+    // DumpTensor(accumulatedO, 200, fdRunInfo.mNum * dTemplateAlign64);
     this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
 }
 

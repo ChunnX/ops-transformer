@@ -28,14 +28,13 @@ DATA_RANGE_RIGHT = 10
 
 RUN_MODE = 1
 
-# np.random.seed(42)
-# torch.manual_seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
 
 AIC_CORE_MAX_NUM = 36
-AIV_CORE_MAX_NUM = 72
 FA_METADATA_SIZE = 9
-FD_METADATA_SIZE = 8
-S2_BASE_SIZE = 512
+S2_BASE_SIZE = 128
+
 
 FA_CORE_ENABLE_INDEX = 0
 FA_BN2_START_INDEX = 1
@@ -44,15 +43,6 @@ FA_S2_START_INDEX = 3
 FA_BN2_END_INDEX = 4
 FA_M_END_INDEX = 5
 FA_S2_END_INDEX = 6
-FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7
-
-FD_CORE_ENABLE_INDEX = 0
-FD_BN2_IDX_INDEX = 1
-FD_M_IDX_INDEX = 2
-FD_WORKSPACE_IDX_INDEX = 3
-FD_WORKSPACE_NUM_INDEX = 4
-FD_M_START_INDEX = 5
-FD_M_NUM_INDEX = 6
 
 
 def _as_int(value):
@@ -72,45 +62,24 @@ def _metadata_to_cpu(metadata):
 def parse_smla_metadata(metadata):
     metadata = _metadata_to_cpu(metadata)
     if metadata is None:
-        return {"fa": [], "fd": []}
+        return []
     flat = metadata.reshape(-1)
     fa_records = []
     for core_idx in range(AIC_CORE_MAX_NUM):
         base = core_idx * FA_METADATA_SIZE
         row = flat[base:base + FA_METADATA_SIZE].tolist()
-        # import pdb; pdb.set_trace()
-        print(row)
         if row[FA_CORE_ENABLE_INDEX] == 0:
             continue
         fa_records.append({
             "core_idx": core_idx,
             "bn2_start": int(row[FA_BN2_START_INDEX]),
-            "m_start": int(row[FA_M_START_INDEX]),
+            "s1_start": int(row[FA_M_START_INDEX]),
             "s2_start_block": int(row[FA_S2_START_INDEX]),
             "bn2_end": int(row[FA_BN2_END_INDEX]),
-            "m_end": int(row[FA_M_END_INDEX]),
+            "s1_end": int(row[FA_M_END_INDEX]),
             "s2_end_block": int(row[FA_S2_END_INDEX]),
-            "first_workspace_idx": int(row[FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]),
         })
-    print(fa_records)
-    # import pdb; pdb.set_trace()
-    fd_records = []
-    fd_base = AIC_CORE_MAX_NUM * FA_METADATA_SIZE
-    for core_idx in range(AIV_CORE_MAX_NUM):
-        base = fd_base + core_idx * FD_METADATA_SIZE
-        row = flat[base:base + FD_METADATA_SIZE].tolist()
-        # if row[FD_CORE_ENABLE_INDEX] == 0:
-        #     continue
-        fd_records.append({
-            "core_idx": core_idx,
-            "bn2_idx": int(row[FD_BN2_IDX_INDEX]),
-            "m_idx": int(row[FD_M_IDX_INDEX]),
-            "workspace_idx": int(row[FD_WORKSPACE_IDX_INDEX]),
-            "workspace_num": int(row[FD_WORKSPACE_NUM_INDEX]),
-            "m_start_idx": int(row[FD_M_START_INDEX]),
-            "m_num": int(row[FD_M_NUM_INDEX]),
-        })
-    return {"fa": fa_records, "fd": fd_records}
+    return fa_records
 
 
 def _register_torch_extension():
@@ -195,88 +164,63 @@ class GeneralizedSFA:
         self.ori_win_right = ori_win_right
         self.ori_topk_length = ori_topk_length
         self.cmp_topk_length = cmp_topk_length
-        self.metadata_info = parse_smla_metadata(metadata)
-        self.fd_split_ranges = {}
+        self.fa_records = parse_smla_metadata(metadata)
+        self.s2_split_ranges = {}
 
     def _bn2_idx(self, batch_idx, n2_idx):
         return batch_idx * self.N2 + n2_idx
 
     def _convert_s2_block_to_token(self, s2_block_idx, ori_len, cmp_len):
+        if s2_block_idx <= 0:
+            return 0
         ori_block_num = math.ceil(ori_len / S2_BASE_SIZE) if ori_len > 0 else 0
-        block_idx = int(s2_block_idx - 1)
+        block_idx = int(s2_block_idx)
         if block_idx <= ori_block_num:
             return min(block_idx * S2_BASE_SIZE, ori_len)
         return ori_len + min((block_idx - ori_block_num) * S2_BASE_SIZE, cmp_len)
 
-    def _build_fd_split_ranges(self, row_s2_lengths, m_block_size=1):
-        if self.fd_split_ranges:
-            return self.fd_split_ranges
+    def _build_s2_split_ranges(self, row_s2_lengths):
         split_ranges = {}
-        for fa in self.metadata_info.get("fa", []):
+        for fa in self.fa_records:
             bn2_start = fa["bn2_start"]
-            m_start = fa["m_start"]
+            s1_start = fa["s1_start"]
             bn2_end = fa["bn2_end"]
-            m_end = fa["m_end"]
+            s1_end = fa["s1_end"]
             s2_start_block = fa["s2_start_block"]
             s2_end_block = fa["s2_end_block"]
-            workspace_split_idx = 0
-            def add_split_range(bn2_idx, m_idx, start_block, end_block):
-                nonlocal workspace_split_idx
-                row_key = (bn2_idx, m_idx)
+            print("s2_end_block: ", s2_end_block)
+            def add_split_range(bn2_idx, s1_idx, start_block, end_block):
+                row_key = (bn2_idx, s1_idx)
                 if row_key not in row_s2_lengths:
                     return
                 ori_len, cmp_len = row_s2_lengths[row_key]
                 total_len = ori_len + cmp_len
                 if total_len <= 0:
                     return
-                start_token = self._convert_s2_block_to_token(start_block, ori_len, cmp_len)
+                start_token = self._convert_s2_block_to_token(start_block, ori_len, cmp_len) if start_block != 0 else 0
                 end_token = self._convert_s2_block_to_token(end_block, ori_len, cmp_len) if end_block != 0 else total_len
+                # print(start_token, end_token)
                 if end_token <= start_token:
                     return
-                workspace_idx = fa["first_workspace_idx"] + workspace_split_idx
-                split_ranges[workspace_idx] = {
-                    "bn2_idx": bn2_idx,
-                    "m_idx": m_idx,
-                    "start": start_token,
-                    "end": end_token,
-                    "ori_len": ori_len,
-                    "cmp_len": cmp_len,
-                }
-                workspace_split_idx += 1
+                split_ranges.setdefault(row_key, []).append({
+                    "B": bn2_idx // self.N2,
+                    "S1": s1_idx,
+                    "S2_START": start_token,
+                    "S2_END": end_token,
+                })
 
-            first_m_idx = m_start * m_block_size
-            last_m_idx = m_end * m_block_size
-            if s2_start_block != 0 and s2_end_block != 0 and bn2_end == bn2_start and last_m_idx == first_m_idx:
-                add_split_range(bn2_start, first_m_idx, s2_start_block, s2_end_block)
+            if s2_start_block != 0 and s2_end_block != 0 and bn2_end == bn2_start and s1_end == s1_start:
+                add_split_range(bn2_start, s1_start, s2_start_block, s2_end_block)
             else:
                 if s2_start_block != 0:
-                    add_split_range(bn2_start, first_m_idx, s2_start_block, 0)
+                    add_split_range(bn2_start, s1_start, s2_start_block, 0)
                 if s2_end_block != 0:
-                    add_split_range(bn2_end, last_m_idx, 0, s2_end_block)
-        self.fd_split_ranges = split_ranges
-        return split_ranges
+                    add_split_range(bn2_end, s1_end, 0, s2_end_block)
+        self.s2_split_ranges = split_ranges
 
-    def _get_fd_ranges_for_row(self, bn2_idx, m_idx, head_start, head_num):
-        ranges = self.fd_split_ranges
-        for fd in self.metadata_info.get("fd", []):
-            if fd["workspace_num"] <= 1:
-                continue
-            if fd["bn2_idx"] != bn2_idx or fd["m_idx"] != m_idx:
-                continue
-            fd_head_start = fd["m_start_idx"]
-            fd_head_end = fd_head_start + fd["m_num"]
-            if head_start >= fd_head_end or head_start + head_num <= fd_head_start:
-                continue
-            split_items = []
-            for split_idx in range(fd["workspace_num"]):
-                workspace_idx = fd["workspace_idx"] + split_idx
-                if workspace_idx not in ranges:
-                    split_items = []
-                    break
-                split_items.append(ranges[workspace_idx])
-            if split_items:
-                return split_items
-        return None
+    def _get_s2_split_ranges_for_row(self, bn2_idx, s1_idx):
+        ranges = self.s2_split_ranges.get((bn2_idx, s1_idx))
+        return ranges if ranges and len(ranges) > 1 else None
 
     def _run_online_softmax_range(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, start_token, end_token):
         ori_len = cur_ori_k_fp32.size(0)
@@ -308,15 +252,17 @@ class GeneralizedSFA:
                 cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
         return row_max, row_sum, cur_attn_out / row_sum.unsqueeze(1)
 
-    def _run_fd_golden(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, fd_ranges):
+    def _run_fd_golden(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_split_ranges):
         partial_max = []
         partial_sum = []
         partial_out = []
-        for fd_range in fd_ranges:
+        for split_idx, s2_range in enumerate(s2_split_ranges):
             row_max, row_sum, out = self._run_online_softmax_range(
-                q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, fd_range["start"], fd_range["end"])
+                q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_range["S2_START"], s2_range["S2_END"])
             partial_max.append(row_max)
+            print("row_max:", row_max)
             partial_sum.append(row_sum)
+            print("row_sum:", row_sum)
             partial_out.append(out)
         stacked_max = torch.stack(partial_max, dim=0)
         stacked_sum = torch.stack(partial_sum, dim=0)
@@ -348,62 +294,18 @@ class GeneralizedSFA:
         G = int(self.N1 / self.N2)
         s2_base_size = 512
         row_s2_lengths = {}
-        if self.metadata_info.get("fd"):
+        if self.fa_records:
             for b_idx in range(B):
                 cur_act_q_pre = _as_int(act_q[b_idx])
-                if seqused_ori_kv != None:
-                    cur_ori_act_kv_pre = _as_int(seqused_ori_kv[b_idx])
-                elif cu_seqlens_ori_kv != None:
-                    cur_ori_act_kv_pre = _as_int(cu_seqlens_ori_kv[b_idx + 1] - cu_seqlens_ori_kv[b_idx])
-                else:
-                    cur_ori_act_kv_pre = ori_k_bnsd.size()[2]
                 if seqused_cmp_kv != None:
                     cur_cmp_act_kv_pre = _as_int(seqused_cmp_kv[b_idx])
                 elif cu_seqlens_cmp_kv != None:
                     cur_cmp_act_kv_pre = _as_int(cu_seqlens_cmp_kv[b_idx + 1] - cu_seqlens_cmp_kv[b_idx])
                 else:
                     cur_cmp_act_kv_pre = 0
-                for n2_idx in range(self.N2):
-                    bn2_idx = self._bn2_idx(b_idx, n2_idx)
-                    for s1_idx in range(cur_act_q_pre):
-                        if (self.ori_mask_mode == 3 or self.ori_mask_mode == 4) and s1_idx < cur_act_q_pre - cur_ori_act_kv_pre:
-                            row_s2_lengths[(bn2_idx, s1_idx)] = (0, 0)
-                            continue
-                        if self.ori_mask_mode == 4:
-                            ori_threshold = cur_ori_act_kv_pre - cur_act_q_pre + s1_idx + 1
-                            ori_win_end = ori_threshold + self.ori_win_right
-                            if self.ori_win_left == -1:
-                                ori_win_start = 0
-                            else:
-                                ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
-                        elif self.ori_mask_mode == 3:
-                            ori_threshold = cur_ori_act_kv_pre - cur_act_q_pre + s1_idx + 1
-                            ori_win_end = ori_threshold + self.ori_win_right
-                            ori_win_start = 0
-                        elif self.ori_mask_mode == 0:
-                            ori_win_start = 0
-                            ori_win_end = cur_ori_act_kv_pre
-                        else:
-                            ori_win_start = 0
-                            ori_win_end = 0
-                        ori_len = max(0, ori_win_end - ori_win_start)
-                        cmp_len = 0
-                        if template_idx == 1:
-                            threshold = 0
-                            if self.cmp_mask_mode == 3:
-                                threshold = math.floor((cur_ori_act_kv_pre - cur_act_q_pre + s1_idx + 1) / self.cmp_ratio)
-                            elif self.cmp_mask_mode == 0:
-                                threshold = math.floor(cur_ori_act_kv_pre / self.cmp_ratio)
-                            cmp_len = max(0, min(threshold, cur_cmp_act_kv_pre))
-                        elif template_idx == 2:
-                            cmp_topk_id = cmp_sparse_indices_bnsd[b_idx, n2_idx, s1_idx, :]
-                            empty_flag_pre, cur_cmp_k_pre = self.gather_kv(
-                                cmp_k_bnsd, cmp_topk_id, b_idx, n2_idx, s1_idx, cur_ori_act_kv_pre,
-                                cur_act_q_pre, self.cmp_mask_mode, self.K, cmp_topk_length_bnsd,
-                                self.cmp_ratio, cur_cmp_act_kv_pre)
-                            cmp_len = 0 if empty_flag_pre else cur_cmp_k_pre.size(0)
-                        row_s2_lengths[(bn2_idx, s1_idx)] = (ori_len, cmp_len)
-            self._build_fd_split_ranges(row_s2_lengths)
+                for s1_idx in range(cur_act_q_pre):
+                    row_s2_lengths[(b_idx, s1_idx)] = (128, cur_cmp_act_kv_pre)
+            self._build_s2_split_ranges(row_s2_lengths)
 
         for i_B in range(B):
             print(f"i_B = {i_B}/{B}")
@@ -506,13 +408,12 @@ class GeneralizedSFA:
                             softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
                     elif RUN_MODE == 1:
                         bn2_idx = self._bn2_idx(i_B, i_N2)
-                        fd_ranges = self._get_fd_ranges_for_row(bn2_idx, i_S1, 0, G)
-                        # import pdb;pdb.set_trace()
-                        if fd_ranges:
+                        s2_split_ranges = self._get_s2_split_ranges_for_row(bn2_idx, i_S1)
+                        if s2_split_ranges:
                             cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
                             cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
                             fd_out, fd_max, fd_sum = self._run_fd_golden(
-                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, fd_ranges)
+                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, s2_split_ranges)
                             attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
                             if return_softmax_lse:
                                 softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
@@ -1304,7 +1205,8 @@ def gen_data(params, template_mode=None):
         cmp_k = None
         cmp_topk_length = None
 
-    sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
+    # sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
+    sinks = torch.full((N1,), float('-inf'), dtype=torch.float)
 
     # kv_cache 0轴非连续
     properties = torch.npu.get_device_properties()
