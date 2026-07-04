@@ -54,8 +54,8 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     const aclTensor *vScaleOptional{nullptr};
     // Attributes
     const aclIntArray *headNums{nullptr};
-    const char *qkvLayout{nullptr};
-    const char *qOutLayout{nullptr};
+    const char *layoutQkv{nullptr};
+    const char *layoutQOut{nullptr};
     float epsilon{DEFAULT_EPSILON};
     // Outputs
     aclTensor *qOut{nullptr};
@@ -340,44 +340,44 @@ private:
         return ACLNN_SUCCESS;
     }
 
-    static const char *GetQkvLayoutOrDefault(const char *layout)
+    static const char *GetLayoutQkvOrDefault(const char *layout)
     {
         return layout == nullptr || layout[0] == '\0' ? DEFAULT_QKV_LAYOUT : layout;
     }
 
-    static const char *GetQOutLayoutOrDefault(const char *layout)
+    static const char *GetLayoutQOutOrDefault(const char *layout)
     {
         return layout == nullptr || layout[0] == '\0' ? DEFAULT_Q_OUT_LAYOUT : layout;
     }
 
-    aclnnStatus CheckQkvLayout(bool &isTnd) const
+    aclnnStatus CheckLayoutQkv(bool &isTnd) const
     {
-        const char *qkvLayout = GetQkvLayoutOrDefault(params_.qkvLayout);
-        const bool isNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
-        isTnd = std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0;
+        const char *layoutQkv = GetLayoutQkvOrDefault(params_.layoutQkv);
+        const bool isNtd = std::strcmp(layoutQkv, QKV_LAYOUT_NTD) == 0;
+        isTnd = std::strcmp(layoutQkv, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qkv_layout", qkvLayout,
-                                                  "qkv_layout must be NTD or TND");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_qkv", layoutQkv,
+                                                  "layout_qkv must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
     }
 
-    aclnnStatus CheckQOutLayout(bool &isTnd) const
+    aclnnStatus CheckLayoutQOut(bool &isTnd) const
     {
-        const char *qkvLayout = GetQkvLayoutOrDefault(params_.qkvLayout);
-        const char *qOutLayout = GetQOutLayoutOrDefault(params_.qOutLayout);
-        const bool isNtd = std::strcmp(qOutLayout, QKV_LAYOUT_NTD) == 0;
-        isTnd = std::strcmp(qOutLayout, QKV_LAYOUT_TND) == 0;
+        const char *layoutQkv = GetLayoutQkvOrDefault(params_.layoutQkv);
+        const char *layoutQOut = GetLayoutQOutOrDefault(params_.layoutQOut);
+        const bool isNtd = std::strcmp(layoutQOut, QKV_LAYOUT_NTD) == 0;
+        isTnd = std::strcmp(layoutQOut, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", qOutLayout,
-                                                  "q_out_layout must be NTD or TND");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_q_out", layoutQOut,
+                                                  "layout_q_out must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const bool qkvIsNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
+        const bool qkvIsNtd = std::strcmp(layoutQkv, QKV_LAYOUT_NTD) == 0;
         if (qkvIsNtd && isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "q_out_layout", qOutLayout,
-                                                  "qkv_layout=NTD with q_out_layout=TND is not supported");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_q_out", layoutQOut,
+                                                  "layout_qkv=NTD with layout_q_out=TND is not supported");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -518,7 +518,7 @@ private:
         if (!IsShape(params_.qOut, expectedQOutShape) || !IsShape(params_.qScale, expectedQScaleShape)) {
             const std::string incorrectShapes = ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qOut, qScale", incorrectShapes.c_str(),
-                                                   "qOut/qScale must match q_out_layout");
+                                                   "qOut/qScale must match layout_q_out");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -535,12 +535,12 @@ private:
         }
 
         bool isTnd = false;
-        ret = CheckQkvLayout(isTnd);
+        ret = CheckLayoutQkv(isTnd);
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
         bool qOutIsTnd = false;
-        ret = CheckQOutLayout(qOutIsTnd);
+        ret = CheckLayoutQOut(qOutIsTnd);
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }

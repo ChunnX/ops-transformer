@@ -100,46 +100,46 @@ static ge::graphStatus ValidateMinDimNum(gert::InferShapeContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ParseQkvLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
+static ge::graphStatus ParseLayoutQkv(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= QKV_LAYOUT_ATTR_INDEX) {
         isNtd = false;
         return ge::GRAPH_SUCCESS;
     }
-    const char *qkvLayout = attrs->GetStr(QKV_LAYOUT_ATTR_INDEX);
-    if (qkvLayout == nullptr || qkvLayout[0] == '\0') {
+    const char *layoutQkv = attrs->GetStr(QKV_LAYOUT_ATTR_INDEX);
+    if (layoutQkv == nullptr || layoutQkv[0] == '\0') {
         isNtd = false;
         return ge::GRAPH_SUCCESS;
     }
-    if (std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0 || std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0) {
-        isNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
+    if (std::strcmp(layoutQkv, QKV_LAYOUT_NTD) == 0 || std::strcmp(layoutQkv, QKV_LAYOUT_TND) == 0) {
+        isNtd = std::strcmp(layoutQkv, QKV_LAYOUT_NTD) == 0;
         return ge::GRAPH_SUCCESS;
     }
-    OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "qkv_layout", qkvLayout, "NTD or TND");
+    OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "layout_qkv", layoutQkv, "NTD or TND");
     return ge::GRAPH_FAILED;
 }
 
-static ge::graphStatus ParseQOutLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
+static ge::graphStatus ParseLayoutQOut(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
                                        bool qkvIsNtd, bool &qOutIsNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= Q_OUT_LAYOUT_ATTR_INDEX) {
         qOutIsNtd = true;
         return ge::GRAPH_SUCCESS;
     }
-    const char *qOutLayout = attrs->GetStr(Q_OUT_LAYOUT_ATTR_INDEX);
-    if (qOutLayout == nullptr || qOutLayout[0] == '\0') {
+    const char *layoutQOut = attrs->GetStr(Q_OUT_LAYOUT_ATTR_INDEX);
+    if (layoutQOut == nullptr || layoutQOut[0] == '\0') {
         qOutIsNtd = true;
         return ge::GRAPH_SUCCESS;
     }
-    const bool isNtd = std::strcmp(qOutLayout, QKV_LAYOUT_NTD) == 0;
-    const bool isTnd = std::strcmp(qOutLayout, QKV_LAYOUT_TND) == 0;
+    const bool isNtd = std::strcmp(layoutQOut, QKV_LAYOUT_NTD) == 0;
+    const bool isTnd = std::strcmp(layoutQOut, QKV_LAYOUT_TND) == 0;
     if (!isNtd && !isTnd) {
-        OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "q_out_layout", qOutLayout, "NTD or TND");
+        OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "layout_q_out", layoutQOut, "NTD or TND");
         return ge::GRAPH_FAILED;
     }
     if (qkvIsNtd && isTnd) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "q_out_layout", qOutLayout,
-                                              "qkv_layout=NTD with q_out_layout=TND is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "layout_q_out", layoutQOut,
+                                              "layout_qkv=NTD with layout_q_out=TND is not supported");
         return ge::GRAPH_FAILED;
     }
     qOutIsNtd = isNtd;
@@ -205,10 +205,10 @@ static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, const g
     if (ParseQHeadNum(context, attrs, inferAttrs.qHeads) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ParseQkvLayout(context, attrs, inferAttrs.isQkvNtd) != ge::GRAPH_SUCCESS) {
+    if (ParseLayoutQkv(context, attrs, inferAttrs.isQkvNtd) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ParseQOutLayout(context, attrs, inferAttrs.isQkvNtd, inferAttrs.isQOutNtd) != ge::GRAPH_SUCCESS) {
+    if (ParseLayoutQOut(context, attrs, inferAttrs.isQkvNtd, inferAttrs.isQOutNtd) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

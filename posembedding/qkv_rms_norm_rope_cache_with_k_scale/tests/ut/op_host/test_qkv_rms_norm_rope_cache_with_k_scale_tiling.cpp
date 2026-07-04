@@ -48,9 +48,9 @@ constexpr uint64_t TEST_LAYOUT_TND = 1U;
 constexpr uint64_t QKV_LAYOUT_TILING_KEY_SHIFT = 8U;
 constexpr uint64_t Q_OUT_LAYOUT_TILING_KEY_SHIFT = 12U;
 
-uint64_t EncodeQkvKScaleTilingKey(uint64_t qkvLayout, uint64_t qOutLayout)
+uint64_t EncodeQkvKScaleTilingKey(uint64_t layoutQkv, uint64_t layoutQOut)
 {
-    return (qkvLayout << QKV_LAYOUT_TILING_KEY_SHIFT) | (qOutLayout << Q_OUT_LAYOUT_TILING_KEY_SHIFT);
+    return (layoutQkv << QKV_LAYOUT_TILING_KEY_SHIFT) | (layoutQOut << Q_OUT_LAYOUT_TILING_KEY_SHIFT);
 }
 
 uint64_t CalcQkPreprocessNzBytes(uint64_t rowCount)
@@ -66,12 +66,12 @@ struct TilingRunOptions {
     uint64_t aivNum = 0U;
     bool headNumsPresent = false;
     std::vector<int64_t> headNums;
-    bool qkvLayoutPresent = true;
-    bool qOutLayoutPresent = true;
-    bool qkvLayoutOverridePresent = false;
-    bool qOutLayoutOverridePresent = false;
-    std::string qkvLayoutOverride;
-    std::string qOutLayoutOverride;
+    bool layoutQkvPresent = true;
+    bool layoutQOutPresent = true;
+    bool layoutQkvOverridePresent = false;
+    bool layoutQOutOverridePresent = false;
+    std::string layoutQkvOverride;
+    std::string layoutQOutOverride;
     std::string socVersion = "Ascend950";
 };
 
@@ -136,7 +136,7 @@ void SetStride(TensorContractInfo &tensor, const std::vector<int64_t> &strides)
 void RefreshShapes(ContractInput &input)
 {
     const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
-    if (input.qkvLayout == TEST_LAYOUT_TND) {
+    if (input.layoutQkv == TEST_LAYOUT_TND) {
         SetShape(input.qkv, input.totalTokens, qkvN, input.headDim);
     } else {
         SetShape(input.qkv, qkvN, input.totalTokens, input.headDim);
@@ -203,8 +203,8 @@ struct ConcurrentTilingCase {
     uint64_t tokenTile;
     uint64_t coreTokenTile;
     uint64_t coreGroupNum;
-    uint64_t qkvLayout = TEST_LAYOUT_NTD;
-    uint64_t qOutLayout = TEST_LAYOUT_NTD;
+    uint64_t layoutQkv = TEST_LAYOUT_NTD;
+    uint64_t layoutQOut = TEST_LAYOUT_NTD;
 };
 
 struct ConcurrentTilingResult {
@@ -272,7 +272,7 @@ std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
 
 std::vector<TensorSpec> BuildTilingOutputSpecs(const ContractInput &input)
 {
-    const bool isTnd = input.qOutLayout == TEST_LAYOUT_TND;
+    const bool isTnd = input.layoutQOut == TEST_LAYOUT_TND;
     std::vector<TensorSpec> outputs;
     outputs.reserve(5U);
     gert::Shape qOutShape;
@@ -307,19 +307,19 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     attrs.reserve(4U);
     attrs.push_back(gert::TilingContextPara::OpAttr(
         "head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)));
-    if (options.qkvLayoutPresent) {
-        const std::string qkvLayout =
-            options.qkvLayoutOverridePresent ? options.qkvLayoutOverride :
-                                               (input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD");
+    if (options.layoutQkvPresent) {
+        const std::string layoutQkv =
+            options.layoutQkvOverridePresent ? options.layoutQkvOverride :
+                                               (input.layoutQkv == TEST_LAYOUT_TND ? "TND" : "NTD");
         attrs.push_back(gert::TilingContextPara::OpAttr(
-            "qkv_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(qkvLayout)));
+            "layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQkv)));
     }
-    if (options.qkvLayoutPresent && options.qOutLayoutPresent) {
-        const std::string qOutLayout =
-            options.qOutLayoutOverridePresent ? options.qOutLayoutOverride :
-                                                (input.qOutLayout == TEST_LAYOUT_TND ? "TND" : "NTD");
+    if (options.layoutQkvPresent && options.layoutQOutPresent) {
+        const std::string layoutQOut =
+            options.layoutQOutOverridePresent ? options.layoutQOutOverride :
+                                                (input.layoutQOut == TEST_LAYOUT_TND ? "TND" : "NTD");
         attrs.push_back(gert::TilingContextPara::OpAttr(
-            "q_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(qOutLayout)));
+            "layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQOut)));
         attrs.push_back(
             gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
     }
@@ -533,8 +533,8 @@ struct CsvTilingCase {
     uint64_t numVHeads = 2;
     uint64_t headDim = 128;
     uint64_t aicNum = 32;
-    uint64_t qkvLayout = TEST_LAYOUT_NTD;
-    uint64_t qOutLayout = TEST_LAYOUT_NTD;
+    uint64_t layoutQkv = TEST_LAYOUT_NTD;
+    uint64_t layoutQOut = TEST_LAYOUT_NTD;
     ge::graphStatus expectedStatus = ge::GRAPH_SUCCESS;
     uint64_t tokenTile = 0;
     uint64_t tokenTilePerAiv = 0;
@@ -684,16 +684,16 @@ void ApplyRunOptionUpdate(TilingRunOptions &options, const std::string &field, c
     } else if (field == "headNums") {
         options.headNums = ops::ut::ParseI64List(value);
         options.headNumsPresent = true;
-    } else if (field == "qkvLayoutAttrPresent") {
-        options.qkvLayoutPresent = ops::ut::ParseBool(value);
-    } else if (field == "qOutLayoutAttrPresent") {
-        options.qOutLayoutPresent = ops::ut::ParseBool(value);
-    } else if (field == "qkvLayoutAttr") {
-        options.qkvLayoutOverride = value == "<empty>" ? "" : value;
-        options.qkvLayoutOverridePresent = true;
-    } else if (field == "qOutLayoutAttr") {
-        options.qOutLayoutOverride = value == "<empty>" ? "" : value;
-        options.qOutLayoutOverridePresent = true;
+    } else if (field == "layoutQkvAttrPresent") {
+        options.layoutQkvPresent = ops::ut::ParseBool(value);
+    } else if (field == "layoutQOutAttrPresent") {
+        options.layoutQOutPresent = ops::ut::ParseBool(value);
+    } else if (field == "layoutQkvAttr") {
+        options.layoutQkvOverride = value == "<empty>" ? "" : value;
+        options.layoutQkvOverridePresent = true;
+    } else if (field == "layoutQOutAttr") {
+        options.layoutQOutOverride = value == "<empty>" ? "" : value;
+        options.layoutQOutOverridePresent = true;
     } else if (field == "socVersion") {
         options.socVersion = value;
     } else {
@@ -703,8 +703,8 @@ void ApplyRunOptionUpdate(TilingRunOptions &options, const std::string &field, c
 
 void ApplyInputUpdate(ContractInput &input, const std::string &field, const std::string &value)
 {
-    if (field == "qOutLayout") {
-        input.qOutLayout = ParseLayout(value);
+    if (field == "layoutQOut") {
+        input.layoutQOut = ParseLayout(value);
         return;
     }
     throw std::invalid_argument("unknown input update field: " + field);
@@ -724,7 +724,7 @@ void ApplyCsvUpdate(ContractInput &input, TilingRunOptions &options, const std::
     if (dotPos == std::string::npos || dotPos > equalPos) {
         const std::string field = ops::ut::Trim(trimmed.substr(0, equalPos));
         const std::string value = ops::ut::Trim(trimmed.substr(equalPos + 1));
-        if (field == "qOutLayout") {
+        if (field == "layoutQOut") {
             ApplyInputUpdate(input, field, value);
         } else {
             ApplyRunOptionUpdate(options, field, value);
@@ -754,8 +754,8 @@ CsvTilingCase ParseCsvCase(const std::vector<std::string> &cols)
     item.numVHeads = ParseU64(CsvColumn(cols, 5), 2U);
     item.headDim = ParseU64(CsvColumn(cols, 6), 128U);
     item.aicNum = ParseU64(CsvColumn(cols, 7), 32U);
-    item.qkvLayout = ParseLayout(CsvColumn(cols, 8));
-    item.qOutLayout = item.qkvLayout;
+    item.layoutQkv = ParseLayout(CsvColumn(cols, 8));
+    item.layoutQOut = item.layoutQkv;
     item.expectedStatus = ParseGraphStatus(CsvColumn(cols, 9));
     item.tokenTile = ParseU64(CsvColumn(cols, 10));
     item.tokenTilePerAiv = ParseU64(CsvColumn(cols, 11));
@@ -841,11 +841,11 @@ uint64_t ExpectTileFromSpec(const CsvTilingCase &item, const ContractInput &inpu
 void ExpectTilingKey(const CsvTilingCase &item, const ContractInput &input, const TilingInfo &tilingInfo)
 {
     const uint64_t expectedLayout =
-        input.qkvLayout == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
-    const uint64_t expectedQOutLayout =
-        input.qOutLayout == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
+        input.layoutQkv == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
+    const uint64_t expectedLayoutQOut =
+        input.layoutQOut == TEST_LAYOUT_TND ? QKV_K_SCALE_LAYOUT_TND : QKV_K_SCALE_LAYOUT_NTD;
     EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey),
-        EncodeQkvKScaleTilingKey(expectedLayout, expectedQOutLayout))
+        EncodeQkvKScaleTilingKey(expectedLayout, expectedLayoutQOut))
         << "caseName=" << item.caseName;
 }
 
@@ -920,8 +920,8 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
 {
     const auto &item = GetParam();
     auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
-    input.qkvLayout = item.qkvLayout;
-    input.qOutLayout = item.qOutLayout;
+    input.layoutQkv = item.layoutQkv;
+    input.layoutQOut = item.layoutQOut;
     RefreshShapes(input);
     TilingRunOptions options;
     options.aicNum = item.aicNum;
@@ -1000,8 +1000,8 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
                 const uint64_t caseIdx = (static_cast<uint64_t>(threadIdx) + iter) % cases.size();
                 const auto &item = cases[caseIdx];
                 auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
-                input.qkvLayout = item.qkvLayout;
-                input.qOutLayout = item.qOutLayout;
+                input.layoutQkv = item.layoutQkv;
+                input.layoutQOut = item.layoutQOut;
                 RefreshShapes(input);
                 TilingInfo tilingInfo;
                 const bool success = ExecuteTilingForInput(input, tilingInfo, item.aicNum);

@@ -96,8 +96,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const aclTensor   *rotationOptional,
     const aclTensor   *vScaleOptional,
     const aclIntArray *headNums,
-    const char        *qkvLayout,
-    const char        *qOutLayout,
+    const char        *layoutQkv,
+    const char        *layoutQOut,
     float              epsilon,
     aclTensor         *qOut,
     aclTensor         *qScale,
@@ -271,7 +271,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">qkvLayout（const char*）</td>
+      <td style="white-space: nowrap">layoutQkv（const char*）</td>
       <td>输入</td>
       <td><code>qkv</code>的N/T轴布局标识，对应公式中<code>T</code>、<code>Nq</code>、<code>Nk</code>、<code>Nv</code>所在轴。</td>
       <td><ul><li>默认值为<code>"TND"</code>。</li><li>传入空指针或空字符串时按默认值处理。</li><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li></ul></td>
@@ -281,10 +281,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">qOutLayout（const char*）</td>
+      <td style="white-space: nowrap">layoutQOut（const char*）</td>
       <td>输入</td>
       <td><code>qOut</code>和<code>qScale</code>的N/T轴布局标识。</td>
-      <td><ul><li>默认值为<code>"NTD"</code>。</li><li>传入空指针或空字符串时按默认值处理。</li><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li><li>当前不支持<code>qkvLayout="NTD"</code>、<code>qOutLayout="TND"</code>。</li></ul></td>
+      <td><ul><li>默认值为<code>"NTD"</code>。</li><li>传入空指针或空字符串时按默认值处理。</li><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li><li>当前不支持<code>layoutQkv="NTD"</code>、<code>layoutQOut="TND"</code>。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -378,7 +378,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>Tensor数据格式为私有格式，或不满足ND格式要求。</td>
     </tr>
     <tr>
-      <td>Tensor shape、<code>headNums</code>、<code>qkvLayout</code>或<code>qOutLayout</code>不满足接口约束。</td>
+      <td>Tensor shape、<code>headNums</code>、<code>layoutQkv</code>或<code>layoutQOut</code>不满足接口约束。</td>
     </tr>
     <tr>
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
@@ -443,10 +443,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
 - 输入shape限制：
   - 当前实现仅支持`D=128`。
-  - `qkvLayout`控制`qkv`的N/T轴布局，默认值为`"TND"`；`qOutLayout`控制`qOut`和`qScale`的N/T轴布局，默认值为`"NTD"`：
-    - `qkvLayout="TND"`，`qOutLayout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
-    - `qkvLayout="TND"`，`qOutLayout="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
-    - `qkvLayout="NTD"`，`qOutLayout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
+  - `layoutQkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layoutQOut`控制`qOut`和`qScale`的N/T轴布局，默认值为`"NTD"`：
+    - `layoutQkv="TND"`，`layoutQOut="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
+    - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
+    - `layoutQkv="NTD"`，`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
 - 输入值域限制：
@@ -702,14 +702,14 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       CHECK_RET(resource.headNums != nullptr,
                 LOG_PRINT("aclCreateIntArray failed.\n"); return ReturnAfterCleanup(ACL_ERROR_INVALID_PARAM, resource));
 
-    const char *qkvLayout = "TND";
-    const char *qOutLayout = "TND";
+    const char *layoutQkv = "TND";
+    const char *layoutQOut = "TND";
     float epsilon = 1e-6f;
     uint64_t workspaceSize = 0;
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
         kScaleCache.tensor, cuSeqLens.tensor, actualSeqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
-          qkvLayout, qOutLayout, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
+          layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
       CHECK_RET(status == ACL_SUCCESS,
                 LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
                 return ReturnAfterCleanup(static_cast<int>(status), resource));

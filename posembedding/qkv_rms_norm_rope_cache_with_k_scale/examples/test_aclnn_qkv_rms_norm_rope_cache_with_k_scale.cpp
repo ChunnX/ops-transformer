@@ -250,14 +250,14 @@ int main()
     CHECK_RET(resource.headNums != nullptr, LOG_PRINT("aclCreateIntArray failed.\n");
               return ReturnAfterCleanup(ACL_ERROR_INVALID_PARAM, resource));
 
-    const char *qkvLayout = "TND";
-    const char *qOutLayout = "TND";
+    const char *layoutQkv = "TND";
+    const char *layoutQOut = "TND";
     float epsilon = 1e-6f;
     uint64_t workspaceSize = 0;
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
         kScaleCache.tensor, cuSeqLens.tensor, actualSeqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
-        qkvLayout, qOutLayout, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
+        layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
     CHECK_RET(status == ACL_SUCCESS,
               LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
               return ReturnAfterCleanup(static_cast<int>(status), resource));

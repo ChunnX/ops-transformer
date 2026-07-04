@@ -20,8 +20,8 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLens,
                               const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
-                              const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout,
-                              const char *qOutLayout, float epsilon, aclTensor *qOut, aclTensor *qScale,
+                              const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *layoutQkv,
+                              const char *layoutQOut, float epsilon, aclTensor *qOut, aclTensor *qScale,
                               aclOpExecutor *executor);
 }
 

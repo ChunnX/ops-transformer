@@ -37,8 +37,8 @@ struct ContractInput {
     uint64_t maxSeqLen = 0;
     uint64_t blockNum = 0;
     uint64_t blockSize = 0;
-    uint64_t qkvLayout = 0;
-    uint64_t qOutLayout = 0;
+    uint64_t layoutQkv = 0;
+    uint64_t layoutQOut = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -115,8 +115,8 @@ private:
     void LogContractInput() const;
     void LogTilingData() const;
     ge::graphStatus ParseHeadNumsAttr();
-    ge::graphStatus ParseQkvLayoutAttr();
-    ge::graphStatus ParseQOutLayoutAttr();
+    ge::graphStatus ParseLayoutQkvAttr();
+    ge::graphStatus ParseLayoutQOutAttr();
     float ParseEpsilonAttr() const;
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();

@@ -63,8 +63,8 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
-        this->Attr("qkv_layout").AttrType(OPTIONAL).String("TND");
-        this->Attr("q_out_layout").AttrType(OPTIONAL).String("NTD");
+        this->Attr("layout_qkv").AttrType(OPTIONAL).String("TND");
+        this->Attr("layout_q_out").AttrType(OPTIONAL).String("NTD");
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         OpAICoreConfig config950;

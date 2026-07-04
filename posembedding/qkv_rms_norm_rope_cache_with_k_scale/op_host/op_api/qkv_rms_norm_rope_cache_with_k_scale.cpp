@@ -32,21 +32,21 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLens,
                               const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
-                              const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout,
-                              const char *qOutLayout, float epsilon, aclTensor *qOut, aclTensor *qScale,
+                              const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *layoutQkv,
+                              const char *layoutQOut, float epsilon, aclTensor *qOut, aclTensor *qScale,
                               aclOpExecutor *executor)
 {
-    const char *qkvLayoutAttr = GetLayoutOrDefault(qkvLayout, DEFAULT_QKV_LAYOUT);
-    const char *qOutLayoutAttr = GetLayoutOrDefault(qOutLayout, DEFAULT_Q_OUT_LAYOUT);
+    const char *layoutQkvAttr = GetLayoutOrDefault(layoutQkv, DEFAULT_QKV_LAYOUT);
+    const char *layoutQOutAttr = GetLayoutOrDefault(layoutQOut, DEFAULT_Q_OUT_LAYOUT);
     L0_DFX(QkvRmsNormRopeCacheWithKScale, qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
-           cuSeqLens, actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayoutAttr, qOutLayoutAttr,
+           cuSeqLens, actualSeqLens, rotationOptional, vScaleOptional, headNums, layoutQkvAttr, layoutQOutAttr,
            epsilon);
 
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                            OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLens,
                                     actualSeqLens, rotationOptional, vScaleOptional),
                            OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache),
-                           OP_ATTR(headNums, qkvLayoutAttr, qOutLayoutAttr, epsilon));
+                           OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return {nullptr, nullptr, nullptr, nullptr, nullptr};
@@ -56,7 +56,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
                                       OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
                                                cuSeqLens, actualSeqLens, rotationOptional, vScaleOptional),
                                       OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache),
-                                      OP_ATTR(headNums, qkvLayoutAttr, qOutLayoutAttr, epsilon));
+                                      OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return {nullptr, nullptr, nullptr, nullptr, nullptr};
