@@ -398,12 +398,12 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const a
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     CommType commModeEnum = CommType::INVALID;
     auto retCommmode = CheckAndSetCommMode(commMode, commModeEnum);
+    CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
     if (commModeEnum >= CommType::INVALID) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnmatmulReduceScatterV2GetWorkSpaceSize", "commModeEnum",
             "invalid", "Does not match any available case, please check the input commMode.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
     // 处理空tensor
     if (x1->IsEmpty() || x2->IsEmpty()) {
         OP_LOGD("MatmulReduceScatter, dealing with empty tensor.");
@@ -572,6 +572,11 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         commModeEnum = CommType::AIV;
     }
     
+    if (commModeEnum >= CommType::INVALID) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "commModeEnum",
+            "invalid", "Does not match any available case, please check the input commMode.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     SetNnopbaseHcclServerTypeByArch(executor, commModeEnum);
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
