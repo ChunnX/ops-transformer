@@ -162,7 +162,7 @@ private:
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
     uint32_t relayRecordBytes_ = 0;
-    uint64_t sendWorkspaceRecordBytes_ = 0;
+    uint32_t sendWorkspaceRecordBytes_ = 0;
     uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
@@ -307,7 +307,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     relayRecordBytes_ = Ops::Base::CeilAlign(
         mxQuantTokenScaleAlignBytes_ + static_cast<uint64_t>(ALIGN_32), static_cast<uint64_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
-    sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
+    sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) +
+        static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
 }
 
 // =================================================================================================
@@ -909,6 +910,68 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
+}
+
+// ===================================
+// QuantProcessInRank：本卡token的量化
+// ===================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
+{
+    if constexpr(g_coreType == AIC) {
+        return;
+    }
+
+    // 分核，按照BS与aivCoreNum均分
+    int32_t curentNum;
+    int32_t curentOffset;
+    TilingByCore(m_, curentNum, curentOffset, 1);
+    uint32_t H = k_;
+    GlobalTensor<bfloat16_t> srcGlobalTensor;
+    GlobalTensor<uint8_t> dstGlobalTensor;
+    DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(H * sizeof(bfloat16_t)), 0U, 0U};
+    DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
+    DataCopyExtParams xCopyOutParams = {1U,
+        static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), 0U, 0U, 0U};
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    for (int32_t index = 0; index < curentNum; index++) {
+        srcGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.aGmAddr +
+            static_cast<uint64_t>(curentOffset + index) * H * sizeof(bfloat16_t)));
+        dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.quantTokenScalePtr +
+            static_cast<uint64_t>(curentOffset + index) * mxQuantTokenScaleAlignBytes_));
+        auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
+        auto xInTensor = (index % DOUBLE_BUFFER == 0) ? xInTensor1_ : xInTensor2_;
+        auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+        DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
+        __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTempTensor_.GetPhyAddr();
+        __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTempTensor_[Ops::Base::CeilAlign(
+        mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr();
+        __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOutTensor.GetPhyAddr();
+        __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOutTensor[mxQuantTokenAlignBytes_].GetPhyAddr();
+
+        quant::ComputeMaxExp(srcAddr, maxExpAddr, H); // 计算最大Exp
+        quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
+        mxQuantScaleNumAlignPerToken_); // 计算scales并填充f
+        if constexpr (QuantMode == E2M1_QUANT) {
+            quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
+        } else {
+            quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
+        }
+        SetFlag<AscendC::HardEvent::V_MTE3>(event);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(event);
+        auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
+        DataCopyPad(dstGlobalTensor, xOutBytesTensor, xCopyOutParams);
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+    }
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
 // ==================================================================================================
