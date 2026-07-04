@@ -318,7 +318,8 @@ private:
     __aicore__ inline void AccumulateTokenFromServer(GM_ADDR winInTkAddr, uint32_t hitIdx,
                                                     LocalTensor<float>& sumLocal);
     __aicore__ inline void ProcessSharedExpertAndOutput(uint32_t tokenId, LocalTensor<float>& sumLocal);
-                                                                                
+    // 测试
+    __aicore__ inline void TestRoceCommunication();                                                                               
 private:
     uint32_t globalBs_{0};
     uint32_t serverTokenBs_{0};
