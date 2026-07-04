@@ -54,6 +54,7 @@ def qliv2(testcase_files):   # 初始化参数和tensor
         result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
         print(f"result_return_value: {result_return_value}")
         print(f"result_return_value: {fulfill_precent_return_value}")
+        result = result_return_value
     
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
