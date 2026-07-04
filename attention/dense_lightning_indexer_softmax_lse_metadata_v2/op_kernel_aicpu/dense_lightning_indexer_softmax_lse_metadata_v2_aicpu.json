@@ -1,5 +1,5 @@
-{
-    "DenseLightningIndexerSoftmaxLseMetadata":{
+﻿{
+    "DenseLightningIndexerSoftmaxLseMetadataV2":{
         "opInfo":{
             "computeCost":"100",
             "engine":"DNN_VM_AICPU",

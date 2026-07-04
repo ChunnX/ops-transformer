@@ -1,4 +1,4 @@
-# aclnnDenseLightningIndexerSoftmaxLseMetadata
+﻿# aclnnDenseLightningIndexerSoftmaxLseMetadataV2
 
 ## 产品支持情况
 
@@ -22,10 +22,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseMetadata"执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize"获取workspace大小，再调用"aclnnDenseLightningIndexerSoftmaxLseMetadataV2"执行计算。
 
 ``` cpp
-aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
+aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize(
     const aclTensor *cuSeqLensQOptional,
     const aclTensor *cuSeqLensKOptional,
     const aclTensor *seqUsedQOptional,
@@ -47,14 +47,14 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
 ```
 
 ``` cpp
-aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
+aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadataV2(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     aclrtStream stream);
 ```
 
-## aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize
+## aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize
 
 ## 参数说明
 
@@ -269,7 +269,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## aclnnDenseLightningIndexerSoftmaxLseMetadata
+## aclnnDenseLightningIndexerSoftmaxLseMetadataV2
 
 - **参数说明：**
 
@@ -293,7 +293,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
         <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize获取。</td>
         </tr>
         <tr>
         <td>executor</td>
@@ -314,7 +314,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
 
 ## 约束说明
 
-  - aclnnDenseLightningIndexerSoftmaxLseMetadata为确定性实现，确定性计算配置不会改变其输出规则。
+  - aclnnDenseLightningIndexerSoftmaxLseMetadataV2为确定性实现，确定性计算配置不会改变其输出规则。
 
   - BSND场景
     - 必传batchSize、maxSeqLenQ和maxSeqLenK参数，以获取shape信息。
@@ -432,7 +432,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
 #include <utility>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_dense_lightning_indexer_softmax_lse_metadata.h"
+#include "aclnnop/aclnn_dense_lightning_indexer_softmax_lse_metadata_v2.h"
 
 #define CHECK_LOG_RET(cond, ret_val, fmt, ...)      \
     do {                                            \
@@ -444,7 +444,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseMetadata(
 
 constexpr uint32_t DLI_METADATA_SIZE = 64;
 
-struct DenseLISoftmaxLseMetaData {
+struct DenseLISoftmaxLseV2MetaData {
     int32_t totalNum;
     int32_t blockSize;
     int32_t actualCoreNum;
@@ -621,7 +621,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     return ACL_SUCCESS;
 }
 
-void PrintMetadata(const DenseLISoftmaxLseMetaData &metadata)
+void PrintMetadata(const DenseLISoftmaxLseV2MetaData &metadata)
 {
     printf("totalNum       : %d\n", metadata.totalNum);
     printf("blockSize      : %d\n", metadata.blockSize);
@@ -646,13 +646,13 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    ret = aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize(
+    ret = aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize(
         context.cuSeqLensQOptional.data, context.cuSeqLensKOptional.data, context.seqUsedQOptional.data,
         context.seqUsedKOptional.data, context.cmpResidualKOptional.data, context.batchSize, context.maxSeqLenQ,
         context.maxSeqLenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.layoutQ,
         context.layoutK, context.maskMode, context.cmpRatio, context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
-        "aclnnDenseLightningIndexerSoftmaxLseMetadataGetWorkspaceSize failed. ERROR: %d", ret);
+        "aclnnDenseLightningIndexerSoftmaxLseMetadataV2GetWorkspaceSize failed. ERROR: %d", ret);
 
     if (workspaceSize > static_cast<uint64_t>(0)) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -665,14 +665,14 @@ int main() {
         }
     });
 
-    ret = aclnnDenseLightningIndexerSoftmaxLseMetadata(workspaceAddr, workspaceSize, executor, stream);
+    ret = aclnnDenseLightningIndexerSoftmaxLseMetadataV2(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
-        "aclnnDenseLightningIndexerSoftmaxLseMetadata failed. ERROR: %d", ret);
+        "aclnnDenseLightningIndexerSoftmaxLseMetadataV2 failed. ERROR: %d", ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d", ret);
 
-    DenseLISoftmaxLseMetaData result {};
+    DenseLISoftmaxLseV2MetaData result {};
     ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
     PrintMetadata(result);
@@ -685,4 +685,4 @@ int main() {
 
 | 调用方式  | 样例代码 | 说明 |
 | ----------- | -------- | ---- |
-| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnDenseLightningIndexerSoftmaxLseMetadata`接口方式调用，输出metadata供`aclnnDenseLightningIndexerSoftmaxLse`使用。 |
+| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnDenseLightningIndexerSoftmaxLseMetadataV2`接口方式调用，输出metadata供`aclnnDenseLightningIndexerSoftmaxLse`使用。 |

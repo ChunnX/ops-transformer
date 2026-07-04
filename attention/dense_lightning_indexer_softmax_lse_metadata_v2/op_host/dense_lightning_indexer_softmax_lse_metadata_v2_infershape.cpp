@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_metadata_infershape.cpp
+ * \\file dense_lightning_indexer_softmax_lse_metadata_v2_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../../dense_lightning_indexer_softmax_lse/op_kernel/dense_lightning_indexer_softmax_lse_metadata.h"
+#include "../../dense_lightning_indexer_softmax_lse_v2/op_kernel/dense_lightning_indexer_softmax_lse_metadata_v2.h"
 
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseMetadata(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseMetadataV2(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
@@ -26,13 +26,13 @@ static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseMetadata(gert::I
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeDenseLightningIndexerSoftmaxLseMetadata(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeDenseLightningIndexerSoftmaxLseMetadataV2(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(DenseLightningIndexerSoftmaxLseMetadata)
-    .InferShape(InferShapeDenseLightningIndexerSoftmaxLseMetadata)
-    .InferDataType(InferDtypeDenseLightningIndexerSoftmaxLseMetadata);
+IMPL_OP_INFERSHAPE(DenseLightningIndexerSoftmaxLseMetadataV2)
+    .InferShape(InferShapeDenseLightningIndexerSoftmaxLseMetadataV2)
+    .InferDataType(InferDtypeDenseLightningIndexerSoftmaxLseMetadataV2);
 } // namespace ops

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_metadata_aicpu.h
+ * \\file dense_lightning_indexer_softmax_lse_metadata_v2_aicpu.h
  * \brief
  */
-#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_AICPU_H
-#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_AICPU_H
+#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_AICPU_H
+#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_AICPU_H
 
 #include <cstdint>
 #include <string>
@@ -86,10 +86,10 @@ inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, std:
     }
 }
 
-class DenseLightningIndexerSoftmaxLseMetadataCpuKernel : public CpuKernel {
+class DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel : public CpuKernel {
 public:
-    DenseLightningIndexerSoftmaxLseMetadataCpuKernel() = default;
-    ~DenseLightningIndexerSoftmaxLseMetadataCpuKernel() override = default;
+    DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel() = default;
+    ~DenseLightningIndexerSoftmaxLseMetadataV2CpuKernel() override = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -123,4 +123,4 @@ private:
 
 } // namespace aicpu
 
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_AICPU_H
+#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_METADATA_V2_AICPU_H
