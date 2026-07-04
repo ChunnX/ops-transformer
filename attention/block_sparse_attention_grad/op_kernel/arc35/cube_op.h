@@ -281,7 +281,6 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
@@ -301,7 +300,6 @@ private:
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     template <uint32_t TYPE>
@@ -329,7 +327,6 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
@@ -349,7 +346,6 @@ private:
             fixpipeParamsV220.unitFlag = 3;
             MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         }
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
@@ -371,7 +367,6 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = head_dim_;
@@ -389,7 +384,6 @@ private:
         fixpipeParamsV220.dstStride = q_stride_;
         fixpipeParamsV220.unitFlag = 3;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void load_data_gm_2_l1(const LocalTensor<INPUT_TYPE> &dstL1Tensor,

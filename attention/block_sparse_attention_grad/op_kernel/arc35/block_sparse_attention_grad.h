@@ -171,18 +171,16 @@ public:
                 kv_reuse_check(runTimeInfo_[last_ping_pong_idx], runTimeInfo_[ping_pong_idx], nextRunTimeInfo_, taskId==0);
                 // mm12
                 cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], nextRunTimeInfo_, taskId % 3, taskId == 0);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
                 cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], nextRunTimeInfo_, taskId % 3, taskId == 0);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
+                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
                 // mm345
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
                 cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], (taskId - 1) % 3);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
@@ -233,13 +231,8 @@ public:
                 addr_.GetRunTimeInfo(nextRunTimeInfo_);
                 vecOp.SendVecSftPreProcess(runTimeInfo_, nextRunTimeInfo_, ping_pong_idx, taskId==0);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
-                vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_);
+                vecOp.SendVecSoftmax(p_l1_tensor_, ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_, runTimeInfo_);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
-                vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
-                                         runTimeInfo_);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
             }
 
             if (runTimeInfo_.need_compute == false) {

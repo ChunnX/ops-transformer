@@ -299,9 +299,8 @@ public:
             }
         }
     }
-
-    __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
-                                          const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
+    __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &p_l1_tensor, const LocalTensor<INPUT_TYPE> &ds_l1_tensor,
+                                          const LocalTensor<float> &p_ub_tensor, const LocalTensor<float> &dp_ub_tensor, const RunTimeInfo &runTimeInfo)
     { /*
        * function: Compute simple softmax
        * input shape：[s1LenAlign / 2, s2LenAlign]
@@ -312,53 +311,28 @@ public:
             return;
         }
 
-        SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
-                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
+        SimpleSoftmax((__ubuf__ float *)p_ub_tensor.GetPhyAddr(), (__ubuf__ float *)dp_ub_tensor.GetPhyAddr(),
+                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), (__ubuf__ float *)sftg_front_tensor_.GetPhyAddr(),
+                      half_s1_process_align_, s2_process_align_);
 
-        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, p_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
-
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
         dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        DataCopy(dst_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
-    }
+        DataCopy(p_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
 
-    __aicore__ inline void SendVecSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
-                                              const LocalTensor<float> &softmax_ub_tensor,
-                                              const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
-    {
-        /*
-         * function: Compute softmaxGrad
-         * input shape：[s1LenAlign / 2, s2LenAlign]
-         * out shape:   [s1LenAlign / 2, s2LenAlign]
-         * dtype:       float
-         */
-        if (half_s1_process_real_ <= 0) {
-            return;
-        }
-        ComputeSoftmaxGrad((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
-                           (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
-                           (__ubuf__ float *)sftg_front_tensor_.GetPhyAddr(), half_s1_process_align_,
-                           s2_process_align_);
-
-        CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+        CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, dp_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
-
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
-        dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride =
-            (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
+        DataCopy(ds_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
         SET_FLAG(V, MTE2, event_id);
     }
+
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
                                        const GlobalTensor<INPUT_TYPE> &dk_out_gm,
@@ -572,12 +546,15 @@ private:
         }
     }
 
-    __simd_vf__ inline void SimpleSoftmax(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
-                                          __ubuf__ float *src1Tensor, const uint32_t row, const uint32_t col)
+    __simd_vf__ inline void SimpleSoftmax(__ubuf__ float *pTensor, __ubuf__ float *dpTensor,
+                                          __ubuf__ float *lseTensor, __ubuf__ float *sftFrontTensor,
+                                          const uint32_t row, const uint32_t col)
     {
-        AscendC::Reg::RegTensor<float> src_reg;
+        AscendC::Reg::RegTensor<float> p_reg;
         AscendC::Reg::RegTensor<float> lse_reg;
+        AscendC::Reg::RegTensor<float> sft_front_reg;
         AscendC::Reg::RegTensor<float> scale_reg;
+        AscendC::Reg::RegTensor<float> dp_reg;
         AscendC::Reg::MaskReg msk_reg;
         constexpr static uint16_t repeat_size = 256 / sizeof(float);
         uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
@@ -585,36 +562,7 @@ private:
         Duplicate(scale_reg, softmax_scale_);
 
         for (int32_t i = 0; i < row; i++) {
-            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(lse_reg, src1Tensor + i * 8);
-            uint32_t count = col;
-            ub_offset = i * col;
-
-            for (int32_t j = 0; j < repeat_times; j++) {
-                msk_reg = AscendC::Reg::UpdateMask<float>(count);
-
-                LoadAlign(src_reg, src0Tensor + ub_offset);
-                Mul(src_reg, src_reg, scale_reg, msk_reg);
-                Sub(src_reg, src_reg, lse_reg, msk_reg);
-                Exp(src_reg, src_reg, msk_reg);
-                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
-                ub_offset += repeat_size;
-            }
-        }
-    }
-
-    __simd_vf__ inline void ComputeSoftmaxGrad(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
-                                               __ubuf__ float *src1Tensor, __ubuf__ float *sftFrontTensor,
-                                               const uint32_t row, const uint32_t col)
-    {
-        AscendC::Reg::RegTensor<float> src_reg;
-        AscendC::Reg::RegTensor<float> sft_front_reg;
-        AscendC::Reg::RegTensor<float> mul_reg;
-        AscendC::Reg::MaskReg msk_reg;
-        constexpr static uint16_t repeat_size = 256 / sizeof(float);
-        uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
-        uint32_t ub_offset = 0;
-
-        for (int32_t i = 0; i < row; i++) {
+            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(lse_reg, lseTensor + i * 8);
             LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(sft_front_reg, sftFrontTensor + i * 8);
             uint32_t count = col;
             ub_offset = i * col;
@@ -622,11 +570,15 @@ private:
             for (int32_t j = 0; j < repeat_times; j++) {
                 msk_reg = AscendC::Reg::UpdateMask<float>(count);
 
-                LoadAlign(src_reg, src0Tensor + ub_offset);
-                Sub(src_reg, src_reg, sft_front_reg, msk_reg);
-                LoadAlign(mul_reg, src1Tensor + ub_offset);
-                Mul(src_reg, src_reg, mul_reg, msk_reg);
-                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
+                LoadAlign(p_reg, pTensor + ub_offset);
+                Mul(p_reg, p_reg, scale_reg, msk_reg);
+                Sub(p_reg, p_reg, lse_reg, msk_reg);
+                Exp(p_reg, p_reg, msk_reg);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(pTensor + ub_offset, p_reg, msk_reg);
+                LoadAlign(dp_reg, dpTensor + ub_offset);
+                Sub(dp_reg, dp_reg, sft_front_reg, msk_reg);
+                Mul(dp_reg, dp_reg, p_reg, msk_reg);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dpTensor + ub_offset, dp_reg, msk_reg);
                 ub_offset += repeat_size;
             }
         }
