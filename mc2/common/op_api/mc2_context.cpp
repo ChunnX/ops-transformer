@@ -324,7 +324,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, mc2ContextStruct, protocol, engine, channels);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
