@@ -825,6 +825,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
         }
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServerForSender));
+        PipeBarrier<PIPE_ALL>();
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
         PipeBarrier<PIPE_ALL>();
         int32_t scanCursor = cursor;
@@ -838,7 +839,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
                 scanEnd = endCount;
             }
             for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
+                PipeBarrier<PIPE_ALL>();
                 DispatchToken(targetServerForSender, slot);
+                PipeBarrier<PIPE_ALL>();
             }
             scanCursor = scanEnd;
             if (scanCursor >= endCount) {
@@ -847,7 +850,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
             int32_t oldCursor = cursor;
             cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
+                PipeBarrier<PIPE_ALL>();
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
+                PipeBarrier<PIPE_ALL>();
             }
             if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) &&
                 cursor == ReadGmByPassDCache(countPtr)) {
