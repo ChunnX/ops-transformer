@@ -2121,7 +2121,7 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPreSfmgTiling()
 
     int64_t normalAxisSize = 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        normalAxisSize = fBaseParams.t1 * fBaseParams.n2 * fBaseParams.g;
+        normalAxisSize = fBaseParams.effectiveT1 * fBaseParams.n2 * fBaseParams.g;
     } else {
         normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
     }

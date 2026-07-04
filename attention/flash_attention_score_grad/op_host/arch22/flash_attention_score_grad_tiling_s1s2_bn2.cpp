@@ -1901,6 +1901,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::ProcessDropInfo()
         int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
         dropMaskShapeSize *= dimValue;
     }
+    OP_CHECK_IF(dropMaskShapeSize == 0,
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: "
+                "[dropMask has zero elements (shape size is 0) when keepProb=%f]", td_->opInfo.get_keepProb()),
+        return ge::GRAPH_FAILED);
 
     auto shapeSize = AlignUp(tmpData_.dropMaskSize, static_cast<int64_t>(BIT_NUM)) / BIT_NUM;
     if (dropMaskShapeSize < shapeSize) {
