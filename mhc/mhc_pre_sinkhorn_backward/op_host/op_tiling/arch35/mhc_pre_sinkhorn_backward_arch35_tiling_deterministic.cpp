@@ -171,28 +171,23 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     ubBlockSize_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
     int64_t availUb = static_cast<int64_t>(ubSize_) - UB_RESERVE_SIZE;
 
-    // n/k 相关对齐到 VRegSize, 使 VF 内 DataCopy/计算天然对齐
-    // 对齐推导: n 先对齐, nn = n × nAlign, k = 2×nAlign + nnAlign
-    //   k 布局: [hPre: nAlign | hPost: nAlign | sinkhorn: n×nAlign]
-    //   每段独立对齐到 VF, VF 内访问无需 mask
-    int64_t vRegSize = static_cast<int64_t>(Ops::Base::GetVRegSize(context_));
-    int64_t vRegElem = vRegSize / FP32_BYTE_SIZE;
-
+    // 全部按 32B (ubBlockSize_) 对齐
     auto AlignB32 = [&](int64_t bytes) {
         return static_cast<int64_t>(Ops::Base::CeilAlign(bytes, ubBlockSize_));
+    };
+    auto AlignElem = [&](int64_t elems, int64_t elemSize) {
+        return AlignB32(elems * elemSize) / elemSize;
     };
 
     // C 维按 32B 对齐 (DataCopyPad, 不走 VF)
     int64_t cFp16AlignFull = AlignB32(c_ * BF16_BYTE_SIZE);
     int64_t cFp32AlignFull = AlignB32(c_ * FP32_BYTE_SIZE);
 
-    // n/k 维按 VRegSize 对齐 (元素数)
-    // 核心约束: k 维 reshape 为 (2+n_) 行 × n_ 列, 每行 pad 到 nAlign
-    //   hPre: 1 行 | hPost: 1 行 | sinkhorn: n_ 行, 各行 VReg 对齐
-    int64_t nAlignElem  = Ops::Base::CeilAlign(n_, vRegElem);
-    int64_t kRowsPerBs  = 2 + n_;                        // 每 BS 的 k 行数
-    int64_t kAlignElem  = kRowsPerBs * nAlignElem;       // 每 BS 的 k 对齐后元素数
-    int64_t nnAlignElem = n_ * nAlignElem;               // sinkhorn 部分元素数
+    // n/k 维按 32B 对齐 (元素数)
+    int64_t nAlignElem  = AlignElem(n_, FP32_BYTE_SIZE);
+    int64_t kRowsPerBs  = 2 + n_;
+    int64_t kAlignElem  = kRowsPerBs * nAlignElem;
+    int64_t nnAlignElem = n_ * nAlignElem;
 
     // 转字节数 (用于 UB 预算, 每 BS)
     int64_t nAlignB  = nAlignElem * FP32_BYTE_SIZE;

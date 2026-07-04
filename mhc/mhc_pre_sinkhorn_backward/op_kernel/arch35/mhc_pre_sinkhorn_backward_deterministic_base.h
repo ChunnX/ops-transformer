@@ -72,14 +72,15 @@ __aicore__ inline void CopyInQue(
 {
     auto local = que.template AllocTensor<T>();
     int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
-    int64_t ubStride = (alignLen - elemPerRow) * static_cast<int64_t>(sizeof(T));
     int64_t rightPad = alignLen - elemPerRow;
+    // UB 端 stride 单位是 dataBlock(32B)，GM 端 stride 单位是字节
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
 
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(rowCount);
     copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
-    copyParams.srcStride  = static_cast<uint32_t>(srcStride);
-    copyParams.dstStride  = static_cast<uint32_t>(ubStride);
+    copyParams.srcStride  = static_cast<uint32_t>(srcStride);  // GM 端，字节
+    copyParams.dstStride  = static_cast<uint32_t>(ubStrideBlocks);  // UB 端，dataBlock
 
     DataCopyPadExtParams<T> padParams{rightPad > 0, 0, static_cast<uint8_t>(rightPad), static_cast<T>(0)};
     DataCopyPad(local, srcGm, copyParams, padParams);
@@ -109,13 +110,14 @@ __aicore__ inline void CopyOutQue(
 {
     auto local = que.template DeQue<T>();
     int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
-    int64_t ubStride = (alignLen - elemPerRow) * static_cast<int64_t>(sizeof(T));
+    int64_t rightPad = alignLen - elemPerRow;
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
 
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(rowCount);
     copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
-    copyParams.srcStride  = static_cast<uint32_t>(ubStride);
-    copyParams.dstStride  = static_cast<uint32_t>(dstStride);
+    copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);  // UB 端，dataBlock
+    copyParams.dstStride  = static_cast<uint32_t>(dstStride);       // GM 端，字节
     DataCopyPad(dstGm, local, copyParams);
     que.FreeTensor(local);
 }
@@ -136,14 +138,14 @@ __aicore__ inline void CopyInBuf(
 {
     auto local = buf.template Get<T>();
     int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
-    int64_t ubStride = (alignLen - elemPerRow) * static_cast<int64_t>(sizeof(T));
     int64_t rightPad = alignLen - elemPerRow;
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
 
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(rowCount);
     copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
-    copyParams.srcStride  = static_cast<uint32_t>(srcStride);
-    copyParams.dstStride  = static_cast<uint32_t>(ubStride);
+    copyParams.srcStride  = static_cast<uint32_t>(srcStride);          // GM 端，字节
+    copyParams.dstStride  = static_cast<uint32_t>(ubStrideBlocks);     // UB 端，dataBlock
 
     DataCopyPadExtParams<T> padParams{rightPad > 0, 0, static_cast<uint8_t>(rightPad), static_cast<T>(0)};
     DataCopyPad(local, srcGm, copyParams, padParams);
@@ -165,13 +167,14 @@ __aicore__ inline void CopyOutBuf(
 {
     auto local = buf.template Get<T>();
     int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
-    int64_t ubStride = (alignLen - elemPerRow) * static_cast<int64_t>(sizeof(T));
+    int64_t rightPad = alignLen - elemPerRow;
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
 
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(rowCount);
     copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
-    copyParams.srcStride  = static_cast<uint32_t>(ubStride);
-    copyParams.dstStride  = static_cast<uint32_t>(dstStride);
+    copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);     // UB 端，dataBlock
+    copyParams.dstStride  = static_cast<uint32_t>(dstStride);          // GM 端，字节
     DataCopyPad(dstGm, local, copyParams);
 }
 
@@ -185,35 +188,40 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
                                    uint64_t bsLen, uint64_t n, uint64_t vRegSize, float hcEps)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
-    uint16_t loopCnt = (bsLen * n + vfLen - 1) / vfLen;
+    uint16_t vfLoopCnt = (n + vfLen - 1) / vfLen;
     float hcEpsNeg = hcEps * (-1);
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<U> onesReg, zReg, gradHReg, sigmaReg, dysigmaReg, dysigma2Reg, gradZReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        uint32_t maskLen = static_cast<uint32_t>(bsLen * n);
-        for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-            MicroAPI::Duplicate(onesReg, U(1), maskReg);
-            AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::AddrReg gradHOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::DataCopy(zReg, zAddr, zOfst);
-            AscendC::MicroAPI::DataCopy(gradHReg, gradHAddr, gradHOfst);
-            AscendC::MicroAPI::Neg(zReg, zReg, maskReg);
-            AscendC::MicroAPI::Exp(zReg, zReg, maskReg);
-            AscendC::MicroAPI::Add(zReg, zReg, onesReg, maskReg);
-            AscendC::MicroAPI::Div(sigmaReg, onesReg, zReg, maskReg);
-            if constexpr (ISPRE) {
-                AscendC::MicroAPI::Adds(sigmaReg, sigmaReg, hcEpsNeg, maskReg);
+        uint32_t maskLen = static_cast<uint32_t>(n);
+        for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
+            __local_mem__ U *zRow = zAddr + bs * n;
+            __local_mem__ U *gradHRow = gradHAddr + bs * n;
+            __local_mem__ U *gradZRow = gradZAddr + bs * n;
+            for (uint16_t i = 0; i < vfLoopCnt; i++) {
+                maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+                MicroAPI::Duplicate(onesReg, U(1), maskReg);
+                AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::AddrReg gradHOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::DataCopy(zReg, zRow, zOfst);
+                AscendC::MicroAPI::DataCopy(gradHReg, gradHRow, gradHOfst);
+                AscendC::MicroAPI::Neg(zReg, zReg, maskReg);
+                AscendC::MicroAPI::Exp(zReg, zReg, maskReg);
+                AscendC::MicroAPI::Add(zReg, zReg, onesReg, maskReg);
+                AscendC::MicroAPI::Div(sigmaReg, onesReg, zReg, maskReg);
+                if constexpr (ISPRE) {
+                    AscendC::MicroAPI::Adds(sigmaReg, sigmaReg, hcEpsNeg, maskReg);
+                }
+                AscendC::MicroAPI::Mul(dysigmaReg, sigmaReg, gradHReg, maskReg);
+                AscendC::MicroAPI::Mul(dysigma2Reg, sigmaReg, dysigmaReg, maskReg);
+                AscendC::MicroAPI::Sub(gradZReg, dysigmaReg, dysigma2Reg, maskReg);
+                if constexpr (!ISPRE) {
+                    AscendC::MicroAPI::Muls(gradZReg, gradZReg, U(2), maskReg);
+                }
+                AscendC::MicroAPI::DataCopy(gradZRow, gradZReg, gradZOfst, maskReg);
             }
-            AscendC::MicroAPI::Mul(dysigmaReg, sigmaReg, gradHReg, maskReg);
-            AscendC::MicroAPI::Mul(dysigma2Reg, sigmaReg, dysigmaReg, maskReg);
-            AscendC::MicroAPI::Sub(gradZReg, dysigmaReg, dysigma2Reg, maskReg);
-            if constexpr (!ISPRE) {
-                AscendC::MicroAPI::Muls(gradZReg, gradZReg, U(2), maskReg);
-            }
-            AscendC::MicroAPI::DataCopy(gradZAddr, gradZReg, gradZOfst, maskReg);
         }
     }
 }
@@ -258,7 +266,7 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
                                         uint64_t vRegSize)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
-    uint16_t loopCnt = (bsLen * colLen + vfLen - 1) / vfLen;
+    uint16_t vfLoopCnt = (colLen + vfLen - 1) / vfLen;
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<U> normOutForwardPartReg, gradZReg, gradAlphaReg;
@@ -266,16 +274,20 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
         AscendC::MicroAPI::MaskReg maskReg;
         AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         MicroAPI::Duplicate(gradAlphaSumReg, U(0), OneMaskReg);
-        uint32_t maskLen = static_cast<uint32_t>(bsLen * colLen);
-        for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-            AscendC::MicroAPI::AddrReg normOutForwardPartOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::DataCopy(normOutForwardPartReg, normOutForwardPartAddr, normOutForwardPartOfst);
-            AscendC::MicroAPI::DataCopy(gradZReg, gradZAddr, gradZOfst);
-            AscendC::MicroAPI::Mul(gradAlphaReg, normOutForwardPartReg, gradZReg, maskReg);
-            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(gradAlphaLoopSumReg, gradAlphaReg, maskReg);
-            AscendC::MicroAPI::Add(gradAlphaSumReg, gradAlphaSumReg, gradAlphaLoopSumReg, OneMaskReg);
+        uint32_t maskLen = static_cast<uint32_t>(colLen);
+        for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
+            __local_mem__ U *noRow = normOutForwardPartAddr + bs * colLen;
+            __local_mem__ U *gradZRow = gradZAddr + bs * colLen;
+            for (uint16_t i = 0; i < vfLoopCnt; i++) {
+                maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+                AscendC::MicroAPI::AddrReg noOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::DataCopy(normOutForwardPartReg, noRow, noOfst);
+                AscendC::MicroAPI::DataCopy(gradZReg, gradZRow, gradZOfst);
+                AscendC::MicroAPI::Mul(gradAlphaReg, normOutForwardPartReg, gradZReg, maskReg);
+                AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(gradAlphaLoopSumReg, gradAlphaReg, maskReg);
+                AscendC::MicroAPI::Add(gradAlphaSumReg, gradAlphaSumReg, gradAlphaLoopSumReg, OneMaskReg);
+            }
         }
         AscendC::MicroAPI::DataCopy(gradAlphaAddr, gradAlphaSumReg, OneMaskReg);
     }
@@ -290,7 +302,7 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
                                               uint64_t cLenAlign, uint64_t vRegSize, const U &alpha)
 {
     uint32_t vfLen = vRegSize / sizeof(U);
-    uint16_t loopCnt = (colLen + vfLen - 1) / vfLen;
+    uint16_t vfLoopCnt = (colLen + vfLen - 1) / vfLen;
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<U> zReg, normOutForwardReg;
@@ -300,18 +312,19 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
         MicroAPI::Duplicate(onesReg, U(1), allMaskReg);
         MicroAPI::Duplicate(alphaReg, alpha, allMaskReg);
         uint32_t maskLen = static_cast<uint32_t>(colLen);
-        for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-            AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::AddrReg normOutForwardOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::AddrReg biasOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::DataCopy(zReg, zAddr, zOfst);
-            AscendC::MicroAPI::DataCopy(biasReg, biasAddr, biasOfst);
-            for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
-                AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
-                                               AscendC::MicroAPI::MemType::SCALAR_LOAD>();
-                U invRms = *(zAddr + j * colLen);
-                AscendC::MicroAPI::Duplicate(invRmsReg, invRms, allMaskReg);
+        for (uint16_t bs = 0; bs < static_cast<uint16_t>(bsLen); bs++) {
+            __local_mem__ U *zRow = zAddr + bs * cLenAlign;
+            __local_mem__ U *noRow = normOutForwardAddr + bs * cLenAlign;
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::SCALAR_LOAD>();
+            U invRms = *zRow;
+            AscendC::MicroAPI::Duplicate(invRmsReg, invRms, allMaskReg);
+            for (uint16_t i = 0; i < vfLoopCnt; i++) {
+                maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+                AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::AddrReg biasOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::DataCopy(zReg, zRow, zOfst);
+                AscendC::MicroAPI::DataCopy(biasReg, biasAddr, biasOfst);
                 AscendC::MicroAPI::Mul(zReg, zReg, invRmsReg, maskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, maskReg);
                 AscendC::MicroAPI::Neg(zReg, zReg, maskReg);
@@ -319,8 +332,8 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
                 AscendC::MicroAPI::Add(zReg, zReg, onesReg, maskReg);
                 AscendC::MicroAPI::Div(zReg, onesReg, zReg, maskReg);
                 AscendC::MicroAPI::Mul(normOutForwardReg, zReg, alphaReg, maskReg);
-                AscendC::MicroAPI::DataCopy(zAddr + j * colLen, zReg, maskReg);
-                AscendC::MicroAPI::DataCopy(normOutForwardAddr + j * colLen, normOutForwardReg, maskReg);
+                AscendC::MicroAPI::DataCopy(zRow + i * vfLen, zReg, maskReg);
+                AscendC::MicroAPI::DataCopy(noRow + i * vfLen, normOutForwardReg, maskReg);
             }
         }
     }
