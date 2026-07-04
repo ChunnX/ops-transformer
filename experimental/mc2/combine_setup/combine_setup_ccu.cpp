@@ -115,9 +115,17 @@ HcclResult CcuKernelCombineSetup::Algorithm()
     //     (3) self-check 同步改 owner 分段模型后，必 a5 复跑 9/9 坐实 host 地址仍闭合。
     //   注：kernel 本体 a6-only、a5 编不了，故 defer（现在改=零收益 + 不可验的新集成代码，负 EV）。与 docx 契约层零冲突。
     // ============ 5. PreCount：读 assistTable ownerRank 累加 sendBytesPerPeer（padding 行 owner=-1 全假、不计）============
+    // ★ 指令收敛（修 ret=7=HCCL_E_UNAVAIL，与 dispatch_setup 同治）：原 host for(m<A_) 把循环体静态展开成
+    //   O(A_·R) 份：每个 CCU_IF 内部申请 1 XN(跳转 targetVar)、数据面原语按发射次数占 XN/CKE → register 期
+    //   CheckResIfAvailable(ccu_kernel_mgr.cc:208) 统计 xnReq/ckeReq 超 die 容量 → UNAVAIL(7)（a6 实测 dispatch 侧
+    //   xnReq[366]/ckeReq[33]，combine 同机制）。改 CCU_WHILE 运行时循环：body 只发一份 → XN/CKE 塌回 O(R)。语义等价。
+    //   A_≥1 恒真；标准式 CCU_WHILE(=CcuWhileBegin 头判)对 0 迭代安全。
+    //   注：R≥4 owner-major 重构（见上 defer 注释）是另一独立优化项，收 R² trace、此处不动。
     CcuRep::Variable ownerVarA  = CreateVariable();
     CcuRep::Variable routeAddrA = CreateVariable(); routeAddrA = assistTableAddrVar_;
-    for (uint64_t m = 0; m < A_; ++m) {
+    CcuRep::Variable oneVarA    = CreateVariable(); oneVarA = static_cast<uint64_t>(1);
+    CcuRep::Variable cntA       = CreateVariable(); cntA    = static_cast<uint64_t>(0);
+    CCU_WHILE(cntA != static_cast<uint64_t>(A_)) {
         LoadVariable(routeAddrA, ownerVarA);
         routeAddrA += rowStrideVar;
         for (uint32_t r = 0; r < epWorldSize_; ++r) {
@@ -125,6 +133,7 @@ HcclResult CcuKernelCombineSetup::Algorithm()
                 sendBytesPerPeer_[r] = sendBytesPerPeer_[r] + tokBothVar;
             }
         }
+        cntA += oneVarA;                          // 运行期计数：0→A_
     }
 
     // ============ 6. RecordExpectCount ============
@@ -145,7 +154,12 @@ HcclResult CcuKernelCombineSetup::Algorithm()
     CcuRep::Variable xScaleRow  = CreateVariable(); xScaleRow  = expandXScaleAddrVar_;
     localSrcData_.token  = expandXDataTokenVar_;
     localSrcScale_.token = expandXScaleTokenVar_;
-    for (uint64_t m = 0; m < A_; ++m) {
+    // ★ 指令收敛（修 ret=7）：原 host for(m<A_) 展开 O(A_·R) 条微码 → register 撑爆 CCU 资源。
+    //   改成 CCU_WHILE 运行时循环：body 只发一份 → 塌回 O(R)。源行按 m 逐行步进（combine 每行一 token 送回）。
+    //   for(r)CCU_IF 保留（channel 编译期常量、不可运行时索引）；padding 行 owner=-1 由 CCU_IF 全假自动跳过、语义不变。
+    CcuRep::Variable oneVarB = CreateVariable(); oneVarB = static_cast<uint64_t>(1);
+    CcuRep::Variable cntB    = CreateVariable(); cntB    = static_cast<uint64_t>(0);
+    CCU_WHILE(cntB != static_cast<uint64_t>(A_)) {
         LoadVariable(routeAddrB, ownerVarB);  routeAddrB += elem8Var;
         LoadVariable(routeAddrB, dataOffVar); routeAddrB += elem8Var;
         LoadVariable(routeAddrB, scaleOffVar);routeAddrB += elem8Var;
@@ -179,6 +193,7 @@ HcclResult CcuKernelCombineSetup::Algorithm()
         }
         xDataRow  += hBytesVar;
         xScaleRow += scaleBytesVar;
+        cntB += oneVarB;                          // 运行期计数：0→A_
     }
 
     // ============ 9. WaitallpeersarriveNotify ============
