@@ -577,8 +577,8 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitOutputSin
         (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) : 0;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     if constexpr (POST_QUANT) {
-        InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2],
-                         singleInitOutputSize / 2, 0.0);
+        InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2],  // 2: CV
+                         singleInitOutputSize / 2, 0.0);  // 2: CV
     } else {
         InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize],
                              singleInitOutputSize, 0.0);
