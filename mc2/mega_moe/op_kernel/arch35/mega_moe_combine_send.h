@@ -218,6 +218,7 @@ __aicore__ inline void PollNotifyAndSendData(
                     GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset) +
                         gmDstOffset * sizeof(ElementMMadOut2);
                     params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
+                    PRINTF("LINE combine 221\n");
                     // 标记已处理, 避免重复发送
                     sendTensor.SetValue(flagIndex, 0);
                     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
@@ -247,6 +248,7 @@ __aicore__ inline void DrainUrmaConnections(
             continue;
         }
         params.combineCommParams.hcomm->Drain(GetUrmaCommHandle(params.combineCommParams.mc2Context, dr, rankId));
+        PRINTF("LINE combine 251\n");
     }
 }
 
