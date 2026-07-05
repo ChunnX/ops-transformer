@@ -1169,9 +1169,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 continue;
             }
             uint64_t sendToCurExpTokenCnt = 0;
+            PipeBarrier<PIPE_ALL>();
             GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                 gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
                 true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
+            PipeBarrier<PIPE_ALL>();
             int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
             if (rowStartIdxInDst >= maxOutputSize_) {
