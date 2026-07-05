@@ -908,7 +908,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-    PRINTF("LINE 910\n");
+    // PRINTF("LINE 910\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
