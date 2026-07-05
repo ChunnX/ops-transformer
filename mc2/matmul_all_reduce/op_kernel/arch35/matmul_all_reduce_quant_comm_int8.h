@@ -119,7 +119,7 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     workspaceGM_ = workspaceGM;
     cGM_ = cGM;
     outGM_ = cGM;
-    all2allInGM_ = workspaceGM_ + tilingData_->param.commWorkSpaceSize;    // all2all输入  
+    all2allInGM_ = workspaceGM_ + tilingData_->param.commWorkSpaceSize;    // all2all输入
     all2allOutGM_ = all2allInGM_ + tilingData_->param.commInt8WorkSpace;    // all2all输出及allGather输入
     allGatherOutGM_ = all2allOutGM_ + tilingData_->param.commInt8WorkSpace;   // allGather输出
 
@@ -254,12 +254,12 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_, tilePadM_,
-                                                    mmTiling->matmulTiling.N, tPipe_, hccl_);
+                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                                                    tilePadM_, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_, curPadM,
-                                                    mmTiling->matmulTiling.N, tPipe_, hccl_);
+                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                                                    curPadM, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += curPadM * mmTiling->matmulTiling.N * sizeof(int8_t);
             }
             SyncAll();
