@@ -726,6 +726,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::HashCompute(int64_t row)
     LocalTensor<int32_t> hashExpertIdInt32 = hashExpertId.template ReinterpretCast<int32_t>();
 
     U1 key = inputIdsGm_.GetValue(row);
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(k_ * sizeof(U2)), 0, 0, 0};
     DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<U2>(0)};
     DataCopyPad(hashExpertId, tid2eidGm_[key * k_], dataCopyParams, dataCopyPadParams);
