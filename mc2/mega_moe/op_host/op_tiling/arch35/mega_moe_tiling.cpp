@@ -174,8 +174,8 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    // int64_t topoType = TILINGKEY_TPL_MTE;
-    int64_t topoType = TILINGKEY_TPL_URMA;
+    int64_t topoType = TILINGKEY_TPL_MTE;
+    //int64_t topoType = TILINGKEY_TPL_URMA;
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
 }
