@@ -297,7 +297,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             tailPadM_, true);
     }
 
-    // 最后一次的 reduceScatter 任务没有 wait，以及最后一次的 allgather 任务没有下发
+    // 最后一次的 all2all 任务没有 wait，以及最后一次的 allgather 任务没有下发
     if (g_coreType == AscendC::AIV) {
         if (notifyFlag_) {
             hccl_.Wait(all2allHandleId_[all2allWaitIdx_]);
