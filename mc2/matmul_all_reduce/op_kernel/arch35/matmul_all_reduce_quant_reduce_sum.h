@@ -143,7 +143,7 @@ public:
             curScaleAddrOffset = scaleAddrOffsetSplitMN;
         }
         tempBufferGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(this->tempBufferGM) + curBlockAddrOffset,
-                                      static_cast<int64_t>(this->M) * static_cast<int64_t>(this->N) - curBlockAddrOffset);
+            static_cast<int64_t>(this->M) * static_cast<int64_t>(this->N) - curBlockAddrOffset);
         if (((loopIdx == 0) && (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
             (this->splitMode == SPLIT_MN_MATMUL_ALLREDUCE_INT8)) {
             quantScale1Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(this->quantScale1GM) + curScaleAddrOffset,
