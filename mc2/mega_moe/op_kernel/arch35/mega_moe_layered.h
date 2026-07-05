@@ -592,7 +592,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
-        PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -774,9 +773,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
+    PRINTF("LINE 776\n");
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr + mxQuantTokenScaleAlignBytes_,
         recordAddr + mxQuantTokenScaleAlignBytes_, ALIGN_32);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
+    PRINTF("LINE 780\n");
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID1>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
@@ -900,12 +901,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         if (readyValue == int32_t(1)) {
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
+            PipeBarrier<PIPE_ALL>();
             break;
         }
     } while (true);
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
+    PRINTF("LINE 910\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
