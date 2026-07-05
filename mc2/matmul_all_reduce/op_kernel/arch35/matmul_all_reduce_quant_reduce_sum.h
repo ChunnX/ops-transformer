@@ -21,7 +21,7 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace std;
 
-constexpr int32_t TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 = 192 * 1024;
+constexpr int32_t TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 = 248 * 1024;
 constexpr uint32_t BYTE512_MATMUL_ALLREDUCE_INT8 = 512;
 constexpr uint32_t DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8 = 2;
 constexpr int32_t SCALE_BUFF_CNT_MATMUL_ALLREDUCE_INT8 = 4;
@@ -223,7 +223,9 @@ public:
         // 偏移取其余核进行相加 Cast + Add
         for (uint32_t i = 1; i < this->rankCnt; i++) {
             LocalTensor<int8_t> allToAllAddLocal = queueX.AllocTensor<int8_t>();
-            DataCopyPad(allToAllAddLocal, tempBufferGm_[i * this->tileRankM * this->N], copyParamsCurBlock,
+            int64_t offset = static_cast<int64_t>(i) * static_cast<int64_t>(this->tileRankM) *
+                                static_cast<int64_t>(this->N);
+            DataCopyPad(allToAllAddLocal, tempBufferGm_[offset], copyParamsCurBlock,
                         padParams); // 其余卡数，对应位置 Move to UB
             queueX.EnQue(allToAllAddLocal);
             LocalTensor<int8_t> xAddInt8Local = queueX.DeQue<int8_t>();
@@ -250,16 +252,18 @@ public:
             Mul(xFp32Local, xFp32Local, scaleFp32Local, calcCnt);
             PipeBarrier<PIPE_V>();
         }
-        Cast(zFp16Local, xFp32Local, RoundMode::CAST_NONE, calcCnt); // fp32->fp16
+        Cast(zFp16Local, xFp32Local, RoundMode::CAST_ROUND, calcCnt); // fp32->fp16
         PipeBarrier<PIPE_V>();
-        Cast(zInt8Local, zFp16Local, RoundMode::CAST_NONE, calcCnt); // fp16->int8
+        Cast(zInt8Local, zFp16Local, RoundMode::CAST_ROUND, calcCnt); // fp16->int8
         PipeBarrier<PIPE_V>();
 
         // 搬出，按照卡数搬到对应位置
         uint32_t rank_id = this->hccl_.GetRankId();
         queueZ.EnQue<int8_t>(zInt8Local);
         LocalTensor<int8_t> outLocal = queueZ.DeQue<int8_t>();
-        DataCopyPad(tempBufferGm_[rank_id * this->tileRankM * this->N], outLocal, copyOutParamsCurBlock);
+        int64_t outOffset = static_cast<int64_t>(rank_id) * static_cast<int64_t>(this->tileRankM) *
+                            static_cast<int64_t>(this->N);
+        DataCopyPad(tempBufferGm_[outOffset], outLocal, copyOutParamsCurBlock);
         queueZ.FreeTensor(zInt8Local);
         if (((loopIdx == (aivLoopNum - 1)) && (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
             (this->splitMode == SPLIT_MN_MATMUL_ALLREDUCE_INT8)) {

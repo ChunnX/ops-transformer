@@ -285,9 +285,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     auto&& mc2Tiling = tilingData_->param;
 
     // all2all allgather Prepare + InnerProcess
-    if (g_coreType == AscendC::AIV) {
-        PrepareInit();
-    }
+    PrepareInit();
     MmType opTile;
     InnerProcess(
         opTile, mc2Tiling.tileCnt, &tilingData_->tilematmulTiling, mc2Tiling.isAdd, mc2Tiling.needUbBuffer, tilePadM_,
