@@ -248,7 +248,7 @@ __aicore__ inline void DrainUrmaConnections(
         }
         params.combineCommParams.hcomm->Drain(GetUrmaCommHandle(params.combineCommParams.mc2Context, dr, rankId));
     }
-    PrintBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 // =============================================
