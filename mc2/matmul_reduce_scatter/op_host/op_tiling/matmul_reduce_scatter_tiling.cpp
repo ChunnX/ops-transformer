@@ -257,8 +257,10 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0 || valueThree == 0 || valueFour == 0,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shape value"), return ge::GRAPH_FAILED);
 
+    // GetAttrs() 为空时必须提前返回，否则后续会对其结果解空指针
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
+        return ge::GRAPH_FAILED;
     } else {
         auto reduce_op = context->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(reduce_op == nullptr,
@@ -313,7 +315,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
     if (mCutScatter.shortTileAtBack || mCutScatter.numShortTile == 0) {
         tilingData.param.tileCnt = mCutScatter.numLongTile;
         args.mValue = mCutScatter.longTileLen;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.longTileLen;
         args.mValue = mCutScatter.longTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.shortTileLen;
@@ -321,14 +326,20 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numShortTile > 0) {
             args.mValue = mCutScatter.shortTileLen;
             tilingData.param.tailCnt = mCutScatter.numShortTile;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.shortTileLen;
             args.mValue = mCutScatter.shortTileLen * args.rankTileNum;
         }
     } else {
         tilingData.param.tileCnt = mCutScatter.numShortTile;
         args.mValue = mCutScatter.shortTileLen;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.shortTileLen;
         args.mValue = mCutScatter.shortTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.longTileLen;
@@ -336,7 +347,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numLongTile > 0) {
             args.mValue = mCutScatter.longTileLen;
             tilingData.param.tailCnt = mCutScatter.numLongTile;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.longTileLen;
             args.mValue = mCutScatter.longTileLen * args.rankTileNum;
         }
@@ -356,7 +370,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = 1;
         tilingData.param.tailCnt = 0;
         tilingData.param.tailM = 0;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
     } else if (args.commTurn != 0) {
         uint64_t splite = MC2_SpliteReduceScatter(args);
 
@@ -367,18 +384,30 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = tileCnt;
         args.mValue = splite;
         tilingData.param.tailCnt = 0;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         tilingData.param.tailM = tileTail;
         if (tileTail != 0) {
             args.mValue = tileTail;
             tilingData.param.tailCnt = 1;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
         }
         args.mValue = splite;
     } else {
-        GetReduceScatterFormulateTileCnt(ctx, tilingData, args);
+        OP_TILING_CHECK(
+            GetReduceScatterFormulateTileCnt(ctx, tilingData, args) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "GetReduceScatterFormulateTileCnt failed"),
+            return ge::GRAPH_FAILED);
     }
-    MC2SetWorkspaceReduceScatter(ctx, tilingData, args);
+    OP_TILING_CHECK(
+        MC2SetWorkspaceReduceScatter(ctx, tilingData, args) != ge::GRAPH_SUCCESS,
+        OP_LOGE(ctx->GetNodeName(), "MC2SetWorkspaceReduceScatter failed"),
+        return ge::GRAPH_FAILED);
 
     // mmReduceScatterBiasCast = true时涉及SyncAll，设置batch mode模式，所有核同时启动
     if (tilingData.param.biasLen != 0) {
@@ -518,7 +547,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     // 为通信而进行调整搬运
     if (args.cmdType == mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER) {
         if (args.rankDim <= 0 || static_cast<bool>(args.orgMValue % args.rankDim)) {
-            OP_LOGE(context->GetNodeName(), "rankDim error : %u, mValue=%lu", args.rankDim, args.orgMValue);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "m",
+                std::to_string(args.orgMValue).c_str(),
+                ("The value of m must be an integer multiple of rank_size(" +
+                    std::to_string(args.rankDim) + ")").c_str());
             return ge::GRAPH_FAILED;
         }
         args.mValue /= args.rankDim; // 必须能够整数切分, 并且不能切K
@@ -527,7 +559,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
         return ge::GRAPH_FAILED;
     }
 
-    MCSpliteMReduceScatter(context, tilingData, args);
+    OP_TILING_CHECK(MCSpliteMReduceScatter(context, tilingData, args) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "MCSpliteMReduceScatter failed"),
+        return ge::GRAPH_FAILED);
 
     uint64_t tilingKey = 0U;
     GetTilingKey(tilingKey, tilingData);
@@ -655,7 +689,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
         }
     }
 
-    SetTilingData(context, tilingData);
+    OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "SetTilingData failed"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -725,7 +761,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
         tilingData->param.subtype = static_cast<uint8_t>(mc2tiling::HcclReduceOp::HCCL_REDUCE_RESERVED);
     }
 
-    SetMatmulTilingMatmulReduceScatter(context, *tilingData, args);
+    OP_TILING_CHECK(SetMatmulTilingMatmulReduceScatter(context, *tilingData, args) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "SetMatmulTilingMatmulReduceScatter failed"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
