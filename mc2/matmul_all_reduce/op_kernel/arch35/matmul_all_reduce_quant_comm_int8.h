@@ -254,11 +254,11 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                                     tilePadM_, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                                     curPadM, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += curPadM * mmTiling->matmulTiling.N * sizeof(int8_t);
             }
@@ -307,7 +307,7 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
             padM = tailPadM_;
         }
-        MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+        MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                             padM, lastN, tPipe_, hccl_);
         SyncAll();
         if (notifyFlag_) {

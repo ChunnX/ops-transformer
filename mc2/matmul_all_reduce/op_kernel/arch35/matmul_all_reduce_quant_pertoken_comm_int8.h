@@ -255,11 +255,11 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                                     tilePadM_, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                                     padM, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += padM * mmTiling->matmulTiling.N * sizeof(int8_t);
             }
@@ -269,7 +269,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
                 all2allWaitIdx_++;
             }
         }
-        // 避免MatmulAllReduceReduceSumInt8的vec计算和quant_batch_matmul_v3的vec计算发生数据覆盖，确保流水正常
+        // 避免MatmulAllReduceQuantReduceSumInt8的vec计算和quant_batch_matmul_v3的vec计算发生数据覆盖，确保流水正常
         SyncAll<false>();
         isSendTileFlag_ = true;
         aGM_ += aOffset;
@@ -311,7 +311,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             padM = tailPadM_;
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
         }
-        MatmulAllReduceReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
+        MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
                                             padM, lastN, tPipe_, hccl_);
         SyncAll();
         if (notifyFlag_) {

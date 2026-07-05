@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file matmul_all_reduce_quant_reduce_sum.h
@@ -32,9 +32,9 @@ constexpr uint32_t SPLIT_MN_MATMUL_ALLREDUCE_INT8 = 2;
 constexpr uint32_t BYTE32_ALIGN = 32;
 
 template <class T, int commMode> // commQuantScaleType = yType bf16/fp16
-class MatmulAllReduceReduceSum {
+class MatmulAllReduceQuantReduceSum {
 public:
-    __aicore__ inline MatmulAllReduceReduceSum()
+    __aicore__ inline MatmulAllReduceQuantReduceSum()
     {
     }
     __aicore__ inline void Init(TPipe *tPipe, uint32_t quantUbSize)
@@ -59,7 +59,7 @@ public:
         pipe->InitBuffer(tBufScaleDivFP32, scaleUbSize * sizeof(float));
     }
 
-    __aicore__ inline void MatmulAllReduceReduceSumSplitM(const uint32_t quantUbSize, int64_t &blockAddrOffset,
+    __aicore__ inline void MatmulAllReduceQuantReduceSumSplitM(const uint32_t quantUbSize, int64_t &blockAddrOffset,
                                                           uint32_t &tileCalCntM, uint32_t &tailCalCntM,
                                                           uint32_t &aivLoopNum)
     {
@@ -100,7 +100,7 @@ public:
         }
     }
 
-    __aicore__ inline void MatmulAllReduceReduceSumSplitMAndN(int32_t &quantUbSize, uint32_t &needAivCoreNum,
+    __aicore__ inline void MatmulAllReduceQuantReduceSumSplitMAndN(int32_t &quantUbSize, uint32_t &needAivCoreNum,
                                                               uint32_t &tileBlockCnt, uint32_t &tailBlockCnt,
                                                               uint32_t &aivLoopNum, uint32_t &blockNumPerRow)
     {
@@ -296,10 +296,10 @@ public:
 
         if (nowQuantUbSize >= nowAlginN) { // 分核切M， 不切N
             this->splitMode = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
+            this->MatmulAllReduceQuantReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceReduceSumSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt,
+            this->MatmulAllReduceQuantReduceSumSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt,
                                                      aivLoopNum, blockNumPerRow);
         }
     }
@@ -334,7 +334,7 @@ public:
 };
 
 template <class T, int commMode>
-__aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM,
+__aicore__ inline void MatmulAllReduceQuantReduceSumInt8(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM,
                                                     uint32_t M, uint32_t N, TPipe *tPipe,
                                                     typename HcclTypeSelector<commMode>::type &hccl_)
 {
@@ -353,7 +353,7 @@ __aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADD
     int32_t nowQuantUbSize = 0;
 
     tPipe->Reset();
-    MatmulAllReduceReduceSum<T, commMode> op;
+    MatmulAllReduceQuantReduceSum<T, commMode> op;
     op.SetParams(tempBufferGM, quantScale1GM, quantScale2GM, M, N, hccl_, aivCoreNum, tileBlockCnt, tailBlockCnt,
                  aivLoopNum, blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreNum, blockNumPerRow, nowQuantUbSize);
 
@@ -393,6 +393,6 @@ __aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADD
         op.Process(loopIdx, aivLoopNum, blockCntM, blockCntSpiltMN);
     }
 }
-} // namespace MatmulAllReduceReduceSumImpl
+} // namespace Mc2Kernel
 
 #endif // MATMUL_ALL_REDUCE_QUANT_REDUCE_SUM_H
