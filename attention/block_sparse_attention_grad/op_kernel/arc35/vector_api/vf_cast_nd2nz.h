@@ -34,7 +34,7 @@ __aicore__ inline void CastND2NZ(const LocalTensor<T1> &dstTensor, const LocalTe
     const uint32_t fullExeSize = srcN;
     uint64_t srcLocalInt = srcTensor.GetPhyAddr();
     uint64_t dstLocalInt = dstTensor.GetPhyAddr();
-    uint32_t blockStride = (srcM * blockN) * sizeof(T1) / blockSize;
+    uint32_t blockStride = (srcM * blockN) * sizeof(T1) / blockSize + 1;
     uint32_t repeatStride = 1;
     __VEC_SCOPE__
     {

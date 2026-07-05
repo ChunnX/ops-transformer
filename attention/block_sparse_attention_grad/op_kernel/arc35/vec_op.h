@@ -125,10 +125,10 @@ public:
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
         // local_tensor
-        softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
-        sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
+        softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>((vec_base_m + 1) * vec_base_n, ub_offset);
+        ub_offset += (vec_base_m + 1) * vec_base_n * sizeof(INPUT_TYPE);
+        sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>((vec_base_m + 1) * vec_base_n, ub_offset);
+        ub_offset += (vec_base_m + 1) * vec_base_n * sizeof(INPUT_TYPE);
         lse_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
         lse_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
@@ -321,7 +321,7 @@ public:
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
         dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        dataCopyParams.srcStride = 0;
+        dataCopyParams.srcStride = 1;
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(p_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);

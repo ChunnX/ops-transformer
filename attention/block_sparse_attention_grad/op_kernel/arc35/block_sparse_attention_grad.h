@@ -86,9 +86,9 @@ public:
         // ub_buffer [base_m * base_n * sizeof(float) * 2]
         mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
         mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
+        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
+        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
         mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
@@ -137,8 +137,6 @@ public:
         } else {
             nextRunTimeInfo.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
         }
-        // printf("s1_idx=%d s2_idx=%d is_kv_change=%d kv_ping_pong_idx=%d is_kv_end=%d\n", 
-        // runTimeInfo.s1Idx, runTimeInfo.s2Idx, runTimeInfo.is_kv_change, runTimeInfo.kv_ping_pong_idx, runTimeInfo.is_kv_end);
     }
 
     __aicore__ inline void CubeProcess(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR attention_out,

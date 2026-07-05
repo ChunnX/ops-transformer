@@ -288,7 +288,6 @@ private:
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -334,7 +333,6 @@ private:
         madParams.cmatrixInitVal = runTimeInfo.is_kv_change;
         madParams.unitFlag = runTimeInfo.is_kv_end ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         if (runTimeInfo.is_kv_end) {
@@ -374,7 +372,6 @@ private:
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         AscendC::FixpipeParamsV220 fixpipeParamsV220;
