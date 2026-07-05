@@ -252,9 +252,9 @@ public:
             Mul(xFp32Local, xFp32Local, scaleFp32Local, calcCnt);
             PipeBarrier<PIPE_V>();
         }
-        Cast(zFp16Local, xFp32Local, RoundMode::CAST_ROUND, calcCnt); // fp32->fp16
+        Cast(zFp16Local, xFp32Local, RoundMode::CAST_NONE, calcCnt); // fp32->fp16
         PipeBarrier<PIPE_V>();
-        Cast(zInt8Local, zFp16Local, RoundMode::CAST_ROUND, calcCnt); // fp16->int8
+        Cast(zInt8Local, zFp16Local, RoundMode::CAST_NONE, calcCnt); // fp16->int8
         PipeBarrier<PIPE_V>();
 
         // 搬出，按照卡数搬到对应位置
@@ -300,11 +300,12 @@ public:
 
         if (nowQuantUbSize >= nowAlginN) { // 分核切M， 不切N
             this->splitMode = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceQuantReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
+            this->MatmulAllReduceQuantReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM,
+                tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceQuantReduceSumSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt,
-                                                     aivLoopNum, blockNumPerRow);
+            this->MatmulAllReduceQuantReduceSumSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt,
+                tailBlockCnt, aivLoopNum, blockNumPerRow);
         }
     }
 
@@ -338,8 +339,8 @@ public:
 };
 
 template <class T, int commMode>
-__aicore__ inline void MatmulAllReduceQuantReduceSumInt8(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM,
-                                                    uint32_t M, uint32_t N, TPipe *tPipe,
+__aicore__ inline void MatmulAllReduceQuantReduceSumInt8(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM,
+                                                    GM_ADDR quantScale2GM, uint32_t M, uint32_t N, TPipe *tPipe,
                                                     typename HcclTypeSelector<commMode>::type &hccl_)
 {
     uint32_t aivCoreNum = GetBlockNum() * GetTaskRation();

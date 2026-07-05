@@ -255,12 +255,12 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
-                                                    tilePadM_, mmTiling->matmulTiling.N, tPipe_, hccl_);
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_,
+                    commQuantScale2GM_, tilePadM_, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
-                                                    padM, mmTiling->matmulTiling.N, tPipe_, hccl_);
+                MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_,
+                    commQuantScale2GM_, padM, mmTiling->matmulTiling.N, tPipe_, hccl_);
                 all2allOutGM_ += padM * mmTiling->matmulTiling.N * sizeof(int8_t);
             }
             SyncAll();
