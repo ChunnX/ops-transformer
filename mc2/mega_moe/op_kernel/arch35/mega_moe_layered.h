@@ -663,7 +663,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyPad(xInTensor1_, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
-    PipeBarrier<PIPE_ALL>();
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
     __ubuf__ bfloat16_t* srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInTensor1_.GetPhyAddr());
@@ -728,9 +727,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeT
                 static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
             recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
         }
-        PipeBarrier<PIPE_ALL>();
         QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
-        PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -751,9 +748,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeK
     GlobalTensor<int32_t> topkIdsGlobal;
     topkIdsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.expertIdxGmAddr));
     for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
-        PipeBarrier<PIPE_ALL>();
         DispatchComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
-        PipeBarrier<PIPE_ALL>();
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
@@ -1095,7 +1090,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
         ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-        PipeBarrier<PIPE_ALL>();
     }
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
@@ -1121,7 +1115,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
             ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-            PipeBarrier<PIPE_ALL>();
         }
     }
     // Phase 2 drain: 6 个 buffer-free flag
@@ -1129,7 +1122,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
     // Phase 3: triple 三元组搬出
-    PipeBarrier<PIPE_ALL>();
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
     DataCopy(tripleGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], tripleTensor_, copyNum * INT32_PER_256B);
 }
@@ -1166,11 +1158,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 continue;
             }
             uint64_t sendToCurExpTokenCnt = 0;
-            PipeBarrier<PIPE_ALL>();
             GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                 gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
                 true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
-            PipeBarrier<PIPE_ALL>();
             int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
             if (rowStartIdxInDst >= maxOutputSize_) {
