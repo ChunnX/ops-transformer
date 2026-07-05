@@ -177,7 +177,7 @@ private:
     //             a4w4 场景下 GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
                                             Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
-    static constexpr int32_t DISPATCH_BUFFER_NUM = 2;
+    static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     static constexpr uint32_t SEND_DEDUP_MASK_UB_BYTES = 8U * 1024U;
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
@@ -592,6 +592,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
+        PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -986,8 +987,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     if (copyNum <= 0) {
         return;
     }
-    constexpr int32_t BufferNum = 2;
-    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID1, EVENT_ID2};
+    constexpr int32_t BufferNum = 5;
+    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;  // 输出 token-scale 长度,紧密排列
