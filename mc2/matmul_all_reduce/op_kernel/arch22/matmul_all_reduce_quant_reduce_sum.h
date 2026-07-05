@@ -40,7 +40,7 @@ public:
         pipe = tPipe;
         uint32_t scaleUbSize = quantUbSize;
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            scaleUbSize = this->alignN;
+            scaleUbSize = this->alginN;
         }
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
             pipe->InitBuffer(queueScale1, 1, scaleUbSize * sizeof(T));
@@ -90,7 +90,7 @@ public:
             }
         }
 
-        tileCalCntM = quantUbSize / this->alignN;
+        tileCalCntM = quantUbSize / this->alginN;
         aivLoopNum = singleAivM / tileCalCntM; // M很小的时候，这个值是0
         if (singleAivM % tileCalCntM != 0) {
             aivLoopNum += 1;
@@ -182,14 +182,14 @@ public:
         uint16_t copyInUbStride = 0;
         uint16_t copyOutUbStride = 0;
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 搬多行
-            calcCnt = this->alignN * curBlockCntM;
+            calcCnt = this->alginN * curBlockCntM;
             copyBlockCnt = curBlockCntM;
             copyBlockLen = this->N;
             copyInUbStride =
-                (this->alignN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) /
+                (this->alginN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) /
                 BYTE32_ALIGN;
             copyOutUbStride =
-                (this->alignN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) /
+                (this->alginN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) /
                 BYTE32_ALIGN;
         }
         DataCopyParams copyParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), 0,
@@ -241,7 +241,7 @@ public:
         LocalTensor<int8_t> zInt8Local = queueZ.AllocTensor<int8_t>();
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 切M
             for (uint32_t i = 0; i < curBlockCntM; i++) {
-                Mul(xFp32Local[i * this->alignN], xFp32Local[i * this->alignN], scaleFp32Local, this->N);
+                Mul(xFp32Local[i * this->alginN], xFp32Local[i * this->alginN], scaleFp32Local, this->N);
             }
             PipeBarrier<PIPE_V>();
         } else {
@@ -272,15 +272,15 @@ public:
                                      int64_t &blockAddrOffset, uint32_t &tailCalCntM, uint32_t &tileCalCntM,
                                      uint32_t &needAivCoreNum, uint32_t &blockNumPerRow, int32_t &nowQuantUbSize)
     {
-        int32_t nowAlignN = Ceil(N * sizeof(int8_t), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
+        int32_t nowAlginN = Ceil(N * sizeof(int8_t), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
         nowQuantUbSize =
-            (TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 - static_cast<int32_t>(nowAlignN) * static_cast<int32_t>(sizeof(T)) *
+            (TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 - static_cast<int32_t>(nowAlginN) * static_cast<int32_t>(sizeof(T)) *
                                                       static_cast<int32_t>(SCALE_BUFF_CNT_MATMUL_ALLREDUCE_INT8)) /
             (BUF_CNT_SPLIT_M_MATMUL_ALLREDUCE_INT8 * static_cast<int32_t>(sizeof(T)));
-        nowQuantUbSize = (nowQuantUbSize / nowAlignN) * nowAlignN;
+        nowQuantUbSize = (nowQuantUbSize / nowAlginN) * nowAlginN;
         this->M = M;
         this->N = N;
-        this->alignN = static_cast<uint32_t>(nowAlignN);
+        this->alginN = static_cast<uint32_t>(nowAlginN);
         this->aivCoreNum = aivCoreNum;
         this->tempBufferGM = tempBufferGM;
         this->quantScale1GM = quantScale1GM;
@@ -288,11 +288,11 @@ public:
         this->hccl_ = hccl_;
         this->rankCnt = hccl_.GetRankDim();
         this->tileRankM = M / hccl_.GetRankDim();
-        if (nowQuantUbSize > this->tileRankM * nowAlignN) {
-            nowQuantUbSize = this->tileRankM * nowAlignN;
+        if (nowQuantUbSize > this->tileRankM * nowAlginN) {
+            nowQuantUbSize = this->tileRankM * nowAlginN;
         }
 
-        if (nowQuantUbSize >= nowAlignN) { // 分核切M， 不切N
+        if (nowQuantUbSize >= nowAlginN) { // 分核切M， 不切N
             this->splitMode = SPLIT_M_MATMUL_ALLREDUCE_INT8;
             this->MatmulAllReduceReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
@@ -320,8 +320,9 @@ public:
     uint32_t aivCoreNum;
     uint32_t N;
     uint32_t M;
-    uint32_t alignN;
+    uint32_t alginN;
     uint32_t splitMode;
+    uint32_t vectorIndex;
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     GM_ADDR tempBufferGM;
     GM_ADDR quantScale1GM;
