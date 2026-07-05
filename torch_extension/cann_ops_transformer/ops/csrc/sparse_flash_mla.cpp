@@ -14,6 +14,7 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
+#include "aclnn_extra.h"
 
 namespace op_api {
 constexpr int64_t DIM_0 = 0;
