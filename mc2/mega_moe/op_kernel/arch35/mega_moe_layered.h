@@ -249,7 +249,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
-    rankPerServer_ = mc2Context_->rankSizePerServer / 2;
+    rankPerServer_ = mc2Context_->rankSizePerServer;
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
