@@ -212,7 +212,7 @@ public:
         }
         GetCommProtocol(hcclHandle, protocol);
 
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        // protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         if (topoType_ == TopoType::CROSS_SUPER_NODE) {
