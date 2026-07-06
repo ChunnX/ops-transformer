@@ -83,8 +83,8 @@ __simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *
         Add(vreg_input_x2, vreg_input_x2, vreg_input_x3, preg_all_b32);
         Mul(vreg_input_x2_tmp, vreg_input_x2, vreg_softmax_reduce, preg_all_b32);
         Sub(vreg_input_sub, vreg_input_x2_tmp, vreg_input_x1, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)reduceSumOtherUb + regCnt * floatRepSize), vreg_input_x2, preg_all_b32);
+        StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub, preg_all_b32); // sub
+        StoreAlign(((__ubuf__ T *&)reduceSumOtherUb + regCnt * floatRepSize), vreg_input_x2, preg_all_b32); // reduce
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     for (uint16_t i = 0; i < nIndexSize; ++i) {

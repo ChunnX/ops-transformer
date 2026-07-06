@@ -732,22 +732,15 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::FreeBuf()
 {
-    printf("!!! free buffer !!!\n");
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[0]);
-        printf("!!! free buffer 0!!!\n");
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[1]);
-        printf("!!! free buffer 1!!!\n");
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[2]);
-        printf("!!! free buffer 2!!!\n");
         // CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
-        printf("!!! free buffer 3!!!\n");
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);
-        printf("!!! free buffer 4!!!\n");
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[2]);
-        printf("!!! free buffer 5!!!\n");
         if constexpr (!Deterministic) {
             // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
             // CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
