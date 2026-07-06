@@ -81,7 +81,7 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 ## aclnnFfnWorkerBatchingGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1540px"><colgroup>
   <col style="width: 210px">
@@ -139,7 +139,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>tokenDtype</td>
       <td>输入</td>
       <td>输入token的数据类型。0表示FP16；1表示BF16；2表示INT8动态量化（INT8数据与FP32 dynamic scale连续排布）。取值为2时需输出dynamic_scale。</td>
-      <td>取值为0、1或2，默认值为0。</td>
+      <td>取值为0、1或2。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>needSchedule</td>
       <td>输入</td>
       <td>调度模式。0表示仅做batching不扫描数据；1表示先扫描数据再做batching。</td>
-      <td>取值为0或1，默认值为0。</td>
+      <td>取值为0或1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>layerNum</td>
       <td>输入</td>
       <td>层数，每层专家独立索引。</td>
-      <td>取值范围为[0, expertNum]，默认值为0。</td>
+      <td>取值范围为[0, expertNum]。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -288,19 +288,19 @@ aclnnStatus aclnnFfnWorkerBatching(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+                <td>输入是空指针。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>scheduleContext、y、groupList、sessionIds、microBatchIds、tokenIds、expertOffsets、dynamicScale、actualTokenNum的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入数据类型不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
 
 ## aclnnFfnWorkerBatching
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">
@@ -349,6 +349,8 @@ aclnnStatus aclnnFfnWorkerBatching(
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
 - 参数H（hidden size）支持泛化。
 - tokenDtype为2时，输入int8数据与fp32 scale连续排布。
+- 确定性计算：
+  - aclnnFfnWorkerBatching默认确定性实现。
 
 ## 调用示例
 
@@ -518,7 +520,7 @@ int main() {
   scheduleContext.control.run_flag = 1;             // running
   scheduleContext.ffn.polling_index = 0;
 
-  // 属性参数
+  // 标量参数
   int64_t expertNum = 8;                                  // 每层专家数 × layer_num
   int64_t A = scheduleContext.common.session_num;        // Attention worker数量
   int64_t BS = scheduleContext.common.micro_batch_size;  // micro batch size

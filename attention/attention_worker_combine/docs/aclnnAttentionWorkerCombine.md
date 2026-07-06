@@ -63,7 +63,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
 
 ## aclnnAttentionWorkerCombineGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1540px"><colgroup>
   <col style="width: 210px">
@@ -121,7 +121,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>hiddenSize</td>
       <td>输入</td>
       <td>token_data的隐藏维度大小，用于确定输出y的第二维大小。</td>
-      <td>必填属性。</td>
+      <td>-</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>tokenDtype</td>
       <td>输入</td>
       <td>指定schedule_context中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16。</td>
-      <td>取值为0或1，默认值为0。</td>
+      <td>取值为0或1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>needSchedule</td>
       <td>输入</td>
       <td>指定是否等待token数据填充完成后再执行。0表示不等待；1表示等待。</td>
-      <td>取值为0或1，默认值为0。</td>
+      <td>取值为0或1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -210,19 +210,19 @@ aclnnStatus aclnnAttentionWorkerCombine(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+                <td>输入是空指针。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>scheduleContext、expertScales、layerId、y、nextLayerId的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入数据类型不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>
 
 ## aclnnAttentionWorkerCombine
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">
@@ -267,8 +267,10 @@ aclnnStatus aclnnAttentionWorkerCombine(
 
 - schedule_context为1D的Tensor，shape固定为(1024)。
 - expert_scales为2D的Tensor，shape为(BS, K)，其中K ≤ 64。
-- y为2D的Tensor，shape为(BS, hiddenSize)，即第二维由属性hiddenSize确定。
+- y为2D的Tensor，shape为(BS, hiddenSize)，即第二维由参数hiddenSize确定。
 - layer_id和next_layer_id为1D的Tensor，shape为(1)。
+- 确定性计算：
+  - aclnnAttentionWorkerCombine默认确定性实现。
 
 ## 调用示例
 
