@@ -94,7 +94,7 @@ class SymmBuffer:
         intermediate_hidden: int,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_dtype: Optional[int] = None,
+        dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -126,12 +126,13 @@ class SymmBuffer:
 def get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
-    dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
+    max_recv_token_num: int = 0,
+    dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0, comm_alg: str = ""
 ) -> int:
     return _op_module.get_mega_moe_ccl_buffer_size(
         ep_world_size, moe_expert_num, num_max_tokens_per_rank,
-        num_topk, hidden,
+        num_topk, hidden, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_out_dtype,
         combine_quant_mode, comm_alg)
 
@@ -146,7 +147,7 @@ def get_symm_buffer_for_mega_moe(
     *,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
-    dispatch_quant_out_dtype: Optional[int] = None,
+    dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = ""
 ) -> SymmBuffer:
