@@ -19,7 +19,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../../../common/op_kernel/mc2_moe_context.h"
-#include "../../../op_kernel/moe_distribute_combine_tiling.h"
+#include "../../../op_kernel/arch22/moe_distribute_combine_tiling.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"

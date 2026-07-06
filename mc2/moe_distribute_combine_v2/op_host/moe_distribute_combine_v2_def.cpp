@@ -153,18 +153,7 @@ public:
     this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
 
-    OpAICoreConfig aicore_config_A2;
-    aicore_config_A2.DynamicCompileStaticFlag(true)
-        .DynamicFormatFlag(true)
-        .DynamicRankSupportFlag(true)
-        .DynamicShapeSupportFlag(true)
-        .NeedCheckSupportFlag(false)
-        .PrecisionReduceFlag(true)
-        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-        .ExtendCfgInfo("prebuildPattern.value", "Opaque")
-        .ExtendCfgInfo("jitCompile.flag", "static_false")
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-
+    // arch35 (A5) generation: uses the class-level (newest) I/O prototype.
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
@@ -175,11 +164,26 @@ public:
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_true")
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_combine_v2_apt");
+
+    // arch22 (A2/A3) generation: reuses the class-level I/O prototype (dtype/format
+    // identical to A5). Re-declare I/O here only when it needs to diverge from A5.
+    OpAICoreConfig aicore_config_arch22;
+    aicore_config_arch22.DynamicCompileStaticFlag(true)
+        .DynamicFormatFlag(true)
+        .DynamicRankSupportFlag(true)
+        .DynamicShapeSupportFlag(true)
+        .NeedCheckSupportFlag(false)
+        .PrecisionReduceFlag(true)
+        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+        .ExtendCfgInfo("prebuildPattern.value", "Opaque")
+        .ExtendCfgInfo("jitCompile.flag", "static_false")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->AICore().AddConfig("ascend910_93", aicore_config);
-    this->AICore().AddConfig("ascend910b", aicore_config_A2);
+    this->AICore().AddConfig("ascend910_93", aicore_config_arch22);
+    this->AICore().AddConfig("ascend910b", aicore_config_arch22);
     this->MC2().HcclGroup({"group_ep", "group_tp"});
   }
 };
