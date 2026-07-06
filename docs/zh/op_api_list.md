@@ -43,6 +43,7 @@
 |[aclnnApplyRotaryPosEmb](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmb.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现| 默认确定性实现 |
 |[aclnnApplyRotaryPosEmbV2](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmbV2.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现| 默认确定性实现 |
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现| 默认确定性实现 |
+|[aclnnAttentionWorkerCombine](../../attention/attention_worker_combine/docs/aclnnAttentionWorkerCombine.md)|Attention和FFN分离部署场景下，Attention侧数据融合算子，将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果，并更新层ID。|默认确定性实现| - |
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现| - |
 |[aclnnBlitzSparseAttention](../../experimental/attention/blitz_sparse_attention/docs/aclnnBlitzSparseAttention.md)|全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。|-|-|
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
@@ -57,6 +58,7 @@
 |[aclnnChunkGatedDeltaRule](../../attention/chunk_gated_delta_rule/docs/aclnnChunkGatedDeltaRule.md)|完成chunk版的Gated Delta Rule计算。|默认确定性实现| - |
 |[aclnnCompressor](../../attention/compressor/docs/aclnnCompressor.md)|Compressor将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnFFNToAttention](../../mc2/ffn_to_attention/docs/aclnnFFNToAttention.md)|将FFN节点上的token数据发往Attention节点。|默认确定性实现| - |
+|[aclnnFfnWorkerBatching](../../ffn/ffn_worker_batching/docs/aclnnFfnWorkerBatching.md)|Attention和FFN分离场景下，FFN侧数据扫描及token重排。|默认确定性实现| - |
 |[aclnnDequantRopeQuantKvcache](../../posembedding/dequant_rope_quant_kvcache/docs/aclnnDequantRopeQuantKvcache.md)|对输入张量进行dequant后，对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，并进行量化。|默认确定性实现| - |
 |[aclnnDistributeBarrier](../../mc2/distribute_barrier/docs/aclnnDistributeBarrier.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnDistributeBarrierV2](../../mc2/distribute_barrier/docs/aclnnDistributeBarrierV2.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现| 默认确定性实现 |
