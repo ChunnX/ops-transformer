@@ -31,7 +31,7 @@
   |版本变化      | Atlas A2 训练系列产品/Atlas A2 推理系列产品<br>Atlas A3 训练系列产品/Atlas A3 推理系列产品|Ascend 950PR/Ascend 950DT|
   |---------|---------|----------------|
   |V4 -> V5|  增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。   |  /  |
-  |V1 -> V4|  支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />量化、伪量化场景，支持weight转置，支持weight为单tensor。<br />x、weight、y都为单tensor非量化场景，支持x，weight输入都为float32类型。<br />支持伪量化weight是INT4的输入，不带激活场景，支持perchannel和pergroup两种模式。     |支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />支持静态量化（1.pertensor-perchannel(T-C)；2.pertensor-pertensor(T-T)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持动态量化（1.pertoken-perchannel(K-C)；2.pertoken-pertensor(K-T)；3.pertensor-pertensor(T-T)；4.pertensor-perchannel(T-C)；5.mx量化；6.pergroup-perblock(G-B)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，仅支持perchannel模式。|
+  |V1 -> V4|  支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />量化、伪量化场景，支持weight转置，支持weight为单tensor。<br />x、weight、y都为单tensor非量化场景，支持x，weight输入都为float32类型。<br />支持伪量化weight是INT4的输入，不带激活场景，支持perchannel和pergroup两种模式。     |支持不同分组轴，由groupType表示。<br />非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1, M],数据排布为[K,M]的场景）。<br />支持静态量化（1.pertensor-perchannel(T-C)；2.pertensor-pertensor(T-T)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持动态量化（1.pertoken-perchannel(K-C)；2.pertoken-pertensor(K-T)；3.pertensor-pertensor(T-T)；4.pertensor-perchannel(T-C)；5.mx量化；6.pergroup-perblock(G-B)）BFLOAT16，FLOAT16和FLOAT32输出，带bias。<br />支持伪量化weight是INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入，不带激活场景，支持perchannel和pergroup模式（INT4支持perchannel和pergroup，其余weight类型仅支持perchannel）。|
 
 ## 函数原型
 
@@ -447,7 +447,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   <a id="全量化场景"></a>
 
- - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+  - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
     $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
     $$
@@ -531,8 +531,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | activationInput | activationQuantScale | activationQuantOffset | out |
       |---------|----------------|--------------|--------|------------|----------------|-----------------|---------------|-----------|-----------------|----------------------|-----------------------|---------|
       | INT8 | INT8 (ND) | INT32/null | UINT64 | null | null | null | null | INT64 | null | null | null | INT8 |
-      | INT8 | INT8 (ND/NZ) | INT32/null |BFLOAT16| null | null | null | FLOAT/null | INT64 | null | null | null | BFLOAT16|
-      | INT8 | INT8 (NZ) | null |FLOAT/BFLOAT16| null | null | null | FLOAT/null | INT64 | null | null | null | BFLOAT16|
+      | INT8 | INT8 (ND/NZ) | INT32/null | BFLOAT16 | null | null | null | FLOAT/null | INT64 | null | null | null | BFLOAT16 |
       | INT8 | INT8 (ND/NZ) | INT32/null | FLOAT | null | null | null | FLOAT/null | INT64 | null | null | null | FLOAT16 |
       | INT8 | INT8 (ND/NZ) | INT32/null | null | null | null | null | null | INT64 | null | null | null | INT32 |
 
@@ -591,7 +590,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       - offset不为空时
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, 1, N]$。
         - 该场景下offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
-      - tuningConfigOptional数组第二个元素可置1，以开启A8W4场景中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考:K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入。
+      - tuningConfigOptional数组第二个元素可置1，以使能A8W4场景(仅支持perchannel)中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考:K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入。
     </details>
 
     <a id="a16w4场景约束"></a>
@@ -784,7 +783,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - tuningConfigOptional：不支持此参数。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
-      - 在全量化场景下，当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
+      - 在全量化场景下，当x和weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
 
     <a id="静态量化场景约束"></a>
     <details>
@@ -858,7 +857,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
-        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2,依此类推|
+        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) *N* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）*N* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) *N* 2,依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -888,7 +887,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 3维，weight转置时shape为（g, ceil(N / gsN), ceil (K / gsK)），weight非转置时shape为（g, ceil(K / gsK), ceil(N / gsN)）|
-        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
+        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）*ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -931,12 +930,17 @@ aclnnStatus aclnnGroupedMatmulV5(
 
     - 当weight的数据类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，antiquantOffsetOptional仅支持传入空指针或空tensorList，weight仅支持转置。
     - 若weight的类型为INT4，则weight中每一组tensor的最后一维大小都应是偶数。$weight_i$的最后一维指weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
-    - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中E为matmul组数即分组数）：
+    - 当weight的数据类型为INT4时，支持perchannel和pergroup两种伪量化模式。perchannel与pergroup模式通过antiquantScaleOptional的维度数自动判定：单单单场景antiquantScaleOptional维度为2时为perchannel，维度为3时为pergroup；多多多场景antiquantScaleOptional维度为1时为perchannel，维度为2时为pergroup。
+    - 在pergroup场景下，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。
+    - 在pergroup场景下，groupSize取值仅支持32、64、128、256。当weight转置时，要求pergroup长度$s_i$是偶数。
+    - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表（其中E为matmul组数即分组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
 
       |groupType| 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
-      |-1|weight多tensor|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
-      |0|weight单tensor|每个tensor 2维，shape为（E, N）|
+      |-1|weight多tensor（perchannel）|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
+      |-1|weight多tensor（pergroup）|每个tensor 2维，shape为（$G_i$, $n_i$） |
+      |0|weight单tensor（perchannel）|每个tensor 2维，shape为（E, N）|
+      |0|weight单tensor（pergroup）|每个tensor 3维，shape为（E, G, N）|
 
     <details>
       <summary>不同groupType约束</summary>

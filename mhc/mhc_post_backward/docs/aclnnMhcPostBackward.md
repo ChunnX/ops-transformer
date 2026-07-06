@@ -37,9 +37,9 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(
     const aclTensor     *hOut, 
     const aclTensor     *hPost, 
     aclTensor           *gradX, 
-    aclTensor           *gradHres, 
-    aclTensor           *gradHout, 
-    aclTensor           *gradHpost,
+    aclTensor           *gradHRes, 
+    aclTensor           *gradHOut, 
+    aclTensor           *gradHPost,
     uint64_t            *workspaceSize, 
     aclOpExecutor       **executor)
 ```
@@ -85,7 +85,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -99,7 +99,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与hRes一致</td>
       <td>ND</td>
@@ -157,7 +157,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHRes</td>
@@ -168,10 +167,9 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
-      <td>gradHout</td>
+      <td>gradHOut</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据hOut的梯度</td>
       <td>-</td>
@@ -179,10 +177,9 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
-      <td>gradHpost</td>
+      <td>gradHPost</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据h_post的梯度</td>
       <td>-</td>
@@ -200,8 +197,8 @@ aclnnStatus aclnnMhcPostBackward(
       <td>-</td>
       <td>-</td>
       <td>-</td>
-      </tr>
-      <tr>
+    </tr>
+    <tr>
       <td>executor</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
@@ -210,9 +207,8 @@ aclnnStatus aclnnMhcPostBackward(
       <td>-</td>
       <td>-</td>
       <td>-</td>
-      </tr>
-    </tbody></table>
-
+    </tr>
+  </tbody></table>
 
 - **返回值：**
 
@@ -242,18 +238,17 @@ aclnnStatus aclnnMhcPostBackward(
           <td>gradOutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
         </tr>
           <tr>
-          <td>gradOutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
+          <td>gradOutput、x、hRes、hOut、hPost的shape维度或取值不在支持的范围内。</td>
         </tr>
         <tr>
           <td>gradOutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
         </tr>
   </tbody></table>
 
-
-## aclnnMhcPostBackwardGrad
+## aclnnMhcPostBackward
 
 - **参数说明：**
- 	 
+   
   <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
@@ -274,7 +269,7 @@ aclnnStatus aclnnMhcPostBackward(
         <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPostBacwardGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPostBackwardGetWorkspaceSize获取。</td>
         </tr>
         <tr>
         <td>executor</td>
@@ -294,8 +289,9 @@ aclnnStatus aclnnMhcPostBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N的取值目前仅支持4、6和8。
 
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：参数说明中维度N的取值目前仅支持4，维度D的取值需要128对齐并且取值范围为[1,100000]。
+- <term>Ascend 950PR/Ascend 950DT</term>：参数说明中维度N的取值目前仅支持4、6和8。
 
 ## 调用示例
 
@@ -402,9 +398,9 @@ int main() {
     std::vector<int64_t> hOutShape = {1, 1024, 5120};   // BSD
     std::vector<int64_t> hPostShape = {1, 1024, 4};     // BSn
     std::vector<int64_t> gradXShape = {1, 1024, 4, 5120};   // BSND
-    std::vector<int64_t> gradHresShape = {1, 1024, 4, 4};   // BSND
-    std::vector<int64_t> gradHoutShape = {1, 1024, 5120};   // BSD
-    std::vector<int64_t> gradHpostShape = {1, 1024, 4};     // BSn
+    std::vector<int64_t> gradHResShape = {1, 1024, 4, 4};   // BSND
+    std::vector<int64_t> gradHOutShape = {1, 1024, 5120};   // BSD
+    std::vector<int64_t> gradHPostShape = {1, 1024, 4};     // BSn
     
     void *gradYDeviceAddr = nullptr;
     void *xDeviceAddr = nullptr;
@@ -412,9 +408,9 @@ int main() {
     void *hOutDeviceAddr = nullptr;
     void *hPostDeviceAddr = nullptr;
     void *gradXDeviceAddr = nullptr;
-    void *gradHresDeviceAddr = nullptr;
-    void *gradHoutDeviceAddr = nullptr;
-    void *gradHpostDeviceAddr = nullptr;
+    void *gradHResDeviceAddr = nullptr;
+    void *gradHOutDeviceAddr = nullptr;
+    void *gradHPostDeviceAddr = nullptr;
 
     aclTensor *gradYTensor = nullptr;
     aclTensor *xTensor = nullptr;
@@ -422,9 +418,9 @@ int main() {
     aclTensor *hOutTensor = nullptr;
     aclTensor *hPostTensor = nullptr;
     aclTensor *gradXTensor = nullptr;
-    aclTensor *gradHresTensor = nullptr;
-    aclTensor *gradHoutTensor = nullptr;
-    aclTensor *gradHpostTensor = nullptr;
+    aclTensor *gradHResTensor = nullptr;
+    aclTensor *gradHOutTensor = nullptr;
+    aclTensor *gradHPostTensor = nullptr;
     
     int64_t gradYShapeSize = GetShapeSize(gradYShape);
     int64_t xShapeSize = GetShapeSize(xShape);
@@ -432,18 +428,18 @@ int main() {
     int64_t hOutShapeSize = GetShapeSize(hOutShape);
     int64_t hPostShapeSize = GetShapeSize(hPostShape);
     int64_t gradXShapeSize = GetShapeSize(gradXShape);
-    int64_t gradHresShapeSize = GetShapeSize(gradHresShape);
-    int64_t gradHoutShapeSize = GetShapeSize(gradHoutShape);
-    int64_t gradHpostShapeSize = GetShapeSize(gradHpostShape);
+    int64_t gradHResShapeSize = GetShapeSize(gradHResShape);
+    int64_t gradHOutShapeSize = GetShapeSize(gradHOutShape);
+    int64_t gradHPostShapeSize = GetShapeSize(gradHPostShape);
     std::vector<aclFloat16> gradYHostData(gradYShapeSize, aclFloatToFloat16(1.0f));
     std::vector<aclFloat16> xHostData(xShapeSize, aclFloatToFloat16(1.0f));
     std::vector<float> hResHostData(hResShapeSize, 1.0f);
     std::vector<aclFloat16> hOutHostData(hOutShapeSize, aclFloatToFloat16(1.0f));
     std::vector<float> hPostHostData(hPostShapeSize, 1.0f);
     std::vector<aclFloat16> gradXHostData(gradXShapeSize, aclFloatToFloat16(1.0f));
-    std::vector<float> gradHresHostData(gradHresShapeSize, 1.0f);
-    std::vector<aclFloat16> gradHoutHostData(gradHoutShapeSize, aclFloatToFloat16(1.0f));
-    std::vector<float> gradHpostHostData(gradHpostShapeSize, 1.0f);
+    std::vector<float> gradHResHostData(gradHResShapeSize, 1.0f);
+    std::vector<aclFloat16> gradHOutHostData(gradHOutShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<float> gradHPostHostData(gradHPostShapeSize, 1.0f);
     
     ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradYTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -475,18 +471,18 @@ int main() {
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create gradHres aclTensor.
-    ret = CreateAclTensor(gradHresHostData, gradHresShape, &gradHresDeviceAddr, aclDataType::ACL_FLOAT, &gradHresTensor);
+    // Create gradHRes aclTensor.
+    ret = CreateAclTensor(gradHResHostData, gradHResShape, &gradHResDeviceAddr, aclDataType::ACL_FLOAT, &gradHResTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create gradHout aclTensor.
-    ret = CreateAclTensor(gradHoutHostData, gradHoutShape, &gradHoutDeviceAddr, aclDataType::ACL_FLOAT16, &gradHoutTensor);
+    // Create gradHOut aclTensor.
+    ret = CreateAclTensor(gradHOutHostData, gradHOutShape, &gradHOutDeviceAddr, aclDataType::ACL_FLOAT16, &gradHOutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create gradHpost aclTensor.
-    ret = CreateAclTensor(gradHpostHostData, gradHpostShape, &gradHpostDeviceAddr, aclDataType::ACL_FLOAT, &gradHpostTensor);
+    // Create gradHPost aclTensor.
+    ret = CreateAclTensor(gradHPostHostData, gradHPostShape, &gradHPostDeviceAddr, aclDataType::ACL_FLOAT, &gradHPostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -496,8 +492,8 @@ int main() {
     aclOpExecutor *executor;
     // Call the first interface.      
     ret = aclnnMhcPostBackwardGetWorkspaceSize(
-        gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHresTensor, gradHoutTensor, 
-        gradHpostTensor, &workspaceSize, &executor);
+        gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHResTensor, gradHOutTensor, 
+        gradHPostTensor, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnMhcPostBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -524,7 +520,7 @@ int main() {
         LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
         return ret;
     }
-    //gradX, gradHres, gradHout, gradHpost
+    //gradX, gradHRes, gradHOut, gradHPost
     // 5. Retrieve the output value, copy the gradX from the device side memory to the host side.
     auto gradXsize = GetShapeSize(gradXShape);
     std::vector<aclFloat16> gradXData(gradXsize, aclFloatToFloat16(0.0f));
@@ -534,28 +530,28 @@ int main() {
         LOG_PRINT("copy gradX from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    auto gradHressize = GetShapeSize(gradHresShape);
-    std::vector<float> gradHresData(gradHressize, 0.0f);
-    ret = aclrtMemcpy(gradHresData.data(), gradHresData.size() * sizeof(gradHresData[0]), gradHresDeviceAddr,
-                      gradHressize * sizeof(gradHresData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHRessize = GetShapeSize(gradHResShape);
+    std::vector<float> gradHResData(gradHRessize, 0.0f);
+    ret = aclrtMemcpy(gradHResData.data(), gradHResData.size() * sizeof(gradHResData[0]), gradHResDeviceAddr,
+                      gradHRessize * sizeof(gradHResData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy gradHres from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHRes from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    auto gradHoutsize = GetShapeSize(gradHoutShape);
-    std::vector<aclFloat16> gradHoutData(gradHoutsize, aclFloatToFloat16(0.0f));
-    ret = aclrtMemcpy(gradHoutData.data(), gradHoutData.size() * sizeof(gradHoutData[0]), gradHoutDeviceAddr,
-                      gradHoutsize * sizeof(gradHoutData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHOutsize = GetShapeSize(gradHOutShape);
+    std::vector<aclFloat16> gradHOutData(gradHOutsize, aclFloatToFloat16(0.0f));
+    ret = aclrtMemcpy(gradHOutData.data(), gradHOutData.size() * sizeof(gradHOutData[0]), gradHOutDeviceAddr,
+                      gradHOutsize * sizeof(gradHOutData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy gradHout from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHOut from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    auto gradHpostsize = GetShapeSize(gradHpostShape);
-    std::vector<float> gradHpostData(gradHpostsize, 0.0f);
-    ret = aclrtMemcpy(gradHpostData.data(), gradHpostData.size() * sizeof(gradHpostData[0]), gradHpostDeviceAddr,
-                      gradHpostsize * sizeof(gradHpostData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHPostsize = GetShapeSize(gradHPostShape);
+    std::vector<float> gradHPostData(gradHPostsize, 0.0f);
+    ret = aclrtMemcpy(gradHPostData.data(), gradHPostData.size() * sizeof(gradHPostData[0]), gradHPostDeviceAddr,
+                      gradHPostsize * sizeof(gradHPostData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy gradHpost from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHPost from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -566,18 +562,18 @@ int main() {
     aclDestroyTensor(hOutTensor);
     aclDestroyTensor(hPostTensor);
     aclDestroyTensor(gradXTensor);
-    aclDestroyTensor(gradHresTensor);
-    aclDestroyTensor(gradHoutTensor);
-    aclDestroyTensor(gradHpostTensor);
+    aclDestroyTensor(gradHResTensor);
+    aclDestroyTensor(gradHOutTensor);
+    aclDestroyTensor(gradHPostTensor);
     aclrtFree(gradYDeviceAddr);
     aclrtFree(xDeviceAddr);
     aclrtFree(hResDeviceAddr);
     aclrtFree(hOutDeviceAddr);
     aclrtFree(hPostDeviceAddr);
     aclrtFree(gradXDeviceAddr);
-    aclrtFree(gradHresDeviceAddr);
-    aclrtFree(gradHoutDeviceAddr);
-    aclrtFree(gradHpostDeviceAddr);
+    aclrtFree(gradHResDeviceAddr);
+    aclrtFree(gradHOutDeviceAddr);
+    aclrtFree(gradHPostDeviceAddr);
     if (workspaceSize > 0U) {
         aclrtFree(workspaceAddr);
     }

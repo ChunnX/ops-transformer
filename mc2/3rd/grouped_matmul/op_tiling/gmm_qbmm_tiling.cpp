@@ -910,10 +910,6 @@ ge::graphStatus Mc2GroupedQbmmTiling::PostTiling()
 
 void Mc2GroupedQbmmTiling::PrintQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     GMMQuantParams &params = tilingData_.gmmQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.groupNum << ", activeType = " << params.activeType <<

@@ -16,9 +16,10 @@ Docs目录结构说明如下：
   │   ├── ...
   ├── figures                            # 图片目录
   ├── install                            # 环境安装和编译指导文档
-  │   ├── build.md  
-  │   ├── compile.md  
-  │   ├── quick_install.md 
+  │   ├── build.md                       # build参数说明
+  │   ├── compile.md                     # 源码构建指南(离线编译、自定义算子包编译、transformer包编译等)
+  │   ├── quick_install.md               # 环境部署、CANN包安装等
+  │   ├── dir_structure.md               # 项目目录层级介绍
   │   └── ...
   ├── invocation                         # 算子调用指导文档（包括aclnn调用、图模式调用等）
   │   ├── quick_op_invocation.md

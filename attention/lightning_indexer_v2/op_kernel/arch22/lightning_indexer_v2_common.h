@@ -21,12 +21,12 @@ namespace LIV2Common {
 enum class LI_V2_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BBND = 2
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, typename QK_T, typename SCORE_T,
           const bool PAGE_ATTENTION = false, LI_V2_LAYOUT LAYOUT_T = LI_V2_LAYOUT::BSND,
-          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BSND, bool DT_W_FLAG = false, typename... Args>
+          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BBND, bool DT_W_FLAG = false, typename... Args>
 struct LIV2Type {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
@@ -67,6 +67,8 @@ struct RunInfo {
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t FIA_SYNC_MODE2 = 2;
+    // Cube分块大小(Mmad M维度对齐单位)
+    static constexpr uint32_t BLOCK_CUBE = 16;
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     // 无效索引
@@ -78,6 +80,7 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1U;
+    uint32_t mBaseSizeAlign = 1U;
     uint32_t s1BaseSize = 1U;
     uint32_t s2BaseSize = 1U;
 

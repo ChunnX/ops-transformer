@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：Compressor是推理场景下SAS和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。
+- API功能：Compressor是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。
 
 - 计算公式：
   
@@ -68,7 +68,7 @@
 | coff | 可选属性 | 默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。  | INT32          | -         |
 | norm\_eps | 可选属性 | 表示RmsNorm计算的权重系数。默认值1e-6。 | FLOAT32          | -         |
 | rotary\_mode | 可选属性 | 表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
-| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2**。 | INT32          | -         |
+| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2，且不支持0轴非连续**。 | INT32          | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | FLOAT16、BFLOAT16         | ND          |
 
 ## 约束说明
@@ -77,7 +77,7 @@
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]
     - wgate支持输入shape[coff* D,H]
-    - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
+    - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
     - norm\_weight支持输入shape[D,]
     - start\_pos支持输入shape[B,]
@@ -85,13 +85,13 @@
         - rope_sin、rope_cos要求输入shape为[min(T,T//cmp_ratio+B),rope_head_dim]。
         - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
-        - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。
+        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cache_mode=2时，state\_block\_table支持输入shape[B]。
         - cmp\_kv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
         - rope_sin、rope_cos要求输入shape为[B,ceil(S/cmp_ratio),rope_head_dim]。
         - cu\_seqlens，参数必须为空。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
-        - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。
+        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。cache_mode=2时，state\_block\_table支持输入shape[B]。
         - cmp\_kv，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) + (<batch1>compressed_tokens+pad1) + ...  + (<batchN>compressed_tokens+padN)。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
@@ -130,10 +130,12 @@
       </tbody>
       </table>
       </div>
+  - 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下state_cache不做更新，输出cmp_kv为空tensor。
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
-  - 支持cmp_ratio为4/128。支持如下三种情况：
+  - 支持block_size为1~1024。
+  - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。

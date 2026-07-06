@@ -160,6 +160,10 @@ public:
         if (totalM == 0) {
             return;
         }
+        if (totalM > deterSync_.windowSize) {
+            totalM = deterSync_.windowSize;
+            deterSync_.curGroupM = deterSync_.windowStartM + deterSync_.windowSize;
+        }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
@@ -247,6 +251,7 @@ public:
 
         deterSync_.windowSize =
             params.gmmParams.deterWorkspaceSize / (params.gmmParams.matmulTiling->N * sizeof(CType));
+        deterSync_.windowSize = (deterSync_.windowSize / params.gmmParams.baseM) * params.gmmParams.baseM;
         deterSync_.lowBoundM = deterSync_.windowSize;
 
         SyncAll<false>();

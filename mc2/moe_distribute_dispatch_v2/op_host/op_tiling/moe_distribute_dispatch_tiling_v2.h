@@ -24,7 +24,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
-#include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../../common/op_kernel/mc2_moe_context.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
@@ -90,7 +90,7 @@ public:
         const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
         const bool isPerformance, DispatchV2Config &config) = 0;
     virtual uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode,
-        const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered) = 0;
+        const bool isSetFullMeshV2, bool isLayered) = 0;
     virtual ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName, bool isScales,
         uint32_t quantMode, DispatchV2Config &config) = 0;
     virtual ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName) = 0;

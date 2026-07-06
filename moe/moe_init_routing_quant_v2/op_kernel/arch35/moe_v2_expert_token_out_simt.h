@@ -38,18 +38,14 @@ private:
 
 private:
     TPipe* pipe;
-    AscendC::TBuf<AscendC::TPosition::VECCALC> expertIdCunsumTBuf_;
-
     GlobalTensor<int32_t> expandedRowIdxGmGT_;
+    GlobalTensor<int32_t> expandedExpertIdxGmGT_;
     __gm__ int32_t* expandedRowIdxGm_;
     __gm__ int32_t* expandedExpertIdxGm_;
     __gm__ int32_t* expertTokensBeforeCapacityGm_;
     __gm__ int32_t* expertTokensCountOrCumsumGm_;
     GlobalTensor<int32_t> expertTokensCountOrCumsumGmOut;
     __gm__ int32_t* expertFirstIndexGm_;
-
-    LocalTensor<int32_t> lastExpertIdCunsum_;
-    __ubuf__ int32_t* lastExpertIdCunsumAddr_;
 
     const InnerMoeV2GatherOutComputeTilingData* srcToDstTilingData;
 
@@ -142,9 +138,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Init(
 
     expertFirstIndexGm_ = (__gm__ int32_t*)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2;
     expandedExpertIdxGm_ = (__gm__ int32_t*)workspace;
-    pipe->InitBuffer(expertIdCunsumTBuf_, BLOCK_BYTES);
-    lastExpertIdCunsum_ = expertIdCunsumTBuf_.Get<int32_t>();
-    lastExpertIdCunsumAddr_ = (__ubuf__ int32_t*)lastExpertIdCunsum_.GetPhyAddr();
+    expandedExpertIdxGmGT_.SetGlobalBuffer((__gm__ int32_t*)workspace, Align(this->totalLength_, sizeof(int32_t)));
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ExpertFirstIndexComputeSimt(
@@ -191,17 +185,13 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void TokensComputeSimt(
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void CumsumComputeSimt(
     int64_t coreRows, int64_t startIndex, int64_t totalLength, __gm__ int32_t* expandedExpertIdxGm,
-    __gm__ int32_t* expertTokensCountOrCumsumGm, __ubuf__ int32_t* lastExpertIdCunsumAddr)
+    __gm__ int32_t* expertTokensCountOrCumsumGm)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {
         int64_t curIndex = startIndex + index;
         int32_t curExpertId = expandedExpertIdxGm[curIndex];
         if (curIndex == totalLength - 1) { // 最后一个数
-            if (threadIdx.y == 0) {
-                lastExpertIdCunsumAddr[0] = curExpertId;
-                lastExpertIdCunsumAddr[1] = curIndex + 1;
-            }
             return;
         }
         int32_t nextExpertId = expandedExpertIdxGm[curIndex + 1];
@@ -245,13 +235,12 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
             THREAD_NUM / this->threadNum_ > MAX_THREAD_DIM_Y_NUM ? MAX_THREAD_DIM_Y_NUM : THREAD_NUM / this->threadNum_;
         asc_vf_call<CumsumComputeSimt>(
             dim3{static_cast<uint32_t>(this->threadNum_), static_cast<uint32_t>(threadDimY), 1}, this->coreRows_,
-            this->startIndex_, this->totalLength_, expandedExpertIdxGm_, expertTokensCountOrCumsumGm_,
-            lastExpertIdCunsumAddr_);
+            this->startIndex_, this->totalLength_, expandedExpertIdxGm_, expertTokensCountOrCumsumGm_);
     }
 
     if (this->expertCumsum_ && this->blockIdx_ == this->needCoreNum_ - 1) {
-        int32_t expertId = lastExpertIdCunsumAddr_[0];
-        int32_t cunsumNum = lastExpertIdCunsumAddr_[1];
+        int32_t expertId = expandedExpertIdxGmGT_.GetValue(this->totalLength_ - 1);
+        int32_t cunsumNum = static_cast<int32_t>(this->totalLength_);
         int32_t count = expertNum_ - expertId;
         if (count > 0) {
             InitOutput(expertTokensCountOrCumsumGmOut[expertId], static_cast<uint32_t>(count), cunsumNum);

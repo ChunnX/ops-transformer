@@ -17,6 +17,7 @@
 #define LOAD_BALANCE_COMMON_H
 
 #include <cstdint>
+#include <string>
 #include <array>
 #include <functional>
 #include <unordered_map>
@@ -52,6 +53,7 @@ struct GeneralBalanceParam {
     bool fdOn { true };                     // Turn on to activate FD
     int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
                                             // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
     CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
 };
 
@@ -90,10 +92,11 @@ enum class DataType : uint8_t {
 template<class T>
 inline T CeilDiv(T a, T b)
 {
+    static_assert(std::is_integral_v<T>, "must be integer type");
     if (b == 0) {
         return 0;
     }
-    return a / b + (a % b != 0);        // avoid overflow
+    return a / b + (a % b != 0 ? 1 : 0);        // avoid overflow
 }
 
 template<class T>

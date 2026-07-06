@@ -28,7 +28,8 @@ public:
     __aicore__ inline MoeV2GatherDynamicQuant(){};
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                 GM_ADDR dynamicQuantScale, GM_ADDR workspace,
-                                const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe,
+                                int64_t colsAlign = ALIGN_512);
     __aicore__ inline void Process();
 
 private:
@@ -461,7 +462,8 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::CopyOutPartialXQuant1H(int64_
 template <typename T>
 __aicore__ inline void MoeV2GatherDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx,
                                                         GM_ADDR expandedX, GM_ADDR dynamicQuantScale, GM_ADDR workspace,
-                                                        const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe)
+                                                        const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe,
+                                                        int64_t colsAlign)
 {
     this->pipe = tPipe;
     this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
@@ -470,11 +472,7 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR 
     this->needCoreNum = this->gatherOutTilingData->needCoreNum;
     this->activateRows = this->gatherOutTilingData->activateRows;
     this->cols = tilingData->cols;
-    if constexpr (IsSameType<DTYPE_WEIGHT1, int4b_t>::value) {
-        this->cols_scale_ = this->cols + ALIGN_512;
-    } else {
-        this->cols_scale_ = this->cols + UB_ALIGN;
-    }
+    this->cols_scale_ = this->cols + colsAlign;
     this->n = tilingData->n;
     this->k = tilingData->k;
     this->totalLength = tilingData->n * tilingData->k;

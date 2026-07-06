@@ -52,7 +52,7 @@
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
-  const aclTensor   *permutedTokens,
+  const aclTensor   *permutedTokensOptional,
   const aclTensor   *unpermutedTokensGrad,
   const aclTensor   *sortedIndices,
   const aclTensor   *probsOptional,
@@ -99,7 +99,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
     </tr></thead>
   <tbody>
     <tr>
-      <td>permutedTokens（aclTensor）</td>
+      <td>permutedTokensOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示输入token。</td>
       <td>-</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
@@ -236,7 +236,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 ## aclnnMoeTokenUnpermuteGrad
 
 - **参数说明**
-  
+
   <table>
     <thead>
       <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
@@ -262,7 +262,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
 - <term>Ascend 950PR/Ascend 950DT</term>：
   在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2Grad](../../moe_finalize_routing_v2_grad/docs/aclnnMoeFinalizeRoutingV2Grad.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2Grad接口的expandedXOptional输入。
+  - permutedTokensOptional输入等同于aclnnMoeFinalizeRoutingV2Grad接口的expandedXOptional输入。
   - unpermutedTokensGrad输入等同于aclnnMoeFinalizeRoutingV2Grad接口的gradY输入。
   - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2Grad接口的expandedRowIdx输入。
   - probsOptional输入等同于aclnnMoeFinalizeRoutingV2Grad接口的scalesOptional输入。
@@ -358,7 +358,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
   // 调用aclCreateTensor接口创建aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
                             strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
+                            *deviceAddr,0,nullptr);
   return 0;
 }
 
@@ -401,7 +401,7 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL_BF16,
+                        &permutedTokensDeviceAddr, aclDataType::ACL FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,

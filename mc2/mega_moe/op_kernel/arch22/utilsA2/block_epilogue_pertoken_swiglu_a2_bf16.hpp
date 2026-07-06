@@ -99,6 +99,8 @@ public:
         }
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+        ubOffset += 32;
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset);
     }
 
     CATLASS_DEVICE
@@ -123,6 +125,7 @@ public:
         AscendC::GlobalTensor<ElementD> const &gmD,
         AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
         uint32_t epilogueCoreNum = 40,
+        uint32_t gmmOutPreRowStride = 1,
         Callback &&callback = Callback{}
     )
     {
@@ -146,7 +149,7 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
@@ -159,9 +162,10 @@ public:
             auto &ubQuantF16 = ubQuantF16List[ubListId];
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
+            LayoutC layoutGmC{1, blockN, gmmOutPreRowStride};
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
@@ -237,6 +241,8 @@ public:
         MatrixCoord const &shapeC,
         AscendC::GlobalTensor<ElementD> const &gmD,
         uint32_t epilogueCoreNum = 40,
+        float swigluLimit = 0.0f,
+        uint32_t gmmOutPreRowStride = 1,
         Callback &&callback = Callback{}
     )
     {
@@ -260,22 +266,31 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
             auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId];
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
+            LayoutC layoutGmC{1, blockN, gmmOutPreRowStride};
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
 
+            // swiglu limit clamp
+            if (swigluLimit > 0.0f) {
+                AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer,
+                                  -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
             // SiLU(x_gate) * x_up
             AscendC::Muls(ubCFp32ChunkN, ubCFp32, -1.0f, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
@@ -321,6 +336,7 @@ private:
     AscendC::LocalTensor<int32_t> ubQuantS32List[UB_STAGES];
     AscendC::LocalTensor<half> ubQuantF16List[UB_STAGES];
     AscendC::LocalTensor<float> ubPerTokenScaleOutput;
+    AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
 
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;

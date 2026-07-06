@@ -609,7 +609,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
 
-    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128；N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
+    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
 
 ## 调用示例
 
@@ -755,13 +755,13 @@ int main() {
   std::vector<float> qIndexHostData(1*32*128, 1);
   std::vector<float> kIndexHostData(1*1*128, 1);
   std::vector<float> weightHostData(1*32, 1);
-  std::vector<float> sparseIndicesHostData(2048, 1);
+  std::vector<int32_t> sparseIndicesHostData(2048, 1);
   std::vector<float> softmaxMaxHostData(1*64, 1);
   std::vector<float> softmaxSumHostData(1*64, 1);
 
   std::vector<float> dQIndexHostData(1*32*128, 1);
   std::vector<float> dKIndexHostData(1*1*128, 1);
-  std::vector<float> dWeightHostData(1*1*32, 1);
+  std::vector<float> dWeightHostData(1*32, 1);
   std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);

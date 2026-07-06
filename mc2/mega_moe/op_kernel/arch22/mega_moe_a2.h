@@ -22,7 +22,11 @@ using namespace AscendC;
 
 #include "kernel_operator.h"
 
-#include "../../common/op_kernel/moe_distribute_base.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
+#else
+#include "../../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 #include "mega_moe_tiling_a2a3.h"
 #include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
@@ -122,7 +126,7 @@ private:
     int32_t n;
     int32_t topK;
     int32_t expertPerRank;
-    int32_t maxOutputSize;
+    uint64_t maxOutputSize;
     int32_t EP;
     int32_t listLen;
     float activationClamp;
@@ -253,7 +257,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     constexpr uint32_t l0CStages = 1;
 
     using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<
-        BElement, preloadStages, l1Stages, l0AStages, l0BStages, l0CStages,
+        BElement, IS_A2_, preloadStages, l1Stages, l0AStages, l0BStages, l0CStages,
         enableUnitFlag, enableShuffleK>;
 
     using AType = Gemm::GemmType<AElement, layout::RowMajor>;
@@ -331,7 +335,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         epilogueGranularity = 0U;
         typename MatmulKernel::Params params = typename MatmulKernel::Params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
@@ -349,15 +353,14 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         kernel(params);
     }
     else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
-        epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
-                              (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) : 0U;
+        epilogueCoreNum = aivNum / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
+        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) : 1u;
 
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
         typename MatmulKernel::Params params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
@@ -375,14 +378,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         MatmulKernel kernel(params);
         kernel(params);
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
-        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
-
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // 所有 AIV 参与
+        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
         typename MatmulKernel::Params params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,

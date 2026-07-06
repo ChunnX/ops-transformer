@@ -91,8 +91,10 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
             singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
         }
         tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
-        tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
+        tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize =
+            static_cast<uint64_t>(std::max(outSize, static_cast<int64_t>(0)));
+        tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize =
+            static_cast<uint64_t>(std::max(lseSize, static_cast<int64_t>(0)));
         tilingData_.baseTiling.fiaEmptyTensorParams.needInit = 1;
 
         tilingKeyInfo_.emptyTensor = true;
@@ -179,9 +181,12 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
     } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-        actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
+        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) : 0U;
+        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0)
+                            ? static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) : 0U;
+        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0)
+                                    ? static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) : 0U;
         actualSeqLenQFlag_ =
             !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
         actualSeqLenKVFlag_ =
@@ -480,8 +485,19 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         CalcNumBlocks(result.usedCoreNum);
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
+                                   IsActualSeqLengthsKVHasZero(baseInfo));
+}
 
-    fiaInfo_->isExistRowInvalid = IsExistRowInvalid(baseInfo);
+bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
+{
+    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
+        uint32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
+        if (s2Size == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
@@ -755,10 +771,14 @@ void FiaTilingFullQuantMxArch35::ComputeTilingData()
             maskBatch = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
         }
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskBatch = maskBatch;
-        maskS2Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
-        maskS1Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
-        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = maskS1Size;
-        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = maskS2Size;
+        maskS2Size = static_cast<uint64_t>(
+            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1),
+                     static_cast<int64_t>(0)));
+        maskS1Size = static_cast<uint64_t>(
+            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2),
+                     static_cast<int64_t>(0)));
+        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = static_cast<uint32_t>(maskS1Size);
+        tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = static_cast<uint32_t>(maskS2Size);
     } else {
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = 0;
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = 0;

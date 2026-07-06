@@ -22,10 +22,9 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../common/mc2_kernel_utils.h"
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
@@ -64,7 +63,7 @@ class MoeDistributeCombineA5 {
 public:
     __aicore__ inline MoeDistributeCombineA5(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
-                                GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX,
+                                GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX,
                                 GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void Process();
@@ -209,7 +208,7 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5Type
 
 template <TemplateMoeDistributeCombineA5TypeClass>
 __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Init(GM_ADDR expandX,
-    GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
+    GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
     GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX, GM_ADDR XOut, GM_ADDR workspaceGM,
     TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {

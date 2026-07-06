@@ -22,9 +22,9 @@
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
 
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#else 
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
 
@@ -1427,5 +1427,5 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         SyncAll<true>();
     }
 }
-} // MoeDistributeDispatchV2Impl
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_LAYERED_H

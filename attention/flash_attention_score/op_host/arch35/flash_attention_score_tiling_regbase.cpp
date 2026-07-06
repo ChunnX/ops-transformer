@@ -261,10 +261,15 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
                     "The value of layout string length must be equal to "
                     "dims of input query, key and value"),
                 return false);
-    OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
-               !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
+    OP_CHECK_IF(layoutLen != 3UL && layoutLen != 4UL,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
                    "The value of input layout must be in BSH, SBH, BSND, BNSD or TND"), return false);
+    if (!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)) {
+        return false;
+    }
+    if (!Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)) {
+        return false;
+    }
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " +
             std::to_string(s2Size),
@@ -475,6 +480,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             inputParamsRegbase_->set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_TND));
             tilingKeyLayout = LayoutType::LAYOUT_TND;
         } else {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                "The value of input layout must be in BSH, SBH or TND");
             return false;
         }
         OP_CHECK_IF((h1 == 0) || (h2 == 0) || (h3 == 0),
@@ -559,6 +566,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             inputParamsRegbase_->set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_BNSD));
             tilingKeyLayout = LayoutType::LAYOUT_BNSD;
         } else {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                "The value of input layout must be in BSND or BNSD");
             return false;
         }
     }
@@ -817,8 +826,11 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
     } else {
         std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
         std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
-        std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
+        std::string reason = "The shape of atten_mask must be " + expected1;
+        if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+            std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
+            reason += " or " + expected2;
+        }
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "atten_mask",
             attenMaskShapeStr.c_str(), reason.c_str());
         return false;
@@ -945,6 +957,27 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
 
 bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
 {
+    if (inputDtype != ge::DT_HIFLOAT8) {
+        auto dScaleQShape = context_->GetOptionalInputShape(D_Q_SCALE_INDEX);
+        auto dScaleKShape = context_->GetOptionalInputShape(D_K_SCALE_INDEX);
+        auto dScaleVShape = context_->GetOptionalInputShape(D_V_SCALE_INDEX);
+        std::string dScaleShapesMsg = "{";
+        dScaleShapesMsg += dScaleQShape != nullptr ?
+            Ops::Base::ToString(dScaleQShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += dScaleKShape != nullptr ?
+            Ops::Base::ToString(dScaleKShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += dScaleVShape != nullptr ?
+            Ops::Base::ToString(dScaleVShape->GetStorageShape()) + "}" : "nullptr}";
+        OP_CHECK_IF((dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) ||
+                    (dScaleKShape != nullptr && dScaleKShape->GetStorageShape().GetDimNum() != 0) ||
+                    (dScaleVShape != nullptr && dScaleVShape->GetStorageShape().GetDimNum() != 0),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName,
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input query, key and value is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional and dScaleVOptional should be nullptr now"),
+                    return false);
+    }
+
     auto dScaleQShape = context_->GetOptionalInputShape(D_Q_SCALE_INDEX);
     auto dScaleQInput = context_->GetOptionalInputDesc(D_Q_SCALE_INDEX);
     if (dScaleQInput != nullptr && dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) {
@@ -1752,23 +1785,21 @@ bool FlashAttentionScoreTilingRegbase::SetSparseStartIdx(const std::vector<int64
         sparseStartIdx[idx] = lastValidPartitionResult[idx];
     }
 
-    if (CheckLogLevel(OP, DLOG_DEBUG) == 1) {
-        PrintSparseMaxMinLoadPerCore(sparseValidArray, sparseStartIdx, validAivNum,
-                                     CeilDivision(loadTotal, validAivNum));
-    }
+    OP_LOGD(context_, "%ld", PrintSparseMaxMinLoadPerCore(sparseValidArray, sparseStartIdx, validAivNum,
+                                                          CeilDivision(loadTotal, validAivNum)));
     return true;
 }
 
-void FlashAttentionScoreTilingRegbase::PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray,
-                                                                 int64_t *sparseStartIdx, int32_t validAivNum,
-                                                                 int64_t avgLoadSize)
+int64_t FlashAttentionScoreTilingRegbase::PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray,
+                                                                       int64_t *sparseStartIdx, int32_t validAivNum,
+                                                                       int64_t avgLoadSize)
 {
     int64_t maxLoadSize = 0;
     int64_t minLoadSize = std::numeric_limits<int64_t>::max();
     int64_t totalSize = multiCoreParamsRegbase_->get_totalSize();
     int64_t s1OuterSize = multiCoreParamsRegbase_->get_s1OuterSize();
     if (s1OuterSize == 0) {
-        return;
+        return 0;
     }
     for (int64_t idx = 0; idx < validAivNum; ++idx) {
         int64_t startIdx = sparseStartIdx[idx];
@@ -1808,6 +1839,7 @@ void FlashAttentionScoreTilingRegbase::PrintSparseMaxMinLoadPerCore(const std::v
 
     OP_LOGD(context_, "[%s]each core load: max[%ld], min[%ld], avg[%ld]", templateName, maxLoadSize, minLoadSize,
               avgLoadSize);
+    return 0;
 }
 
 

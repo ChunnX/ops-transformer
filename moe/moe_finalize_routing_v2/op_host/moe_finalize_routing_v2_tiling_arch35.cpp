@@ -58,6 +58,7 @@ const static int64_t ATTR_DROP_PAD_MODE_IDX = 0LL;
 const static int64_t ATTR_ZERO_EXPERT_RANGE_IDX = 1LL;
 const static int64_t ATTR_COPY_EXPERT_RANGE_IDX = 2LL;
 const static int64_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3LL;
+const static int64_t ATTR_K_IDX = 4LL;
 
 const static int64_t BATCH_COPY_EXPERT_NUM = 4;
 
@@ -187,9 +188,13 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scalesShape)
 {
+    auto attrsPtr = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
+    const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
+    k = *attrKPtr;
     if (!scalesShape) {
         hasScales_ = false;
-        k = 1;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -199,7 +204,16 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
             std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
         return ge::GRAPH_FAILED);
-    k = scalesShape->GetStorageShape().GetDim(1);
+    int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
+    // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+    if (*attrKPtr > 1) {
+        OP_CHECK_IF(
+            *attrKPtr != scalesDim1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(*attrKPtr).c_str(), "k must equal scales dim1"),
+            return ge::GRAPH_FAILED);
+    }
+    k = scalesDim1;
     OP_CHECK_IF(
         k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
             std::to_string(k).c_str(), "k must be greater than 0."),
@@ -504,8 +518,10 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRange(int64_t start, int64_t e
     }
 
     if (!(0 <= start && start < end && end <= e)) {
-        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) is invalid, must satisfy 0 <= start < end < E(%ld).",
-                rangeName, start, end, e);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), (std::string(rangeName) + " range").c_str(),
+            ("[" + std::to_string(start) + ", " + std::to_string(end) + "), E=" + std::to_string(e)).c_str(),
+            "Range must satisfy 0 <= start < end <= E.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -518,8 +534,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRangeOverlap(int64_t start1, i
         return ge::GRAPH_SUCCESS;
     }
     if (!(end1 <= start2 || end2 <= start1)) {
-        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) overlaps with %s range [%ld, %ld).", name1, start1, end1,
-                name2, start2, end2);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), (std::string(name1) + " range and " + name2 + " range").c_str(),
+            ("[" + std::to_string(start1) + ", " + std::to_string(end1) + ") and [" +
+             std::to_string(start2) + ", " + std::to_string(end2) + ")").c_str(),
+            "Ranges should not overlap.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

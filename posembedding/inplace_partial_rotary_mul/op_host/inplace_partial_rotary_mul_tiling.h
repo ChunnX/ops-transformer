@@ -20,6 +20,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
+#include "op_host/tiling_util.h"
 #include "log/log.h"
 namespace optiling {
 
@@ -96,7 +97,6 @@ ge::graphStatus Tiling4InplacePartialRotaryMul(gert::TilingContext* context);
 struct InplacePartialRotaryPositionEmbeddingCompileInfo {
     int64_t blockDim;
     uint64_t ubSize;
-    platform_ascendc::SocVersion socVersion;
 };
 
 struct AiCoreParams {
@@ -202,7 +202,6 @@ public:
 protected:
     static const uint32_t MODE_ROTATE_INTERLEAVED = 1;
     uint32_t inputMode_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     gert::TilingContext* context_ = nullptr;
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
     uint32_t blockDim_{0};
@@ -231,6 +230,10 @@ public:
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t d);
     ge::graphStatus CheckShapeAllPositive(const int64_t idx) const;
     ge::graphStatus CheckShapeAllPositive() const;
+    bool IsNoOp() const
+    {
+        return isNoOp_;
+    }
     std::string rotaryModeStr_;
 
     ge::graphStatus GetPlatformInfo();
@@ -268,9 +271,7 @@ public:
 
     bool IsRegbaseSocVersion()
     {
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto socVersion = ascendcPlatform.GetSocVersion();
-        return socVersion == platform_ascendc::SocVersion::ASCEND950;
+        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
 
     ge::graphStatus DoTiling()
@@ -279,11 +280,11 @@ public:
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
-        // No-op: empty slice, nothing to compute
-        if (sliceLength_ == 0) {
+        // No-op: empty slice or empty cos/sin D, nothing to compute
+        if (IsNoOp()) {
             InplacePartialRopeRegbaseTilingData noopTiling;
             noopTiling.set_sliceStart(sliceStart_);
-            noopTiling.set_sliceEnd(sliceEnd_);
+            noopTiling.set_sliceEnd(sliceStart_);
             noopTiling.set_sliceLength(0);
             noopTiling.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
             noopTiling.set_D(d_);
@@ -326,7 +327,6 @@ public:
     }
 
 protected:
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     int64_t b_{0};
     int64_t s_{0};
     int64_t n_{0};
@@ -350,6 +350,7 @@ protected:
     int64_t sliceLength_{0};
     int64_t cosd_{0};
     int64_t sind_{0};
+    bool isNoOp_{false};
 };
 
 class InplacePartialRopeRegBaseTilingClassAAndB : public InplacePartialRopeRegBaseTilingClass {
@@ -499,4 +500,3 @@ private:
 
 } // namespace optiling
 #endif // OPS_BUILD_IN_OP_TILING_RUNTIME_ROTARY_POSITION_EMBEDDING_H
-

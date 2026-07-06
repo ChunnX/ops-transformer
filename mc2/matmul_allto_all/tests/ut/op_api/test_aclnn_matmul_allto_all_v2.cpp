@@ -352,63 +352,63 @@ static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_910B[] = {
     {"AclnnMatmulAlltoAllV2-910B-bf16-biasf32-nd-notrans-01", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_SUCCESS},
     {"AclnnMatmulAlltoAllV2-910B-bf16-biasf32-nd-trans-02", 2, {256, 128}, {256, 128}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, true, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, true, ACLNN_SUCCESS},
     // BF16 + bias=Null
     {"AclnnMatmulAlltoAllV2-910B-bf16-biasnull-nd-notrans-03", 2, {256, 128}, {128, 256}, {}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_DT_UNDEFINED, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_SUCCESS},
     // FP16 + bias=FP16
     {"AclnnMatmulAlltoAllV2-910B-fp16-biasfp16-nd-notrans-04", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_SUCCESS},
     // FP16 + bias=Null
     {"AclnnMatmulAlltoAllV2-910B-fp16-biasnull-nd-notrans-06", 2, {256, 128}, {128, 256}, {}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_SUCCESS},
 
     // ========================910B 异常用例 ========================
     // BF16 + bias=BF16 (910B不允许)
     {"error-AclnnMatmulAlltoAllV2-910B-bf16-biasbf16-07", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
     // FP16 + bias=FLOAT32
     {"AclnnMatmulAlltoAllV2-910B-fp16-biasf32-nd-notrans-05", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
     // x1 m=0 (910B不支持空token)
     {"error-AclnnMatmulAlltoAllV2-910B-x1_m_zero-08", 2, {0, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
     // x1 dtype不合法
     {"error-AclnnMatmulAlltoAllV2-910B-x1dtype_invalid-09", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_INT8, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
     // format为私有格式
     {"error-AclnnMatmulAlltoAllV2-910B-private_fmt-10", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
         ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
 
     // ========================ReFormatNotND 覆盖（2条）========================
     {"AclnnMatmulAlltoAllV2-910B-reformat_x1_fractal_nz-14", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
     {"AclnnMatmulAlltoAllV2-910B-reformat_x2_fractal_nz-15", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", "aiv", false, false, ACLNN_ERR_PARAM_INVALID},
 
     // ========================commMode 覆盖（2条）========================
     {"AclnnMatmulAlltoAllV2-910B-nullptr-commMode-16", 2, {256, 128}, {128, 256}, {256}, {512, 128},

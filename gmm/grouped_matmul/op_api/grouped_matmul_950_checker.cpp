@@ -82,19 +82,19 @@ const char *AclnnGroupedMatmulDAV3510Checker<T>::GetAclnnOpName() const
 {
     switch (gmmParams_.apiVersion) {
         case gmm::GMMApiVersion::V1:
-            return "aclnnGroupedMatmul";
+            return "aclnnGroupedMatmulGetWorkspaceSize";
         case gmm::GMMApiVersion::V2:
-            return "aclnnGroupedMatmulV2";
+            return "aclnnGroupedMatmulV2GetWorkspaceSize";
         case gmm::GMMApiVersion::V3:
-            return "aclnnGroupedMatmulV3";
+            return "aclnnGroupedMatmulV3GetWorkspaceSize";
         case gmm::GMMApiVersion::V4:
-            return "aclnnGroupedMatmulV4";
+            return "aclnnGroupedMatmulV4GetWorkspaceSize";
         case gmm::GMMApiVersion::V5:
-            return "aclnnGroupedMatmulV5";
+            return "aclnnGroupedMatmulV5GetWorkspaceSize";
         case gmm::GMMApiVersion::WeightNz:
-            return "aclnnGroupedMatmulWeightNz";
+            return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
         default:
-            return "aclnnGroupedMatmul";
+            return "aclnnGroupedMatmulGetWorkspaceSize";
     }
 }
 

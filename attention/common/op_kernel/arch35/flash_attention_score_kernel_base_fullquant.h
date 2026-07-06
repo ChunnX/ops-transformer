@@ -430,14 +430,13 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
         constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
     }
 
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND) || (layout == LayOutTypeEnum::LAYOUT_BSH)) {
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
         if constexpr (hasRope) {
             constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
             constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
         }
-
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
@@ -448,32 +447,6 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
         }
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            if constexpr (isInfer) {
-                if (sharedParams.isPfaGS1Merge == 1) {
-                    constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-                } else if (sharedParams.isGqa == 1) {
-                    constInfo.attentionOutStride = 0;
-                }
-            }
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-        // BSH/BSNGD
-        constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = constInfo.n2Dv;
-        if constexpr (isInfer) {
-            if (sharedParams.isGqa) {
-                constInfo.mm1Ka = constInfo.dSize;
-            }
-        }
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride =
-                (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
             if constexpr (isInfer) {
                 if (sharedParams.isPfaGS1Merge == 1) {
                     constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -498,22 +471,7 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
             constInfo.attentionOutStride =
                 (sharedParams.bSize * constInfo.n2Size * constInfo.gSize - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-        // bnsd
-        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = constInfo.dSize;
-        constInfo.mm1Kb = constInfo.dSize;
-        constInfo.mm2Kb = constInfo.dSizeV;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = 0;
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-        // NG(BS)D
+    } else if constexpr ((layout == LayOutTypeEnum::LAYOUT_BNSD) || (layout == LayOutTypeEnum::LAYOUT_NTD)) {
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
         if constexpr (hasRope) {

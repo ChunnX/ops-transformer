@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
+#include "../../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "mc2_comm_utils.h"
 
@@ -597,29 +597,31 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* 
 ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
-    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= 8) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
+    const size_t maxLength = 7UL;
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
-        return ge::GRAPH_FAILED;
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -641,32 +643,22 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     mc2tiling::HcclDataType alltoallvHcclDataType =
         mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(context_->GetNodeName(),
-            "GmmX dtype[%s] is unsupported by HCCL, "
-            "expected INT8/UINT8/INT16/UINT16/INT32/UINT32/"
-            "FLOAT16/FLOAT/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2.",
-            ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXDataType",
+            Ops::Base::ToString(gmmXDataType_).c_str(), "supported HCCL data types"),
         return ge::GRAPH_FAILED);
     uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
-    
-    auto platformInfo = context->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint8_t commMode = 0;
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "CommMode is %u.", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(), "HCCL init tiling config failed, expected success."),

@@ -386,6 +386,24 @@ bool QuantMatmulAllReduceCheckPertokenScaleShape(
     return true;
 }
 
+bool QuantMatmulAllReduceCheckDequantScale(const aclTensor* dequantScale, const op::Shape& outShape, size_t x1Len)
+{
+    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
+    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
+    const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
+    if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
+                                      dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
+        !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
+          dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
+        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "dequantScale",
+            op::ToString(dequantScale->GetViewShape()).GetString(),
+            std::string("[1] or [n] or [1,n], last dim should be " +
+                std::to_string(outShape.GetDim(x1Len - 1)) + " or 1").c_str());
+        return false;
+    }
+    return true;
+}
+
 bool QuantMatmulAllReduceCheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
@@ -448,17 +466,7 @@ bool QuantMatmulAllReduceCheckShape(
         OP_CHECK_SHAPE_NOT_EQUAL(x3, output, return false);
     }
     // scale和offset为per-tensor则shape为[1]，为per-channel则shape为[n]或者[1,n]
-    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
-    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
-    const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
-    if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
-                                      dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
-        !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
-          dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "dequantScale",
-            op::ToString(dequantScale->GetViewShape()).GetString(),
-            std::string("[1] or [n] or [1,n], last dim should be " +
-                std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
+    if (!QuantMatmulAllReduceCheckDequantScale(dequantScale, outShape, x1Len)) {
         return false;
     }
     if (!QuantMatmulAllReduceCheckPertokenScaleShape(pertokenScale, x1, x1Len)) {
@@ -555,11 +563,11 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
+    const char* commModePtr = "ai_cpu";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
@@ -571,7 +579,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
             if (pertokenScaleOptional == nullptr) {
@@ -594,14 +602,13 @@ bool IsCommModeValid(const char* commModePtr)
         }
         if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
         if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "For A5, commMode only support 'ccu', 'ai_cpu' or '', but it is '%s'.", commModePtr);
+            "For A5, commMode only support 'ccu' or 'ai_cpu', but it is '%s'.", commModePtr);
     } else {
         if (commModePtr == nullptr) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "For A2, commMode only support nullptr or '', but it is '%s'.", commModePtr);
+            "For A2, commMode only support nullptr or 'ai_cpu', but it is '%s'.", commModePtr);
     }
     return false;
 }

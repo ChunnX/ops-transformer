@@ -24,9 +24,6 @@ struct MoeMrgsortParam {
     int64_t perListElements;
     int64_t lastListElements;
     int64_t oneLoopMaxElements;
-    bool needPad = false;
-    int64_t topK;
-    int64_t numTokens;
 };
 
 class MoeMrgsort

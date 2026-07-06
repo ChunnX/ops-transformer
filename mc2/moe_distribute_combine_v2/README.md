@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 
     相较于MoeDistributeCombine算子，该算子变更如下：
     -   输入了更详细的token信息辅助`MoeDistributeCombineV2`高效地进行全卡同步，因此原算子中shape为(`BS` * `K`,)的`expandIdx`入参替换为shape为(`A` * 128,)的`assistInfoForCombine`参数；
@@ -22,18 +22,8 @@
     详细说明请参考以下参数说明。
 - 计算公式：
 
-    - 不存在TP域通信时：
-
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -96,7 +86,7 @@
   <tr>
    <td>tpSendCountsOptional</td>
    <td>可选输入</td>
-   <td>从TP通信域各卡接收的token数，对应MoeDistributeDispatchV2中的tpRecvCounts输出，有TP域通信需传参，无TP域通信传空指针。</td>
+   <td>预留参数，TP域通信不再支持，传空指针即可。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -187,7 +177,7 @@
   <tr>
    <td>groupEp</td>
    <td>属性</td>
-   <td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+   <td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
@@ -215,14 +205,14 @@
   <tr>
    <td>groupTp</td>
    <td>可选属性</td>
-   <td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+   <td><li>TP通信域名称（数据并行通信域），预留参数，TP域通信不再支持。</li><li>默认值为""。</li></td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpWorldSize</td>
    <td>可选属性</td>
-   <td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+   <td><li>TP通信域大小，预留参数，TP域通信不再支持，仅允许0或1。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -329,7 +319,7 @@
     
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
-    * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板；"hierarchy": 开启跨超模板，仅支持共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
     * epWorldSize取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     * moeExpertNum取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
 
@@ -355,7 +345,7 @@
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，当前版本不支持TP域通信。
 
 - 参数约束：
     - `zeroExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moeExpertNum`, `moeExpertNum` + `zeroExpertNum`)。
@@ -369,7 +359,7 @@
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
     - 一个模型中的`MoeDistributeCombineV2`和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`MoeDistributeCombineV2`和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
@@ -403,9 +393,9 @@
     - 参数约束：
         - `epWorldSize`：取值支持8、16、32、64、128、144、256、288。
         - `moeExpertNum`：取值范围(0, 1024]。
-        - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
-        - `tpWorldSize`：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`：取值范围[0, 1]，同一个TP通信域中各卡的`tpRankId`不重复。无TP域通信时，传0即可。
+        - `groupTp`：预留参数，TP域通信不再支持。
+        - `tpWorldSize`：预留参数，TP域通信不再支持，仅允许0或1。
+        - `tpRankId`：预留参数，TP域通信不再支持，传0即可。
         - `sharedExpertNum`：当前取值范围[0, 4]。
         - `commQuantMode`：int8量化当且仅当`tpWorldSize` < 2时可开启。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
@@ -419,7 +409,7 @@
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为(0 < BS ≤ 256), "fullmesh_v1"和""取值范围为(0 < BS ≤ 512)。
     - 参数约束：
-        - `epWorldSize`：取值支持[2, 768]。
+        - `epWorldSize`：取值支持[2, 1024]。
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`当前版本不支持，传空字符即可。
         - `tpWorldSize`当前版本不支持，传0即可。

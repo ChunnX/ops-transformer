@@ -31,21 +31,8 @@ public:
     ARGS_TRAITS;
     using BaseClass = FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
                                                         CubeBlockType, VecBlockType>;
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
     __aicore__ inline void Process();
 };
- 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
-{
-}
- 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
-{
-}
  
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::Process()

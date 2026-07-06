@@ -314,10 +314,6 @@ void Mc2WeightQuantBatchMatmulV2RegBase::SetAdditionalParam()
 
 void Mc2WeightQuantBatchMatmulV2RegBase::PrintCVTilingData(bool debugLevel) const
 {
-    if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     std::stringstream ss;
     ss << " kSize: " << tilingData_->kSize << " groupSize: " << tilingData_->groupSize
        << " nSize: " << tilingData_->nSize << " mSize: " << tilingData_->mSize

@@ -257,3 +257,103 @@ TEST(IndexerQuantCacheTilingStruct, FieldsWritable)
     EXPECT_FLOAT_EQ(t.scalesAttr, 1.0f);
     EXPECT_GT(sizeof(IndexerQuantCacheTilingData), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Reading B (4D-only 契约): cache 行宽 headDim 可大于写出长度 cacheCol;
+//   kernel 每行只写 cacheCol(=d) 字节, 行内余下 [cacheCol, headDim) 必须保持原值。
+//   通过把 cacheRowStride/cacheBlockStride 置为 headDim(>cacheCol) 并预填哨兵字节验证。
+//   mode1 Normal single-row, bs=8, d=128, headDim=160 (>128)。
+// ---------------------------------------------------------------------------
+TEST(IndexerQuantCacheKernelReadingB, WideHeadDimLeavesTailUntouched)
+{
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+
+    const int64_t bs = 8;
+    const int64_t d = 128;
+    const int64_t headDim = 160;          // > cacheCol(=d=128)
+    const int64_t cacheCol = d;           // mode1: cacheCol == d
+    const int64_t scaleCol = 1;           // mode1: 整行一个 float scale
+    const uint8_t SENTINEL = 0xAB;
+
+    IndexerQuantCacheTilingData t;
+    std::memset(&t, 0, sizeof(t));
+    t.bs = bs;
+    t.d = d;
+    t.scaleCol = scaleCol;
+    t.rowOfFormerBlock = bs;
+    t.rowOfTailBlock = bs;
+    t.rowLoopOfFormerBlock = bs;          // single-row: rowFactor=1
+    t.rowLoopOfTailBlock = bs;
+    t.rowFactor = 1;
+    t.tailRowFactorOfFormerBlock = 1;
+    t.tailRowFactorOfTailBlock = 1;
+    t.quantMode = NORMAL_QUANT_MODE;
+    t.roundScale = 1;
+    t.scalesAttr = 1.0f;
+    t.blockSize = 1;                      // contiguous flat slots
+    t.cacheRowStride = headDim;           // 行宽 = headDim (> cacheCol)
+    t.cacheBlockStride = headDim;
+    t.scaleRowStride = scaleCol;
+    t.scaleBlockStride = scaleCol;
+
+    int64_t tilingKey = 10001;            // mode1 single-row
+
+    int64_t cacheRows = bs + 1;
+    size_t shapeX = static_cast<size_t>(bs) * d * sizeof(uint16_t);
+    size_t shapeSlot = static_cast<size_t>(bs) * sizeof(int32_t);
+    size_t shapeCache = static_cast<size_t>(cacheRows) * headDim * sizeof(uint8_t) + 512;
+    size_t shapeScale = static_cast<size_t>(cacheRows) * scaleCol * sizeof(float) + 512;
+
+    uint8_t* cacheGm = GmAllocWrapper<uint8_t>(shapeCache);
+    uint8_t* scaleGm = GmAllocWrapper<uint8_t>(shapeScale);
+    uint8_t* xGm = GmAllocWrapper<uint8_t>(shapeX);
+    uint8_t* slotGm = GmAllocWrapper<uint8_t>(shapeSlot);
+    uint8_t* cacheOutGm = GmAllocWrapper<uint8_t>(shapeCache);
+    uint8_t* scaleOutGm = GmAllocWrapper<uint8_t>(shapeScale);
+    uint8_t* workspace = GmAllocWrapper<uint8_t>(SYS_WORKSPACE);
+    uint8_t* tilingGm = GmAllocWrapper<uint8_t>(sizeof(IndexerQuantCacheTilingData));
+
+    FillHalf(xGm, static_cast<int64_t>(bs) * d);
+    std::memset(cacheGm, SENTINEL, shapeCache);   // 哨兵: 验证未写区保持原值
+    std::memset(scaleGm, 0, shapeScale);
+    std::memset(cacheOutGm, 0, shapeCache);
+    std::memset(scaleOutGm, 0, shapeScale);
+    std::memset(workspace, 0, SYS_WORKSPACE);
+    std::memcpy(tilingGm, &t, sizeof(IndexerQuantCacheTilingData));
+
+    int32_t* slot = reinterpret_cast<int32_t*>(slotGm);
+    for (int64_t i = 0; i < bs; ++i) {
+        slot[i] = static_cast<int32_t>(i);
+    }
+
+    ICPU_SET_TILING_KEY(static_cast<uint64_t>(tilingKey));
+    ICPU_RUN_KF(indexer_quant_cache, 1, cacheGm, scaleGm, xGm, slotGm, cacheOutGm, scaleOutGm,
+                workspace, tilingGm);
+
+    bool anyWritten = false;
+    bool tailPreserved = true;
+    for (int64_t i = 0; i < bs; ++i) {
+        uint8_t* row = cacheGm + slot[i] * headDim;
+        for (int64_t c = 0; c < cacheCol; ++c) {
+            if (row[c] != SENTINEL) {
+                anyWritten = true;   // 写出区被改写(量化输出)
+            }
+        }
+        for (int64_t c = cacheCol; c < headDim; ++c) {
+            if (row[c] != SENTINEL) {
+                tailPreserved = false;  // 行尾 [cacheCol, headDim) 不应被改写
+            }
+        }
+    }
+    EXPECT_TRUE(anyWritten) << "written region [0,cacheCol) should be updated";
+    EXPECT_TRUE(tailPreserved) << "row tail [cacheCol,headDim) must keep original value (Reading B)";
+
+    AscendC::GmFree(cacheGm);
+    AscendC::GmFree(scaleGm);
+    AscendC::GmFree(xGm);
+    AscendC::GmFree(slotGm);
+    AscendC::GmFree(cacheOutGm);
+    AscendC::GmFree(scaleOutGm);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tilingGm);
+}

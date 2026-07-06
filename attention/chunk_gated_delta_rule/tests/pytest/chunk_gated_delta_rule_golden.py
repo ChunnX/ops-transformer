@@ -119,15 +119,15 @@ def chunk_gated_delta_rule_native(
         for x in (query, key, value, beta, g)
     ]
 
-    batch_size, sequence_length, num_heads, k_head_dim = key.shape
+    batch_size, num_heads, sequence_length, k_head_dim = key.shape
     v_head_dim = value.shape[-1]
-    pad_size = (chunk_size - num_heads % chunk_size) % chunk_size
+    pad_size = (chunk_size - sequence_length % chunk_size) % chunk_size
     query = F.pad(query, (0, 0, 0, pad_size))
     key = F.pad(key, (0, 0, 0, pad_size))
     value = F.pad(value, (0, 0, 0, pad_size))
     beta = F.pad(beta, (0, pad_size))
     g = F.pad(g, (0, pad_size))
-    tot_heads = num_heads + pad_size
+    total_sequence_length = sequence_length + pad_size
     scale = 1 / (query.shape[-1] ** 0.5)
     query = query * scale
 
@@ -155,7 +155,7 @@ def chunk_gated_delta_rule_native(
     value = attn @ v_beta
     k_cumdecay = attn @ (k_beta * g.exp().unsqueeze(-1))
     last_recurrent_state = (
-        torch.zeros(batch_size, sequence_length, k_head_dim, v_head_dim).to(value)
+        torch.zeros(batch_size, num_heads, k_head_dim, v_head_dim).to(value)
         if initial_state is None
         else initial_state.to(value)
     )
@@ -165,7 +165,7 @@ def chunk_gated_delta_rule_native(
         diagonal=1,
     )
     # for each chunk
-    for i in range(0, tot_heads // chunk_size):
+    for i in range(0, total_sequence_length // chunk_size):
         q_i, k_i, v_i = query[:, :, i], key[:, :, i], value[:, :, i]
         attn = (q_i @ k_i.transpose(-1, -2) * decay_mask[:, :, i]).masked_fill_(mask, 0)
         v_prime = (k_cumdecay[:, :, i]) @ last_recurrent_state
@@ -184,7 +184,7 @@ def chunk_gated_delta_rule_native(
     core_attn_out = core_attn_out.reshape(
         core_attn_out.shape[0], core_attn_out.shape[1], -1, core_attn_out.shape[-1]
     )
-    core_attn_out = core_attn_out[:, :, :num_heads]
+    core_attn_out = core_attn_out[:, :, :sequence_length]
     core_attn_out = core_attn_out.transpose(1, 2).contiguous().to(initial_dtype)
     return core_attn_out, last_recurrent_state
 

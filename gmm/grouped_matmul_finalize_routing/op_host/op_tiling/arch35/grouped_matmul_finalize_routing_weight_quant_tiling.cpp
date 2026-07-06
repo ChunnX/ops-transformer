@@ -16,7 +16,6 @@
 #include "../../../op_kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_key.h"
 #include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
-using namespace optiling::GroupedMatmulFinalizeRoutingArch35WeightQuantTiling;
 using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace {
@@ -24,6 +23,7 @@ static constexpr const char* OP_NAME = "GroupedMatmulFinalizeRouting";
 }  // namespace
 
 namespace optiling {
+namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling {
 using namespace GroupedMatmulFinalizeRoutingArch35TilingConstant;
 using namespace GmmConstant;
 
@@ -239,7 +239,7 @@ bool GMMFRWeightQuantTiling::InferScenario()
     return false;
 }
 
-bool CheckMxA8W4NzInputPtr(gert::TilingContext *contex)
+static bool CheckMxA8W4NzInputPtr(gert::TilingContext *contex)
 {
     auto xDesc = contex->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(contex->GetNodeName(), "Input xDesc is nullptr."), return false);
@@ -286,7 +286,7 @@ bool CheckMxA8W4NzInputPtr(gert::TilingContext *contex)
     return true;
 }
 
-bool CheckMxA8W4NzAttrPtr(gert::TilingContext *contex)
+static bool CheckMxA8W4NzAttrPtr(gert::TilingContext *contex)
 {
     auto attrs = contex->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(contex->GetNodeName(), "Attrs is nullptr"), return false);
@@ -475,6 +475,17 @@ static bool ValidateBiasShape(gert::TilingContext *contex, int64_t eFromW, int64
     return true;
 }
 
+// Axis indices for scale shape [E, N, CeilDiv(K, 64), MX_INNER_DIM]
+constexpr uint32_t SCALE_AXIS_E = 0;
+constexpr uint32_t SCALE_AXIS_N = 1;
+constexpr uint32_t SCALE_AXIS_K_CEIL_DIV = 2;
+constexpr uint32_t SCALE_AXIS_INNER = 3;
+
+// Axis indices for pertoken_scale shape [M, CeilDiv(K, 64), MX_INNER_DIM]
+constexpr uint32_t PTSCALE_AXIS_M = 0;
+constexpr uint32_t PTSCALE_AXIS_K_CEIL_DIV = 1;
+constexpr uint32_t PTSCALE_AXIS_INNER = 2;
+
 // Helper: Validate scale shape [E, N, CeilDiv(K, 64), 2]
 static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int64_t nSize, int64_t kCeilDiv64)
 {
@@ -487,23 +498,23 @@ static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int6
             "The shape dim of scale must be " + std::to_string(DIM_NUM_MX_SCALE));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(0) != eFromW)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_E) != eFromW)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 0 of scale must be equal to E=" + std::to_string(eFromW));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(1) != nSize)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_N) != nSize)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 1 of scale must be equal to N=" + std::to_string(nSize));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(2) != kCeilDiv64)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape),
             "The axis 2 of scale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(3) != MX_INNER_DIM)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_INNER) != MX_INNER_DIM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 3 of scale must be equal to " + std::to_string(MX_INNER_DIM));
         return false;
@@ -523,19 +534,19 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
             "The shape dim of pertokenScale must be " + std::to_string(DIM_NUM_MX_PERTOKENSCALE));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(0) != mSize)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_M) != mSize)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 0 of pertokenScale must be equal to M=" + std::to_string(mSize));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(1) != kCeilDiv64)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 1 of pertokenScale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(2) != MX_INNER_DIM)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_INNER) != MX_INNER_DIM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 2 of pertokenScale must be equal to " + std::to_string(MX_INNER_DIM));
@@ -544,7 +555,36 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
     return true;
 }
 
-bool CheckMxA8W4InputShape(gert::TilingContext *contex)
+static bool CheckKNAlignmentAndMinSize(int64_t kSize, int64_t nSize)
+{
+    if (unlikely(kSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "x",
+            "K=" + std::to_string(kSize),
+            "K of x must be aligned to " + std::to_string(ALIGN_SIZE_KN));
+        return false;
+    }
+    if (unlikely(nSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight",
+            "N=" + std::to_string(nSize),
+            "N of weight must be aligned to " + std::to_string(ALIGN_SIZE_KN));
+        return false;
+    }
+    if (unlikely(kSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x",
+            "K=" + std::to_string(kSize),
+            "K of x must be >= " + std::to_string(MIN_KN_SIZE));
+        return false;
+    }
+    if (unlikely(nSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight",
+            "N=" + std::to_string(nSize),
+            "N of weight must be >= " + std::to_string(MIN_KN_SIZE));
+        return false;
+    }
+    return true;
+}
+
+static bool CheckMxA8W4InputShape(gert::TilingContext *contex)
 {
     // Get w format first
     auto wDesc = contex->GetInputDesc(W_INDEX);
@@ -572,33 +612,8 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
         return false;
     }
 
-    // Validate K and N alignment for MX-A8W4 weight quant
-    if (unlikely(kSize % ALIGN_SIZE_KN != 0)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "x",
-            "K=" + std::to_string(kSize),
-            "K of x must be aligned to " + std::to_string(ALIGN_SIZE_KN));
-        return false;
-    }
-    if (unlikely(nSize % ALIGN_SIZE_KN != 0)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight",
-            "N=" + std::to_string(nSize),
-            "N of weight must be aligned to " + std::to_string(ALIGN_SIZE_KN));
-        return false;
-    }
-
-    // Validate K and N minimum size for MX-A8W4 weight quant
-    if (unlikely(kSize < MIN_KN_SIZE)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x",
-            "K=" + std::to_string(kSize),
-            "K of x must be >= " + std::to_string(MIN_KN_SIZE));
-        return false;
-    }
-    if (unlikely(nSize < MIN_KN_SIZE)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight",
-            "N=" + std::to_string(nSize),
-            "N of weight must be >= " + std::to_string(MIN_KN_SIZE));
-        return false;
-    }
+    OP_CHECK_IF(!CheckKNAlignmentAndMinSize(kSize, nSize),
+                OP_LOGE(contex->GetNodeName(), "CheckKNAlignmentAndMinSize failed."), return false);
 
     // 3. Validate group_list shape
     OP_CHECK_IF(!ValidateGroupListShape(contex, eFromW),
@@ -630,7 +645,7 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
     return true;
 }
 
-bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
+static bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
 {
     auto attrs = contex->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(contex->GetNodeName(), "Attrs is nullptr"), return false);
@@ -697,7 +712,7 @@ bool GMMFRWeightQuantTiling::RunCheckFunc()
     return true;
 }
 
-bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
+static bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
     OP_LOGD(contex->GetNodeName(), "Start extracting attributes.");
 
@@ -838,7 +853,7 @@ static bool SetSharedInputInfo(gert::TilingContext *contex, GMMFRWeightQuantInpu
     return true;
 }
 
-bool SetMxA8W4NzInput(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
+static bool SetMxA8W4NzInput(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
     OP_LOGD(contex->GetNodeName(), "Start extracting all inputs.");
 
@@ -872,4 +887,5 @@ bool GMMFRWeightQuantTiling::SetMxA8W4NzInputFunc()
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulFinalizeRouting, GMMFRWeightQuantTiling,
                              GMMFR_WEIGHT_QUANT_TILING_VEC_ANTIQUANT);
+} // namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling
 } // namespace optiling

@@ -1491,13 +1491,13 @@ public:
             }
             
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
-            uint32_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
-            uint32_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
+            int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
+            int64_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
             // 中间结果
-            uint32_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
+            int64_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
             uint32_t alignOffset = this->ubFactor / CONST_TWO;
@@ -1713,12 +1713,12 @@ public:
             }
             
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
-            uint32_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
-            uint32_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
-            uint32_t kOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kOffset2 = this->dk / CONST_TWO + kOffset1;
+            int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
+            int64_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
+            int64_t kOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kOffset2 = this->dk / CONST_TWO + kOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
             uint32_t alignOffset = this->ubFactor / CONST_TWO;
@@ -1939,10 +1939,10 @@ public:
             }
             
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
-            uint32_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
-            uint32_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
+            int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
+            int64_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
             uint32_t alignOffset = this->ubFactor / CONST_TWO;
@@ -2236,15 +2236,15 @@ public:
             }
             
             int64_t kInOffset = xDimOffset + this->dv + this->ubFactor * ubIdx;
-            uint32_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
-            uint32_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
-            uint32_t kOffset1 = this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kOffset2 = this->dk / CONST_TWO + kOffset1;
+            int64_t cosSinOffset1 = cosSinDimOffset + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t cosSinOffset2 = this->dk / CONST_TWO + cosSinOffset1;
+            int64_t kScaleOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
+            int64_t kOffset1 = this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kOffset2 = this->dk / CONST_TWO + kOffset1;
             // 中间结果
-            uint32_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
-            uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
+            int64_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
+            int64_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
             uint32_t alignOffset = this->ubFactor / CONST_TWO;

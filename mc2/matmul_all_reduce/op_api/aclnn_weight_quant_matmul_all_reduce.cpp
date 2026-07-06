@@ -195,8 +195,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    // tensor维度始终非负，安全转换为uint64_t进行比较
-    if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
+    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
             std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
@@ -393,7 +393,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     auto copyX2 = CopyTensor(x2);
     auto tempX2 = MatmulAllReduceIsWeightNZFormat(x2) ? copyX2 : x2;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
+    const char* commModePtr = "ai_cpu";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, bias, x3, antiquantScale, antiquantOffset, dequantScale, pertokenScale, commQuantScale1,
         commQuantScale2, const_cast<char*>(group), const_cast<char*>(reduceOp),
@@ -404,7 +404,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
@@ -423,7 +423,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);

@@ -60,7 +60,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
-    PrintQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -92,11 +92,6 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 {
     return SaveTilingDataToContext(tilingData_);
-}
-
-void GroupedQmmBasicApiTiling::PrintQuantParams()
-{
-    LogQuantParams(tilingData_.gmmQuantParams);
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::CalL1Tiling()

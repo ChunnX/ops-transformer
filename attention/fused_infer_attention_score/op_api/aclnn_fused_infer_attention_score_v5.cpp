@@ -189,7 +189,7 @@ aclnnStatus CheckTensorContiguous(
     const aclTensor *valueAntiquantScaleOptional,
     const aclTensor *keyRopeOptional)
 {
-    if (!IsContiguous((*key)[0]) || !IsContiguous((*value)[0])) {
+    if ((key != nullptr && !IsContiguous((*key)[0])) || (value != nullptr && !IsContiguous((*value)[0]))) {
         return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if (keyRopeOptional != nullptr && !IsContiguous(keyRopeOptional)) {
@@ -249,6 +249,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
 
     aclnnStatus ret = CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
         return ret;
     }
 

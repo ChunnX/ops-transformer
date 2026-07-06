@@ -64,10 +64,8 @@ constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 } // namespace
 
-static constexpr int64_t CCU_LEN = 3;
-static constexpr int64_t AI_CPU_LEN = 5;
-static constexpr int64_t EMPTY_LEN = 1;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
+static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherQuantBmmTiling::IsCapable()
 {
@@ -434,14 +432,11 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
-        commEngine = Mc2Comm::ENGINE_CCU;
-    } else if (std::strncmp(commMode_, "", EMPTY_LEN) == 0) { // empty string
-        if (rankSize_ <= COMM_MODE_RANKSIZE) {
-            commEngine = Mc2Comm::ENGINE_CCU;
-        }
+    if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
+        commEngine = Mc2Comm::ENGINE_CCU_SCHED;
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
@@ -527,12 +522,8 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
     // Set hccl comm engine with comm_mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
-    if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
+    if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode_, "", EMPTY_LEN) == 0) { // empty string
-        if (rankSize_ <= COMM_MODE_RANKSIZE) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        }
     }
 
     // Non-A5 platform must use AICPU mode

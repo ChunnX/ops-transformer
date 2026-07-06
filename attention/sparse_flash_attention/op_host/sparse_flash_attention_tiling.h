@@ -308,18 +308,18 @@ private:
 
     bool IsFlashDecode(uint32_t coreNum);
 
-    void FillTilingBaseParamsMla();
     void FillTilingSplitKVMla();
+    void FillTilingBaseParamsMla();
 
+    void FillTiling();
     void FillTilingSingleCoreParamsMla();
     void FillTilingSingleCoreTensorSizeMla();
-    void FillTiling();
 
     void CalcUbBmm();
     void CheckUbSpace();
+    void GetWorkspaceSize();
     void NormalCalcFDWorkSpace(const uint32_t actCoreNum);
     void CalcFDWorkSpace(const uint32_t actCoreNum);
-    void GetWorkspaceSize();
 
     uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
 
@@ -463,11 +463,11 @@ private:
     uint32_t n1Size_ = 0;
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
+    uint32_t s1Size_ = 0;
+    int64_t s2Size_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
@@ -551,6 +551,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     void GenerateInfo(SFATilingInfo &sfaInfo);
+    void FillTilingInfoAttrsAndLayouts(SFATilingInfo &sfaInfo);
     ge::graphStatus Parse(SFATilingInfo &sfaInfo);
 
     const gert::TilingContext *context_ = nullptr;

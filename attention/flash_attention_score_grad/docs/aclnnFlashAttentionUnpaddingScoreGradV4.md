@@ -541,7 +541,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
-- softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
+- softmaxSum、softmaxMax数据排布为NTD时，softmaxInLayout需要为"same_as_input"。
 
 ## 调用示例
 
