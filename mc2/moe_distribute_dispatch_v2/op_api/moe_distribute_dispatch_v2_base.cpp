@@ -161,14 +161,11 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
                                         assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
-    const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     const char *groupTpDispatchV2Temp = groupTp;
     if (is910B) {
         groupTpDispatchV2Temp = "";
-    } else if (is950) {
-        performanceInfoOptionalDispatchV2Temp = nullptr;
     }
 
     char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
@@ -178,11 +175,20 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
     SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
 
+    // ccu暂时不支持performanceInfo
+    if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+        if (performanceInfoOptional != nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeDistributeDispatchV2", "performanceInfo",
+                "not nullptr", "performanceInfo not supported in ccu");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+    }
+
     int64_t ydtype = expandXOut->GetDataType();
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
+    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
+            performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
             groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
             sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf, zeroExpertNum,
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
@@ -195,7 +201,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
+            performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
             tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
             commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
