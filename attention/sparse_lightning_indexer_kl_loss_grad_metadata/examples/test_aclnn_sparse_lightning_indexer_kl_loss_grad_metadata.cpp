@@ -99,7 +99,7 @@ struct ArgContext {
     int64_t topk { 512 };
     char *layoutQOptional { nullptr };
     char *layoutKOptional { nullptr };
-    int64_t maskMode { 3 };
+    int64_t maskMode { 0 };
     int64_t cmpRatio { 4 };
 };
 
