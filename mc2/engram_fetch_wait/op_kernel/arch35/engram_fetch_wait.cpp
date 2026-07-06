@@ -14,7 +14,7 @@
  */
 
 
-#include "arch35/engram_fetch_wait_arch35.h"
+#include "engram_fetch_wait_arch35.h"
 
 using namespace Mc2Kernel;
 
