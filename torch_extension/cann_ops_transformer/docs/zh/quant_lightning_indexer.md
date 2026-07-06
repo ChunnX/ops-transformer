@@ -77,6 +77,7 @@ cann_ops_transformer.quant_lightning_indexer_metadata(
 | metadata | Tensor | 必选 | 每个AIcore的Attention计算任务的Batch、Head、以及Q和K的分块的索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
 
 ## 约束说明
+
 - 该接口支持推理场景下使用。
 - 该接口支持单算子模式和aclgraph模式。
 - quant_lightning_indexer_metadata接口需与quant_lightning_indexer算子配套使用。
