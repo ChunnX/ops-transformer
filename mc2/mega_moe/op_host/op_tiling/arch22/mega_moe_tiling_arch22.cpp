@@ -144,7 +144,7 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     // 同步flag
     int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync所用空间
     if (!isA3) {
-        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
+        // A2: dispatch flag (EP×E×64B) + allgather flag (EP×64B)
         int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
         int64_t allgatherFlag = epWorldSize * 64;
         offsetFlag += dispatchFlag + allgatherFlag;
@@ -357,7 +357,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
 
     // 3. ccl_buffer_size
     OP_TILING_CHECK(cclBufferSizePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is null."), return GRAPH_FAILED);
+ 	    OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is null."), return GRAPH_FAILED);
 
     // 4. max_recv_token_num
     OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
@@ -1270,15 +1270,20 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
         }
     } else if (archCode == SOC_ASCEND910B) {
+        uint64_t swigluSize = info.isQuantRouting ? 1UL : 2UL;
+        uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                                    // cumsum + preSumBeforeRank + preSumRankInExpert
-                                    info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 3 +
-                                    info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * info.N * sizeof(int16_t) * 2 + // GMM1 Out
-                                    info.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 + // GMM2 Out
-                                    info.maxRecvTokenNum * info.K + // quantizedToken
-                                    info.maxRecvTokenNum * k2 + // swiglu mid
-                                    info.worldSize * sizeof(int32_t) * 16; // sync
+            // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
+            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
+            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
+            info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
+            info.worldSize * sizeof(int32_t) * 16UL; // sync
+        if (info.isQuantRouting) {
+            megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2
+        }
+        if (info.isW4A8) {
+            megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
+        }
     }
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
