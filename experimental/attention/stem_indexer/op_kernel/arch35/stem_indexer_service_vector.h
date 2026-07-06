@@ -36,7 +36,7 @@ public:
     static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
     using QK_T = float32_t;
-    using SCORE_T = uint32_t;
+    using SCORE_T = typename SIT::scoreType;
 
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
@@ -114,7 +114,7 @@ private:
 
     // tmp buff for topk
     TBuf<TPosition::VECCALC> mrgValueBuf_;
-    LocalTensor<uint32_t> mrgValueLocal_;
+    LocalTensor<SCORE_T> mrgValueLocal_;
 
     TBuf<TPosition::VECCALC> globalIndexBuf_;
     LocalTensor<uint32_t> globalIndexLocal_;
@@ -163,8 +163,8 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     vBiasLocal_ = vBiasBuf_.Get<float>();                           // vBias
 
     // Topk
-    pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
-    mrgValueLocal_ = mrgValueBuf_.Get<uint32_t>();
+    pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(SCORE_T));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
 
     pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * MAX_TOPK_COUNT * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
@@ -435,7 +435,6 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
 
         uint32_t rawTopkSelectNum = topkNumLocal_.GetValue(mInnerIdx);
         uint32_t topkSelectNum = (rawTopkSelectNum > MAX_TOPK_COUNT) ? MAX_TOPK_COUNT : rawTopkSelectNum;
-        uint32_t mrgValueOffset = mInnerIdx * (MAX_TOPK_COUNT + trunkLen_);
         uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
         int64_t baseLenOffset = info.indiceLenOffset + (int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx;
         int64_t baseOutOffset = info.indiceOutOffset +
@@ -461,13 +460,12 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
         }
 
         if (initialBlocks_ > 0) {
-            CreateVecIndex(mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(),
-                           (int32_t)0, initialBlocks_);
+            CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), (int32_t)0, initialBlocks_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             copyOutParams.blockLen = (uint16_t)((uint32_t)initialBlocks_ * sizeof(int32_t));
             DataCopyPad(sparseIndicesGm[baseOutOffset],
-                        mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(), copyOutParams);
+                        indicesOutLocal.ReinterpretCast<int32_t>(), copyOutParams);
         }
 
         copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
@@ -476,14 +474,12 @@ __aicore__ inline void SIVector<SIT>::CopyOutFourRows(const SICommon::RunInfo &i
 
         if (windowSize_ > 0) {
             int32_t windowBase = curS1RealS2Len - windowSize_;
-            CreateVecIndex(mrgValueLocal_[mrgValueOffset + TOPK_ALIGN_SIZE].ReinterpretCast<int32_t>(),
-                           (int32_t)windowBase, windowSize_);
+            CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), (int32_t)windowBase, windowSize_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             copyOutParams.blockLen = (uint16_t)((uint32_t)windowSize_ * sizeof(int32_t));
             DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_ + topkSelectNum],
-                        mrgValueLocal_[mrgValueOffset + TOPK_ALIGN_SIZE].ReinterpretCast<int32_t>(),
-                        copyOutParams);
+                        indicesOutLocal.ReinterpretCast<int32_t>(), copyOutParams);
         }
 
         uint32_t totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
@@ -522,8 +518,10 @@ __aicore__ inline void SIVector<SIT>::RunTopKFourRows(
 
     LocalTensor<uint32_t> reuseMm1ResLocal =
         resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
-    LocalTensor<uint32_t> indicesOutLocal = reuseMm1ResLocal[SIKernel::SITopk<uint32_t>::REUSE_INDICES_OUT_OFFSET];
-    LocalTensor<uint32_t> scoreOutLocal = reuseMm1ResLocal[SIKernel::SITopk<uint32_t>::REUSE_SCORE_OUT_OFFSET];
+    LocalTensor<uint32_t> indicesOutLocal = reuseMm1ResLocal[SIKernel::SITopk<SCORE_T>::REUSE_INDICES_OUT_OFFSET];
+    LocalTensor<SCORE_T> scoreOutLocal =
+        resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)]
+            .template ReinterpretCast<SCORE_T>()[SIKernel::SITopk<SCORE_T>::REUSE_SCORE_OUT_OFFSET];
     PipeBarrier<PIPE_V>();
 
     topkOp_.Batch4Rows(mrgValueLocal_, indicesOutLocal, scoreOutLocal,
@@ -644,7 +642,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
 
         LocalTensor<uint32_t> indicesOutLocal =
-            resMm1Local_[0].ReinterpretCast<uint32_t>()[SIKernel::SITopk<uint32_t>::REUSE_INDICES_OUT_OFFSET];
+            resMm1Local_[0].ReinterpretCast<uint32_t>()[SIKernel::SITopk<SCORE_T>::REUSE_INDICES_OUT_OFFSET];
 
         // 当前处理的gS1行起始索引（全局位置）
         int64_t curGS1Idx = gS1Idx * mBaseSize_; 

@@ -54,7 +54,7 @@ public:
     static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
     static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
-    using SCORE_T = uint32_t;
+    using SCORE_T = typename SIT::scoreType;
 
     SIMatmul<SIT> matmulService;
     SIVector<SIT> vectorService;

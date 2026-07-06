@@ -25,11 +25,15 @@ enum class SI_LAYOUT : uint32_t {
     BNSD = 3
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename... Args>
+template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename SCORE_T = uint32_t,
+          typename... Args>
 struct SIType {
+    static_assert(std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>,
+                  "Invalid SCORE_T");
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
+    using scoreType = SCORE_T;
 
     static constexpr bool causalFlag = CAUSAL;
     static constexpr bool pageAttention = false;

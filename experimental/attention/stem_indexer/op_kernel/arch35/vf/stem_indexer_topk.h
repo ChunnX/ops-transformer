@@ -17,20 +17,11 @@
 
 #include "kernel_operator.h"
 #include "vf_topk_gather.h"
+#include "vf_topk_16_gather.h"
 
 namespace SIKernel {
-template<typename T>
+template<typename SCORE_T>
 class SITopk {
-public:
-    __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
-                                      LocalTensor<T>& inputLocal,
-                                      uint32_t s2SeqLen)
-    {
-    }
-};
-
-template<>
-class SITopk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
@@ -45,14 +36,16 @@ public:
 
     static constexpr uint32_t MAX_LOOP_M = 4;
 
-    // reuseMm1ResLocal 内的复用偏移（uint32_t 元素数）
+    // reuseMm1ResLocal 内的复用偏移（indices 按 uint32_t 元素数，score 按 SCORE_T 元素数）
     // idx0~idx3: 4 * 4*256 = 4096
     // histograms: 4*256 = 1024
     // nkValue: 4*64 = 256
     // tmpIndex: 4*256 = 1024
     // 合计 6400，之后排布 indicesOut(1024) 和 scoreOut(1024)
     static constexpr uint32_t REUSE_INDICES_OUT_OFFSET = 6400;
-    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET = 7424;
+    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET_U32 = 7424;
+    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET =
+        REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
     __aicore__ inline uint32_t GetReUseSharedTmpBufferSize()
     {
@@ -136,9 +129,9 @@ public:
     // }
 
     __aicore__ inline void Batch4Rows(
-        const LocalTensor<uint32_t>& mrgValueLocal,
+        const LocalTensor<SCORE_T>& mrgValueLocal,
         const LocalTensor<uint32_t>& indicesOutLocal,
-        const LocalTensor<uint32_t>& hisValueLocal,
+        const LocalTensor<SCORE_T>& hisValueLocal,
         const LocalTensor<uint32_t>& reuseMm1ResLocal,
         const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
         LocalTensor<uint32_t>& topkNumLocal,
@@ -163,44 +156,94 @@ public:
         hisIndexLocal[0] = reuseGlobalIndexLocal[rowGlobalIdxOffset];
         hisIndexLocal[1] = indicesOutLocal;
 
-        LocalTensor<uint32_t> inputValueLocal = mrgValueLocal[mBaseIdx * mrgRowStride + inputOffset];
+        LocalTensor<SCORE_T> inputValueLocal = mrgValueLocal[mBaseIdx * mrgRowStride + inputOffset];
         LocalTensor<uint32_t> topKLocalSlice = topkNumLocal[mBaseIdx];
 
         if (s2LoopNum == 1) {
-            SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+            if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                topkb16gather::LiTopKVF<false>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
                                                idx0Local, idx1Local, idx2Local, idx3Local,
                                                nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            } else {
+                SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                   idx0Local, idx1Local, idx2Local, idx3Local,
+                                                   nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
-                AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
+                uint32_t mInnerIdx = mBaseIdx + m;
+                if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                    LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                    topkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
+                                                          tmpIdxLocal16[m * topkAlign],
+                                                          topkNumLocal.GetValue(mInnerIdx));
+                } else {
+                    AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
+                }
             }
         } else if (loopIdx == 0) {
-            SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+            if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                topkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
                                               idx0Local, idx1Local, idx2Local, idx3Local,
                                               nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            } else {
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                  idx0Local, idx1Local, idx2Local, idx3Local,
+                                                  nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
+                uint32_t mInnerIdx = mBaseIdx + m;
                 // 输出到 globalIndexLocal(hisIndexLocal[0])，给下一轮 gather 和 CopyOutFourRows 用
-                AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
+                if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                    LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                    topkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
+                                                          tmpIdxLocal16[m * topkAlign],
+                                                          topkNumLocal.GetValue(mInnerIdx));
+                } else {
+                    AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
+                }
                 AscendC::DataCopy(mrgValueLocal[(mBaseIdx + m) * mrgRowStride], hisValueLocal[m * topkAlign], topkAlign);
             }
         } else {
-            SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+            if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                topkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
                                               idx0Local, idx1Local, idx2Local, idx3Local,
                                               nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            } else {
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                  idx0Local, idx1Local, idx2Local, idx3Local,
+                                                  nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+            }
             PipeBarrier<PIPE_V>();
             // gather: 从 globalIndexLocal(hisIndexLocal[0]) 读上轮结果，输出到 indicesOutLocal(hisIndexLocal[1])
             for (uint32_t m = 0; m < batchRowNum; ++m) {
                 uint32_t mInnerIdx = mBaseIdx + m;
-                SITopkb32gather::SiTopKGatherVF(
-                    hisIndexLocal[1][m * topkAlign],
-                    hisValueLocal[m * topkAlign],
-                    mrgValueLocal[mInnerIdx * mrgRowStride + inputOffset],
-                    tmpIndexLocal[m * topkAlign],
-                    hisIndexLocal[0][m * topkAlign],
-                    topkNumLocal.GetValue(mInnerIdx),
-                    loopIdx * trunkLen - topkAlign,
-                    validLen);
+                if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                    LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
+                    topkb16gather::LiTopKGatherVF(
+                        hisIndexLocal[1][m * topkAlign],
+                        hisValueLocal[m * topkAlign],
+                        inputValueLocal[m * offset],
+                        tmpIdxLocal16[m * topkAlign],
+                        hisIndexLocal[0][m * topkAlign],
+                        topkNumLocal.GetValue(mInnerIdx),
+                        loopIdx * trunkLen - topkAlign,
+                        validLen);
+                } else {
+                    SITopkb32gather::SiTopKGatherVF(
+                        hisIndexLocal[1][m * topkAlign],
+                        hisValueLocal[m * topkAlign],
+                        mrgValueLocal[mInnerIdx * mrgRowStride + inputOffset],
+                        tmpIndexLocal[m * topkAlign],
+                        hisIndexLocal[0][m * topkAlign],
+                        topkNumLocal.GetValue(mInnerIdx),
+                        loopIdx * trunkLen - topkAlign,
+                        validLen);
+                }
                 PipeBarrier<PIPE_V>();
                 // 拷回 globalIndexLocal(hisIndexLocal[0])，给下一轮/CopyOutFourRows 用
                 AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], hisIndexLocal[1][m * topkAlign], topkAlign);

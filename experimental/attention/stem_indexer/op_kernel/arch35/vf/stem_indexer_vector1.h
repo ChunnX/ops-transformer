@@ -252,67 +252,109 @@ __aicore__ inline void PadMrgSingleRowRangeVF(const LocalTensor<uint32_t> &mrgVa
     PadMrgSingleRowRangeVFImpl(mrgValueBuf + rowOffset, padStart, padEnd);
 }
 
-__aicore__ inline void PadMrgRowsInitBlockVF(const LocalTensor<uint32_t> &mrgValueLocal,
-                                            const uint32_t rowStride,
-                                            const uint32_t rowNum,
-                                            const uint32_t topkSelectNumAlign,
-                                            const uint32_t initialBlocks)
+template <typename SCORE_T>
+__aicore__ inline void PadMrgRowsInitBlockVF(LocalTensor<SCORE_T> &mrgValueLocal,
+                                             const uint32_t rowStride,
+                                             const uint32_t rowNum,
+                                             const uint32_t topkSelectNumAlign,
+                                             const uint32_t initialBlocks)
 {
     if (rowNum == 0U || initialBlocks == 0U) {
         return;
     }
 
-    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
-    PadMrgRowsInitBlockVFImpl(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+        PadMrgRowsInitBlockVFImpl(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    } else {
+        for (uint32_t rowIdx = 0; rowIdx < rowNum; rowIdx++) {
+            AscendC::Duplicate(mrgValueLocal[rowIdx * rowStride + topkSelectNumAlign],
+                               (SCORE_T)0, initialBlocks);
+        }
+    }
 }
 
-__aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
-                                                   const LocalTensor<uint32_t> &topkNumLocal,
-                                                   const LocalTensor<uint32_t> &s2BlockValidLenLocal,
-                                                   const uint32_t mBaseIdx,
-                                                   const uint32_t batchRowNum,
-                                                   const uint32_t rowStride,
-                                                   const uint32_t trunkLen)
+template <typename SCORE_T>
+__aicore__ inline void PadMrgFourRowsFirstS2RangeVF(LocalTensor<SCORE_T> &mrgValueLocal,
+                                                    const LocalTensor<uint32_t> &topkNumLocal,
+                                                    const LocalTensor<uint32_t> &s2BlockValidLenLocal,
+                                                    const uint32_t mBaseIdx,
+                                                    const uint32_t batchRowNum,
+                                                    const uint32_t rowStride,
+                                                    const uint32_t trunkLen)
 {
     if (batchRowNum == 0U) {
         return;
     }
 
-    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
-    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
-        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
-        const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
-        const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
-        const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
-        const uint32_t rowOffset = mInnerIdx * rowStride;
-        PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
-                                       topkSelectNum, s2BlockValidLen,
-                                       s2BlockValidLenAlign);
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+        for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+            const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+            const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+            const uint32_t rowOffset = mInnerIdx * rowStride;
+            PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                           topkSelectNum, s2BlockValidLen,
+                                           s2BlockValidLenAlign);
+        }
+    } else {
+        for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+            const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+            const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+            const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+            if (s2BlockValidLenAlign > s2BlockValidLen) {
+                AscendC::Duplicate(mrgValueLocal[mInnerIdx * rowStride + topkSelectNumAlign + s2BlockValidLen],
+                                   (SCORE_T)0, s2BlockValidLenAlign - s2BlockValidLen);
+            }
+        }
     }
 }
 
-__aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
-                                                      const LocalTensor<uint32_t> &topkNumLocal,
-                                                      const LocalTensor<uint32_t> &s2BlockValidLenLocal,
-                                                      const uint32_t mBaseIdx,
-                                                      const uint32_t batchRowNum,
-                                                      const uint32_t rowStride,
-                                                      const uint32_t trunkLen)
+template <typename SCORE_T>
+__aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(LocalTensor<SCORE_T> &mrgValueLocal,
+                                                       const LocalTensor<uint32_t> &topkNumLocal,
+                                                       const LocalTensor<uint32_t> &s2BlockValidLenLocal,
+                                                       const uint32_t mBaseIdx,
+                                                       const uint32_t batchRowNum,
+                                                       const uint32_t rowStride,
+                                                       const uint32_t trunkLen)
 {
     if (batchRowNum == 0U) {
         return;
     }
 
-    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
-    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
-        const uint32_t mInnerIdx = mBaseIdx + rowIdx;
-        const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
-        const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
-        const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
-        const uint32_t rowOffset = mInnerIdx * rowStride;
-        PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
-                                          topkSelectNum, s2BlockValidLen,
-                                          s2BlockValidLenAlign);
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+        for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+            const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+            const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+            const uint32_t rowOffset = mInnerIdx * rowStride;
+            PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                              topkSelectNum, s2BlockValidLen,
+                                              s2BlockValidLenAlign);
+        }
+    } else {
+        for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+            const uint32_t mInnerIdx = mBaseIdx + rowIdx;
+            const uint32_t topkSelectNum = topkNumLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLen = s2BlockValidLenLocal.GetValue(mInnerIdx);
+            const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+            const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+            if (topkSelectNumAlign > topkSelectNum) {
+                AscendC::Duplicate(mrgValueLocal[mInnerIdx * rowStride + topkSelectNum],
+                                   (SCORE_T)0, topkSelectNumAlign - topkSelectNum);
+            }
+            if (s2BlockValidLenAlign > s2BlockValidLen) {
+                AscendC::Duplicate(mrgValueLocal[mInnerIdx * rowStride + topkSelectNumAlign + s2BlockValidLen],
+                                   (SCORE_T)0, s2BlockValidLenAlign - s2BlockValidLen);
+            }
+        }
     }
 }
 
@@ -389,9 +431,71 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
     }
 }
 
+// float in uint16 out, use bf16 sortable key to match uint16 topk.
+template <typename QK_T>
+__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t* outBuf,
+                                                    __ubuf__ QK_T* qkBuf,
+                                                    __ubuf__ float* vBiasBuf,
+                                                    const float rSquare,
+                                                    const int gS1BasePerVecSize_,
+                                                    const int s2BaseSize,
+                                                    const int mrgValueLen)
+{
+    MicroAPI::RegTensor<float> regvBias[4];
+    MicroAPI::RegTensor<float> regQK[4];
+    MicroAPI::RegTensor<float> regQKMul[4];
+    MicroAPI::RegTensor<float> regQKBias[4];
+    MicroAPI::RegTensor<bfloat16_t> regQKBiasBF16[2];
+    MicroAPI::RegTensor<uint16_t> regOut[2];
+    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+
+    FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    constexpr static MicroAPI::CastTrait castTraitF32ToF16_EVEN = {
+        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+    constexpr static MicroAPI::CastTrait castTraitF32ToF16_ODD = {
+        MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
+
+    for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
+        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i);
+        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
+        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + 128);
+        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + 192);
+        MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[2], regQK[2], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[3], regQK[3], rSquare, maskAllB32);
+        MicroAPI::Add(regQKBias[0], regQKMul[0], regvBias[0], maskAllB32);
+        MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[1], maskAllB32);
+        MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[2], maskAllB32);
+        MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[3], maskAllB32);
+
+        MicroAPI::DeInterleave(regQKBias[0], regQKBias[1], regQKBias[0], regQKBias[1]);
+        MicroAPI::DeInterleave(regQKBias[2], regQKBias[3], regQKBias[2], regQKBias[3]);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[0], regQKBias[1], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[1], regQKBias[3], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[0], regQKBias[0], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[1], regQKBias[2], maskAllB32);
+        FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regQKBiasBF16[0], regQKBiasBF16[1],
+                                         bf16Ctx, maskAllB16);
+
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1], maskAllB16);
+    }
+}
+
 /**
  * @brief MUL RSquare后加上偏移
- * @param outLocal VEC1结果 转为uint32_t
+ * @param outLocal VEC1结果 转为SCORE_T sortable key
  * @param qkLocal mm1 res的结果 注意力分数
  * @param vBiasLocal kb的偏移向量
  * @param rSquare (stemStride / stemBlockSize) ^ 2
@@ -399,8 +503,8 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
  * @param s2BaseSize s2方向每个vec核分到基本块大小
  * @param mrgValueLen 每次流式topk分到的长度
  */
-template<typename QK_T>
-__aicore__ inline void MulRSquareAndAddVBiasVF(const LocalTensor<uint32_t> &outLocal,   // out    [S2Base]       [256   ]
+template<typename SCORE_T, typename QK_T>
+__aicore__ inline void MulRSquareAndAddVBiasVF(const LocalTensor<SCORE_T> &outLocal,   // out    [S2Base]       [256   ]
                                                const LocalTensor<QK_T> &qkLocal,        // q*k^t  [qbG, S2Base]  [48 256]
                                                const LocalTensor<float> &vBiasLocal,    // vBias  [1, S2Base]    [256   ]
                                                const float rSquare,
@@ -410,7 +514,7 @@ __aicore__ inline void MulRSquareAndAddVBiasVF(const LocalTensor<uint32_t> &outL
 {
     __ubuf__ QK_T * qkBuf = (__ubuf__ QK_T *)qkLocal.GetPhyAddr();
     __ubuf__ float * vBiasBuf = (__ubuf__ float *)vBiasLocal.GetPhyAddr();
-    __ubuf__ uint32_t * outBuf = (__ubuf__ uint32_t *)outLocal.GetPhyAddr();
+    __ubuf__ SCORE_T * outBuf = (__ubuf__ SCORE_T *)outLocal.GetPhyAddr();
 
     MulRSquareAndAddVBiasVFImpl(outBuf, qkBuf, vBiasBuf, rSquare, gS1BasePerVecSize_, s2BaseSize, mrgValueLen);
 }

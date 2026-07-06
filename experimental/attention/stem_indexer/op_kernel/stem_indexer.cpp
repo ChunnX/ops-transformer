@@ -44,6 +44,6 @@ __global__ __aicore__ void stem_indexer(__gm__ uint8_t *qflat, __gm__ uint8_t *k
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     #if !defined(__CCE_AICORE__) || (__CCE_AICORE__ == 310) || defined(__DAV_310R6__)
-        INVOKE_LI_NO_KFC_OP_IMPL(SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL);
+        INVOKE_LI_NO_KFC_OP_IMPL(SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL, uint16_t);
     #endif
 }
