@@ -18,7 +18,26 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.quant_lightning_indexer_metadata(num_heads_q, num_heads_k, head_dim, topk, quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, batch_size=0, max_seqlen_q=-1, max_seqlen_k=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1) -> Tensor
+cann_ops_transformer.quant_lightning_indexer_metadata(
+  num_heads_q,
+  num_heads_k,
+  head_dim,
+  topk,
+  quant_mode,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  batch_size=0,
+  max_seqlen_q=-1,
+  max_seqlen_k=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1
+) -> Tensor
 ```
 
 ## 参数说明
@@ -46,7 +65,8 @@ cann_ops_transformer.quant_lightning_indexer_metadata(num_heads_q, num_heads_k, 
 | cmp_ratio | int | 可选 | 表示Key的压缩率，取值范围[1, 128]，默认值为1，表示无压缩。 | int32 | - |
 
 - <term>Ascend 950PR/Ascend 950DT</term>：不支持quant_mode = 2。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
 
 ## 返回值说明
 
@@ -57,7 +77,8 @@ cann_ops_transformer.quant_lightning_indexer_metadata(num_heads_q, num_heads_k, 
 | metadata | Tensor | 必选 | 每个AIcore的Attention计算任务的Batch、Head、以及Q和K的分块的索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
 
 ## 约束说明
-
+- 该接口支持推理场景下使用。
+- 该接口支持单算子模式和aclgraph模式。
 - quant_lightning_indexer_metadata接口需与quant_lightning_indexer算子配套使用。
 - B（Batch）表示输入样本批量大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。

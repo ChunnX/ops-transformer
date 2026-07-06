@@ -6,12 +6,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT                                   |    √     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品                 |    √     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品                 |    √     |
-| Atlas 200I/500 A2推理产品                                  |    x     |
-| Atlas推理系列产品                                          |    x     |
-| Atlas训练系列产品                                          |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -86,51 +86,51 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     <tr>
       <td>cuSeqLensQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
-      <td>支持空Tensor。</td>
+      <td>表示不同batch中query的累积sequence length。</td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传，并可通过该入参shape推导batch。</li><li>第一个值固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B+1,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqLensKOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
-      <td>支持空Tensor。</td>
+      <td>表示不同batch中key的累积sequence length。</td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传。</li><li>第一个值固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B+1,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>seqUsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中query实际参与运算的sequence length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>seqUsedKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key实际参与运算的sequence length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -276,7 +276,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   </tbody>
   </table>
 
-  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
 
 - **返回值：**
 
@@ -360,7 +360,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 ## 约束说明
 
   - aclnnSparseLightningIndexerKLLossGradMetadata为确定性实现，确定性计算配置不会改变其输出规则。
-
+  - B（Batch）表示输入样本批量大小。
   - BSND场景
     - 必传batchSize、maxSeqLenQ、maxSeqLenK和topk参数，以获取shape信息。
   - TND场景

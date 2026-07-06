@@ -32,11 +32,49 @@
 调用lightning_indexer接口之前，先调用前置接口lightning_indexer_metadata，完成lightning_indexer负载均衡的计算。
 
 ```python
-cann_ops_transformer.lightning_indexer_metadata(num_heads_q, num_heads_k, head_dim, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, batch_size=0, max_seqlen_q=-1, max_seqlen_k=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1) -> Tensor
+cann_ops_transformer.lightning_indexer_metadata(
+  num_heads_q,
+  num_heads_k,
+  head_dim,
+  topk,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  batch_size=0,
+  max_seqlen_q=-1,
+  max_seqlen_k=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1
+) -> Tensor
 ```
 
 ```python
-cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, output_idx_offset=None, metadata=None, max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1, return_value=0) -> (Tensor, Tensor)
+cann_ops_transformer.lightning_indexer(
+  q,
+  k,
+  w,
+  topk,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  block_table=None,
+  output_idx_offset=None,
+  metadata=None,
+  max_seqlen_q=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1,
+  return_value=0
+) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -111,7 +149,7 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 
 ## 约束说明
 
-- 该接口支持训练、推理场景下使用。
+- 该接口支持推理场景下使用。
 - 该接口支持单算子模式和aclgraph图模式调用。
 - lightning_indexer_metadata接口需与lightning_indexer算子配套使用。
 - B（Batch）表示输入样本批量大小。
