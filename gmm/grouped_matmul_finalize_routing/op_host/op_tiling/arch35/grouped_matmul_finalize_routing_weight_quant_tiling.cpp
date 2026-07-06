@@ -613,7 +613,7 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *contex)
     }
 
     OP_CHECK_IF(!CheckKNAlignmentAndMinSize(kSize, nSize),
-                OP_LOGE(contex->GetNodeName(), "CheckKNAlignmentAndMinSize failed."), return false);
+                OP_LOGE(contex->GetNodeName(), "CheckKNAlignmentAndMinSize failed."), return false );
 
     // 3. Validate group_list shape
     OP_CHECK_IF(!ValidateGroupListShape(contex, eFromW),
