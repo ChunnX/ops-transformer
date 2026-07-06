@@ -1034,7 +1034,6 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0)
 {
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
     RegTensor<float> vreg_x_sum_2;
     RegTensor<float> vreg_x_sum_3;
