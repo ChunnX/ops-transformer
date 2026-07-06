@@ -444,6 +444,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     // 解: R <= (available - 64) * 4 / 33，再 floor-align 到 256（保证 GM 写 32B 对齐）
     uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize;
     uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts;
+    PRINTF("============availableUb============:%u\n", availableUb);
     uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
     maxRoundSize = (maxRoundSize / 256U) * 256U;
     if (maxRoundSize == 0) { maxRoundSize = 256U; }
@@ -465,6 +466,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
     totalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
         static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_)));
+    PRINTF("=============totalRounds_=============:%u\n", totalRounds_);
 
     // Tensor用处：SendMaskCal 每轮搬运本卡 topkIds 的一个子段；
     // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
