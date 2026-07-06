@@ -88,54 +88,47 @@ __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Init(GM_ADDR x, G
 template <class mmType>
 __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Process()
 {
+    // 1.对每次workspace切分做大循环。
     preProcess.Init(gmAddrParams, gmmBaseParams);
     midProcess.Init(gmAddrParams, gmmBaseParams);
     postProcess.Init(gmAddrParams, gmmBaseParams, gmmSwiglu);
 
+    // 1.前处理提前下发一次
     preProcess.Process(workspaceSplitConfig, 0, pipe);
+    for (int64_t workspaceSplitLoopIdx = 0; workspaceSplitLoopIdx < workspaceSplitConfig.loopCount;
+         workspaceSplitLoopIdx++) {
+        // 更新workspaceSplitConfig
+        UpdateWorkSpaceSplitConfig(workspaceSplitConfig, workspaceSplitLoopIdx);
+        if ASCEND_IS_AIV {
+            pipe->Reset();
+        }
+
+        SyncAll<false>();
+        // 2.第n次中处理 && 第n+1次前处理 && 第n-1次后处理 并行
+        midProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx);
+
+        preProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx + 1, pipe);
+        if ASCEND_IS_AIV {
+            pipe->Reset();
+            SyncAll<true>();
+        }
+        postProcess.Process(tempWorkspaceSplitConfig, workspaceSplitLoopIdx - 1, pipe);
+        // 3.第n-1次后处理需要保留第n次的切分数据
+        tempWorkspaceSplitConfig = workspaceSplitConfig;
+        // reset
+        if ASCEND_IS_AIV {
+            pipe->Reset();
+        }
+        SyncAll<false>();
+        // 3.前一次后处理 && 后一次MM 并行
+    }
+    // reset
     if ASCEND_IS_AIV {
         pipe->Reset();
     }
-    GmmsqNotifyPipelinePreReady(0);
-
-    for (int64_t workspaceSplitLoopIdx = 0; workspaceSplitLoopIdx < workspaceSplitConfig.loopCount;
-         workspaceSplitLoopIdx++) {
-        UpdateWorkSpaceSplitConfig(workspaceSplitConfig, workspaceSplitLoopIdx);
-
-        if ASCEND_IS_AIV {
-            int64_t nextPreLoopIdx = workspaceSplitLoopIdx + 1;
-            if (nextPreLoopIdx < workspaceSplitConfig.loopCount) {
-                if (nextPreLoopIdx >= DOUBLE_BUFFER) {
-                    GmmsqWaitPipelinePreFree(nextPreLoopIdx);
-                }
-                preProcess.Process(workspaceSplitConfig, nextPreLoopIdx, pipe);
-                pipe->Reset();
-                GmmsqNotifyPipelinePreReady(nextPreLoopIdx);
-            }
-        }
-
-        if (workspaceSplitLoopIdx >= DOUBLE_BUFFER) {
-            GmmsqWaitPipelineMidFree(workspaceSplitLoopIdx);
-        }
-        GmmsqWaitPipelinePreReady(workspaceSplitLoopIdx);
-        midProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx);
-        GmmsqNotifyPipelineMidDone(workspaceSplitLoopIdx, workspaceSplitConfig.loopCount);
-
-        int64_t postLoopIdx = workspaceSplitLoopIdx - 1;
-        if (postLoopIdx >= 0) {
-            GmmsqWaitPipelineMidReady(postLoopIdx);
-            postProcess.Process(tempWorkspaceSplitConfig, postLoopIdx, pipe);
-            if ASCEND_IS_AIV {
-                pipe->Reset();
-            }
-            GmmsqNotifyPipelinePostDone(postLoopIdx, workspaceSplitConfig.loopCount);
-        }
-        tempWorkspaceSplitConfig = workspaceSplitConfig;
-    }
-
-    int64_t lastLoopIdx = workspaceSplitConfig.loopCount - 1;
-    GmmsqWaitPipelineMidReady(lastLoopIdx);
-    postProcess.Process(workspaceSplitConfig, lastLoopIdx, pipe);
+    SyncAll<false>();
+    // // 4.最后一次后处理
+    postProcess.Process(workspaceSplitConfig, workspaceSplitConfig.loopCount - 1, pipe);
     if ASCEND_IS_AIV {
         pipe->Destroy();
     }
