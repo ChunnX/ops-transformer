@@ -139,6 +139,12 @@ static inline ge::graphStatus GetCommParaBase(const gert::OpExecuteContext* host
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
 
     para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+    if (para.comm_mode == nullptr) {
+        OP_LOGD(kInnerDebug, "comm_mode is nullptr");
+    } else {
+        OP_LOGD(kInnerDebug, "comm_mode is not nullptr");
+        std::cout << "para.comm_mode is: " << para.comm_mode << std::endl;
+    }
 
     return ge::SUCCESS;
 }
@@ -209,6 +215,10 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
         isCommMode = true;
+        OP_LOGD(kInnerDebug, "isCommMode is true");
+        std::cout << "comm_para.comm_mode is: " << comm_para.comm_mode << std::endl;
+    } else {
+        OP_LOGD(kInnerDebug, "isCommMode is false");
     }
 
     switch (quant_para.type) {
