@@ -18,6 +18,13 @@ SMLAG_METADATA_SIZE = 1024
 SMLAG_METADATA_OP_NAME = "sparse_flash_mla_grad_metadata"
 
 
+def _is_ascend950():
+    try:
+        return "Ascend950" in torch.npu.get_device_name(0)
+    except Exception:
+        return False
+
+
 class SparseFlashMlaGradOpBuilder(OpBuilder):
     def __init__(self):
         super(SparseFlashMlaGradOpBuilder, self).__init__("sparse_flash_mla_grad")
@@ -115,6 +122,8 @@ def sparse_flash_mla_grad_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
+    if not _is_ascend950():
+        return None
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_ori_kv = 0 if max_seqlen_ori_kv is None else max_seqlen_ori_kv
