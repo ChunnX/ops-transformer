@@ -70,9 +70,12 @@ template <
     class ElementC_,
     class ElementBias_,
     class TileCopy_,
-    class TileMmad_>
+    class TileMmad_,
+    bool transposedMm1>
 struct BlockMmadTla<
-    MmadAtlasA5BsaPV,
+    // if transposedMm1, P is actually nZ in UB, and nZ in L1,
+    // and is transposed to zN while loaded to L0A.
+    MmadAtlasA5BsaPV<transposedMm1>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
@@ -83,7 +86,7 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaPV;
+    using DispatchPolicy = MmadAtlasA5BsaPV<transposedMm1>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
@@ -332,7 +335,19 @@ public:
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
+                    if constexpr (DispatchPolicy::transposedMm1) {
+                        AscendC::LoadData2DParamsV2 loadData2DParamsA;
+                        loadData2DParamsA.mStartPosition = 0;
+                        loadData2DParamsA.kStartPosition = 0;
+                        loadData2DParamsA.ifTranspose = 1;
+                        loadData2DParamsA.mStep = RoundUp(l0TileKAct, 16) / 16;
+                        loadData2DParamsA.kStep = RoundUp(l0TileMAct, 16) / 16;
+                        loadData2DParamsA.srcStride = RoundUp(l0TileKAct, 16) / 16;
+                        loadData2DParamsA.dstStride = RoundUp(l0TileMAct, 16) / 16;
+                        AscendC::LoadData(l0ATensor[l0ABufId], l1ATensorTla.data(), loadData2DParamsA);
+                    } else {
+                        copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
+                    }
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                     // reverse crossCoreSync for P
                     if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
@@ -371,12 +386,18 @@ public:
             // rounded up by 8 and splited in half to each AIV
             // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
             // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
-            uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+            uint32_t mFixPAligned = 0;
+            if constexpr (DispatchPolicy::transposedMm1) {
+                mFixPAligned = RoundUp(rowNum, 32); // consistent with K*Q^t splitN 
+            } else {
+                mFixPAligned = RoundUp(rowNum, 8);
+            }
+            // uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             if constexpr (FULL_QUANT_FP8) {
                 CopyL0CToDst copyL0CToDstSub0;
                 CopyL0CToDst copyL0CToDstSub1;
-                uint32_t mPerSubCore = mFixPAligned8 / 2;
+                uint32_t mPerSubCore = mFixPAligned / 2;
                 auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
                                                 tla::MakeShape(mPerSubCore, nFixPAligned8));
                 auto l0CTensorTlaTileSub0 =
@@ -388,9 +409,8 @@ public:
             } else {
                 CopyL0CToDst copyL0CToDst;
                 auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                tla::MakeShape(mFixPAligned8, nFixPAligned8));
+                                                tla::MakeShape(mFixPAligned, nFixPAligned8));
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
-            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         // crossCoreSync after all fixPipe move
