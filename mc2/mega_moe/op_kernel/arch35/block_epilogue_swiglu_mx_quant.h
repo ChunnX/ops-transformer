@@ -46,8 +46,10 @@ constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
+constexpr uint32_t M_LOC_IDX = 4;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
+constexpr uint32_t MAX_TILE_M = 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -128,9 +130,11 @@ public:
         GM_ADDR x2ScaleGmAddr{nullptr};
         GM_ADDR x1ScaleGmAddr{nullptr};
         GM_ADDR biasGmAddr{nullptr};
+        GM_ADDR tripleInfoGmAddr{nullptr};
         uint32_t baseM;
         uint32_t baseN;
         float clampLimit{0.0f};
+        int32_t topkWeightsMode{0};
         Arguments() = default;
     };
 
@@ -159,7 +163,7 @@ public:
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    __aicore__ inline void VFDoSwigluForMX(uint16_t mSize, uint16_t pingpongIdx = 0);
+    __aicore__ inline void VFDoSwigluForMX(uint16_t mSize, uint16_t pingpongIdx = 0, uint64_t mLoc = 0);
 
     template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false>
     __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
@@ -167,7 +171,7 @@ private:
                                                    __ubuf__ bfloat16_t *gluResAddr,
                                                    __ubuf__ uint16_t *maxExpAddr,
                                                    __ubuf__ uint16_t *halfScaleLocalAddr,
-                                                   uint16_t mSize, uint16_t nSize);
+                                                   uint16_t mSize, uint16_t nSize, uint64_t mLoc = 0);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -222,6 +226,8 @@ private:
 
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
     float clampLimit_{0.0f};
+    int32_t topkWeightsMode_{0};
+    __gm__ int32_t* tripleInfoGm_{nullptr};
 };
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -233,6 +239,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     }
     params_ = &params;
     clampLimit_ = params.clampLimit;
+    topkWeightsMode_ = params.topkWeightsMode;
+    tripleInfoGm_ = reinterpret_cast<__gm__ int32_t*>(params.tripleInfoGmAddr);
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -530,7 +538,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
     __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr,
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
-    uint16_t mSize, uint16_t nSize)
+    uint16_t mSize, uint16_t nSize, uint64_t mLoc)
 {
     uint32_t nSrcUbAligned;
     if constexpr (IsInterleavedSrc) {
@@ -576,6 +584,15 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const float negScalarOne = -1.0f;
     bfloat16_t numZero = 0;
 
+    float weightArr[MAX_TILE_M];
+    for (uint16_t i = 0; i < MAX_TILE_M; i++) { weightArr[i] = 1.0f; }
+    if (topkWeightsMode_ == 1 && tripleInfoGm_ != nullptr) {
+        for (uint16_t i = 0; i < MAX_TILE_M; i++) {
+            int32_t weightBits = tripleInfoGm_[(mLoc + i) * INT32_PER_256B + WEIGHT_INDEX];
+            weightArr[i] = *reinterpret_cast<float*>(&weightBits);
+        }
+    }
+
     // swiglu
     __VEC_SCOPE__
     {
@@ -620,6 +637,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask); // swish(x)=x/(exp(-x)+1)
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask); // swish(x)*y
 
+                AscendC::MicroAPI::Muls(outFReg, outFReg, weightArr[dim0vfLoopIdx], mask);
+
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_FP16_BF16>(outTReg, outFReg, mask);
                 AscendC::MicroAPI::AddrReg outOffset =
                     AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(dim0vfLoopIdx, nDstUbAligned,
@@ -648,6 +667,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask1);
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask1);
+
+                AscendC::MicroAPI::Muls(outFReg, outFReg, weightArr[dim0vfLoopIdx], mask1);
 
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_FP16_BF16>(outTReg, outFReg, mask1);
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
@@ -682,7 +703,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
-                                                                                       uint16_t pingpongIdx)
+                                                                                       uint16_t pingpongIdx,
+                                                                                       uint64_t mLoc)
 {
     constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
@@ -710,14 +732,14 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, true>(
             quantOutputInUbAddr, quantScaleOutputInUbAddr,
             l0cOutUbBase, l0cOutUbSecondAddr,
-            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
     } else {
         // 非interleaved保留upstream/master的两块UB输入布局。
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, false>(
             quantOutputInUbAddr, quantScaleOutputInUbAddr,
             l0cOutUbBase, l0cOutUbSecondAddr,
-            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
     }
 }
 
@@ -753,7 +775,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
-    VFDoSwigluForMX(singleM_, pingpongIdx); // switch(x)*y 计算quant quantScale
+    uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
+    VFDoSwigluForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
