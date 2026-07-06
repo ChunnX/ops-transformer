@@ -465,8 +465,8 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
             deq_qi = deq_q_blocks[i]
 
             sij = torch.matmul(qi, kj_T)
+            deq_qi = deq_qi * softmax_scale
             sij = sij * deq_qi * deq_kj_T
-            sij = sij * softmax_scale
 
             causal_mask = mask_blocks[i][j].contiguous()
             sij = sij.masked_fill(causal_mask, float('-inf'))
