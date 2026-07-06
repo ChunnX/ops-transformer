@@ -839,6 +839,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
             fBaseParams.sumS1S2Product = 1;
             fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
             fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
+            fBaseParams.effectiveT1 = fBaseParams.s1;
+ 	        fBaseParams.effectiveT2 = fBaseParams.s2;
         }
         fBaseParams.t1 = queryShape->GetStorageShape().GetDim(DIM_0);
         fBaseParams.t2 = keyShape->GetStorageShape().GetDim(DIM_0);
