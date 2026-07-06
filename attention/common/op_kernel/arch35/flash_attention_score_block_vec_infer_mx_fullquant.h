@@ -846,12 +846,12 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::ReduceFDDataCo
     uint64_t attenOutOffset, LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
     uint32_t columnCount, uint32_t actualColumnCount)
 {
-    DataCopyExtParams CopyExtParams;
-    CopyExtParams.blockCount = dealRowCount;
-    CopyExtParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
-    CopyExtParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
-    CopyExtParams.dstStride = 0;
-    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, CopyExtParams);
+    DataCopyExtParams copyExtParams;
+    copyExtParams.blockCount = dealRowCount;
+    copyExtParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
+    copyExtParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
+    copyExtParams.dstStride = 0;
+    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, copyExtParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
