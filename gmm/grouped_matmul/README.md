@@ -51,69 +51,19 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ## 功能说明
 
-### 分组方式
+接口功能：实现分组矩阵乘计算。公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
-算子功能：实现分组矩阵乘计算，公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
+- **M 轴分组（groupType=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
+- **K 轴分组（groupType=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
+- **不分组（groupType=-1）**：各组 shape 完全独立。
 
-- **M 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
-- **K 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
-- **不分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=-1）**：各组 shape 完全独立。
+基础计算公式：
 
-<a id="42-计算公式"></a>
+$$
+y_i=x_i\times weight_i + bias_i
+$$
 
-### 计算公式
-
-#### <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
-
-| x dtype | weight dtype | bias | 计算公式 | 说明 |
-|:---:|:---:|:---:|:---|------|
-| FP16, BF16, FLOAT32 | FP16, BF16, FLOAT32 | 可选 | $y_i = x_i \times weight_i + bias_i$ | 常规矩阵乘，不涉及任何缩放/偏移 |
-
-#### <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
-
-> weight 以低精度存储，计算时反量化为浮点。
-
-| 子场景 | x dtype | weight dtype | bias | 计算公式 | 说明 |
-|--------|:---:|:---:|:---:|:---|------|
-| A16W4/A16W8 | FP16, BF16 | INT4, INT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 x、weight、y 均为单 Tensor |
-| A8W4 (S8S4) | INT8 | INT4 | **必选** (FLOAT32) | $y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i$ | 仅支持单 Tensor；$bias_i = 8 \times weight_i \times scale_i$ 沿 K 轴规约 |
-| A16F8 | FP16, BF16 | FLOAT8_E5M2, FLOAT8_E4M3FN, HIFLOAT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 Ascend 950PR/950DT |
-
-#### <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
-
-##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化
-
-| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
-|----------|:---:|:---:|:---:|:---|------|
-| **T-C / T-T** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i + offset_i$ | 基础公式，无 perTokenScaleOptional |
-| **T-C / T-T** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i + offset_i$ | bias 在 scale 之前累加 |
-| **T-C / T-T** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i + bias_i$ | 无 offset 时适用 |
-
-##### <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化
-
-| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
-|----------|:---:|:---:|:---:|:---|------|
-| **T-T / T-C / K-T / K-C** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i$ | 基础公式 |
-| **T-T / T-C / K-T / K-C** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i \times per\\_token\\_scale_i$ | bias 在 scale 之前累加 |
-| **T-T / T-C / K-T / K-C** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i$ | bias 在 perTokenScale 之后累加 |
-
-##### 特殊 pergroup 量化
-
-| 量化模式 | block size | 计算公式 | 说明 |
-|----------|:---:|:---|------|
-| **<a id="mx量化"></a>MX** | gsM=1, gsN=1, gsK=32 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | 特殊的 pergroup 量化 |
-| **<a id="gb量化"></a>G-B** | gsM=1, gsN=gsK=128 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | pergroup-perblock 量化 |
-
-> 其中 $xSlice_i$ 为 $x_i$ 第 $m$ 行长度为 gsK 的向量，$weightSlice_i$ 为 $weight_i$ 第 $n$ 列长度为 gsK 的向量，$kLoops = \lceil K_i / gsK \rceil$，支持末尾切片长度不足 gsK。
-
-### 版本演进
-
-| 版本变化 | Ascend 950PR/Ascend 950DT | Atlas A3/A2 训练系列产品 |
-|---------|----------------|----------|
-| V4 → V5 | — | 增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token 数预期值，tiling 时按该值进行最优切分 |
-| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight 为 INT4/FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8（仅 perchannel 模式） | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持 x/weight/y 均为单 Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
-
-**确定性计算**：GroupedMatmul 默认提供确定性实现。
+详细计算公式（按场景分类：非量化、伪量化、全量化）及版本演进请参见 [aclnnGroupedMatmulV5 功能说明](docs/aclnnGroupedMatmulV5.md#3-功能说明)。
 
 ---
 
@@ -163,9 +113,9 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ## 约束说明
 
-**确定性计算**：GroupedMatmul 默认提供确定性实现。
+### 确定性计算
 
-> 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#7-%E7%BA%A6%E6%9D%9F%E8%AF%B4%E6%98%8E)。
+GroupedMatmul 默认提供确定性实现。
 
 ### 公共约束
 
@@ -179,6 +129,8 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 - groupListType=0：groupListOptional 须为非负单调非递减数列（累积和）。
   groupListType=1：须为非负数列（各组大小）。
   groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
+
+> 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#7-%E7%BA%A6%E6%9D%9F%E8%AF%B4%E6%98%8E)。
 
 ---
 

@@ -59,19 +59,69 @@ abbr {
 
 ## 功能说明
 
-接口功能：实现分组矩阵乘计算。公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
+### 分组方式
+
+算子功能：实现分组矩阵乘计算，公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
 - **M 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
 - **K 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
 - **不分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=-1）**：各组 shape 完全独立。
 
-基础计算公式：
+<a id="42-计算公式"></a>
 
-$$
-y_i=x_i\times weight_i + bias_i
-$$
+### 计算公式
 
-详细计算公式（按场景分类：<abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>、<abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr>、<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>）及版本演进请参见 [GroupedMatmul README](https://gitcode.com/cann/ops-transformer/blob/8cde1c9ef2d33811a441a3dc62152841506b0997/gmm/grouped_matmul/README.md#%E5%8A%9F%E8%83%BD%E8%AF%B4%E6%98%8E)。
+#### <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
+
+| x dtype | weight dtype | bias | 计算公式 | 说明 |
+|:---:|:---:|:---:|:---|------|
+| FP16, BF16, FLOAT32 | FP16, BF16, FLOAT32 | 可选 | $y_i = x_i \times weight_i + bias_i$ | 常规矩阵乘，不涉及任何缩放/偏移 |
+
+#### <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
+
+> weight 以低精度存储，计算时反量化为浮点。
+
+| 子场景 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|--------|:---:|:---:|:---:|:---|------|
+| A16W4/A16W8 | FP16, BF16 | INT4, INT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 x、weight、y 均为单 Tensor |
+| A8W4 (S8S4) | INT8 | INT4 | **必选** (FLOAT32) | $y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i$ | 仅支持单 Tensor；$bias_i = 8 \times weight_i \times scale_i$ 沿 K 轴规约 |
+| A16F8 | FP16, BF16 | FLOAT8_E5M2, FLOAT8_E4M3FN, HIFLOAT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 Ascend 950PR/950DT |
+
+#### <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
+
+##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化
+
+| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|----------|:---:|:---:|:---:|:---|------|
+| **T-C / T-T** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i + offset_i$ | 基础公式，无 perTokenScaleOptional |
+| **T-C / T-T** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i + offset_i$ | bias 在 scale 之前累加 |
+| **T-C / T-T** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i + bias_i$ | 无 offset 时适用 |
+
+##### <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化
+
+| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|----------|:---:|:---:|:---:|:---|------|
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i$ | 基础公式 |
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i \times per\\_token\\_scale_i$ | bias 在 scale 之前累加 |
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i$ | bias 在 perTokenScale 之后累加 |
+
+##### 特殊 pergroup 量化
+
+| 量化模式 | block size | 计算公式 | 说明 |
+|----------|:---:|:---|------|
+| **<a id="mx量化"></a>MX** | gsM=1, gsN=1, gsK=32 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | 特殊的 pergroup 量化 |
+| **<a id="gb量化"></a>G-B** | gsM=1, gsN=gsK=128 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | pergroup-perblock 量化 |
+
+> 其中 $xSlice_i$ 为 $x_i$ 第 $m$ 行长度为 gsK 的向量，$weightSlice_i$ 为 $weight_i$ 第 $n$ 列长度为 gsK 的向量，$kLoops = \lceil K_i / gsK \rceil$，支持末尾切片长度不足 gsK。
+
+### 版本演进
+
+| 版本变化 | Ascend 950PR/Ascend 950DT | Atlas A3/A2 系列产品 |
+|---------|----------------|----------|
+| V4 → V5 | — | 增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token 数预期值，tiling 时按该值进行最优切分 |
+| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight 为 INT4/FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8（仅 perchannel 模式） | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持 x/weight/y 均为单 Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
+
+**确定性计算**：GroupedMatmul 默认提供确定性实现。
 
 ---
 <a id="4-函数原型"></a>
@@ -116,10 +166,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ---
 
-> 标注规则：
-> - <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>：仅 Ascend 950PR/950DT 不支持
-> - <span title="Atlas A3/A2 不支持"><sup>2</sup></span>：仅 Atlas A3/A2 不支持
-
 <a id="5-aclnngroupedmatmulv5getworkspacesize"></a>
 
 ## aclnnGroupedMatmulV5GetWorkspaceSize
@@ -157,7 +203,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
     - 输入参数 x、weight 均不支持 INT16 类型，且 x 不支持 INT4 类型
     - 输入参数 x、weight，输出参数 out 在非量化场景支持最多 1024 个 Tensor，在伪量化支持最多 128 个 Tensor，在全量化场景最多支持 1 个 Tensor
-  - **<term>Atlas A3/A2 训练系列产品</term>**：
+  - **<term>Atlas A3/A2 系列产品</term>**：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
     - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0 类型
     - 输入参数 biasOptional 不支持 BFLOAT16
@@ -245,9 +291,13 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ## 约束说明
 
-**确定性计算**：aclnnGroupedMatmulV5 默认确定性实现。
-
 > "—" 表示该参数在当前场景下必须传空（nullptr）
+
+<a id="81-确定性计算"></a>
+
+### 确定性计算
+
+aclnnGroupedMatmulV5 默认确定性实现。
 
 <a id="71-公共约束"></a>
 
@@ -271,6 +321,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 <a id="72-ascend-950prascend-950dt"></a>
 
 ### Ascend 950PR/Ascend 950DT
+
+#### 平台约束
 
 - groupType：支持 M 轴分组（0）和不分组（-1）。非量化/全量化额外支持 K 轴分组（2）。
 - groupListType：支持 0、1、2。仅全量化 groupType=0 时支持 groupListType=2。
@@ -443,8 +495,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 </details>
 
 
-<details>
-<summary>groupType 支持场景</summary>
+#### groupType 支持场景
 
 > x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
 
@@ -457,11 +508,13 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 2 | 单 | 单 | 单 | 2/3 | 必须传 | x 必须转置；weight 不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias 传空；仅 ND 进 ND 出；仅非量化/量化 |
 | 2 | 单 | 多 | 多 | 0/1 | 可选 | x 必须转置；weight 不转置 | x/weight/y 2维 `(M,N)`；weight 最大 128 组；不支持 bias；仅 ND 进 ND 出；仅非量化 |
 
-</details>
-
 <a id="73-atlas-a3a2-训练系列产品"></a>
 
-### Atlas A3/A2 训练系列产品
+### Atlas A3/A2 系列产品
+
+#### 平台约束
+
+待补充
 
 <a id="731-场景速查表"></a>
 
@@ -485,11 +538,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 **数据类型要求：**
 
-| x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | out |
-|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| FLOAT | FLOAT (ND) | FLOAT/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | FLOAT |
-| FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | FLOAT16 |
-| BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | BFLOAT16 |
+| x | weight | bias | groupList | out |
+|:---|:---|:---|:---|:---|
+| FLOAT | FLOAT (ND) | FLOAT/null | INT64 | FLOAT |
+| FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | INT64 | FLOAT16 |
+| BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | INT64 | BFLOAT16 |
 
 **约束**：
 - 支持 groupType=-1、0、2，actType=0，groupListType=0/1。
@@ -505,11 +558,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 | x | weight | bias | scale | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|
-| INT8 | INT8 (ND) | INT32/null | UINT64 | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT8 |
+| INT8 | INT8 (ND) | INT32/null | UINT64 | null | INT8 |
 | INT8 | INT8 (ND/NZ) | INT32/null | BFLOAT16 | FLOAT/null | BFLOAT16 |
-| INT8 | INT8 (NZ) | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | FLOAT/BFLOAT16 | FLOAT/null | BFLOAT16 |
+| INT8 | INT8 (NZ) | null | FLOAT/BFLOAT16 | FLOAT/null | BFLOAT16 |
 | INT8 | INT8 (ND/NZ) | INT32/null | FLOAT | FLOAT/null | FLOAT16 |
-| INT8 | INT8 (ND/NZ) | INT32/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT32 |
+| INT8 | INT8 (ND/NZ) | INT32/null | null | null | INT32 |
 
 > 其余参数（offset、antiquantScale、antiquantOffset、activationXxx 等）均须传空。
 
@@ -532,7 +585,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 | x | weight | bias | scale | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|
-| INT4 | INT4 (ND/NZ) | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
+| INT4 | INT4 (ND/NZ) | null | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
 **约束**：
 - groupType=0，actType=0，groupListType=0/1/2。
@@ -554,7 +607,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 | x | weight | bias | scale | offset | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|:---|
-| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | FLOAT | BFLOAT16 |
+| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | FLOAT | BFLOAT16 |
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | FLOAT16 |
 
 **约束**：
@@ -633,8 +686,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 <a id="a3a2-grouptype-支持场景"></a>
 
-<details>
-<summary>groupType 支持场景</summary>
+#### groupType 支持场景
 
 > x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
 
@@ -647,30 +699,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x 必须转置；weight 不转置 | x/weight 2维，y 3维；bias 传空 |
 | 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x 必须转置；weight 不转置 | x/weight/y 2维；weight 最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias 传空 |
 
-</details>
-
----
-
-<a id="8-接口调用"></a>
-
-## 接口调用
-
-<a id="81-调用流程"></a>
-
-### 调用流程
-
-1. 根据场景准备输入（x/weight 及各场景所需的量化/伪量化参数）。
-2. 调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor。
-3. 根据返回的 workspaceSize 申请 Device 侧内存。
-4. 调用 `aclnnGroupedMatmulV5` 执行计算。
-5. 同步等待 Stream 任务完成。
-6. 将输出从 Device 拷贝到 Host。
-
-<a id="82-配置示例"></a>
-
 ### 配置示例
-
-<a id="821-grouplistoptional-配置示例"></a>
 
 #### groupListOptional 配置示例
 
@@ -682,11 +711,9 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 1（各组大小） | `[123, 0, 333, 0, 0, 333, 0, 0, 0]` |
 | 2（索引+大小） | `[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置） |
 
-<a id="822-tuningconfigoptional-配置示例"></a>
-
 #### tuningConfigOptional 配置示例
 
-仅 <term>Atlas A3/A2 训练系列产品</term> 支持，Ascend 950PR/950DT 不支持此参数。
+仅 <term>Atlas A3/A2 系列产品</term> 支持，Ascend 950PR/950DT 不支持此参数。
 tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
 
 | 索引 | 语义 | 适用场景 |
@@ -695,18 +722,23 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。
 | [1] | 是否开启 weight 亲核格式（需先转置再 NZ） | A8W4 |
 | [2] | 允许额外 workspace 上限（-1=不限），用于定轴算法优化 | A8W8 |
 
+---
+
+<a id="8-接口调用"></a>
+
+## 调用示例
 <a id="83-示例代码索引"></a>
 
 ### 示例代码索引
 
 以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-| 场景 | 设备 | 示例文件 | 说明 |
+| 场景 | 产品型号 | 示例文件 | 说明 |
 |------|:---:|------|------|
-| 非量化 | 公共 | [test_aclnn_grouped_matmul.cpp](../examples/test_aclnn_grouped_matmul.cpp) | 非量化基础示例（涵盖通用调用流程） |
-| 全量化-A8W8 / 静态量化 | 公共 | [test_aclnn_grouped_matmul_a8w8.cpp](../examples/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
-| 伪量化-A16W8 | 公共 | [test_aclnn_grouped_matmul_a16w8.cpp](../examples/test_aclnn_grouped_matmul_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
-| 伪量化-A16W4 | 公共 | [test_aclnn_grouped_matmul_a16w4.cpp](../examples/test_aclnn_grouped_matmul_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
-| MX 量化 | A5 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | A5 MX 量化示例 |
-| 全量化（动态 K-C） | A5 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
-| G-B 量化 | A5 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
+| 非量化 | ALL | [test_aclnn_grouped_matmul.cpp](../examples/test_aclnn_grouped_matmul.cpp) | 非量化基础示例（涵盖通用调用流程） |
+| 全量化-A8W8 / 静态量化 | ALL | [test_aclnn_grouped_matmul_a8w8.cpp](../examples/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
+| 伪量化-A16W8 | ALL | [test_aclnn_grouped_matmul_a16w8.cpp](../examples/test_aclnn_grouped_matmul_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
+| 伪量化-A16W4 | ALL | [test_aclnn_grouped_matmul_a16w4.cpp](../examples/test_aclnn_grouped_matmul_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
+| MX 量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | Ascend 950 MX 量化示例 |
+| 全量化（动态 K-C） | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
+| G-B 量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
