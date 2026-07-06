@@ -146,7 +146,7 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     if (!isA3) {
         // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
         int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
-        int64_t allgatherFlag = isQuantRouting ? static_cast<int64_t>(0) : epWorldSize * 64;
+        int64_t allgatherFlag = epWorldSize * 64;
         offsetFlag += dispatchFlag + allgatherFlag;
     }
     return offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE;
