@@ -28,8 +28,6 @@
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
-
-
 namespace MoeDistributeCombineA5Impl {
 constexpr uint8_t BUFFER_NUM = 2;               // 多buf
 constexpr uint32_t UB_ALIGN = 32;                 // UB按32字节对齐
