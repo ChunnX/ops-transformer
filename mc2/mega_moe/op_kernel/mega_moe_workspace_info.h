@@ -105,11 +105,14 @@ struct WorkspaceInfoOptimize {
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         int64_t maxWavesPerExpert = (tilingData->maxOutputSize + L1_TILE_M - 1) / L1_TILE_M;
-        // dispatch->gmm1 flag 升级为 wave 粒度：每个 expert 拥有 maxWavesPerExpert 个槽位，
-        // 槽位 [expertIdx * maxWavesPerExpert + waveIdx] 记录该 wave 已 dispatch 的 token 数，
+        // dispatch->gmm1 flag 升级为 wave 粒度：每个 expert 拥有 maxWavesPerExpert 个逻辑槽位，
+        // 槽位 [expertIdx * maxWavesPerExpert + waveIdx] 记录该 wave 已 dispatch 的 token 数。
+        // 每个逻辑槽独占一个 int32 cache line，避免相邻 wave/expert 的 AtomicAdd/ByPass 读互相干扰。
         // cube 端按 wave 等待目标值 = waveM，启动更早。
-        int64_t swigluElems = tilingData->expertPerRank * maxWavesPerExpert;
-        int64_t dispatchElems = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t swigluSlots = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t dispatchSlots = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t swigluElems = swigluSlots * INT_CACHELINE;
+        int64_t dispatchElems = dispatchSlots * INT_CACHELINE;
         int64_t totalFlagElems =
             Ops::Base::CeilAlign(static_cast<uint64_t>(swigluElems + dispatchElems), static_cast<uint64_t>(8));
 

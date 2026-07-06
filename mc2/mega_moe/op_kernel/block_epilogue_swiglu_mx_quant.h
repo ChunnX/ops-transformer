@@ -311,7 +311,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlob
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
         groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr +
-        Get<GROUP_FLAG_IDX>(baseOffset);
+        Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
     }
 }
 
@@ -820,7 +820,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     uint64_t mLoc = Get<WAVE_IDX>(blockCoord);
     uint32_t waveIdx = static_cast<uint32_t>(mLoc / L1_TILE_M);
-    AscendC::AtomicAdd((__gm__ int32_t*)(groupFlagListGmAddr_ + waveIdx), 1);
+    AscendC::AtomicAdd((__gm__ int32_t*)(groupFlagListGmAddr_ + waveIdx * INT_CACHELINE), 1);
     return;
 }
 

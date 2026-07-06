@@ -332,14 +332,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::BuffInit()
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign((int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_256));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
     // resetTensor_ 用作两个 zero-fill 场景的 UB 缓存：
-    //   (1) ResetFlagList    : flag block 总元素数 = expertPerRank * maxWavesPerExpert * 2
-    //                          (swiglu->gmm2 per-wave + dispatch->gmm1 per-wave) 对齐到 8
+    //   (1) ResetFlagList    : flag block 总元素数 = expertPerRank * maxWavesPerExpert * 2 * INT_CACHELINE
+    //                          (swiglu->gmm2 per-wave + dispatch->gmm1 per-wave, each slot owns one cache line)
+    //                          对齐到 8
     //                          按 ALIGN_32 分核（每核 ≤ ALIGN_32 个 int32）
     //   (2) ResetGmm2RowReadyFlags: 单 AIV0 写 align(aicNum, 8) 个 int32
     // 大小取两者上限的较大者，并按 8 个 int32 对齐
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     int32_t flagListTotal = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_ * maxWavesPerExpert_ * 2U),
+        Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_ * maxWavesPerExpert_ * 2U * INT_CACHELINE),
                              static_cast<uint32_t>(8)));
     int32_t flagPerCoreMax = static_cast<int32_t>(Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(static_cast<uint32_t>(flagListTotal), static_cast<uint32_t>(blockAivNum_)),
@@ -390,12 +391,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
         return;
     }
     // workSpace groupFlagList 清零（覆盖 swiglu->gmm2 段 + dispatch->gmm1 段，共一整块）：
-    //   总元素数 = expertPerRank * maxWavesPerExpert (swiglu, per-wave) + expertPerRank * maxWavesPerExpert (dispatch, per-wave)
+    //   总元素数 = 2 * expertPerRank * maxWavesPerExpert * INT_CACHELINE。
+    //   每个 per-wave 逻辑 flag 独占一个 int32 cache line，避免 atomic/read bypass false sharing。
     //   workspace 里按 CeilAlign(., 8) 分配，这里 flagNum 也按 8 对齐保证整段覆盖
     //   分核走 ALIGN_32 的粒度（默认）：每核一次写一个 32 个 int32 的块，DataCopy 直发，避免 DataCopyPad 的非对齐小块路径
     groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
-    int32_t swigluElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_);
-    int32_t dispatchElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_);
+    int32_t swigluElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_ * INT_CACHELINE);
+    int32_t dispatchElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_ * INT_CACHELINE);
     int32_t flagNum = Ops::Base::CeilAlign(
         static_cast<uint32_t>(swigluElems + dispatchElems), static_cast<uint32_t>(8));
     int32_t coreLen, coreOffset;
@@ -795,7 +797,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
         }
 
         // wave 粒度 dispatch->gmm1 flag：对本核处理的 [rowStartLocal, rowEndLocal) 行，
-        // 按 wave 边界分别 AtomicAdd。groupFlagListGm2_ 已由调用点指向本 expert 的 wave-0 槽。
+        // 按 wave 边界分别 AtomicAdd。groupFlagListGm2_ 已由调用点指向本 expert 的 wave-0 cacheline 槽。
         if (rowsThisCore > 0) {
             SyncFuncStatic<AscendC::HardEvent::MTE3_S, 0>();
             int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
@@ -808,7 +810,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
                 int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
                 int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
                 int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                AtomicAdd(flagBase + w, int32_t(hi - lo));
+                AtomicAdd(flagBase + w * INT_CACHELINE, int32_t(hi - lo));
             }
         }
     }
@@ -920,14 +922,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
                                     sizeof(QuantScaleOutType);
     }
-    // 按 wave 切分的 swiglu->gmm2 flag：每个 expert 占 maxWavesPerExpert 个 int32，每 wave 1 个
+    // 按 wave 切分的 swiglu->gmm2 flag：每个 expert 占 maxWavesPerExpert 个逻辑槽，每槽 1 个 cache line。
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-                                Get<IDX_FLAG_OFFSET>(baseOffset_) + static_cast<int64_t>(waveIdx);
-    // dispatch->gmm1 flag：每个 expert 占 maxWavesPerExpert 个 int32，每 wave 1 个。
+                                (Get<IDX_FLAG_OFFSET>(baseOffset_) + static_cast<int64_t>(waveIdx)) *
+                                    static_cast<int64_t>(INT_CACHELINE);
+    // dispatch->gmm1 flag：每个 expert 占 maxWavesPerExpert 个逻辑槽，每槽 1 个 cache line。
     // cube 在每个 wave 启动时只等本 wave 的槽位，目标值 = waveM。
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                                static_cast<int64_t>(localExpertId) * static_cast<int64_t>(maxWavesPerExpert_) +
-                                static_cast<int64_t>(waveIdx);
+                                (static_cast<int64_t>(localExpertId) * static_cast<int64_t>(maxWavesPerExpert_) +
+                                 static_cast<int64_t>(waveIdx)) * static_cast<int64_t>(INT_CACHELINE);
     // GMM2 直接写 GM 的目的地址（per-wave row offset）
     if (gmmIndex == 1) {
         gmmAddrInfo.gmm2OutGlobal = params_.workspaceInfo.ptrGmmOut +
@@ -1147,7 +1150,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // pre-loop: 把 expert 0 的 dispatch 先发出去，启动整条流水线。
     // groupFlagListGm2_ 指向 expert 0 的 wave-0 槽起点；TripleInfoCalAndDispatch
-    // 在 wave 边界用 (basePtr + curWave) 偏移做 AtomicAdd。
+    // 在 wave 边界用 (basePtr + curWave * INT_CACHELINE) 偏移做 AtomicAdd。
     if constexpr (g_coreType == AscendC::AIV) {
         if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
             MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, 0);
@@ -1181,7 +1184,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         // prefetch: 在本轮 UpdateGroupParams 之后，立刻把下一个 expert 的 dispatch 发出去。
         // 注意必须在 UpdateGroupParams 之后调用，否则 totalSendCntInExp_ 会被 (e+1) 提前覆盖。
-        // groupFlagListGm2_ 指向 expert (e+1) 的 wave-0 槽起点，AtomicAdd 内部按 wave 偏移。
+        // groupFlagListGm2_ 指向 expert (e+1) 的 wave-0 cacheline 槽起点，AtomicAdd 内部按 wave 偏移。
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
                 MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
@@ -1191,7 +1194,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                                   static_cast<int>(expertIdx + 1U), 1);
                 groupFlagListGm2_.SetGlobalBuffer(
                     (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                    static_cast<int64_t>(expertIdx + 1U) * static_cast<int64_t>(maxWavesPerExpert_));
+                    static_cast<int64_t>(expertIdx + 1U) *
+                        static_cast<int64_t>(maxWavesPerExpert_) * static_cast<int64_t>(INT_CACHELINE));
                 TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_),
                                          static_cast<int32_t>(expertIdx + 1U));
                 MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
@@ -1231,11 +1235,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被预走了）。
         // groupFlagList2 在 wave loop 中由 UpdateGlobalBuffer(waveGmmInfo, 0, expertIdx, waveIdx)
-        // 改写成 per-wave 槽位，这里先指向 expert 的 wave-0 起点作占位。
+        // 改写成 per-wave cacheline 槽位，这里先指向 expert 的 wave-0 起点作占位。
         UpdateGlobalBuffer(gmmAddrInfo, 0, expertIdx, 0);
         gmmAddrInfo.groupFlagList2 =
             (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-            static_cast<int64_t>(expertIdx) * static_cast<int64_t>(maxWavesPerExpert_);
+            static_cast<int64_t>(expertIdx) * static_cast<int64_t>(maxWavesPerExpert_) *
+                static_cast<int64_t>(INT_CACHELINE);
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 
         // ★ Wave loop: 跨 wave 分核 batch 结构 ★
@@ -1291,7 +1296,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // ===== GMM1→GMM2 切换（不在此 drain GMM1 的 AIV0 信号）=====
             // swiglu(w)→GMM2(w) 的数据依赖已由逐 wave 的 GM flag 单独保证：
             //   epilogue 在 CopyOutputFromUb2Gm 后做 MTE3→V/MTE3→S 屏障，再 AtomicAdd
-            //   flagSwiGluToGmm2Ptr[wave]；GMM2 首 tile 用 ReadGmByPassDCache 自旋等到该 flag 达标
+            //   flagSwiGluToGmm2Ptr[wave * INT_CACHELINE]；GMM2 首 tile 用 ReadGmByPassDCache 自旋等到该 flag 达标
             //   (= 本 wave 的 swiglu tile 数) 才开算。故 GMM2(w0) 只依赖 swiglu(w0)，可与还在跑的
             //   swiglu(w2) 重叠，不该被「等齐 batch 内全部 swiglu」的 EndSync 卡住。
             // 因此把 AIV0→AIC 的 pending NotifyCube 惰性延后到 Phase2 之后再 drain（见 batch 末尾）：
