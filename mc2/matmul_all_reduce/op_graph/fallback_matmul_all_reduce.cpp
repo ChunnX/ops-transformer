@@ -207,8 +207,11 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     OPS_CHECK(y == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "y"), return ge::GRAPH_FAILED);
 
     bool isCommMode = false;
-    if (comm_para.comm_mode != nullptr) {
+    if (comm_para.comm_mode != nullptr && std::strcmp(comm_para.comm_mode, "ccu") == 0) {
+        OP_LOGD(kInnerDebug, "isCommMode is true");
         isCommMode = true;
+    } else {
+        OP_LOGD(kInnerDebug, "isCommMode is false");
     }
 
     switch (quant_para.type) {
