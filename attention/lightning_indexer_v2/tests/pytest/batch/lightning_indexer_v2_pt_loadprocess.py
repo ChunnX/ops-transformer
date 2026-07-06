@@ -21,7 +21,6 @@ import math
 import ast
 from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
-
 def test_liv2_process(filepath, device_id=0):
     # 加载测试数据
     test_data = torch.load(filepath, map_location="cpu")
@@ -29,7 +28,7 @@ def test_liv2_process(filepath, device_id=0):
     params = test_data['params']
     cpu_result = test_data['cpu_result']
     topk_value = test_data['topk_value']
-    output_idx_offset = test_data['output_idx_offset'].npu()
+    cpu_topk_value = test_data['cpu_topk_value']
     max_seqlen_q = test_data['max_seqlen_q']
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
@@ -41,8 +40,18 @@ def test_liv2_process(filepath, device_id=0):
     mask_mode = params[20]
     return_value = params[25]
     weights =test_data['weights'].npu()
-    seqused_q = test_data['seqused_q'].npu()
-    seqused_k = test_data['seqused_k'].npu()
+    if test_data['seqused_q'] is not None:
+        seqused_q = test_data['seqused_q'].npu()
+    else:
+        seqused_q = None
+    if test_data['seqused_k'] is not None:
+        seqused_k = test_data['seqused_k'].npu()
+    else:
+        seqused_k = None
+    if test_data['output_idx_offset'] is not None:
+        output_idx_offset = test_data['output_idx_offset'].npu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_q'] is not None:
         cu_seqlens_q = test_data['cu_seqlens_q'].npu()
     else:
@@ -51,7 +60,10 @@ def test_liv2_process(filepath, device_id=0):
         cu_seqlens_k = test_data['cu_seqlens_k'].npu()
     else:
         cu_seqlens_k = None
-    block_table = test_data['block_table'].npu()
+    if test_data['block_table'] is not None:
+        block_table = test_data['block_table'].npu()
+    else:
+        block_table = None
     if test_data['metadata'] is not None:
         metadata = test_data['metadata'].npu()
     else:
@@ -64,7 +76,7 @@ def test_liv2_process(filepath, device_id=0):
     else:
         cmp_residual_k = None
 
-    #调用SFA算子
+    #调用li算子
     npu_result, npu_topk_value = lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
@@ -82,6 +94,6 @@ def test_liv2_process(filepath, device_id=0):
                                              cmp_ratio = cmp_ratio,
                                              return_value = return_value)
     torch.npu.synchronize()
-
-    return cpu_result, npu_result, topk_value, output_idx_offset, params
+    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 
