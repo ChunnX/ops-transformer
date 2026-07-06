@@ -15,7 +15,7 @@
 #ifndef MUTEX_BUFFERS_POLICY_H
 #define MUTEX_BUFFERS_POLICY_H
 
-#include "../../../../common/op_kernel/buffer_manager.h"
+#include "mutex_buffer_manager.h"
 #include "mutex_buffer.h"
 #ifndef NUM_2
 #define NUM_2 2
@@ -31,21 +31,20 @@ namespace fa_base_matmul {
 
 namespace detail {
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
-__aicore__ inline MutexBuffer<bufferType, syncType> AllocMutexBuf(BufferManager<bufferType> &mgr, uint32_t size) {
-    Buffer<bufferType, SyncType::NO_SYNC> tmp = mgr.template AllocBuffer<SyncType::NO_SYNC>(size);
-    return MutexBuffer<bufferType, syncType>(tmp.template GetTensor<uint8_t>(), size);
+__aicore__ inline MutexBuffer<bufferType, syncType> AllocMutexBuf(MutexBufferManager<bufferType> &mgr, uint32_t size) {
+    return mgr.template AllocBuffer<syncType>(size);
 }
 }
 
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffersPolicySingleBuffer {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+    __aicore__ inline void Init(MutexBufferManager<bufferType> &bufferManager, uint32_t size) {
         buffer_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         buffer_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+    __aicore__ inline void Uninit(MutexBufferManager<bufferType> &bufferManager) {
         buffer_.UnInit();
     }
 
@@ -67,7 +66,7 @@ private:
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffersPolicyDB {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+    __aicore__ inline void Init(MutexBufferManager<bufferType> &bufferManager, uint32_t size) {
         ping_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         pong_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
 
@@ -75,7 +74,7 @@ public:
         pong_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+    __aicore__ inline void Uninit(MutexBufferManager<bufferType> &bufferManager) {
         ping_.UnInit();
         pong_.UnInit();
     }
@@ -130,7 +129,7 @@ private:
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffersPolicy3buff {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+    __aicore__ inline void Init(MutexBufferManager<bufferType> &bufferManager, uint32_t size) {
         a_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         b_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         c_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
@@ -140,7 +139,7 @@ public:
         c_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+    __aicore__ inline void Uninit(MutexBufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
         c_.UnInit();
@@ -220,7 +219,7 @@ private:
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffersPolicy4buff {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+    __aicore__ inline void Init(MutexBufferManager<bufferType> &bufferManager, uint32_t size) {
         a_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         b_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         c_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
@@ -232,7 +231,7 @@ public:
         d_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+    __aicore__ inline void Uninit(MutexBufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
         c_.UnInit();
@@ -285,7 +284,7 @@ private:
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexMatrix2x2BufferPolicy {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+    __aicore__ inline void Init(MutexBufferManager<bufferType> &bufferManager, uint32_t size) {
         bufferM0k0_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         bufferM0k1_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
         bufferM1k0_ = detail::AllocMutexBuf<bufferType, syncType>(bufferManager, size);
@@ -297,7 +296,7 @@ public:
         bufferM1k1_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+    __aicore__ inline void Uninit(MutexBufferManager<bufferType> &bufferManager) {
         bufferM0k0_.UnInit();
         bufferM0k1_.UnInit();
         bufferM1k0_.UnInit();

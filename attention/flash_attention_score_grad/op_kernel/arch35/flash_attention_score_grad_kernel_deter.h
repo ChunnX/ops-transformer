@@ -18,6 +18,7 @@
  
 #include "flash_attention_score_grad_common.h"
 #include "flash_attention_score_grad_kernel_base.h"
+#include "cube_api/mutex_buffer.h"
 #include "flash_attention_score_grad_tiling_data_regbase.h"
 #include "deter.h"
  
@@ -833,8 +834,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 }
             }
             
-            Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
-            Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
+            MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
+            MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
             this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
                                        runInfos[(taskId + 1) & 1]); // v3: dropout + cast + nd2nz
             if (unlikely(this->constInfo.isSink && IS_DROP)) {
@@ -1104,8 +1105,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
                         }
                     }
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
-                    Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
+                    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
+                    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
                     // GetIsNeedDeter, vec3需要知道是否dqneedDeter
                     GetIsNeedDeter(taskId - 1);
                     this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,

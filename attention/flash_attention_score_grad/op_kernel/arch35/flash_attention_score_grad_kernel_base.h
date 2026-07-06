@@ -17,7 +17,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_KERNEL_BASE_H
  
 #include "flash_attention_score_grad_common.h"
- 
+#include "cube_api/mutex_buffers_policy.h"
 namespace FagBaseApi {
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -120,9 +120,9 @@ protected:
     // CV核间共享Buffer
     TBuf<> mm1ResBuf[2];
     TBuf<> mm2ResBuf[2];
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
+    MutexBufferManager<BufferType::L1> l1BufferManager;
+    MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
+    MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
  
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
