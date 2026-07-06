@@ -169,12 +169,16 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
     ```python
     import torchair
 
-    def fn(cache, x, slot_mapping):
-        torch.ops.cann_ops_transformer.kv_compress_epilog(
-            cache, x, slot_mapping, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
+    class KvCompressEpilogModel(torch.nn.Module):
+        def forward(self, cache, x, slot_mapping):
+            kv_compress_epilog(
+                cache, x, slot_mapping,
+                quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
+            return cache
 
-    npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
-    compiled = torch.compile(fn, backend=npu_backend, dynamic=False)
-    compiled(cache, x, slot_mapping)
+    model = KvCompressEpilogModel().npu()
+    npu_backend = torchair.get_npu_backend()
+    model = torch.compile(model, backend=npu_backend, dynamic=False)
+    model(cache, x, slot_mapping)
     print(cache.shape, cache.dtype)
     ```

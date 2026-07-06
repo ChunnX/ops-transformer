@@ -27,11 +27,9 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
-#include "moe_distribute_v2_constant.h"
 #include "moe_distribute_dispatch_v2_quant.h"
 #include "moe_distribute_elastic.h"
 
-#include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
 #if __has_include("../common/mc2_moe_context.h")
 #include "../common/mc2_moe_context.h"
@@ -676,7 +674,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::CalT
     PipeBarrier<PIPE_V>();
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
     Abs(tmpoutFp32, tmpFp32, calCnt);
+#else
+    Abs(dstExpIdTensor_, subExpIdTensor_, calCnt);
+#endif
     PipeBarrier<PIPE_V>();
     Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
     PipeBarrier<PIPE_V>();

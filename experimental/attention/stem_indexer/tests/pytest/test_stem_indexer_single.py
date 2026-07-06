@@ -1,0 +1,82 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+import pytest
+import torch
+
+torch_npu = pytest.importorskip("torch_npu")
+
+import result_compare_method
+import stem_indexer_golden
+import os
+import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
+from test_stem_indexer_paramset import ENABLED_PARAMS
+
+
+def case_id(case):
+    return f"{case['case_id']}:{case['testcase_name']}"
+
+
+def move_inputs_to_npu(inputs):
+    return {name: tensor.npu() for name, tensor in inputs.items()}
+
+
+def build_metadata(case, npu_inputs):
+    if case["expected_result"] == "FAIL":
+        return npu_inputs["metadata"]
+    metadata_attrs = stem_indexer_golden.get_metadata_attrs(case)
+    return torch.ops.custom.npu_stem_indexer_metadata(
+        npu_inputs["q_seq_lens"],
+        npu_inputs["kv_seq_lens"],
+        case["q_heads"],
+        case["kv_heads"],
+        **metadata_attrs,
+    )
+
+
+def call_stem_indexer(case, inputs):
+    npu_inputs = move_inputs_to_npu(inputs)
+    attrs = stem_indexer_golden.get_call_attrs(case)
+    metadata = build_metadata(case, npu_inputs)
+    return torch.ops.custom.npu_stem_indexer(
+        npu_inputs["qflat"],
+        npu_inputs["kflat"],
+        npu_inputs["vbias"],
+        npu_inputs["q_seq_lens"],
+        npu_inputs["kv_seq_lens"],
+        num_prompt_tokens=npu_inputs["num_prompt_tokens"],
+        metadata=metadata,
+        **attrs,
+    )
+
+
+def run_stem_indexer_case(case):
+    torch_npu.npu.set_device(0)
+    inputs = stem_indexer_golden.build_case_inputs(case)
+
+    if case["expected_result"] == "FAIL":
+        if case["testcase_name"] == "invalid_sparse_indices_shape":
+            pytest.skip("Torch custom op API does not expose output tensor shape injection.")
+        with pytest.raises(Exception):
+            call_stem_indexer(case, inputs)
+        return
+
+    expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
+    npu_result = call_stem_indexer(case, inputs)
+    torch_npu.npu.synchronize()
+    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, inputs)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("case", ENABLED_PARAMS, ids=case_id)
+def test_stem_indexer(case):
+    run_stem_indexer_case(case)

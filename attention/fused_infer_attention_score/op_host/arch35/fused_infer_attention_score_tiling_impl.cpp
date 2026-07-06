@@ -1061,6 +1061,9 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
         if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && bIdx > 0) {
             actualSeqLengthsKV -= fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
         }
+        if (actualSeqLengthsKV <= 0) {
+            needInit_ = true;
+        }
     } else {
         if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&
             fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
@@ -1096,24 +1099,23 @@ int64_t FusedInferAttentionScoreTilingImpl::GetAntiQuantCalcBlockNumsOneHead(
         return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
     } else {
         int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactorSize_);
         int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
         // 必须满足pretoken + nexttoken > 0，否则会减出小于0的块数，这里需要去除prefix影响
-        toCalcBlockNums -= 
-            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-                            static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp - fiaInfo.systemPrefixLen);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
+            nextTokensLeftUp - fiaInfo.systemPrefixLen);
+        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSeqLengthKV - blockSeqLength + preTokensLeftUp + fiaInfo.systemPrefixLen);
-        
+
         // prefix部分单独计算
-        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactorSize_);
         toCalcBlockNums += sInnerLoopTimesPrefix * outerBlockNums;
-        toCalcBlockNums -=  GetCutBlockNums(blockSharedPrefix, blockSeqLength, 
-                                                     static_cast<int64_t>(sInnerFactor_),
-                                                     static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
+        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSharedPrefix - blockSeqLength + preTokensLeftUp);
         return toCalcBlockNums;
     }
@@ -2177,6 +2179,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
 
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);
+
+    if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
+        gsMergeFlag_ && !dnFlag_ && (((fiaInfo.s1Size * fiaInfo.gSize + 1) / 2) + fiaInfo.gSize - 1) /
+        fiaInfo.gSize * fiaInfo.gSize > sOuterFactor_ && fiaInfo.s1Size > 1) {
+        pfaMergeFlag_ = false;
+        gsMergeFlag_ = false;
+    }
 
     OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
                 return ge::GRAPH_FAILED);

@@ -433,13 +433,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
-        commEngine = Mc2Comm::ENGINE_CCU;
-    } else if (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0) { // empty string
-        if (rankSize_ <= COMM_MODE_RANKSIZE) {
-            commEngine = Mc2Comm::ENGINE_CCU;
-        }
+        commEngine = Mc2Comm::ENGINE_CCU_SCHED;
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
@@ -527,10 +524,6 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0) { // empty string
-        if (rankSize_ <= COMM_MODE_RANKSIZE) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        }
     }
 
     // Non-A5 platform must use AICPU mode
