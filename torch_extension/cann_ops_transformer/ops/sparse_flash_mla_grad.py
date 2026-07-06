@@ -92,7 +92,6 @@ class SparseFlashMlaGradOpBuilder(OpBuilder):
 
 # Instantiate the builder
 smlag_op_builder = SparseFlashMlaGradOpBuilder()
-op_module = smlag_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, "sparse_flash_mla_grad_metadata", "PrivateUse1")
@@ -111,6 +110,7 @@ def sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = smlag_op_builder.load()
     return op_module.sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
                                         seqused_q, seqused_ori_kv, seqused_cmp_kv,
@@ -164,6 +164,7 @@ def sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=No
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = smlag_op_builder.load()
     return op_module.sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv, cmp_kv,
                                 ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,
                                 cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,

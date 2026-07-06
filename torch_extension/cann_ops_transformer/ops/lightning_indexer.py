@@ -85,7 +85,6 @@ class LightningIndexerOpBuilder(OpBuilder):
 
 # Instantiate the builder
 lightning_indexer_op_builder = LightningIndexerOpBuilder()
-op_module = lightning_indexer_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, LI_V2_METADATA_OP_NAME, "PrivateUse1")
@@ -100,6 +99,7 @@ def lightning_indexer_metadata(
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = lightning_indexer_op_builder.load()
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_k = -1 if max_seqlen_k is None else max_seqlen_k
@@ -140,6 +140,7 @@ def lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = lightning_indexer_op_builder.load()
     return op_module.lightning_indexer(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
                                               cmp_residual_k, block_table, output_idx_offset, metadata, max_seqlen_q, 
                                               layout_q, layout_k, mask_mode, cmp_ratio, return_value)
