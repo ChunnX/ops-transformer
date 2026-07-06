@@ -768,6 +768,8 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const
 
     DataCopyPad(dsWorkspaceGm[mm345Addr], sftgOutT1Tensor, 
                 {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(T1)), 0, static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(T1)), 0});
+    SET_FLAG(MTE3, V, vWaitMte3);
+    WAIT_FLAG(MTE3, V, vWaitMte3);
 }
 
 template <typename SFAGT>
