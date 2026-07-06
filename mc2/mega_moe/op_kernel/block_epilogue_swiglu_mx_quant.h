@@ -67,6 +67,14 @@ constexpr int64_t CONST_64 = 64;
 constexpr int64_t CONST_32 = 32;
 constexpr uint32_t VF_LEN_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 constexpr uint32_t ONE_BLOCK_NUM = AscendC::ONE_BLK_SIZE / sizeof(bfloat16_t);
+constexpr uint32_t GROUP_PERF_VL_BF16 = 128;
+constexpr uint32_t GROUP_PERF_VL_FP32 = 64;
+constexpr uint32_t GROUP_PERF_SCALE_NUM = 4;
+constexpr uint32_t INV_FP8_E5M2_MAX_VALUE = 0x37924925;
+constexpr uint32_t INV_FP8_E4M3_MAX_VALUE = 0x3b124925;
+constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
+constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
+constexpr uint32_t FAST_LOG_AND_VALUE2 = (1U << 23U) - 1U;
 } // namespace
 
 constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
@@ -120,6 +128,9 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_82 = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_GROUP_PERF = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 // IsInterleaved_ = false（默认）：右矩阵 B 是 [gate || up] 分两半，GMM1 内做 2 次 mmad，分别写 l0cOutUbFirst_ / l0cOutUbSecond_
 // IsInterleaved_ = true ：右矩阵 B 已被预先交织，每 256 列 = 128 列 gate + 128 列 up，GMM1 内只做 1 次 mmad，
@@ -200,6 +211,13 @@ private:
         __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
         __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
         __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize);
+
+    // activation/swiglu_group_quant style bf16/fp8 path. It keeps swiglu in fp32 for
+    // scale and fp8 cast, but streams per row to preserve the current half-UB pingpong layout.
+    __aicore__ inline void VFDoSwigluAndQuantForMXInterleavedBf16GroupPerf(
+        __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
+        __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
+        __ubuf__ uint16_t *invScaleScratchAddr, uint16_t mSize, uint16_t nSize);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -848,6 +866,161 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
+BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMXInterleavedBf16GroupPerf(
+    __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
+    __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
+    __ubuf__ uint16_t *invScaleScratchAddr, uint16_t mSize, uint16_t nSize)
+{
+    (void)nSize;
+    uint32_t maxValueInt = INV_FP8_E4M3_MAX_VALUE;
+    if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
+        maxValueInt = INV_FP8_E5M2_MAX_VALUE;
+    }
+    __ubuf__ uint8_t *scaleLocalAddr = (__ubuf__ uint8_t *)scaleDst;
+    __ubuf__ float *invScaleScratch = (__ubuf__ float *)invScaleScratchAddr;
+    __ubuf__ DataTypeOut *outLocalAddr = (__ubuf__ DataTypeOut *)outputDst;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<bfloat16_t> x0;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> x1;
+        AscendC::MicroAPI::RegTensor<float> x0Layout0;
+        AscendC::MicroAPI::RegTensor<float> x0Layout1;
+        AscendC::MicroAPI::RegTensor<float> x1Layout0;
+        AscendC::MicroAPI::RegTensor<float> x1Layout1;
+        AscendC::MicroAPI::RegTensor<float> yLayout0;
+        AscendC::MicroAPI::RegTensor<float> yLayout1;
+        AscendC::MicroAPI::RegTensor<float> y0;
+        AscendC::MicroAPI::RegTensor<float> y1;
+        AscendC::MicroAPI::RegTensor<float> yMax0;
+        AscendC::MicroAPI::RegTensor<float> yMax1;
+        AscendC::MicroAPI::RegTensor<float> yMax1Layout0;
+        AscendC::MicroAPI::RegTensor<float> yMax1Layout1;
+        AscendC::MicroAPI::RegTensor<float> scale;
+        AscendC::MicroAPI::RegTensor<float> clampScale;
+        AscendC::MicroAPI::RegTensor<float> invScale;
+        AscendC::MicroAPI::RegTensor<float> invScale0;
+        AscendC::MicroAPI::RegTensor<float> invScale1;
+        AscendC::MicroAPI::RegTensor<float> invScaleForY0;
+        AscendC::MicroAPI::RegTensor<float> invScaleForY1;
+        AscendC::MicroAPI::RegTensor<float> tmp;
+        AscendC::MicroAPI::RegTensor<uint32_t> zeroU32;
+        AscendC::MicroAPI::RegTensor<uint32_t> oneU32;
+        AscendC::MicroAPI::RegTensor<uint32_t> coeff;
+        AscendC::MicroAPI::RegTensor<uint32_t> manMask;
+        AscendC::MicroAPI::RegTensor<uint32_t> expMask;
+        AscendC::MicroAPI::RegTensor<uint32_t> biasU32;
+        AscendC::MicroAPI::RegTensor<uint32_t> scaleExp;
+        AscendC::MicroAPI::RegTensor<uint32_t> manBits;
+        AscendC::MicroAPI::RegTensor<uint32_t> manNonZero;
+        AscendC::MicroAPI::RegTensor<uint32_t> expScale;
+        AscendC::MicroAPI::RegTensor<uint32_t> scaleU32;
+        AscendC::MicroAPI::RegTensor<int32_t> invExp;
+        AscendC::MicroAPI::RegTensor<uint16_t> scaleU16;
+        AscendC::MicroAPI::RegTensor<uint8_t> scaleU8;
+        AscendC::MicroAPI::RegTensor<DataTypeOut> y0Fp8;
+        AscendC::MicroAPI::RegTensor<DataTypeOut> y1Fp8;
+        AscendC::MicroAPI::MaskReg maskB16 =
+            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskF32 =
+            AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskScale =
+            AscendC::MicroAPI::UpdateMask<float>(GROUP_PERF_SCALE_NUM);
+        AscendC::MicroAPI::MaskReg maskInvScratch =
+            AscendC::MicroAPI::UpdateMask<float>(GROUP_PERF_SCALE_NUM * GROUP_PERF_SCALE_NUM);
+        AscendC::MicroAPI::MaskReg manNonZeroMask;
+        AscendC::MicroAPI::UnalignRegForStore scaleStoreReg;
+
+        AscendC::MicroAPI::Duplicate(zeroU32, static_cast<uint32_t>(0), maskF32);
+        AscendC::MicroAPI::Duplicate(oneU32, static_cast<uint32_t>(1), maskF32);
+        AscendC::MicroAPI::Duplicate(coeff, maxValueInt, maskF32);
+        AscendC::MicroAPI::Duplicate(expMask, FAST_LOG_AND_VALUE1, maskScale);
+        AscendC::MicroAPI::Duplicate(manMask, FAST_LOG_AND_VALUE2, maskScale);
+        AscendC::MicroAPI::Duplicate(biasU32, static_cast<uint32_t>(127), maskScale);
+
+        for (uint16_t row = 0; row < mSize; ++row) {
+            uint32_t srcOffset = static_cast<uint32_t>(row) * GROUP_PERF_VL_BF16 * SWIGLU_N_HALF;
+            uint32_t dstOffset = static_cast<uint32_t>(row) * GROUP_PERF_VL_BF16;
+            AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                x0, firstSrc + srcOffset);
+            AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                x1, secondSrc + srcOffset);
+            AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(x0Layout0, x0, maskB16);
+            AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ONE>(x0Layout1, x0, maskB16);
+            AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(x1Layout0, x1, maskB16);
+            AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ONE>(x1Layout1, x1, maskB16);
+
+            AscendC::MicroAPI::Muls(tmp, x0Layout0, static_cast<float>(-1.0f), maskF32);
+            AscendC::MicroAPI::Exp(tmp, tmp, maskF32);
+            AscendC::MicroAPI::Adds(tmp, tmp, static_cast<float>(1.0f), maskF32);
+            AscendC::MicroAPI::Div(yLayout0, x0Layout0, tmp, maskF32);
+            AscendC::MicroAPI::Mul(yLayout0, yLayout0, x1Layout0, maskF32);
+
+            AscendC::MicroAPI::Muls(tmp, x0Layout1, static_cast<float>(-1.0f), maskF32);
+            AscendC::MicroAPI::Exp(tmp, tmp, maskF32);
+            AscendC::MicroAPI::Adds(tmp, tmp, static_cast<float>(1.0f), maskF32);
+            AscendC::MicroAPI::Div(yLayout1, x0Layout1, tmp, maskF32);
+            AscendC::MicroAPI::Mul(yLayout1, yLayout1, x1Layout1, maskF32);
+
+            AscendC::MicroAPI::Interleave(y0, y1, yLayout0, yLayout1);
+            AscendC::MicroAPI::Abs(yLayout0, yLayout0, maskF32);
+            AscendC::MicroAPI::Abs(yLayout1, yLayout1, maskF32);
+            AscendC::MicroAPI::Max(yMax0, yLayout0, yLayout1, maskF32);
+            AscendC::MicroAPI::ReduceMaxWithDataBlock(yMax1, yMax0, maskF32);
+            AscendC::MicroAPI::DeInterleave<float>(yMax1Layout0, yMax1Layout1, yMax1, yMax1);
+            AscendC::MicroAPI::Max(scale, yMax1Layout0, yMax1Layout1, maskScale);
+            AscendC::MicroAPI::Maxs(clampScale, scale, 0.0001f, maskScale);
+            AscendC::MicroAPI::Mul(scale, clampScale, (AscendC::MicroAPI::RegTensor<float> &)coeff, maskScale);
+
+            AscendC::MicroAPI::ShiftRights(scaleExp, (AscendC::MicroAPI::RegTensor<uint32_t> &)scale,
+                                           static_cast<int16_t>(FAST_LOG_SHIFT_BITS), maskScale);
+            AscendC::MicroAPI::And(scaleExp, scaleExp, expMask, maskScale);
+            AscendC::MicroAPI::And(manBits, (AscendC::MicroAPI::RegTensor<uint32_t> &)scale, manMask, maskScale);
+            AscendC::MicroAPI::Compare<uint32_t, AscendC::CMPMODE::NE>(
+                manNonZeroMask, manBits, zeroU32, maskScale);
+            AscendC::MicroAPI::Select(manNonZero, oneU32, zeroU32, manNonZeroMask);
+            AscendC::MicroAPI::Sub(expScale, scaleExp, biasU32, maskScale);
+            AscendC::MicroAPI::Add(expScale, expScale, manNonZero, maskScale);
+            AscendC::MicroAPI::Add(scaleU32, expScale, biasU32, maskScale);
+            AscendC::MicroAPI::Pack<uint16_t, uint32_t, AscendC::MicroAPI::HighLowPart::LOWEST>(
+                scaleU16, scaleU32);
+            AscendC::MicroAPI::Pack<uint8_t, uint16_t, AscendC::MicroAPI::HighLowPart::LOWEST>(scaleU8, scaleU16);
+            AscendC::MicroAPI::StoreUnAlign<uint8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                scaleLocalAddr, scaleU8, scaleStoreReg, GROUP_PERF_SCALE_NUM);
+
+            AscendC::MicroAPI::Sub(invExp, (AscendC::MicroAPI::RegTensor<int32_t> &)biasU32,
+                                   (AscendC::MicroAPI::RegTensor<int32_t> &)expScale, maskScale);
+            AscendC::MicroAPI::ShiftLefts(
+                (AscendC::MicroAPI::RegTensor<int32_t> &)invScale, invExp,
+                static_cast<int16_t>(FAST_LOG_SHIFT_BITS), maskScale);
+            AscendC::MicroAPI::Interleave(invScale0, invScale1, invScale, invScale);
+            AscendC::MicroAPI::Interleave(invScale1, invScale, invScale0, invScale0);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                invScaleScratch, invScale1, maskInvScratch);
+            AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                                           AscendC::MicroAPI::MemType::VEC_LOAD>();
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_E2B_B32>(
+                invScaleForY0, invScaleScratch);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_E2B_B32>(
+                invScaleForY1, invScaleScratch + SCALE_ONCE_NUM);
+
+            AscendC::MicroAPI::Mul(y0, y0, invScaleForY0, maskF32);
+            AscendC::MicroAPI::Mul(y1, y1, invScaleForY1, maskF32);
+            AscendC::MicroAPI::Cast<DataTypeOut, float, CAST_FP32_TO_FP8_GROUP_PERF>(y0Fp8, y0, maskF32);
+            AscendC::MicroAPI::Cast<DataTypeOut, float, CAST_FP32_TO_FP8_GROUP_PERF>(y1Fp8, y1, maskF32);
+            AscendC::MicroAPI::DataCopy<DataTypeOut, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                outLocalAddr + dstOffset, y0Fp8, maskF32);
+            AscendC::MicroAPI::DataCopy<DataTypeOut, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                outLocalAddr + dstOffset + GROUP_PERF_VL_FP32, y1Fp8, maskF32);
+        }
+        AscendC::MicroAPI::StoreUnAlignPost<uint8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            scaleLocalAddr, scaleStoreReg, 0);
+    }
+    return;
+}
+
+BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
                                                                                        uint16_t pingpongIdx)
 {
@@ -881,10 +1054,24 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
         // 交织：gate 在 mmad 每行前 singleN_ 列，up 在后 singleN_ 列；secondSrc 偏到 up 半。
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
         if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
-            VFDoSwigluAndQuantForMXInterleavedBf16(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                l0cOutUbBase, l0cOutUbSecondAddr,
-                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
+                          AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
+                if (singleN_ == GROUP_PERF_VL_BF16) {
+                    VFDoSwigluAndQuantForMXInterleavedBf16GroupPerf(
+                        quantOutputInUbAddr, quantScaleOutputInUbAddr,
+                        l0cOutUbBase, l0cOutUbSecondAddr, halfScaleAddr, mSize, singleN_);
+                } else {
+                    VFDoSwigluAndQuantForMXInterleavedBf16(
+                        quantOutputInUbAddr, quantScaleOutputInUbAddr,
+                        l0cOutUbBase, l0cOutUbSecondAddr,
+                        gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+                }
+            } else {
+                VFDoSwigluAndQuantForMXInterleavedBf16(
+                    quantOutputInUbAddr, quantScaleOutputInUbAddr,
+                    l0cOutUbBase, l0cOutUbSecondAddr,
+                    gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+            }
         } else {
             VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, true>(
                 quantOutputInUbAddr, quantScaleOutputInUbAddr,
