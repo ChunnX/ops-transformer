@@ -17,13 +17,17 @@
 #ifndef ENGRAM_FETCH_ARCH35_H
 #define ENGRAM_FETCH_ARCH35_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch_utils.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
+#include "adv_api/index/arithprogression.h"
 
 namespace Mc2Kernel {
 
@@ -48,18 +52,8 @@ private:
     __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void CopyContextToUb();
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen);
-    __aicore__ inline void ScatterByRank(const AscendC::LocalTensor<int32_t> &indicesLocal,
-                                         const AscendC::LocalTensor<uint32_t> &rankCounts,
-                                         const AscendC::LocalTensor<uint32_t> &rankOffsets,
-                                         const AscendC::LocalTensor<uint32_t> &tokenIdxInRank,
-                                         uint32_t batchLen);
-    __aicore__ inline void FetchByRank(const AscendC::LocalTensor<uint64_t> &commBufferLocal,
-                                       const AscendC::LocalTensor<uint64_t> &hcommHandleLocal,
-                                       const AscendC::LocalTensor<int32_t> &indicesLocal,
-                                       const AscendC::LocalTensor<uint32_t> &rankCounts,
-                                       const AscendC::LocalTensor<uint32_t> &rankOffsets,
-                                       const AscendC::LocalTensor<uint32_t> &tokenIdxInRank,
-                                       uint32_t indicesBatchStart, uint32_t totalBlocks);
+    __aicore__ inline void ScatterByRank(uint32_t batchLen);
+    __aicore__ inline void FetchByRank(uint32_t indicesBatchStart);
 
     AscendC::TPipe *tpipe_{nullptr};
     GM_ADDR indicesGM_{nullptr};
@@ -91,7 +85,7 @@ private:
     AscendC::TBuf<> divisorBuf_;
     AscendC::TBuf<> maskBuf_;
 
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
 __aicore__ inline void EngramFetchArch35::Init(
@@ -188,13 +182,13 @@ __aicore__ inline void EngramFetchArch35::CopyIndicesToUb(uint32_t indicesBatchS
     AscendC::DataCopyPad(indicesLocal, indicesGlobal[indicesBatchStart], params, pad);
 }
 
-__aicore__ inline void EngramFetchArch35::ScatterByRank(
-    const AscendC::LocalTensor<int32_t> &indicesLocal,
-    const AscendC::LocalTensor<uint32_t> &rankCounts,
-    const AscendC::LocalTensor<uint32_t> &rankOffsets,
-    const AscendC::LocalTensor<uint32_t> &tokenIdxInRank,
-    uint32_t batchLen)
+__aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
 {
+    AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+    AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
+
     uint32_t compareCntMax = AscendC::Ceil(batchLen * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
 
     AscendC::LocalTensor<int32_t> rankIDs = rankIDsBuf_.Get<int32_t>();
@@ -239,16 +233,8 @@ __aicore__ inline void EngramFetchArch35::Process()
             return;
         }
 
-        uint32_t totalBlocks = AscendC::GetBlockNum();
-
         CopyContextToUb();
-
-        AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
-        AscendC::LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
-        AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
-        AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
-        AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
-        AscendC::LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         uint32_t numTokens = static_cast<uint32_t>(numTokens_);
 
@@ -262,36 +248,34 @@ __aicore__ inline void EngramFetchArch35::Process()
             CopyIndicesToUb(indicesBatchStart, indicesBatchLen);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-            ScatterByRank(indicesLocal, rankCounts, rankOffsets, tokenIdxInRank, indicesBatchLen);
+            ScatterByRank(indicesBatchLen);
 
-            FetchByRank(commBufferLocal, hcommHandleLocal, indicesLocal,
-                        rankCounts, rankOffsets, tokenIdxInRank,
-                        indicesBatchStart, totalBlocks);
+            FetchByRank(indicesBatchStart);
 
             indicesBatchStart += indicesBatchLen;
         }
     }
 }
 
-__aicore__ inline void EngramFetchArch35::FetchByRank(
-    const AscendC::LocalTensor<uint64_t> &commBufferLocal,
-    const AscendC::LocalTensor<uint64_t> &hcommHandleLocal,
-    const AscendC::LocalTensor<int32_t> &indicesLocal,
-    const AscendC::LocalTensor<uint32_t> &rankCounts,
-    const AscendC::LocalTensor<uint32_t> &rankOffsets,
-    const AscendC::LocalTensor<uint32_t> &tokenIdxInRank,
-    uint32_t indicesBatchStart, uint32_t totalBlocks)
+__aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart)
 {
+    AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
+    AscendC::LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
+    AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+    AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
+
     uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
     uint32_t numEntriesPerRank = static_cast<uint32_t>(numEntriesPerRank_);
+    uint32_t totalBlocks = AscendC::GetBlockNum();
 
     for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
         uint32_t idxStart = ownerRank * numEntriesPerRank;
         uint32_t rankStart = rankOffsets(ownerRank);
         uint32_t cnt = rankCounts(ownerRank);
-
-        uint32_t channelIdx = ownerRank;
         uint32_t pendingReadCount = 0;
+
         for (uint32_t b = 0; b < cnt; b++) {
             uint32_t i = tokenIdxInRank(rankStart + b);
             int32_t globalIdx = indicesLocal(i);
@@ -306,17 +290,17 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(
             } else {
                 GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
                                         + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-                hcomm_.ReadNbi<false>(hcommHandleLocal(channelIdx), dst, remoteSrcAddr, hiddenBytes);
+                hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
                 pendingReadCount++;
                 if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
-                    hcomm_.Commit(hcommHandleLocal(channelIdx));
+                    hcomm_.Commit(hcommHandleLocal(ownerRank));
                     pendingReadCount = 0;
                 }
             }
         }
 
         if (pendingReadCount > 0) {
-            hcomm_.Commit(hcommHandleLocal(channelIdx));
+            hcomm_.Commit(hcommHandleLocal(ownerRank));
         }
     }
 }
