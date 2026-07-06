@@ -1910,10 +1910,6 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
         return ACLNN_SUCCESS;
     }
     if (xSize == 1UL && weightSize > 1UL && ySize == 1UL) {
-        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, [%s] is "
-                   "not supported.",
-                   opName, "bias");
         CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
                    "check failed.",
