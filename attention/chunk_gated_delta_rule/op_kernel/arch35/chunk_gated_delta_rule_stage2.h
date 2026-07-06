@@ -140,7 +140,6 @@ public:
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDkF32_);
                             inQueue_.FreeTensor(stateIn);
-                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             if (isFirstGroup_ && cId == 0) {
                                 auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
                                 Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
@@ -148,6 +147,7 @@ public:
                                 CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false);
                                 CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                             }
+                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
