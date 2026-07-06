@@ -1804,6 +1804,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
             td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
             td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
         } else {
+            tmpData_.sumS1S2Product = 1;
             td_->opInfo.set_B(1);
             td_->opInfo.set_S1(queryShape.GetDim(DIM_0));
             td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
@@ -1900,6 +1901,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::ProcessDropInfo()
         int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
         dropMaskShapeSize *= dimValue;
     }
+    OP_CHECK_IF(dropMaskShapeSize == 0,
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: "
+                "[dropMask has zero elements (shape size is 0) when keepProb=%f]", td_->opInfo.get_keepProb()),
+        return ge::GRAPH_FAILED);
 
     auto shapeSize = AlignUp(tmpData_.dropMaskSize, static_cast<int64_t>(BIT_NUM)) / BIT_NUM;
     if (dropMaskShapeSize < shapeSize) {

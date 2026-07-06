@@ -1375,7 +1375,7 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
             *opParamInfo_.valueAntiquantMode == 7) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "QuantMode",
                 std::to_string(*opParamInfo_.queryQuantMode).c_str(),
-                "In the fullquant scenario, per-block(QuantMode == 7) is not supported.");
+                "In the fullquant scenario, per-block(QuantMode == 7) is not supported");
             return ge::GRAPH_FAILED;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
