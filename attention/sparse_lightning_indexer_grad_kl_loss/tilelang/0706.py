@@ -414,9 +414,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
-                    # Construct diff_2d: broadcast diff_ub to 16 rows (once per s1_id)
-                    for i in range(vector_baseg):
-                        T.copy(diff_ub, diff_2d_ub[i, :])
+                    # Construct diff_2d: broadcast diff_ub to 16 rows via T.tile.mul
+                    # (16,128) = (16,128) * (128,) → row-wise broadcast of diff_ub
+                    # If T.tile.mul doesn't support this broadcast, revert to for-loop fallback
+                    T.tile.mul(diff_2d_ub, ones_2d_ub, diff_ub)
 
                     for g_id in range(g_num):
                         g_start = g_id * vector_baseg
@@ -424,16 +425,14 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.fill(weight_ub, 0)
 
                         # 2D vectorized: 6 VEC ops total per g_id (was 96)
-                        # Step 1: copy bmm2 chunk rows → dw_chunk_ub
-                        for i in range(vector_baseg):
-                            T.copy(bmm2_ub[g_start + i, :], dw_chunk_ub[i, :])
+                        # Step 1: range copy bmm2 chunk → dw_chunk_ub (1 DMA vs 16)
+                        T.copy(bmm2_ub[g_start:g_start + vector_baseg, :], dw_chunk_ub)
                         # Step 2: mask = 1 - exp(bmm2 * (-10000)) → rsy_tmp_ub
                         T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
                         T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
-                        # Step 3: copy w2d chunk → w2d_chunk_ub
-                        for i in range(vector_baseg):
-                            T.copy(weight_2d_ub[g_start + i, :], w2d_chunk_ub[i, :])
+                        # Step 3: range copy w2d chunk → w2d_chunk_ub (1 DMA vs 16)
+                        T.copy(weight_2d_ub[g_start:g_start + vector_baseg, :], w2d_chunk_ub)
                         # Step 4: rsy = diff_2d * w2d_chunk, then rsy *= mask
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, diff_2d_ub)
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, rsy_tmp_ub)
