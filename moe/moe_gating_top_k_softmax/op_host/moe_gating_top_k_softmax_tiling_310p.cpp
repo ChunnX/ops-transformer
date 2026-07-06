@@ -24,26 +24,16 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
 
+#include <algorithm>
 #include <climits>
 
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
-static const int32_t DIM_0 = 0;
-static const int32_t DIM_1 = 1;
-static const int32_t DIM_2 = 2;
-static const int32_t SIZE_2 = 2;
-static const int32_t SIZE_3 = 3;
-static const int32_t FP32_SIZE = 4;
 static const int32_t FP16_SIZE = 2;
-static const int32_t BF16_SIZE = 2;
-static const int32_t INT32_SIZE = 4;
-static const int32_t BOOL_SIZE = 1;
-static const int64_t BLOCK_SIZE = 32;
-static const int64_t ALIGN_NUM = 32;
 static const bool IS_SOFTMAX_REUSE_SOURCE = true;
-static const bool IS_TOP_K_REUSE_SOURCE = true;
 static const int32_t MAX_COL_IN_UB = 98304; // ubSize/minTypeSize
+const int32_t UB_SIZE = 245760;
 
 static inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
 {
@@ -53,18 +43,6 @@ static inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
     return (value + factor - 1U) / factor;
 }
 
-static inline int64_t calcUbAlignBufferSize(const uint32_t curRowInUb, const uint32_t col, const int typeSize)
-{
-    return static_cast<int64_t>(CeilDiv(col * static_cast<uint32_t>(typeSize), static_cast<uint32_t>(BLOCK_SIZE))) *
-           BLOCK_SIZE * static_cast<int64_t>(curRowInUb);
-}
-
-static inline uint32_t calcGatingAlignCol(const uint32_t col, const ge::DataType dtypeLocal)
-{
-    (void)dtypeLocal;
-    // 对齐成32个数处理
-    return CeilDiv(col, static_cast<uint32_t>(ALIGN_NUM)) * static_cast<uint32_t>(ALIGN_NUM);
-}
 
 static inline int64_t Align(int64_t x, int64_t y) {
     if (y == 0) {
@@ -106,6 +84,9 @@ bool MoeGatingTopKSoftmax310PTiling::IsCapable()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto is310P = (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P);
+    if (col > 256) {
+        return false;
+    }
     return is310P;
 }
 
@@ -124,7 +105,6 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
     auto x_shape = ge::Shape({row, col});
     auto y_shape = ge::Shape({row, k});
     auto expertIdx_shape = ge::Shape({row, k});
-
     // Set row
     int64_t rowTmp = 1;
     for (size_t i = 0; i < x_dim_num - 1; ++i) {
@@ -144,20 +124,19 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
         tilingData.set_kAlign(static_cast<int32_t>(kAlign));
 
     // Set blockNum
-    int32_t blockNum = 8;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    auto blockNum = ascendcPlatform.GetCoreNumAic();
     tilingData.set_blockNum(blockNum);
     int32_t hasFinishedTmp = 0;
     tilingData.set_hasFinished(hasFinishedTmp);
 
     // Set FormerRow
-    const int64_t oneCoreRow = Align(rowTmp, 16 * blockNum) / blockNum;
+    const int64_t oneCoreRow = Align(std::min(rowTmp, UB_SIZE / (32 * (colTmp + 3 * kAlign))), 16 * blockNum);
     const int64_t activateCore = CeilDiv(rowTmp, oneCoreRow);
     const int64_t tailRow = rowTmp - (activateCore - 1) * oneCoreRow;
-
     tilingData.set_oneCoreRow(oneCoreRow);
     tilingData.set_activateCore(activateCore);
     tilingData.set_tailRow(tailRow);
-
     return ge::GRAPH_SUCCESS;
 }
 
