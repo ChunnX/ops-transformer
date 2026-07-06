@@ -26,6 +26,27 @@ class CommContextOpBuilder(OpBuilder):
         pass
 
 comm_context_op_builder = CommContextOpBuilder()
-op_module = comm_context_op_builder.load()
 
-CommContextManager = op_module.CommContextManager
+
+class _LazyClassProxy:
+    def __init__(self, name, builder):
+        self._name = name
+        self._builder = builder
+        self._real_cls = None
+
+    def __call__(self, *args, **kwargs):
+        return self._ensure_loaded()(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._ensure_loaded(), name)
+
+    def _ensure_loaded(self):
+        if self._real_cls is None:
+            self._real_cls = getattr(self._builder.load(), self._name)
+        return self._real_cls
+
+
+def __getattr__(name):
+    if name == "CommContextManager":
+        return _LazyClassProxy("CommContextManager", comm_context_op_builder)
+    raise AttributeError(f"module '{__name__}' has no attribute {name}")

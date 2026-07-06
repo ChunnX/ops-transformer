@@ -57,7 +57,6 @@ class MoeDistributeCombineOpBuilder(OpBuilder):
 
 # Instantiate the builder
 moe_distribute_combine_op_builder = MoeDistributeCombineOpBuilder()
-op_module = moe_distribute_combine_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, moe_distribute_combine_op_builder.name, "PrivateUse1")
@@ -74,6 +73,7 @@ def npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_co
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = moe_distribute_combine_op_builder.load()  # Compiles/loads the .so file
     return op_module.npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine,
                                                   ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
                                                   moe_expert_num, ccl_buffer_size,
