@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_combine_add_rms_norm_tiling_def.h"
-#include "../../../op_kernel/moe_distribute_combine_add_rms_norm.cpp"
+#include "../../../op_kernel/arch22/moe_distribute_combine_add_rms_norm.cpp"
 class MoeDistributeCombineAddRmsNormTest : public testing::Test
 {
 protected:
