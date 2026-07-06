@@ -49,7 +49,7 @@ private:
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
     AscendC::TBuf<> hcommBuf_;
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
 __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM,
