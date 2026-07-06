@@ -953,7 +953,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2Nz(mm2R
     fixpipeParamsNz.params.srcNdStride = 0;
     fixpipeParamsNz.params.dstNdStride = 0;
     Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(),
-            mm2ResL0C.GetTensor<T>(), fixpipeParamsNz); // 将matmul结果从L0C搬运到UB
+        mm2ResL0C.GetTensor<T>(), fixpipeParamsNz); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
     outputBuf.SetCrossCore();
 }
