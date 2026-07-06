@@ -420,19 +420,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     for g_id in range(g_num):
                         g_start = g_id * vector_baseg
-                        g_end = g_start + vector_baseg
 
                         T.tile.fill(weight_ub, 0)
 
                         # 2D vectorized: 6 VEC ops total per g_id (was 96)
-                        # Step 1: copy bmm2 chunk → dw_chunk_ub (single range copy)
-                        T.copy(bmm2_ub[g_start:g_end, :], dw_chunk_ub)
+                        # Step 1: copy bmm2 chunk rows → dw_chunk_ub
+                        for i in range(vector_baseg):
+                            T.copy(bmm2_ub[g_start + i, :], dw_chunk_ub[i, :])
                         # Step 2: mask = 1 - exp(bmm2 * (-10000)) → rsy_tmp_ub
                         T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
                         T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
-                        # Step 3: copy w2d chunk → w2d_chunk_ub (single range copy)
-                        T.copy(weight_2d_ub[g_start:g_end, :], w2d_chunk_ub)
+                        # Step 3: copy w2d chunk → w2d_chunk_ub
+                        for i in range(vector_baseg):
+                            T.copy(weight_2d_ub[g_start + i, :], w2d_chunk_ub[i, :])
                         # Step 4: rsy = diff_2d * w2d_chunk, then rsy *= mask
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, diff_2d_ub)
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, rsy_tmp_ub)

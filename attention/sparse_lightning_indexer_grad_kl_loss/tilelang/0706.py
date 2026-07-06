@@ -143,17 +143,18 @@ def check_param_valid(
 
 
 # ==============================================================================
-# Single Kernel: CV-separated architecture with Double Buffer (0706)
-# V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices → workspace_ping/pong
+# Single Kernel: CV-separated architecture (0706)
+# V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices → workspace
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
 # V scope 3: cast dQueryIndex FP32→FP16
 # 
-# Double Buffer Strategy:
-# - Ping-pong workspace for GatherKey_ws, GatherKeyIndex_ws, GatherKeyRope_ws
-# - Interleave execution across K-blocks to pipeline V/C scopes
-# - V0 writes to ping buffer while C1 reads from pong buffer (previous K-block)
+# NOTE: Originally planned double buffer across K-blocks, but discovered:
+# - Each core processes a different K-block (k_start:k_end), accessing disjoint workspace regions
+# - Cross-K-block synchronization via cross_flag would cause DEADLOCK (flag set by different core)
+# - Current implementation uses workspace dimension [2] but always uses index 0
+# - Future optimization: s1-level pipelining with ping-pong across s1_sub_blocks
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
@@ -218,17 +219,17 @@ def tilelang_grad_kl_loss_single_kernel(
             k_start = n_idx_k * n_block
             k_end = T.min(k_start + n_block, K)
             
-            # Determine ping-pong buffer index: ping=0 for odd blocks, pong=1 for even
-            ping = n_idx_k % 2
-            
-            # Wait for previous K-block's C scope to finish reading pong buffer
-            if n_idx_k > 0:
-                prev_ping = (n_idx_k - 1) % 2
-                T.wait_cross_flag(100 + prev_ping)
+            # NOTE: Double buffer across K-blocks is NOT needed!
+            # Each core processes a different K-block (k_start:k_end),
+            # so different cores access disjoint regions of workspace.
+            # No cross-K-block synchronization required.
+            # 
+            # Ping-pong dimension [2] is kept for future s1-level pipelining,
+            # but currently unused (use index 0 for all operations).
 
             # ============================================================
             # V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices
-            # Writes to ping/pong buffer based on current K-block index
+            # Each core gathers only its own K-block rows into workspace
             # ============================================================
             with T.Scope("V"):
                 key_row_ub = T.alloc_ub((1, DQuery), input_dtype)
@@ -240,21 +241,21 @@ def tilelang_grad_kl_loss_single_kernel(
                         idx = SparseIndices[bz, s1_id, 0, k_id]
                         if idx >= 0:
                             T.copy(Key[bz, idx, 0, 0:DQuery], key_row_ub)
-                            T.copy(key_row_ub, GatherKey_ws[bz, s1_id, ping, k_id, 0:DQuery])
+                            T.copy(key_row_ub, GatherKey_ws[bz, s1_id, 0, k_id, 0:DQuery])
                             T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_row_ub)
-                            T.copy(ki_row_ub, GatherKeyIndex_ws[bz, s1_id, ping, k_id, 0:DQueryIndex])
+                            T.copy(ki_row_ub, GatherKeyIndex_ws[bz, s1_id, 0, k_id, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_row_ub)
-                                T.copy(kr_row_ub, GatherKeyRope_ws[bz, s1_id, ping, k_id, 0:d_rope])
+                                T.copy(kr_row_ub, GatherKeyRope_ws[bz, s1_id, 0, k_id, 0:d_rope])
 
-                T.set_cross_flag("V", 200 + ping)
+                T.set_cross_flag("V", 10)
 
             # ============================================================
             # C scope 1: Matmul1 (with rope) + Matmul2
-            # Reads from ping/pong buffer (populated by V0 for this K-block)
+            # Reads from gather workspace (populated by V0)
             # ============================================================
             with T.Scope("C"):
-                T.wait_cross_flag(200 + ping)
+                T.wait_cross_flag(10)
 
                 Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
                 GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
@@ -268,10 +269,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             rope_d = d_idx - d_num_query
                             T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1)
                         if d_idx < d_num_query:
-                            T.copy(GatherKey_ws[bz, s1_row, ping, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GK_L1)
+                            T.copy(GatherKey_ws[bz, s1_row, 0, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GK_L1)
                         else:
                             rope_d = d_idx - d_num_query
-                            T.copy(GatherKeyRope_ws[bz, s1_row, ping, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1)
+                            T.copy(GatherKeyRope_ws[bz, s1_row, 0, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1)
                         T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                     T.copy(C_L0C, bmm1Res[bz, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
@@ -282,12 +283,11 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for k_idx in T.serial(d_num_query_index):
                         T.copy(QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block], QI_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, ping, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
+                        T.copy(GatherKeyIndex_ws[bz, s1_row, 0, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
                         T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                     T.copy(C2_L0C, bmm2Res[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
 
-                # Signal completion: allow next K-block's V0 to write to this buffer
-                T.set_cross_flag("FIX", 100 + ping)
+                T.set_cross_flag("FIX", 1)
 
             # ============================================================
             # V scope 1: All vector ops merged (reduce memory)
@@ -296,7 +296,7 @@ def tilelang_grad_kl_loss_single_kernel(
             # - dWeight, reluGrad, Loss for MY K block
             # ============================================================
             with T.Scope("V"):
-                T.wait_cross_flag(100 + ping)
+                T.wait_cross_flag(1)
 
                 bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
                 bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
@@ -492,15 +492,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Write partial Loss for MY K block only (single value)
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
 
-                T.set_cross_flag("V", 300 + ping)
+                T.set_cross_flag("V", 12)
 
             # ============================================================
             # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
             # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum
-            # (Reads from ping/pong buffer, not transposed)
+            # (Reads from gather workspace directly, not transposed)
             # ============================================================
             with T.Scope("C"):
-                T.wait_cross_flag(300 + ping)
+                T.wait_cross_flag(12)
 
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
@@ -509,17 +509,17 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, ping, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
+                        T.copy(GatherKeyIndex_ws[bz, s1_row, 0, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
                         T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
                         T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
 
-                T.set_cross_flag("FIX", 400 + ping)
+                T.set_cross_flag("FIX", 3)
 
             # ============================================================
             # V scope 3: Cast dQueryIndex (minimal buffers)
             # ============================================================
             with T.Scope("V"):
-                T.wait_cross_flag(400 + ping)
+                T.wait_cross_flag(3)
 
                 dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
                 dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
