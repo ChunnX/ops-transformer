@@ -238,7 +238,6 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
-
     if (isA2 || isA3) {
         int64_t expertPerRank = moeExpertNum / epWorldSize;
         bool isQuantRouting = (dispatchQuantMode == 4);
