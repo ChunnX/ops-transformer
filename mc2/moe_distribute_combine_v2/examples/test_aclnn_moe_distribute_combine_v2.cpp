@@ -518,7 +518,7 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
             expertScales, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", 0,
             0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
             expertTokenNumsType, commAlg.c_str(), expandX, dynamicScales, assistInfoForCombine, expertTokenNums, epRecvCounts,
-            nullptr, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
+            tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);

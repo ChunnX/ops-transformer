@@ -141,7 +141,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>expandX</td>
     <td>输入</td>
     <td>根据expertIds扩展的token特征。</td>
-    <td>Device侧2D Tensor，shape为(max(tpWorldSize, 1) * A, H)。</td>
+    <td>Device侧2D Tensor，shape为(A, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>2</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>epSendCounts</td>
     <td>输入</td>
     <td>对应<code>aclnnMoeDistributeDispatchV3</code>的<code>epRecvCounts</code>输出。</td>
-    <td>Device侧1D Tensor，shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。</td>
+    <td>Device侧1D Tensor，shape为(epWorldSize * localExpertNum, )。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>1</td>
@@ -210,8 +210,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <tr>
     <td>tpSendCountsOptional</td>
     <td>输入</td>
-    <td>对应<code>aclnnMoeDistributeDispatchV3</code>的<code>tpRecvCounts</code>输出。</td>
-    <td>有TP域通信时传1D Tensor, shape为(tpWorldSize, )，否则传空指针。</td>
+    <td>预留参数，TP域通信不再支持。</td>
+    <td>当前版本不支持，传空指针即可。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -331,7 +331,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>groupEp</td>
     <td>输入</td>
     <td>EP通信域名称（专家并行）。</td>
-    <td>字符串长度[1, 128)，不可与groupTp相同。</td>
+    <td>字符串长度[1, 128)。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -370,8 +370,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <tr>
     <td>groupTp</td>
     <td>输入</td>
-    <td>TP通信域名称（数据并行）。</td>
-    <td>字符串长度[1, 128)，不可与groupEp相同。</td>
+    <td>TP通信域名称（预留参数，当前版本不支持）。</td>
+    <td>字符串长度[1, 128)。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -380,8 +380,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <tr>
     <td>tpWorldSize</td>
     <td>输入</td>
-    <td>TP通信域大小。</td>
-    <td>取值范围[0, 2]，0/1表示无TP域通信，有TP域通信时仅支持2。</td>
+    <td>TP通信域大小（预留参数，当前版本不支持，仅允许0或1）。</td>
+    <td>预留参数，当前版本不支持，传0即可。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -390,8 +390,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <tr>
     <td>tpRankId</td>
     <td>输入</td>
-    <td>TP域本卡ID。</td>
-    <td>取值范围[0, 1]，同一通信域内不重复；无TP域通信时传0。</td>
+    <td>TP域本卡ID（预留参数，当前版本不支持，传0即可）。</td>
+    <td>预留参数，当前版本不支持，传0即可。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -573,9 +573,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <details>
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：</summary>
 
-    - groupTp字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-    - tpWorldSize取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-    - tpRankId取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+    - groupTp预留参数，当前版本不支持，传空字符即可。
+    - tpWorldSize预留参数，当前版本不支持，传0即可。
+    - tpRankId预留参数，当前版本不支持，传0即可。
     </details>
 
     <details>
@@ -679,7 +679,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
   - aclnnMoeDistributeDispatchV3接口与aclnnMoeDistributeCombineAddRmsNormV2接口必须配套使用，具体参考[调用示例](#调用示例)。
 
 - 参数一致性约束
-  - 调用接口过程中使用的expertIds、xActiveMaskOptional、elasticInfoOptional、groupEp、epWorldSize、moeExpertNum、groupTp、tpWorldSize、expertShardType、sharedExpertNum、sharedExpertRankNum、globalBs、commAlg、zeroExpertNum、     copyExpertNum、constExpertNum参数、HCCL_BUFFSIZE取值所有卡需保持一致，网络中不同层中也需保持一致，且和DispatchV3对应参数也保持一致。
+  - 调用接口过程中使用的expertIds、xActiveMaskOptional、elasticInfoOptional、groupEp、epWorldSize、moeExpertNum、expertShardType、sharedExpertNum、sharedExpertRankNum、globalBs、commAlg、zeroExpertNum、copyExpertNum、constExpertNum参数、HCCL_BUFFSIZE取值所有卡需保持一致，网络中不同层中也需保持一致，且和DispatchV3对应参数也保持一致。
 
 - 产品特定约束 
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
@@ -694,16 +694,16 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     - K：表示选取topK个专家，取值范围为0 < K ≤ 16同时满足0 < K ≤ moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum。
     - localExpertNum：表示本卡专家数量。
         - 对于共享专家卡，localExpertNum = 1
-        - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)，localExpertNum > 1时，不支持TP域通信。
+        - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)，当前版本不支持TP域通信。
   
 - 环境变量约束：
     - HCCL_BUFFSIZE：调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
         - ep通信域内：设置大小要求 >= 2且满足1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)，localExpertNum表示MoE专家卡的本卡专家数。
-        - tp通信域内：设置大小要求 \>= (A \* Align512(Align32(h \* 2) + 44) + A \* Align512(h \* 2)) \* 2。
+        - tp通信域内：预留参数，当前版本不支持。
 
 - 通信域使用约束：
     - 一个模型中的aclnnMoeDistributeCombineAddRmsNormV2和aclnnMoeDistributeDispatchV3仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的aclnnMoeDistributeCombineAddRmsNormV2和aclnnMoeDistributeDispatchV3仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 - 通信方式约束：
@@ -745,17 +745,14 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     struct Args {
         uint32_t rankId;
         uint32_t epRankId;
-        uint32_t tpRankId;
         HcclComm hcclEpComm;
-        HcclComm hcclTpComm;
         aclrtStream dispatchStream;
         aclrtStream combineStream;
         aclrtContext context;
     };
 
     constexpr uint32_t EP_WORLD_SIZE = 2;
-    constexpr uint32_t TP_WORLD_SIZE = 1;
-    constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+    constexpr uint32_t DEV_NUM = EP_WORLD_SIZE;
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -793,10 +790,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         char hcomEpName[128] = {0};
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed, ret %d\n", ret); return -1);
-        char hcomTpName[128] = {0};
         LOG_PRINT(
-            "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchStream = %p, combineStream = %p, context = %p\n",
-            args.rankId, hcomEpName, hcomTpName, args.dispatchStream, args.combineStream, args.context
+            "[INFO] rank = %d, hcomEpName = %s, dispatchStream = %p, combineStream = %p, context = %p\n",
+            args.rankId, hcomEpName, args.dispatchStream, args.combineStream, args.context
         );
 
         int64_t BS = 8;
@@ -838,7 +834,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         void *expandIdxDeviceAddr = nullptr;
         void *expertTokenNumsDeviceAddr = nullptr;
         void *epRecvCountsDeviceAddr = nullptr;
-        void *tpRecvCountsDeviceAddr = nullptr;
         void *expandScalesDeviceAddr = nullptr;
         void *residualXDeviceAddr = nullptr;
         void *sharedExpertXDeviceAddr = nullptr;
@@ -849,6 +844,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         void *constExpertAlpha1DeviceAddr = nullptr;
         void *constExpertAlpha2DeviceAddr = nullptr;
         void *constExpertVDeviceAddr = nullptr;
+        void *tpRecvCountsDeviceAddr = nullptr;
 
         void *yOutDeviceAddr = nullptr;
         void *rstdOutDeviceAddr = nullptr;
@@ -863,7 +859,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         aclTensor *expandIdx = nullptr;
         aclTensor *expertTokenNums = nullptr;
         aclTensor *epRecvCounts = nullptr;
-        aclTensor *tpRecvCounts = nullptr;
         aclTensor *expandScales = nullptr;
         aclTensor *residualX = nullptr;
         aclTensor *sharedExpertX = nullptr;
@@ -874,7 +869,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         aclTensor *constExpertAlpha1 = nullptr;
         aclTensor *constExpertAlpha2 = nullptr;
         aclTensor *constExpertV = nullptr;
-
+        aclTensor *tpRecvCounts = nullptr;
 
         aclTensor *yOut = nullptr;
         aclTensor *rstdOut = nullptr;
@@ -885,12 +880,11 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{(sharedExpertRankNum > 0) ? moeExpertNum + 1 : moeExpertNum, H};
         std::vector<int64_t> expertScalesShape{BS, K};
-        std::vector<int64_t> expandXShape{TP_WORLD_SIZE * A, H};
-        std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE * A};
+        std::vector<int64_t> expandXShape{A, H};
+        std::vector<int64_t> dynamicScalesShape{A};
         std::vector<int64_t> expandIdxShape{A * 128};
         std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-        std::vector<int64_t> epRecvCountsShape{TP_WORLD_SIZE * localExpertNum * EP_WORLD_SIZE};
-        std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE};
+        std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
         std::vector<int64_t> expandScalesShape{A};
         std::vector<int64_t> residualXShape{BS, 1, H};
         std::vector<int64_t> sharedExpertXShape{BS, 1, H};
@@ -901,6 +895,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         std::vector<int64_t> constExpertAlpha1Shape{constExpertNum, H};
         std::vector<int64_t> constExpertAlpha2Shape{constExpertNum, H};
         std::vector<int64_t> constExpertVShape{constExpertNum, H};
+        std::vector<int64_t> tpRecvCountsShape{1};
         
         std::vector<int64_t> yOutShape{BS, 1, H};
         std::vector<int64_t> rstdOutShape{BS, 1, 1};
@@ -915,7 +910,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         int64_t expandIdxShapeSize = GetShapeSize(expandIdxShape);
         int64_t expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
         int64_t epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
-        int64_t tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
         int64_t expandScalesShapeSize = GetShapeSize(expandScalesShape);
         int64_t residualXShapeSize = GetShapeSize(residualXShape);
         int64_t sharedExpertXShapeSize = GetShapeSize(sharedExpertXShape);
@@ -926,6 +920,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         int64_t constExpertAlpha1Size = GetShapeSize(constExpertAlpha1Shape);
         int64_t constExpertAlpha2Size = GetShapeSize(constExpertAlpha2Shape);
         int64_t constExpertVSize = GetShapeSize(constExpertVShape);
+        int64_t tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
 
         int64_t yOutShapeSize = GetShapeSize(yOutShape);
         int64_t rstdOutShapeSize = GetShapeSize(rstdOutShape);
@@ -948,7 +943,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         std::vector<int32_t> expandIdxHostData(expandIdxShapeSize, 0);
         std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
         std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
-        std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
         std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
         std::vector<int16_t> residualXHostData(residualXShapeSize, 1);
         std::vector<int16_t> sharedExpertXHostData(sharedExpertXShapeSize, 1);
@@ -958,6 +952,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         std::vector<int16_t> constExpertAlpha1HostData(constExpertAlpha1Size, 0);
         std::vector<int16_t> constExpertAlpha2HostData(constExpertAlpha2Size, 0);
         std::vector<int16_t> constExpertVHostData(constExpertVSize, 0);
+        std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
 
         std::vector<int16_t> yOutHostData(yOutShapeSize, 0);
         std::vector<float> rstdOutHostData(rstdOutShapeSize, 0);
@@ -982,8 +977,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32, &epRecvCounts);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(residualXHostData, residualXShape, &residualXDeviceAddr, aclDataType::ACL_BF16, &residualX);
@@ -1000,6 +993,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         ret = CreateAclTensor(constExpertAlpha2HostData, constExpertAlpha2Shape, &constExpertAlpha2DeviceAddr, aclDataType::ACL_BF16, &constExpertAlpha2);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(constExpertVHostData, constExpertVShape, &constExpertVDeviceAddr, aclDataType::ACL_BF16, &constExpertV);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32, &tpRecvCounts);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(yOutHostData, yOutShape, &yOutDeviceAddr, aclDataType::ACL_BF16, &yOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -1019,8 +1014,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 
         /**************************************** 调用dispatch warm up********************************************/
         ret = aclnnMoeDistributeDispatchV3GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, 
-                expertScales, nullptr, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
+                expertScales, nullptr, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0,
+                0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
         
@@ -1043,8 +1038,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         /**************************************** 调用dispatch ********************************************/
         // 调用第一阶段接口
         ret = aclnnMoeDistributeDispatchV3GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, 
-                expertScales, elasticInfo, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
+                expertScales, elasticInfo, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0,
+                0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
         
@@ -1070,8 +1065,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         ret = aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize(
             expandX, expertIds, expandIdx, epRecvCounts, expertScales, residualX, gamma, tpRecvCounts, nullptr, nullptr,
             nullptr, nullptr, nullptr, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
-            hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-            args.tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
+            hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0,
+            0, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
             groupList_type, nullptr, 1e-6, zeroExpertNum, copyExpertNum, constExpertNum, yOut, rstdOut, xOut,
             &combineAddRmsNormWorkspaceSize, &combineAddRmsNormExecutor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -1128,9 +1123,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         if (epRecvCounts != nullptr) {
             aclDestroyTensor(epRecvCounts);
         }
-        if (tpRecvCounts != nullptr) {
-            aclDestroyTensor(tpRecvCounts);
-        }
         if (expandScales != nullptr) {
             aclDestroyTensor(expandScales);
         }
@@ -1158,6 +1150,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         }
         if (constExpertV != nullptr) {
             aclDestroyTensor(constExpertV);
+        }
+        if (tpRecvCounts != nullptr) {
+            aclDestroyTensor(tpRecvCounts);
         }
 
         if (yOut != nullptr) {
@@ -1199,9 +1194,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         if (expandScalesDeviceAddr != nullptr) {
             aclrtFree(expandScalesDeviceAddr);
         }
-        if (tpRecvCountsDeviceAddr != nullptr) {
-            aclrtFree(tpRecvCountsDeviceAddr);
-        }
         if (residualXDeviceAddr != nullptr) {
             aclrtFree(residualXDeviceAddr);
         }
@@ -1227,6 +1219,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         if (constExpertVDeviceAddr != nullptr) {
             aclrtFree(constExpertVDeviceAddr);
         }
+        if (tpRecvCountsDeviceAddr != nullptr) {
+            aclrtFree(tpRecvCountsDeviceAddr);
+        }
 
         if (yOutDeviceAddr != nullptr) {
             aclrtFree(yOutDeviceAddr);
@@ -1238,7 +1233,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
             aclrtFree(xOutDeviceAddr);
         }
         HcclCommDestroy(args.hcclEpComm);
-        HcclCommDestroy(args.hcclTpComm);
         aclrtDestroyStream(args.dispatchStream);
         aclrtDestroyStream(args.combineStream);
         aclrtDestroyContext(args.context);
@@ -1266,46 +1260,25 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed, ret = %d\n", ret); return ret);
         }
 
-        int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-                devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
-            }
-        }
-
-        HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-            CHECK_RET(ret == ACL_SUCCESS,
-                        LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", tpId, ret); return ret);
-        }
-
-        int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
+        int32_t devicesEp[EP_WORLD_SIZE];
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-                devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
-            }
+            devicesEp[epId] = epId;
         }
 
-        HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-        for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-            CHECK_RET(ret == ACL_SUCCESS,
-                        LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
-        }
+        HcclComm commsEp[EP_WORLD_SIZE];
+        ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp, commsEp);
+        CHECK_RET(ret == ACL_SUCCESS,
+                    LOG_PRINT("[ERROR] HcclCommInitAll ep failed, ret %d\n", ret); return ret);
 
         Args args[DEV_NUM];
         // 各线程调用各卡执行算子
         std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
         for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-            uint32_t epRankId = rankId / TP_WORLD_SIZE;
-            uint32_t tpRankId = rankId % TP_WORLD_SIZE;
+            uint32_t epRankId = rankId;
 
             args[rankId].rankId = rankId;
             args[rankId].epRankId = epRankId;
-            args[rankId].tpRankId = tpRankId;
-            args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
-            args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
+            args[rankId].hcclEpComm = commsEp[epRankId];
             args[rankId].dispatchStream = dispatchStream[rankId];
             args[rankId].combineStream = combineStream[rankId];
             args[rankId].context = context[rankId];
