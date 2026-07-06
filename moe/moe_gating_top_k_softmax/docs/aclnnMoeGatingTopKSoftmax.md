@@ -263,10 +263,11 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
   - x最后一维的大小（即专家数）取值范围为[1, 2048]。
 
 - <term>Ascend 310P</term>:
-  - 输入x shape为[token_num, expert_num], expert_num必须满足16对齐，即expert_num是16整数倍
+  - 输入x shape为[token_num, expert_num], expert_num必须满足16对齐，即expert_num是16整数倍，且不能超过256
   - 输入x仅支持FLOAT16
   - 输入不支持finishedOptional，只能输入None。
   - 输出不支持rowIdxOut，rowIdxOut输出全0。
+  - 本算子仅保证Ascend310P3经过验证，其他310系列不保证功能正确
 
 ## 调用示例
 
