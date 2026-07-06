@@ -19,9 +19,9 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "engram_fetch_tiling_data.h"
-#include "engram_fetch_tiling_key.h"
-#include "arch35/engram_fetch_arch35.h"
+#include "../engram_fetch_tiling_data.h"
+#include "../engram_fetch_tiling_key.h"
+#include "engram_fetch_arch35.h"
 
 using namespace Mc2Kernel;
 
