@@ -16,11 +16,7 @@
 #define MOE_DISTRIBUTE_COMBINE_A5_H
 
 #include "lib/hccl/hccl.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_combine_v2_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
@@ -29,6 +25,7 @@
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 
 namespace MoeDistributeCombineA5Impl {
 constexpr uint8_t BUFFER_NUM = 2;               // 多buf
