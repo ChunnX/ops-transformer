@@ -226,7 +226,8 @@ __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitCubeVecSh
             auto ssbufTilingPtr = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
             auto sharedParamPtr = reinterpret_cast<uint32_t *>(&sharedParams);
             #pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++ssbufTilingPtr, ++sharedParamPtr) {
+            for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t);
+                 ++i, ++ssbufTilingPtr, ++sharedParamPtr) {
                 *ssbufTilingPtr = *sharedParamPtr;
             }
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
@@ -858,7 +859,8 @@ __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::PostQuantPerC
     pqCopyParams.blockCount = gSplitSize;
     pqCopyParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
     pqCopyParams.srcStride = 0;
-    pqCopyParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));  // 32: datablock size
+    // 32: datablock size
+    pqCopyParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));
 
     LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
         this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
