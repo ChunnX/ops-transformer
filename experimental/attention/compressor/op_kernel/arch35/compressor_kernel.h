@@ -162,6 +162,13 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
                         static_cast<int32_t>(constInfo.xCacheReadSize),
                         static_cast<int32_t>(constInfo.xCacheUpdateBatchSize),
                         static_cast<int32_t>(constInfo.usedCoreNum));
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] Init tiling stateStride0=%d blockNum=%d blockSize=%d "
+                        "maxBlockPerBatch=%d mBase=%d dBase=%d nSize=%d dbRatio=%d\n",
+                        static_cast<int32_t>(constInfo.stateCacheStrideDim0),
+                        static_cast<int32_t>(constInfo.blockNum), static_cast<int32_t>(constInfo.blockSize),
+                        static_cast<int32_t>(constInfo.maxBlockNumPerBatch),
+                        static_cast<int32_t>(constInfo.mBaseSize), static_cast<int32_t>(constInfo.dBaseSize),
+                        static_cast<int32_t>(constInfo.nSize), static_cast<int32_t>(constInfo.dbWorkspaceRatio));
     }
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
@@ -574,6 +581,15 @@ __aicore__ inline void CompressorKernel<COMP>::CalcC1V1Params(RunInfo &info, Vec
     vec1Info.dealTcNum = basicBlockInfo.dealTcNum;
     vec1Info.dealScSize = basicBlockInfo.compressedTcNum;
     allCompressedTcNum_ += basicBlockInfo.compressedTcNum;
+    if (constInfo.aiCoreIdx == 0 && loopIdx < 4) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] CalcC1V1 loop=%d bStart=%d sStart=%d dealSeq=%d "
+                        "dealTc=%d dealSc=%d batchInfoB=%d batchInfoS=%d allSc=%d\n",
+                        static_cast<int32_t>(loopIdx), static_cast<int32_t>(info.bStart),
+                        static_cast<int32_t>(info.sStart), static_cast<int32_t>(info.dealSeqCnt),
+                        static_cast<int32_t>(info.dealTcNum), static_cast<int32_t>(vec1Info.dealScSize),
+                        static_cast<int32_t>(batchInfo.bIdx), static_cast<int32_t>(batchInfo.sIdx),
+                        static_cast<int32_t>(allCompressedTcNum_));
+    }
 }
 
 template <typename COMP>
@@ -656,6 +672,13 @@ __aicore__ inline void CompressorKernel<COMP>::Process()
     Vec1RunInfo vec1Info{};
     Vec2RunInfo vec2Info{};
     SkipInvalidBatch(batchInfo);
+    if (constInfo.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] Process start loopTimes=%d batchSize=%d firstBatch=%d "
+                        "firstSeq=%d sSize=%d cmpRatio=%d\n",
+                        static_cast<int32_t>(loopTimes), static_cast<int32_t>(constInfo.batchSize),
+                        static_cast<int32_t>(batchInfo.bIdx), static_cast<int32_t>(batchInfo.sIdx),
+                        static_cast<int32_t>(constInfo.sSize), static_cast<int32_t>(constInfo.cmpRatio));
+    }
     for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
         CalcC1V1Params(extraInfo0, vec1Info, batchInfo, i);

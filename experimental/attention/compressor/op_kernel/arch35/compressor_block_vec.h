@@ -844,6 +844,22 @@ CompressorBlockVector<COMP>::ReadFromCacheState(const LocalTensor<T> &output, co
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+            if (GetBlockIdx() == 0 && batchIdx < 2 && copyFinishRowCnt == 0 && dStartIdx == 0) {
+                COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] ReadState b=%d start=%d end=%d cur=%d "
+                                "blockBase=%d blockOffset=%d blockId=%d remain=%d rows=%d stateOffset=%d "
+                                "stateIdx=%d stride0=%d blockSize=%d maxBlock=%d\n",
+                                static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                static_cast<int32_t>(idInBlockTable), static_cast<int32_t>(remainRowCnt),
+                                static_cast<int32_t>(copyRowCount), static_cast<int32_t>(stateOffset),
+                                static_cast<int32_t>(stateIdx), static_cast<int32_t>(constInfo_.stateCacheStrideDim0),
+                                static_cast<int32_t>(constInfo_.blockSize),
+                                static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+                DumpTensorForDim2(blockTableGm[blockTablebaseOffset],
+                                  static_cast<uint32_t>(0x5B01 + batchIdx),
+                                  constInfo_.maxBlockNumPerBatch, 1, constInfo_.maxBlockNumPerBatch);
+            }
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
                                  dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
@@ -893,10 +909,41 @@ CompressorBlockVector<COMP>::WriteToCacheState(const GlobalTensor<T> &state, con
             if (copyFinishRowCnt + copyRowCount > seqCnt) {
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
+            if (idInBlockTable == 0 && GetBlockIdx() == 0 && batchIdx < 2 &&
+                copyFinishRowCnt == 0 && dStartIdx == 0) {
+                COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] WriteStateSkipZero b=%d start=%d end=%d cur=%d "
+                                "blockBase=%d blockOffset=%d remain=%d rows=%d stateIdx=%d maxBlock=%d\n",
+                                static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                static_cast<int32_t>(remainRowCnt), static_cast<int32_t>(copyRowCount),
+                                static_cast<int32_t>(stateIdx),
+                                static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+                DumpTensorForDim2(blockTableGm[blockTablebaseOffset],
+                                  static_cast<uint32_t>(0x5D01 + batchIdx),
+                                  constInfo_.maxBlockNumPerBatch, 1, constInfo_.maxBlockNumPerBatch);
+            }
             if (idInBlockTable != 0) { // 32
                 uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                        remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                        stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+                if (GetBlockIdx() == 0 && batchIdx < 2 && copyFinishRowCnt == 0 && dStartIdx == 0) {
+                    COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] WriteState b=%d start=%d end=%d cur=%d "
+                                    "blockBase=%d blockOffset=%d blockId=%d remain=%d rows=%d stateOffset=%d "
+                                    "stateIdx=%d stride0=%d blockSize=%d maxBlock=%d\n",
+                                    static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                    static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                    static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                    static_cast<int32_t>(idInBlockTable), static_cast<int32_t>(remainRowCnt),
+                                    static_cast<int32_t>(copyRowCount), static_cast<int32_t>(stateOffset),
+                                    static_cast<int32_t>(stateIdx),
+                                    static_cast<int32_t>(constInfo_.stateCacheStrideDim0),
+                                    static_cast<int32_t>(constInfo_.blockSize),
+                                    static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+                    DumpTensorForDim2(blockTableGm[blockTablebaseOffset],
+                                      static_cast<uint32_t>(0x5C01 + batchIdx),
+                                      constInfo_.maxBlockNumPerBatch, 1, constInfo_.maxBlockNumPerBatch);
+                }
                 DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
                                       dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
             }
@@ -936,6 +983,16 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
+    if (GetBlockIdx() == 0 && sliceInfo.bIdx < 2 && dStartIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] SaveState b=%d bStartPos=%d sIdx=%d valid=%d "
+                        "dealed=%d start=%d end=%d stateIdx=%d compressTc=%d headHolder=%d\n",
+                        static_cast<int32_t>(sliceInfo.bIdx), static_cast<int32_t>(sliceInfo.bStartPos),
+                        static_cast<int32_t>(sliceInfo.sIdx), static_cast<int32_t>(sliceInfo.validSeqCnt),
+                        static_cast<int32_t>(sliceInfo.dealedSeqCnt), static_cast<int32_t>(startSeqIdx),
+                        static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(stateIdx),
+                        static_cast<int32_t>(sliceInfo.compressTcSize),
+                        static_cast<int32_t>(sliceInfo.headHolderSeqCnt));
+    }
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
         uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
@@ -988,6 +1045,14 @@ CompressorBlockVector<COMP>::ReadState(const LocalTensor<T> &dstLocal, const Glo
     // 没有需要压缩的块时, 不需要读state的信息
     if (sliceInfo.compressTcSize == 0) {
         return;
+    }
+    if (GetBlockIdx() == 0 && sliceInfo.bIdx < 2 && dStartIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] ReadStateEntry b=%d bStartPos=%d sIdx=%d valid=%d "
+                        "compressTc=%d headHolder=%d stateIdx=%d\n",
+                        static_cast<int32_t>(sliceInfo.bIdx), static_cast<int32_t>(sliceInfo.bStartPos),
+                        static_cast<int32_t>(sliceInfo.sIdx), static_cast<int32_t>(sliceInfo.validSeqCnt),
+                        static_cast<int32_t>(sliceInfo.compressTcSize),
+                        static_cast<int32_t>(sliceInfo.headHolderSeqCnt), static_cast<int32_t>(stateIdx));
     }
     // 填充右边
     if (sliceInfo.headHolderSeqCnt > 0) {
