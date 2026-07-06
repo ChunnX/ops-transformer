@@ -132,7 +132,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
-    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
+    if (tilingData_.stateIsFp32) {
+        tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                     // highState (FP32 only)
+    }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
     // stage1 临时变量空间

@@ -141,11 +141,11 @@ public:
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
-        highStateAddr_ = user + offset;
-        highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-
         if constexpr (kStateIsFp32) {
+            highStateAddr_ = user + offset;
+            highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
+            offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
+
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
             stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_), stateWkElemCnt);
             stateDeltaWk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_) + stateWkElemCnt,

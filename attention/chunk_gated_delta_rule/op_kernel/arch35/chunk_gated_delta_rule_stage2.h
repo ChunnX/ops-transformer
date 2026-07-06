@@ -77,7 +77,9 @@ public:
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
         isFirstGroup_ = sTP_->isFirstGroup;
-        InitLocalBuffers();
+        if (!(kIsFp32 && isFirstGroup_)) {
+            InitLocalBuffers();
+        }
     }
 
     __aicore__ inline void InitLocalBuffers()
@@ -117,10 +119,13 @@ public:
     {
         if constexpr (kIsFp32) {
             if (isFirstGroup_) {
-                pipe_->Reset();
-                CopyCast<float, bfloat16_t>(sTP_->stateFp32In, sTP_->curState, pipe_,
-                                            Nv_ * Dv_ * Dk_, RoundMode::CAST_NONE);
-                InitLocalBuffers();
+                if ASCEND_IS_AIV {
+                    pipe_->Reset();
+                    CopyCast<float, bfloat16_t>(sTP_->stateFp32In, sTP_->curState, pipe_,
+                                                Nv_ * Dv_ * Dk_, RoundMode::CAST_NONE);
+                    InitLocalBuffers();
+                }
+                SyncAll<false>();
             }
         }
         int64_t coreId = GetBlockIdx();
@@ -158,6 +163,9 @@ public:
                             inQueue_.FreeTensor(deltaIn);
                             Add(stateFp32Ub_, stateFp32Ub_, stateDeltaUb_, Dv_ * Dk_);
                             PipeBarrier<PIPE_V>();
+                            auto fp32Local = outQueue_.AllocTensor<float>();
+                            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDkF32_);
+                            outQueue_.EnQue(fp32Local);
                             CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false);
                             auto bf16Out = outQueue_.AllocTensor<bfloat16_t>();
                             Cast(bf16Out, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
