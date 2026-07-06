@@ -298,8 +298,6 @@ public:
                     q_len_ = q_len_b;
                     q_padded_ = q_padded_b;
                     num_Qb_ = num_Qb_b;
-                    AscendC::PRINTF("D:task=%u b=%u h=%u qb=%u cu=%u qlen=%u\n",
-                        task_idx, b, h, qb_local_, cu_off_, q_len_);
                     return;
                 }
                 total_qb += num_Qb_b;
@@ -372,8 +370,6 @@ private:
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
                               (q_len_ > start_row ? q_len_ - start_row : 0);
 
-        AscendC::PRINTF("[CopyInQ]B=%u D=%u qlen=%u qb=%u sr=%u vr=%u\n",
-            B_, dim_qk_, q_len_, qb_local_, start_row, valid_rows);
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
         for (uint32_t i = 0; i < valid_rows; i++) {
             uint32_t globalPos = cu_off_ + start_row + i;
@@ -410,17 +406,6 @@ private:
                 RoundMode::CAST_NONE, cast_count);
         }
         PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        AscendC::PRINTF("[CastFP32]q[0]:%f %f %f %f\n",
-            qBlockFP32Local.GetValue(0), qBlockFP32Local.GetValue(1),
-            qBlockFP32Local.GetValue(2), qBlockFP32Local.GetValue(3));
-        AscendC::PRINTF("[CastFP32]q[S]:%f %f %f %f\n",
-            qBlockFP32Local.GetValue(S_ * dim_qk_), qBlockFP32Local.GetValue(S_ * dim_qk_ + 1),
-            qBlockFP32Local.GetValue(S_ * dim_qk_ + 2), qBlockFP32Local.GetValue(S_ * dim_qk_ + 3));
-        AscendC::PRINTF("[CastFP32]q[2S]:%f %f %f %f\n",
-            qBlockFP32Local.GetValue(2 * S_ * dim_qk_), qBlockFP32Local.GetValue(2 * S_ * dim_qk_ + 1),
-            qBlockFP32Local.GetValue(2 * S_ * dim_qk_ + 2), qBlockFP32Local.GetValue(2 * S_ * dim_qk_ + 3));
     }
 
     /**
@@ -443,8 +428,6 @@ private:
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
                               (q_len_ > start_row ? q_len_ - start_row : 0);
         uint32_t scaleBase = (cu_off_ + start_row) * num_q_heads_;
-        AscendC::PRINTF("[CopyInScales]S:qb=%u cu=%u sr=%u vr=%u base=%u Hq=%u\n",
-            qb_local_, cu_off_, start_row, valid_rows, scaleBase, num_q_heads_);
         if (valid_rows > 0) {
             qscaleGm_.SetGlobalBuffer(
                 (__gm__ float*)qscaleBase_ + scaleBase,
@@ -454,13 +437,6 @@ private:
                 {false, 0, 0, 0});
         }
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        AscendC::PRINTF("[CopyInScales]s0:%f s1:%f s2:%f s3:%f\n",
-            scalesLocal.GetValue(0 * num_q_heads_ + head_idx_),
-            scalesLocal.GetValue(1 * num_q_heads_ + head_idx_),
-            scalesLocal.GetValue(2 * num_q_heads_ + head_idx_),
-            scalesLocal.GetValue(3 * num_q_heads_ + head_idx_));
     }
 
     /**
@@ -503,11 +479,6 @@ private:
         }
         SetFlag<HardEvent::S_V>(EVENT_ID0);
         WaitFlag<HardEvent::S_V>(EVENT_ID0);
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        AscendC::PRINTF("[Accumulate]GS:%f %f %f %f\n",
-            groupSumLocal.GetValue(0), groupSumLocal.GetValue(1),
-            groupSumLocal.GetValue(2), groupSumLocal.GetValue(3));
     }
 
     /**
@@ -522,11 +493,6 @@ private:
         Cast<bfloat16_t, float>(qflatLocal, groupSumLocal,
             RoundMode::CAST_RINT, qflat_dim_);
         outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        AscendC::PRINTF("[FlattenCast]GS:%f %f %f %f\n",
-            groupSumLocal.GetValue(0), groupSumLocal.GetValue(1),
-            groupSumLocal.GetValue(2), groupSumLocal.GetValue(3));
     }
 
     /**
@@ -541,15 +507,9 @@ private:
     __aicore__ inline void CopyOutBlock()
     {
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.DeQue<bfloat16_t>();
-        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
         uint32_t outOffset = batch_idx_ * (num_q_heads_ * tiling_->max_Qb * qflat_dim_)
                             + head_idx_  * (tiling_->max_Qb * qflat_dim_)
                             + qb_local_  * qflat_dim_;
-        AscendC::PRINTF("[CopyOut]O:b=%u h=%u qb=%u off=%u maxQb=%u\n",
-            batch_idx_, head_idx_, qb_local_, outOffset, tiling_->max_Qb);
-        AscendC::PRINTF("[CopyOut]GS:%f %f %f %f\n",
-            groupSumLocal.GetValue(0), groupSumLocal.GetValue(1),
-            groupSumLocal.GetValue(2), groupSumLocal.GetValue(3));
         qflatGm_.SetGlobalBuffer((__gm__ bfloat16_t*)qflatBase_ + outOffset, qflat_dim_);
         DataCopyPad(qflatGm_, qflatLocal,
             {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
