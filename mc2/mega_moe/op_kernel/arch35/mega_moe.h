@@ -132,6 +132,8 @@ private:
     uint32_t mxQuantTokenAlignBytes_ = 0;
     uint32_t mxQuantScaleAlignBytes_ = 0;
     uint32_t mxQuantTokenScaleAlignBytes_ = 0;
+    uint32_t weightAlignBytes_ = 0;
+    int32_t topkWeightsMode_ = 0;
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
@@ -263,6 +265,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     mxQuantScaleAlignBytes_ = mxQuantScaleNumAlignPerToken_ * sizeof(uint8_t);
     mxQuantTokenScaleAlignBytes_ = Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
         static_cast<uint32_t>(ALIGN_32));
+    topkWeightsMode_ = tilingData->topkWeightsMode;
+    if (topkWeightsMode_ == 1) {
+        weightAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(topK_ * sizeof(float)),
+            static_cast<uint32_t>(ALIGN_32));
+    }
 }
 
 // =================================================================================================
@@ -376,11 +383,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
     // Tensor用处：QuantProcessInRank函数中用于存储量化输出结果；
     // Tensor大小：token长度Align256字节对齐 + scale存储长度，当前支持mxfp8量化，xOutTensor1_与xOutTensor2_为双buffer；
+    // 权重前移模式下追加 weightAlignBytes_ 用于存储 topK 个权重；
     uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
     uint32_t xOutTokenBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
         static_cast<uint32_t>(ALIGN_256));
     uint32_t xOutTensorSize1 = xOutTokenBytes +
         Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+    if (topkWeightsMode_ == 1) {
+        xOutTensorSize1 = Ops::Base::CeilAlign(xOutTensorSize1 + weightAlignBytes_,
+            static_cast<uint32_t>(ALIGN_32));
+    }
     xOutTensor1_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1,
         xOutTensorSize1 / sizeof(ActivationType));
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize1;
@@ -555,6 +567,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyExtParams xCopyOutParams = {1U,
         static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), 0U, 0U, 0U};
+    if (topkWeightsMode_ == 1) {
+        xCopyOutParams.blockLen = Ops::Base::CeilAlign(
+            mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_ + weightAlignBytes_,
+            static_cast<uint32_t>(ALIGN_32));
+    }
+    uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
@@ -567,8 +585,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
         auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
         DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+        if (topkWeightsMode_ == 1) {
+            GlobalTensor<TopkWeightsType> weightGm;
+            weightGm.SetGlobalBuffer((__gm__ TopkWeightsType*)(params_.probsGmAddr +
+                (curentOffset + index) * topK_ * sizeof(TopkWeightsType)));
+            LocalTensor<TopkWeightsType> weightUb =
+                xOutTensor[weightOffsetInUb].template ReinterpretCast<TopkWeightsType>();
+            DataCopyPad(weightUb, weightGm,
+                {1U, static_cast<uint32_t>(topK_ * sizeof(TopkWeightsType)), 0U, 0U, 0U},
+                {false, 0U, 0U, 0U});
+        }
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        if (topkWeightsMode_ == 1 && Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            LocalTensor<TopkWeightsType> weightUb =
+                xOutTensor[weightOffsetInUb].template ReinterpretCast<TopkWeightsType>();
+            LocalTensor<float> weightFp32Ub =
+                xOutTensor[weightOffsetInUb].template ReinterpretCast<float>();
+            Cast(weightFp32Ub, weightUb, AscendC::RoundMode::CAST_NONE, topK_);
+            PipeBarrier<PIPE_V>();
+        }
         __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
         __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTempTensor_.GetPhyAddr();
         __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTempTensor_[Ops::Base::CeilAlign(
@@ -678,6 +714,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         MXFP_MULTI_BASE_SIZE;  // 输出 token-scale 长度,紧密排列
     uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
         static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
+    if (topkWeightsMode_ == 1) {
+        copyInNum = Ops::Base::CeilAlign(
+            static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_ + weightAlignBytes_),
+            static_cast<int64_t>(ALIGN_32));
+    }
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
@@ -726,6 +767,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        if (topkWeightsMode_ == 1) {
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
+            uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
+            LocalTensor<float> bufWeights =
+                tokenScalebuf[weightOffsetInUb].template ReinterpretCast<float>();
+            int32_t topkIdx = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOPK_INDEX);
+            float weight = bufWeights.GetValue(static_cast<uint32_t>(topkIdx));
+            int32_t weightBits = *reinterpret_cast<int32_t*>(&weight);
+            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID4>();
+            tripleTensor_[copyIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
+        }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
 
         // 发下一个槽的 MTE2 (copyIdx + BufferNum,复用 outIdx 槽)
@@ -1099,23 +1151,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
     }
-    if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
-        GlobalTensor<float> topKWeightsGlobalTensor_;
-        topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(float)), 0U, 0U, 0U};
-        DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
-    }
-    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        uint32_t tempSize = tempBufAlign / sizeof(bfloat16_t);
-        LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, tempAddr, tempSize);
-        GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
-        topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
-        DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
+    if (topkWeightsMode_ == 0) {
+        if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
+            GlobalTensor<float> topKWeightsGlobalTensor_;
+            topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(float)), 0U, 0U, 0U};
+            DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
+        }
+        if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            uint32_t tempSize = tempBufAlign / sizeof(bfloat16_t);
+            LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, tempAddr, tempSize);
+            GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
+            topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
+            DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
+            Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
+        }
     }
 }
 
@@ -1140,7 +1194,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
         for (int32_t expId = 0; expId < topK_; ++expId) {
-            float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
+            float expScale = 0.0f;
+            if (topkWeightsMode_ == 0) {
+                expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
+            }
             auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
@@ -1166,13 +1223,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
                     bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
             }
             PipeBarrier<PIPE_V>();
-            if (expId == 0) {
-                Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+            if (topkWeightsMode_ == 1) {
+                if (expId == 0) {
+                    DataCopy(dataResFp32Tensor_, dataInFp32, k_);
+                } else {
+                    Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                    PipeBarrier<PIPE_V>();
+                }
             } else {
-                Muls(dataInFp32, dataInFp32, expScale, k_);
-                PipeBarrier<PIPE_V>();
-                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-                PipeBarrier<PIPE_V>();
+                if (expId == 0) {
+                    Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+                } else {
+                    Muls(dataInFp32, dataInFp32, expScale, k_);
+                    PipeBarrier<PIPE_V>();
+                    Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                    PipeBarrier<PIPE_V>();
+                }
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(event);
         }

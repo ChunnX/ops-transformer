@@ -46,6 +46,7 @@ constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
+constexpr uint32_t M_LOC_IDX = 4;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
