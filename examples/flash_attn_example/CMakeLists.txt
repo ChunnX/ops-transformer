@@ -164,8 +164,12 @@ endforeach()
 
 message(STATUS "Discovered torch operator targets: ${OPERATOR_TARGETS}")
 
+# 主库源文件
+set(MAIN_LIBRARY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/ascend_ops/csrc/npu_ops_def.cpp")
+
 # 创建主库
 add_library(_C SHARED
+    ${MAIN_LIBRARY_SOURCE}
     ${OPERATOR_TARGETS}
 )
 

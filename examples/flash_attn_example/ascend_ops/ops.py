@@ -10,7 +10,7 @@
 # BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__all__ = ["flash_attn_example"]
+__all__ = ["flash_attn_example", "flash_attn_simplified_example"]
 
 import torch
 from torch import Tensor
@@ -18,8 +18,12 @@ from torch import Tensor
 def flash_attn_example(query: Tensor, key: Tensor, value: Tensor, attnMask: Tensor,
     softmaxScale: float, isCausal: bool) -> Tensor:
     return torch.ops.ascend_ops.flash_attn_example(query,
-                                           key,
-                                           value,
-                                           attnMask,
-                                           softmaxScale,
-                                           isCausal)
+                                                   key,
+                                                   value,
+                                                   attnMask,
+                                                   softmaxScale,
+                                                   isCausal)
+
+def flash_attn_simplified_example(query: Tensor, key: Tensor, value: Tensor,
+    softmaxScale: float) -> Tensor:
+    return torch.ops.ascend_ops.flash_attn_simplified_example(query, key, value, softmaxScale)

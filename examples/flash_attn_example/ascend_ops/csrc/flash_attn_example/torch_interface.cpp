@@ -265,25 +265,5 @@ TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
 {
     m.impl("flash_attn_example", FlashAttnNpu);
 }
-
-TORCH_LIBRARY(ascend_ops, m)
-{
-    m.def(R"(flash_attn_example(Tensor q,
-             Tensor k,
-             Tensor v,
-             Tensor attnMask,
-             float softmaxScale = 0,
-             bool isCausal = True) -> Tensor)");
-}
 }  // namespace FA
 }  // namespace ascend_ops
-
-extern "C" {
-PyObject* PyInit__C(void)
-{
-    static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT, "_C", NULL, -1, NULL,
-    };
-    return PyModule_Create(&module_def);
-}
-}
