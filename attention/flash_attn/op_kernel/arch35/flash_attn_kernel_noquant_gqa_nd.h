@@ -138,6 +138,23 @@ public:
     bool emptyBatch = false;
     uint32_t dealZerosMSize = 0;
 
+    // ===== CalcParams 行内不变量缓存 =====
+    // 这些字段仅在换行(bN2Cur / gS1Cur 变化)时才变化，缓存后可避免逐 s2 tile 重复执行
+    // 昂贵的除法 / 取模 / GetPreNextTokenLeftUp。cpRowBN2_/cpRowGS1_ 作为缓存键。
+    uint32_t cpRowBN2_ = 0xFFFFFFFFU;
+    uint32_t cpRowGS1_ = 0xFFFFFFFFU;
+    uint32_t cpBIdx_ = 0;
+    uint32_t cpN2Idx_ = 0;
+    uint32_t cpGS1Idx_ = 0;
+    uint32_t cpS1Idx_ = 0;
+    uint64_t cpActS1Size_ = 1;
+    uint64_t cpActS2Size_ = 1;
+    uint32_t cpActMSize_ = 0;
+    uint32_t cpActVecMSize_ = 0;
+    uint32_t cpVecMbaseIdx_ = 0;
+    int64_t cpPreTokensLeftUp_ = 0;
+    int64_t cpNextTokensLeftUp_ = 0;
+
     // metadata
     uint32_t sectionNum_;
     bool isFd;
@@ -419,6 +436,8 @@ public:
         mloop = 0;
         headS2Split = false;
         tailS2Split = false;
+        cpRowBN2_ = 0xFFFFFFFFU; // 使行内不变量缓存失效，强制新 section 首个 tile 重算
+        cpRowGS1_ = 0xFFFFFFFFU;
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -701,29 +720,60 @@ public:
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    // 换行(bN2Cur / gS1Cur 变化)时重算行内不变量并缓存；同一行内的后续 s2 tile 直接复用。
+    __aicore__ inline void CalcRowInvariants(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
+        cpRowBN2_ = bN2Cur;
+        cpRowGS1_ = gS1Cur;
+        cpBIdx_ = bN2Cur / constInfo.n2Size;
+        cpN2Idx_ = bN2Cur % constInfo.n2Size;
+        cpGS1Idx_ = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
+            cpS1Idx_ = cpGS1Idx_ / constInfo.gSize;
         } else {
             // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
+            cpS1Idx_ = cpGS1Idx_ % actSeqLensQ;
         }
-        info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
+        cpActS1Size_ = actSeqLensQ;
+        cpActS2Size_ = actSeqLensKv;
 
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        cpActMSize_ = mBaseSize;
+        uint64_t gS1Size = cpActS1Size_ * constInfo.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+            cpActMSize_ = gS1Size - gS1Cur * mBaseSize;
         }
+        cpActVecMSize_ = (cpActMSize_ + 1) >> 1;
+        cpVecMbaseIdx_ = 0;
+        if (constInfo.subBlockIdx == 1) {
+            cpVecMbaseIdx_ = cpActVecMSize_;
+            cpActVecMSize_ = cpActMSize_ - cpActVecMSize_;
+        }
+
+        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, cpPreTokensLeftUp_, cpNextTokensLeftUp_);
+    }
+
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    {
+        if (bN2Cur != cpRowBN2_ || gS1Cur != cpRowGS1_) {
+            CalcRowInvariants(bN2Cur, gS1Cur);
+        }
+
+        info.loop = loop;
+        info.mloop = mloop;
+        info.bIdx = cpBIdx_;
+        info.n2Idx = cpN2Idx_;
+        info.gS1Idx = cpGS1Idx_;
+        info.s1Idx = cpS1Idx_;
+        info.actS1Size = cpActS1Size_;
+        info.actS2Size = cpActS2Size_;
+        info.actMSize = cpActMSize_;
+        info.actVecMSize = cpActVecMSize_;
+        info.vecMbaseIdx = cpVecMbaseIdx_;
+        info.preTokensLeftUp = cpPreTokensLeftUp_;
+        info.nextTokensLeftUp = cpNextTokensLeftUp_;
+
+        info.s2Idx = s2Cur * s2BaseSize;
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
@@ -731,8 +781,6 @@ public:
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
         info.isChangeBatch = false;
-
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
@@ -742,12 +790,6 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-        info.actVecMSize = (info.actMSize + 1) >> 1;
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
 
         if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
             // 所有任务属于同一个S1G
