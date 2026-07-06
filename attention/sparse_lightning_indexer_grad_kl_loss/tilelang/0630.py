@@ -383,52 +383,66 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     # dWeight, reluGrad for MY K block (same V scope, no cross flag)
                     # Buffer reuse from earlier phases:
-                    #   bmm2_ub     ← freed after ReduceSumY (line 344)
-                    #   p_reduced_tmp_ub ← freed after P_reduced (line 330)
-                    #   rsy_tmp_ub  ← freed after ReduceSumY (line 342)
-                    #   weight_ub   ← freed after ReduceSumY (line 341)
-                    #   softmax_i_chunk_ub ← freed after GlobalSoftmaxI (line 384)
+                    #   bmm2_ub     ← used in dWeight
+                    #   p_reduced_tmp_ub ← freed after P_reduced
+                    #   rsy_tmp_ub  ← freed after ReduceSumY (reused as mask_2d)
+                    #   weight_2d_ub ← used in dWeight
+                    #   softmax_i_chunk_ub ← freed after GlobalSoftmaxI
                     diff_ub = T.alloc_ub(n_block, calc_dtype)
+                    diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                    w2d_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                    ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                    mask_ub = T.alloc_ub(n_block, calc_dtype)
-                    ones_ub = T.alloc_ub(n_block, calc_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_val_ub = T.alloc_ub(n_block, calc_dtype)
 
-                    T.tile.fill(ones_ub, 1.0)
+                    T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    # dWeight, reluGrad for MY K block - TRUE PARALLEL
+                    # dWeight, reluGrad for MY K block
                     T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
                     T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
                     T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
+                    # Construct diff_2d: broadcast diff_ub to 16 rows (once per s1_id)
+                    for i in range(vector_baseg):
+                        T.copy(diff_ub, diff_2d_ub[i, :])
+
                     for g_id in range(g_num):
+                        g_start = g_id * vector_baseg
+
                         T.tile.fill(weight_ub, 0)
 
+                        # 2D vectorized: 6 VEC ops total per g_id (was 96)
+                        # Step 1: copy bmm2 chunk rows → dw_chunk_ub
                         for i in range(vector_baseg):
-                            g_row = g_id * vector_baseg + i
-                            T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], diff_ub, weight_2d_ub[g_row, :])
-                            T.tile.mul(mask_ub, bmm2_ub[g_row, :], -10000.0)
-                            T.tile.exp(mask_ub, mask_ub)
-                            T.tile.sub(mask_ub, ones_ub, mask_ub)
-                            T.tile.mul(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :], mask_ub)
-                        # barrier removed: inner VEC loop→reduce_sum, VEC→VEC sequential
+                            T.copy(bmm2_ub[g_start + i, :], dw_chunk_ub[i, :])
+                        # Step 2: mask = 1 - exp(bmm2 * (-10000)) → rsy_tmp_ub
+                        T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                        T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                        T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+                        # Step 3: copy w2d chunk → w2d_chunk_ub
+                        for i in range(vector_baseg):
+                            T.copy(weight_2d_ub[g_start + i, :], w2d_chunk_ub[i, :])
+                        # Step 4: rsy = diff_2d * w2d_chunk, then rsy *= mask
+                        T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, diff_2d_ub)
+                        T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, rsy_tmp_ub)
+                        # Step 5: dw = bmm2_chunk * diff_2d (overwrite dw_chunk_ub)
+                        T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
 
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
                         # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
 
                         # Write reluGrad for MY K block only
-                        T.tile.cast(rg_half_ub, rsy_tmp_ub, "CAST_ROUND", vector_baseg * n_block)
+                        T.tile.cast(rg_half_ub, w2d_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
                         T.barrier_all()
                         T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
