@@ -66,6 +66,74 @@ constexpr uint32_t MAX_STEM_STRIDE = 64;
 constexpr uint32_t MAX_QFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
 constexpr uint32_t VARLEN_READ_ALIGN = 8;
 
+constexpr static AscendC::MicroAPI::CastTrait CAST_FP8_TO_FP32 = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN
+};
+
+constexpr static AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT
+};
+
+/**
+ * CastFP8ToFP32Vf: UB 内 FP8 → FP32 类型转换 (VF 寄存器)
+ *   srcPtr:  [count] FP8_e4m3fn
+ *   dstPtr:  [count] FP32
+ */
+__simd_vf__ inline void CastFP8ToFP32Vf(
+    __ubuf__ fp8_e4m3fn_t* srcPtr,
+    __ubuf__ float* dstPtr,
+    uint32_t count)
+{
+    using namespace AscendC::MicroAPI;
+
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIter = (count + VL_F - 1) / VL_F;
+
+    RegTensor<fp8_e4m3fn_t> srcReg;
+    RegTensor<float> dstReg;
+    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+
+    for (uint16_t vi = 0; vi < vlIter; vi++) {
+        DataCopy<fp8_e4m3fn_t, LoadDist::DIST_UNPACK_B8>(
+            srcReg, srcPtr + vi * VL_F);
+        Cast<float, fp8_e4m3fn_t, CAST_FP8_TO_FP32>(dstReg, srcReg, maskAll);
+        DataCopy(dstPtr + vi * VL_F, dstReg, maskAll);
+    }
+}
+
+/**
+ * CastFP32ToBF16Vf: UB 内 FP32 → BF16 类型转换 (VF 寄存器)
+ *   srcPtr:  [count] FP32
+ *   dstPtr:  [count] BF16
+ */
+__simd_vf__ inline void CastFP32ToBF16Vf(
+    __ubuf__ float* srcPtr,
+    __ubuf__ bfloat16_t* dstPtr,
+    uint32_t count)
+{
+    using namespace AscendC::MicroAPI;
+
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIter = (count + VL_F - 1) / VL_F;
+
+    RegTensor<float> srcReg;
+    RegTensor<bfloat16_t> dstReg;
+    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+
+    for (uint16_t vi = 0; vi < vlIter; vi++) {
+        DataCopy(srcReg, srcPtr + vi * VL_F);
+        Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(dstReg, srcReg, maskAll);
+        DataCopy<bfloat16_t, StoreDist::DIST_PACK_B32>(
+            dstPtr + vi * VL_F, dstReg, maskAll);
+    }
+}
+
 /**
  * ComputeWeightedGroupSumVf: 在 VF 寄存器上完成 Weighted Group Sum
  *
@@ -99,47 +167,22 @@ __simd_vf__ inline void ComputeWeightedGroupSumVf(
     RegTensor<float> qReg;
     RegTensor<float> scaleBrcReg;
     RegTensor<float> accReg;
-
-    static constexpr CastTrait castTrait = {
-        RegLayout::ZERO, SatMode::NO_SAT,
-        MaskMergeMode::MERGING, RoundMode::CAST_NONE
-    };
-
-    MaskReg maskF = CreateMask<float>();
+    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
 
     for (uint16_t g = 0; g < S; g++) {
-        // acc[g, :] = 0
         for (uint16_t vi = 0; vi < vlIterF; vi++) {
-            uint32_t remainCount = static_cast<uint32_t>(dimQk - vi * VL_F);
-            maskF = UpdateMask<float>(remainCount);
-            Duplicate(accReg, 0.0f, maskF);
-        }
-
-        // acc[g, :] += qFP32[r*S+g, :] * scale[r*S+g],  for r = 0..R-1
-        for (uint16_t r = 0; r < R; r++) {
-            uint16_t row_idx = r * S + g;
-
-            // scale[r*S+g] 广播到所有 D 个元素
-            DataCopy<float, LoadDist::DIST_BRC_B32>(
-                scaleBrcReg, scalePtr + row_idx);
-
-            for (uint16_t vi = 0; vi < vlIterF; vi++) {
-                uint32_t remainCount = static_cast<uint32_t>(dimQk - vi * VL_F);
-                maskF = UpdateMask<float>(remainCount);
+            Duplicate(accReg, 0.0f, maskAll);
+            for (uint16_t r = 0; r < R; r++) {
+                uint16_t row_idx = r * S + g;
+                DataCopy<float, LoadDist::DIST_BRC_B32>(
+                    scaleBrcReg, scalePtr + row_idx);
                 uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * VL_F;
-
                 DataCopy(qReg, qFP32Ptr + qOffset);
-                Mul(qReg, qReg, scaleBrcReg, maskF);
-                Add(accReg, accReg, qReg, maskF);
+                Mul(qReg, qReg, scaleBrcReg, maskAll);
+                Add(accReg, accReg, qReg, maskAll);
             }
-        }
-
-        // groupSum[g, :] = acc[g, :]
-        for (uint16_t vi = 0; vi < vlIterF; vi++) {
-            uint32_t remainCount = static_cast<uint32_t>(dimQk - vi * VL_F);
-            maskF = UpdateMask<float>(remainCount);
             uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * VL_F;
-            DataCopy(groupSumPtr + outOffset, accReg, maskF);
+            DataCopy(groupSumPtr + outOffset, accReg, maskAll);
         }
     }
 }
@@ -208,7 +251,6 @@ public:
 
         for (uint32_t task_idx = qb_start_; task_idx < qb_end_; task_idx++) {
             DecodeTaskId(task_idx);
-            ReadVarlenInfo(batch_idx_);
             ProcessOneBlock(task_idx);
         }
     }
@@ -227,27 +269,33 @@ public:
     __aicore__ inline void DecodeTaskId(uint32_t task_idx)
     {
         uint32_t total_qb = 0;
+        uint32_t acc_cu_off = 0;
+        LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
         for (uint32_t b = 0; b < tiling_->batch_size; b++) {
+            qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_ + b, 1);
+            DataCopyPad(varlenLocal, qSeqLensGm_,
+                {1, 4, 0, 0}, {false, 0, 0, 0});
+            SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+            uint32_t q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(0));
+
+            uint32_t q_padded_b = ((q_len_b + B_ - 1) / B_) * B_;
+            uint32_t num_Qb_b = q_padded_b / B_;
+
             for (uint32_t h = 0; h < num_q_heads_; h++) {
-                uint32_t q_len_b = 0;
-                LocalTensor<int32_t> varlenLocal = varlenInfoBuf_.Get<int32_t>();
-                qSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)qSeqLensBase_ + b, 1);
-                DataCopyPad(varlenLocal, qSeqLensGm_,
-                    {1, 4, 0, 0}, {false, 0, 0, 0});
-                PipeBarrier<PIPE_MTE2>();
-                q_len_b = static_cast<uint32_t>(varlenLocal.GetValue(0));
-                
-                uint32_t q_padded_b = ((q_len_b + B_ - 1) / B_) * B_;
-                uint32_t num_Qb_b = q_padded_b / B_;
-                
                 if (task_idx < total_qb + num_Qb_b) {
                     batch_idx_ = b;
                     head_idx_ = h;
                     qb_local_ = task_idx - total_qb;
+                    cu_off_ = acc_cu_off;
+                    q_len_ = q_len_b;
+                    q_padded_ = q_padded_b;
+                    num_Qb_ = num_Qb_b;
                     return;
                 }
                 total_qb += num_Qb_b;
             }
+            acc_cu_off += q_len_b;
         }
     }
 
@@ -308,7 +356,8 @@ private:
     {
         LocalTensor<int8_t> qBlockI8 = qBlockBuf_.Get<int8_t>();
         Duplicate(qBlockI8, (int8_t)0, B_ * dim_qk_);
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
         uint32_t start_row = qb_local_ * B_;
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
@@ -334,9 +383,13 @@ private:
      */
     __aicore__ inline void CastBlockToFP32()
     {
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
         LocalTensor<float> qBlockFP32Local = qBlockFP32Buf_.Get<float>();
         Duplicate(qBlockFP32Local, 0.0f, B_ * dim_qk_);
+        PipeBarrier<PIPE_V>();
 
         uint32_t start_row = qb_local_ * B_;
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
@@ -361,11 +414,25 @@ private:
     __aicore__ inline void CopyInScalesBulk()
     {
         LocalTensor<float> scalesLocal = scalesBuf_.Get<float>();
-        uint32_t scaleBase = (cu_off_ + qb_local_ * B_) * num_q_heads_ + head_idx_;
-        qscaleGm_.SetGlobalBuffer((__gm__ float*)qscaleBase_ + scaleBase, B_);
-        DataCopyPad(scalesLocal, qscaleGm_,
-            {1, static_cast<uint16_t>(B_ * sizeof(float)), 0, 0},
-            {false, 0, 0, 0});
+        Duplicate(scalesLocal, 0.0f, B_);
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+
+        uint32_t start_row = qb_local_ * B_;
+        uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
+                              (q_len_ > start_row ? q_len_ - start_row : 0);
+        if (valid_rows > 0) {
+            uint32_t scaleBase = (cu_off_ + start_row) * num_q_heads_ + head_idx_;
+            qscaleGm_.SetGlobalBuffer(
+                (__gm__ float*)qscaleBase_ + scaleBase,
+                valid_rows * num_q_heads_);
+            DataCopyExtParams copyParams;
+            copyParams.blockCount = static_cast<uint16_t>(valid_rows);
+            copyParams.blockLen = sizeof(float);
+            copyParams.srcStride = (num_q_heads_ - 1) * sizeof(float);
+            copyParams.dstStride = 0;
+            DataCopyPad(scalesLocal, qscaleGm_, copyParams, {false, 0, 0, 0});
+        }
         PipeBarrier<PIPE_MTE2>();
     }
 
@@ -402,10 +469,12 @@ private:
      */
     __aicore__ inline void FlattenAndCast()
     {
-        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
-        Cast<bfloat16_t, float>(qflatLocal, groupSumLocal,
-            RoundMode::CAST_RINT, qflat_dim_);
+        __ubuf__ float* srcPtr =
+            (__ubuf__ float*)groupSumBuf_.Get<float>().GetPhyAddr();
+        __ubuf__ bfloat16_t* dstPtr =
+            (__ubuf__ bfloat16_t*)qflatLocal.GetPhyAddr();
+        VF_CALL<CastFP32ToBF16Vf>(srcPtr, dstPtr, qflat_dim_);
         outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
     }
 

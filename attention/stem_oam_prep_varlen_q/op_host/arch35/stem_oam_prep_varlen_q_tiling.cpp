@@ -149,14 +149,34 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
 
     uint32_t H_q = tiling->num_q_heads;
     uint32_t batchU32 = tiling->batch_size;
-    uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
-    uint32_t max_q_len = (batchU32 > 0) ? (totalTokens + batchU32 - 1) / batchU32 : totalTokens;
-    uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
-    tiling->max_Qb = max_q_padded / B;
-    totalBlocks = H_q * tiling->max_Qb * batchU32;
 
-    OP_LOGI(nodeName, "CalcSequenceInfo: totalTokens=%u, max_q_len=%u, max_Qb=%u, totalBlocks=%u",
-            totalTokens, max_q_len, tiling->max_Qb, totalBlocks);
+    auto qSeqLensTensor = context->GetInputTensor(1);
+    const int32_t *qSeqLensData = (qSeqLensTensor != nullptr) ?
+        qSeqLensTensor->GetData<int32_t>() : nullptr;
+
+    if (qSeqLensData != nullptr) {
+        uint32_t max_Qb = 0;
+        totalBlocks = 0;
+        for (uint32_t b = 0; b < batchU32; b++) {
+            uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
+            uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
+            uint32_t num_Qb_b = q_padded_b / B;
+            max_Qb = std::max(max_Qb, num_Qb_b);
+            totalBlocks += num_Qb_b;
+        }
+        tiling->max_Qb = max_Qb;
+        totalBlocks *= H_q;
+    } else {
+        uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
+        uint32_t max_q_padded = ((totalTokens + B - 1) / B) * B;
+        tiling->max_Qb = max_q_padded / B;
+        totalBlocks = H_q * tiling->max_Qb * batchU32;
+        OP_LOGD(nodeName, "qSeqLens data not available, using conservative estimate: totalTokens=%u",
+                totalTokens);
+    }
+
+    OP_LOGI(nodeName, "CalcSequenceInfo: max_Qb=%u, totalBlocks=%u",
+            tiling->max_Qb, totalBlocks);
 
     return ge::GRAPH_SUCCESS;
 }
