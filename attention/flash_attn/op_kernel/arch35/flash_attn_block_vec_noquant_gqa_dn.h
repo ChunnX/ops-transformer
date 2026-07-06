@@ -252,22 +252,9 @@ public:
     }
     __aicore__ inline void ProcessVec1(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
                                        LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
-                                       RunInfoX runInfo)
+                                       uint64_t loop)
     {
-#ifdef SKIP_V1
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
-        return;
-#endif
-
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
-            return;
-        }
-        ProcessVec1Dn(l1PTensor, l1PCcId, bmm1UbTensor, bmm1CcId, runInfo);
+        (void)l1PTensor; (void)l1PCcId; (void)bmm1UbTensor; (void)bmm1CcId; (void)loop;
     }
 
     __aicore__ inline void ClearOutput()
@@ -864,26 +851,9 @@ public:
     }
 
     template<typename BmmResT>
-    __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId)
     {
-#ifdef SKIP_V2
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-        if constexpr (bmm2Write2Ub) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-        }
-        return;
-#endif
-
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-
-        if constexpr (bmm2Write2Ub) {
-            ProcessVec2OnUb(bmm2ResTensor, bmm2CcId, runInfo);
-        } else if constexpr (splitD) {
-            ProcessVec2DSplit(bmm2ResTensor, runInfo);
-        } else {
-            ProcessVec2_C2GmUpdateUb(bmm2ResTensor, runInfo);
-        }
-        return;
+        (void)bmm2ResTensor; (void)bmm2CcId;
     }
 
     __aicore__ inline void ProcessVec2_C2GmUpdateUb(GlobalTensor<T> &mmRes, RunInfoX runInfo)

@@ -367,42 +367,10 @@ public:
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if ASCEND_IS_AIV {
-            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
-            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
-            //   - AIV0 SetFlag(N)  →  AIC's flagId N
-            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
-            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
-            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
-            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
-            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
-            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
-            if constexpr (BMM2_TOUB) {
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
-            }
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
-            if constexpr (BMM2_TOUB) {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
-            }
-        }
-    }
+    struct TaskSlot {
+        uint64_t loop = 0;
+        bool isValid = false;
+    };
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
@@ -411,7 +379,7 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
@@ -435,7 +403,7 @@ public:
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTask(createdTaskCount, taskSlots);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
@@ -449,7 +417,7 @@ public:
             }
             // 执行任务
             if (validTaskCount) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
+                ExecuteTask(executedTaskCount, taskSlots);
                 executedTaskCount++;
                 if (executedTaskCount > PRELOAD_N) {
                     validTaskCount--;
@@ -623,146 +591,84 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
-        
-        if (runInfo0.isValid) {
+        TaskSlot &slot0 = taskSlots[loop & PRELOAD_TASK_CACHE_MASK];
+        if (slot0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(slot0.loop);
             } else {
-                ComputeVec1(runInfo0);
+                ComputeVec1(slot0.loop);
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
-            if (runInfoNegN.isValid) {
+            TaskSlot &slotNegN = taskSlots[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
+            if (slotNegN.isValid) {
                 if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
+                    ComputeMm2(slotNegN.loop);
                 } else {
-                    ComputeVec2(runInfoNegN);
+                    ComputeVec2(slotNegN.loop);
                 }
-                runInfoNegN.isValid = false;
+                slotNegN.isValid = false;
             }
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(uint64_t loop)
     {
-        uint32_t slotIdx = runInfo.loop % 2U;
+        uint32_t slotIdx = loop % 2U;
         auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
-        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
+        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2(uint64_t loop)
     {
-        uint32_t outSlot = runInfo.loop % 2U;
-        uint32_t l1PIdx  = runInfo.loop % 3U;
+        uint32_t outSlot = loop % 2U;
+        uint32_t l1PIdx  = loop % 3U;
         uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
             cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
-                                  l1PTensor, l1PCcId, runInfo);
+                                  l1PTensor, l1PCcId);
         } else {
-            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
-                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
-                                  l1PTensor, l1PCcId, runInfo);
+            cubeBlock.IterateBmm2(bmm2GmSlot[loop % 3U],
+                                  CC_BMM2_0 + (loop % 3U), 0U,
+                                  l1PTensor, l1PCcId);
         }
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(uint64_t loop)
     {
-        uint32_t bmm1Slot = runInfo.loop % 2U;
-        uint32_t l1PIdx   = runInfo.loop % 3U;
+        uint32_t bmm1Slot = loop % 2U;
+        uint32_t l1PIdx   = loop % 3U;
         uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
-        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
+        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, loop);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2(uint64_t loop)
     {
-        uint32_t outSlot = runInfo.loop % 2U;
+        uint32_t outSlot = loop % 2U;
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot);
         } else {
-            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
-                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
+            vecFaBlock.ProcessVec2(bmm2GmSlot[loop % 3U],
+                                   CC_BMM2_0 + (loop % 3U));
         }
     }
 
-    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void CreateTask(uint64_t loop, TaskSlot taskSlots[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
+        TaskSlot &slot = taskSlots[loop & PRELOAD_TASK_CACHE_MASK];
+        slot.loop = loop;
+        slot.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
-    {
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
-
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
-        }
-        info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
-        }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        info.isChangeBatch = false;
-
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
-        info.actVecMSize = (info.actMSize + 1) >> 1;
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
-    }
+    // CalcParams 已删除（P0 优化：消除每 tile 的 RunInfo scalar 计算开销）。
+    // CreateTask 现在只记录 loop 索引；cube/vec 函数签名不再依赖 RunInfoX。
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
@@ -875,7 +781,6 @@ public:
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
-            CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
@@ -899,7 +804,6 @@ public:
             } else {
                 cubeBlock.FreeEventID();
             }
-            CrossCoreBufferUnInit();
         }
     }
 }; // FlashAttentionNoQuantGqaKernelNd
