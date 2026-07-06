@@ -9,18 +9,23 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
 ```
+
 Fast recompilation only of bf16 kernel variant
+
 ```shell
 bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention --op-variant=2
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 ```
+
 Oneliner smoketest and benchmark
+
 ```shell
 (cd experimental/attention/blitz_sparse_attention/benchmark && python test_attn.py && python benchmark.py)
 ```
 
 Benchmark + plot pipeline (writes `benchmark.png` summarising all
 `(BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity)` combinations):
+
 ```shell
 (cd experimental/attention/blitz_sparse_attention/benchmark && python benchmark.py | tee bench.log /dev/tty | python plot.py)
 ```
@@ -50,7 +55,9 @@ Set the `ALL_CAPS` constants at the top of the file to control what gets run. Wh
 ### 1 - Test correctness and speed with multiple values (and shorter sequence lengths)
 
 #### Input
-Adjust the following values in the ` ===== Begin of Parameter Sweep Definitions ====` section
+
+Adjust the following values in the `===== Begin of Parameter Sweep Definitions ====` section
+
 ```python
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = "BNSD"  # [batch_size, num_hea
@@ -76,9 +83,9 @@ RUN_REFERENCE = True
 TORCH_REFERENCE = "npu_fusion_attention"
 ```
 
-#### Output:
+#### Output
 
-```
+```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
 ========================================================================================================================
@@ -130,12 +137,12 @@ TORCH_REFERENCE = "npu_fusion_attention"
       128x512  14   1  10000  10000  128               -      0.90             yes            6685.34            1186.83
 ========================================================================================================================
 ```
+
 Reference goes OOM for 10_000 sequence length and 24 heads (not shown).
 
 On the left you see the inputs, then the "yes" line checks correctness, after that you see the reference runtime and our runtime. After that you see the memory bandwidth usage, which is much better in our kernel.
 
 Note that for short sequence lengths, the speedups are negligible because overheads are higher than actual computation.
-
 
 ### 2 - block_shape granularity sweep (S=118806, H=3, D=128, BF16)
 
@@ -177,6 +184,7 @@ The test files apply the same scaling rule with a smaller target (~256 tokens)
 for their `SPARSE_FRAME`.
 
 #### Input
+
 ```python
 B_VALS = [1]; H_VALS = [3]; S_VALS = [118_806]; D_VALS = [128]
 N_REPEATS = 10; N_WARMUP = 2
@@ -208,7 +216,7 @@ pair. The full raw table below was captured at S=118 806, H=3, D=128, BF16:
 <details>
 <summary>Full raw benchmark table (16 block shapes × 11 sparsities — click to expand)</summary>
 
-```
+```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
 ========================================================================================================================
@@ -452,7 +460,6 @@ The PFA reference (`npu_fusion_attention` dense) is shape-invariant — the
 small differences in the `Ref_Latency_[usec]` column across block shapes are
 timing noise from re-running the same workload 16 times.
 
-
 ### 3 - softmax_lse correctness tests (test_lse.py)
 
 `test_lse.py` verifies the `softmax_lse` (log-sum-exp) second output of the kernel.
@@ -489,6 +496,7 @@ FIAS (`npu_fused_infer_attention_score`) already exposes a `softmax_lse` output 
 For H>1 shapes FIAS cannot be used directly (its `sparse_mode=1` requires a `[B,1,S,S]` broadcast mask; passing `[B,H,S,S]` hangs the NPU), so a Python float32 reference that loops over the sabi indices is used instead.
 
 #### Tolerances
+
 ATOL = 0.001
 RTOL = 0.01
 
@@ -496,14 +504,14 @@ float16 is excluded from sparse tests: FIAS processes `-inf`-masked tiles throug
 
 ## Test setup
 
-```
-Host CPU: aarch64
-Device: Ascend 910B2
-Device Driver: 25.3.rc1   
-Docker image: `docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops`
-OS: ubuntu: 22.04
-CANN: 8.5.0-beta.1
-Python: 3.11.10
-torch: 2.8.0+cpu
-torch_npu: 2.8.0
-```
+| Component      | Version                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| Host CPU       | aarch64                                                                                                       |
+| Device         | Ascend 910B2                                                                                                  |
+| Device Driver  | 25.3.rc1                                                                                                      |
+| Docker image   | `docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops` |
+| OS             | Ubuntu 22.04                                                                                                  |
+| CANN           | 8.5.0-beta.1                                                                                                  |
+| Python         | 3.11.10                                                                                                       |
+| torch          | 2.8.0+cpu                                                                                                     |
+| torch_npu      | 2.8.0                                                                                                         |
