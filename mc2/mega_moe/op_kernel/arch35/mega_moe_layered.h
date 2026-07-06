@@ -901,6 +901,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
             break;
         }
     } while (true);
+    PipeBarrier<PIPE_ALL>();
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
