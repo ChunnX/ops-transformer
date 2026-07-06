@@ -11,7 +11,7 @@
 
 - 算子功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
 
--   计算公式：
+- 计算公式：
 
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
@@ -77,7 +77,7 @@ aclnnStatus aclnnBlitzSparseAttention(
 - **参数说明**
   
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
+    <table style="table-layout: fixed; width: 1567px"><colgroup> 
      <col style="width: 180px"> 
      <col style="width: 120px"> 
      <col style="width: 300px"> 
@@ -361,12 +361,12 @@ aclnnStatus aclnnBlitzSparseAttention(
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
   
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+    <table style="table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>返回值</th>
         <th>错误码</th>
@@ -397,12 +397,12 @@ aclnnStatus aclnnBlitzSparseAttention(
 - **参数说明**
 
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+    <table style="table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>参数名</th>
         <th>输入/输出</th>
@@ -433,7 +433,7 @@ aclnnStatus aclnnBlitzSparseAttention(
     </table>
     </div>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
 
@@ -454,7 +454,7 @@ aclnnStatus aclnnBlitzSparseAttention(
     - 支持N轴小于等于256。
 
     - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致bsa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列（即B、S、N、D的乘积较大）场景包括但不限于：
-       <table style="undefined;table-layout: fixed; width: 600px"><colgroup>
+       <table style="table-layout: fixed; width: 600px"><colgroup>
       <col style="width: 100px">
       <col style="width: 100px">
       <col style="width: 200px">
@@ -583,7 +583,7 @@ aclnnStatus aclnnBlitzSparseAttention(
 - innerPrecise输入，功能使用限制如下：
   
   - 一共4种模式：0、1、2、3。一共两位bit位，第0位（bit0）表示高精度或者高性能选择，第1位（bit1）表示是否做行无效修正。
-    <table style="undefined;table-layout: fixed; width: 600px"><colgroup>
+    <table style="table-layout: fixed; width: 600px"><colgroup>
     <col style="width: 200px">
     <col style="width: 200px">
       <col style="width: 200px">
