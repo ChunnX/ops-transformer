@@ -368,16 +368,21 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_div;
     RegTensor<float> vreg_exp_sum;
+    RegTensor<float> vreg_zero;
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_zero_sum;
     constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
+    Duplicate(vreg_zero, 0.0f);
+
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * REDUCE_SIZE);
+        Compares<float, CMPMODE::EQ>(preg_zero_sum, vreg_exp_sum, vreg_zero, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             MaskReg preg_update = UpdateMask<float>(sreg_init);
 
@@ -387,6 +392,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
             }
             Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
+            Select(vreg_div, vreg_zero, vreg_div, preg_zero_sum);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
                                                               preg_update);
         }
