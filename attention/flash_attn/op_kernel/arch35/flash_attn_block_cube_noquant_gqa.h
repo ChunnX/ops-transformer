@@ -314,6 +314,17 @@ public:
     L0BType mmL0BBuffers;
     L0CType mmL0CBuffers;
 
+    // ===== BMM1 fixpipe 软流水（P1：跨 tile 延迟消费 L0C）=====
+    // 将 BMM1 的 matmul 与其 fixpipe 拆到相邻两个 tile：本 tile 只发 matmul + Set<M_FIX> 并挂起，
+    // 下一个 tile 在 ExecuteTask 起始处 FinishBmm1Pending() 补做 fixpipe，使 fixpipe(FIX 管道)
+    // 与后一 tile 的 matmul(M 管道)/搬运(MTE2) 重叠，消除 M->FIX 串行气泡。
+    // 仅对 BMM1 延迟：L0C 为 4buffer（BMM1 用 b0/b2，BMM2 用 b1/b3），互不占用，无死锁；
+    // BMM2 保持即时消费。最后一个 tile 的挂起由 ExecuteTask 起始的 Finish 在其依赖 BMM2 之前补做。
+    bool bmm1Pending_ = false;
+    Buffer<BufferType::L0C> bmm1PendL0C_;
+    MM1_DBUF_T bmm1PendRes_;
+    RunInfoX bmm1PendRunInfo_;
+
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
@@ -630,13 +641,11 @@ public:
         }
         mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
-        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-
-        mm1ResBuf.WaitCrossCore();
-        FixpipeMm1(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
-
-        mm1ResL0C.Set<HardEvent::FIX_M>();
-        mm1ResBuf.SetCrossCore();
+        // 软流水挂起：fixpipe 延后到下一 ExecuteTask 起始 FinishBmm1Pending()
+        bmm1PendL0C_ = mm1ResL0C;
+        bmm1PendRes_ = mm1ResBuf;
+        bmm1PendRunInfo_ = runInfo;
+        bmm1Pending_ = true;
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
@@ -763,6 +772,25 @@ public:
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams); // 将matmul结果从L0C搬运到UB
     }
 
+    // 补做上一个 tile 挂起的 BMM1 fixpipe（软流水）。在下一 tile 的 ExecuteTask 起始处调用，
+    // 使该 fixpipe 与后续 matmul/搬运重叠；对未挂起的路径(D>128 的切K分支)为安全空操作。
+    __aicore__ inline void FinishBmm1Pending()
+    {
+        if (!bmm1Pending_) {
+            return;
+        }
+        bmm1PendL0C_.Wait<HardEvent::M_FIX>(); // 等待本 tile matmul 完成
+        bmm1PendRes_.WaitCrossCore();          // 等待 Vec 侧释放输出 buffer
+        if constexpr (useDn) {
+            FixpipeMm1Dn(bmm1PendRes_.template GetTensor<T>(), bmm1PendL0C_.GetTensor<T>(), bmm1PendRunInfo_);
+        } else {
+            FixpipeMm1(bmm1PendRes_.template GetTensor<T>(), bmm1PendL0C_.GetTensor<T>(), bmm1PendRunInfo_);
+        }
+        bmm1PendL0C_.Set<HardEvent::FIX_M>(); // 释放 L0C
+        bmm1PendRes_.SetCrossCore();          // 通知 Vec 侧结果就绪
+        bmm1Pending_ = false;
+    }
+
     __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &mm1ResBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1> mm1B;
@@ -803,12 +831,11 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();
 
         mm1ResL0C.Set<HardEvent::M_FIX>();
-        mm1ResL0C.Wait<HardEvent::M_FIX>();
-
-        mm1ResBuf.WaitCrossCore();
-        FixpipeMm1Dn(mm1ResBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
-        mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
-        mm1ResBuf.SetCrossCore();
+        // 软流水挂起：本 tile 只发 matmul + Set<M_FIX>，fixpipe 延后到下一 ExecuteTask 起始 FinishBmm1Pending()
+        bmm1PendL0C_ = mm1ResL0C;
+        bmm1PendRes_ = mm1ResBuf;
+        bmm1PendRunInfo_ = runInfo;
+        bmm1Pending_ = true;
     }
 
     __aicore__ inline void IterateBmm2(mm2ResPos &mm2ResBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
