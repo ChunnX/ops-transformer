@@ -13,7 +13,7 @@
 #include "arch35/stem_oam_prep_varlen_q_tiling_data.h"
 
 extern "C" __global__ __aicore__ void stem_oam_prep_varlen_q(
-    GM_ADDR q, GM_ADDR qScale, GM_ADDR qSeqLens, GM_ADDR cuSeqLensQ,
+    GM_ADDR q, GM_ADDR qSeqLens, GM_ADDR cuSeqLensQ, GM_ADDR qScale,
     GM_ADDR qFlat, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(StemPrepQTilingData);
