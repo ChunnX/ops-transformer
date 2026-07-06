@@ -863,6 +863,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </tbody>
           </table>
 
+
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，当输入为fp8数据类型时，需满足N为2对齐；当输入为fp4数据类型时，需满足N为4对齐。
         - MXFP4场景不支持K=2。
