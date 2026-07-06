@@ -370,15 +370,6 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
-            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
-            //   - AIV0 SetFlag(N)  →  AIC's flagId N
-            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
-            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
-            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
-            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
-            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
-            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
             if constexpr (BMM2_TOUB) {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
@@ -625,8 +616,7 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
-        
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -635,7 +625,7 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
+            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -696,7 +686,7 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -708,11 +698,10 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
-            // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
         }
         info.s2Idx = s2Cur * s2BaseSize;
@@ -730,19 +719,24 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        info.isChangeBatch = false;
+        if (constInfo.isKvContinuous) {
+            info.isChangeBatch = false;
+        } else {
+            if (loop == 0) {
+                info.isChangeBatch = true;
+            } else {
+                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+            }
+        }
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-        info.actVecMSize = (info.actMSize + 1) >> 1;
+        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -750,14 +744,11 @@ public:
         }
 
         if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
         } else {
             if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
             } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
@@ -875,10 +866,10 @@ public:
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
-            CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
+                CrossCoreBufferInit();
             } else {
                 cubeBlock.InitBuffers();
                 cubeBlock.AllocEventID();
@@ -894,12 +885,12 @@ public:
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
+            CrossCoreBufferUnInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();
             } else {
                 cubeBlock.FreeEventID();
             }
-            CrossCoreBufferUnInit();
         }
     }
 }; // FlashAttentionNoQuantGqaKernelNd
