@@ -40,6 +40,7 @@ aclnnStatus aclnnMaskedCausalConv1dGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnMaskedCausalConv1d(
   void             *workspace,

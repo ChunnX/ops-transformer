@@ -61,50 +61,49 @@ struct MoeGatingTopKRegbaseTilingData {
     int64_t groupSelectMode = 0;
     int64_t renorm = 0;
     int64_t normType = 0;
-    int64_t y2Flag = 0;
+    int64_t outFlag = 0;
     int64_t vmsCount = 0;
     float routedScalingFactor = 0;
     float eps = 0;
-    int64_t calTmpBufUbSize = 0;
 };
 #pragma pack()
 
 #ifdef __NPU_TILING__
-inline[aicore] void InitTilingData(const __gm__ uint8_t* tiling, MoeGatingTopKTilingData* const_data)
+inline[aicore] void InitTilingData(const __gm__ uint8_t *tiling, MoeGatingTopKTilingData *const_data)
 {
-    const __gm__ uint32_t* src = (const __gm__ uint32_t*)tiling;
-    uint32_t* dst = (uint32_t*)const_data;
+    const __gm__ uint32_t *src = (const __gm__ uint32_t *)tiling;
+    uint32_t *dst = (uint32_t *)const_data;
     for (auto i = 0; i < sizeof(MoeGatingTopKTilingData) / 4; i++)
         *(dst + i) = *(src + i);
 }
 #else
-inline void InitTilingData(uint8_t* tiling, MoeGatingTopKTilingData* const_data)
+inline void InitTilingData(uint8_t *tiling, MoeGatingTopKTilingData *const_data)
 {
     memcpy(const_data, tiling, sizeof(MoeGatingTopKTilingData));
 }
 #endif
 
 #ifdef __NPU_TILING__
-inline[aicore] void InitTilingData(const __gm__ uint8_t* tiling, MoeGatingTopKRegbaseTilingData* const_data)
+inline[aicore] void InitTilingData(const __gm__ uint8_t *tiling, MoeGatingTopKRegbaseTilingData *const_data)
 {
-    const __gm__ uint32_t* src = (const __gm__ uint32_t*)tiling;
-    uint32_t* dst = (uint32_t*)const_data;
+    const __gm__ uint32_t *src = (const __gm__ uint32_t *)tiling;
+    uint32_t *dst = (uint32_t *)const_data;
     for (auto i = 0; i < sizeof(MoeGatingTopKRegbaseTilingData) / 4; i++)
         *(dst + i) = *(src + i);
 }
 #else
-inline void InitTilingData(uint8_t* tiling, MoeGatingTopKRegbaseTilingData* const_data)
+inline void InitTilingData(uint8_t *tiling, MoeGatingTopKRegbaseTilingData *const_data)
 {
     memcpy(const_data, tiling, sizeof(MoeGatingTopKRegbaseTilingData));
 }
 #endif
 
-#define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg) \
-    tiling_struct tiling_data;                                              \
+#define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg)                                            \
+    tiling_struct tiling_data;                                                                                         \
     InitTilingData(tiling_arg, &tiling_data)
 
-#define GET_TILING_DATA(tiling_data, tiling_arg) \
-    MoeGatingTopKTilingData tiling_data;         \
+#define GET_TILING_DATA(tiling_data, tiling_arg)                                                                       \
+    MoeGatingTopKTilingData tiling_data;                                                                               \
     InitTilingData(tiling_arg, &tiling_data)
 
 #define DTYPE_X float

@@ -139,7 +139,6 @@ static inline ge::graphStatus GetCommParaBase(const gert::OpExecuteContext* host
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
 
     para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
-    para.comm_mode = (para.comm_mode == nullptr ? "" : para.comm_mode);
 
     return ge::SUCCESS;
 }
@@ -209,9 +208,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+        isCommMode = true;
     }
 
     switch (quant_para.type) {
@@ -276,7 +273,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                 if (isCommMode) {
                     return EXEC_OPAPI_CMD(
                         aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
-                        quant_para.dequant_scale, quant_para.pertoken_scale, quant_para.comm_quant_scale_1,
+                        quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
                         quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_mode,
                         comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
                         all_reduce_para.comm_quant_mode, y);

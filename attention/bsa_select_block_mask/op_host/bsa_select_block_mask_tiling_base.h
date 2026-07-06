@@ -69,6 +69,7 @@ protected:
         queryLayout = nullptr;
         kvLayout = nullptr;
         opName = nullptr;
+        socVersion = platform_ascendc::SocVersion::ASCEND910B;
     }
 
     [[nodiscard]] gert::TilingContext *GetContext()
@@ -93,6 +94,10 @@ protected:
     bool CrossShapeVerify();
     void CalcMultiCoreParams();
     void CalcOutputParams();
+    bool IsA5Platform() const;
+    uint32_t GetAivRatio() const;
+    uint32_t CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const;
+    uint32_t CalcLaunchAivNum(uint32_t activeCoreNum) const;
 
     uint32_t batchSize;
     uint32_t numHeads;
@@ -120,6 +125,7 @@ protected:
     uint64_t l1Size;
     uint64_t l0cSize;
     uint64_t l2CacheSize;
+    platform_ascendc::SocVersion socVersion;
 
     LayoutType tilingKeyLayoutQ;
     LayoutType tilingKeyLayoutKV;

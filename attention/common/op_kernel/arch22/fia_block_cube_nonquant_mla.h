@@ -191,7 +191,7 @@ private:
 
     // L1分成3块buf, 用于记录
     uint32_t qpL1BufIter = 0;
-    uint32_t kvL1BufIter = -1;
+    uint32_t kvL1BufIter = 0;
     uint32_t abL0BufIter = 0;
     uint32_t cL0BufIter = 0;
 };
@@ -584,9 +584,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
             mm1B.Wait<HardEvent::MTE1_MTE2>();
             bL1Tensor = mm1B.GetTensor<KV_T>();
 #else
-            // 为啥在这里++,一般不是在循环最后++吗, 因为是从-1开始, 但不统一, 需要统一整改为0或者-1
-            kvL1BufIter++;
             uint32_t kb = kvL1BufIter % 3;
+            kvL1BufIter++;
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             // 从k当中取当前的块
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
@@ -890,8 +889,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
             mm2A.Wait<HardEvent::MTE1_MTE2>();
             bL1Tensor = mm2A.GetTensor<KV_T>();
 #else
-            kvL1BufIter++;
             uint32_t kb = kvL1BufIter % 3U;
+            kvL1BufIter++;
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
 #endif

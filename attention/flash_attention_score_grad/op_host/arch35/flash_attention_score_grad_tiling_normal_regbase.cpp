@@ -1849,7 +1849,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_offset(fBaseParams.offset);
     s1s2BNGS1S2BaseParams_->set_qStartIdx(fBaseParams.qStartIdx);
     s1s2BNGS1S2BaseParams_->set_kvStartIdx(fBaseParams.kvStartIdx);
-    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(fBaseParams.dropMaskOuter);
+    s1s2BNGS1S2BaseParams_->set_dropMaskOuter(static_cast<uint8_t>(fBaseParams.dropMaskOuter));
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);

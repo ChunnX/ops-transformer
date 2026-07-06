@@ -25,35 +25,16 @@
 #endif
 using DTYPE_Y = DTYPE_RESIDUAL;
 
-#if __has_include("../../../matmul_all_reduce/op_kernel/common.h")
 #include "../../../matmul_all_reduce/op_kernel/common.h"
-#else
-#include "../../matmul_all_reduce/common.h"
-#endif
 #if defined(MC2_QUANT)
-    #if __has_include("../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h")
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h"
-    #else
-    #include "../../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_quant.h"
-    #endif
 #elif defined(MC2_WEIGHT_QUANT)
-    #if __has_include("../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h")
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h"
-    #else
-    #include "../../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_weight_quant.h"
-    #endif
 #else
-    #if __has_include("../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h")
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h"
-    #else
-    #include "../../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_910_general.h"
-    #endif
 #endif
 
 namespace MatmulAllReduceAddRmsNormImpl {}

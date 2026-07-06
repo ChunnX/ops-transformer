@@ -360,35 +360,6 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenKv(const FiaTilin
 }
 
 // feature
-ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaInfo)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 使能alibi pse时，query和key每个batch的seqlength需要相等
-    int64_t actualSeqLengthsQData = 0;
-    int64_t actualSeqLengthsKvData = 0;
-    uint32_t batchSize = fiaInfo.bSize;
-    if (fiaInfo.enableAlibiPse) {
-        for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
-            actualSeqLengthsQData = GetActualSeqLengthsQData(fiaInfo, bIdx);
-            actualSeqLengthsKvData = GetActualSeqLengthsKvData(fiaInfo, bIdx);
-            if (actualSeqLengthsQData != actualSeqLengthsKvData) {
-                std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
-                    "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
-                std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
-                    std::to_string(actualSeqLengthsKvData);
-                std::string reason = attrName + " must be the same when pseType is 2 or 3";
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
-                    valueStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fiaInfo)
 {
     auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
@@ -402,67 +373,6 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
-}
-
-// general
-int64_t ActualSeqLenChecker::GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 获取bIdx对应batch的query的seqLength
-    int64_t actualSeqLengthsQData = 0;
-    auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
-    if (fiaInfo.isAccumQSeq) {
-        // actualSeqLengths为累加形式
-        if (bIdx == 0U) {
-            actualSeqLengthsQData = actualSeqLengthsQTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsQData = actualSeqLengthsQTensor->GetData<int64_t>()[bIdx] -
-                                    actualSeqLengthsQTensor->GetData<int64_t>()[bIdx - 1];
-        }
-    } else {
-        // 非累加形式
-        if (actualSeqLengthsQTensor != nullptr) {
-            int64_t actSeqLenDims = actualSeqLengthsQTensor->GetShapeSize();
-            actualSeqLengthsQData = actSeqLenDims > 1 ? actualSeqLengthsQTensor->GetData<int64_t>()[bIdx] :
-                                    actualSeqLengthsQTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsQData = fiaInfo.s1Size;
-        }
-    }
-    return actualSeqLengthsQData;
-}
-
-int64_t ActualSeqLenChecker::GetActualSeqLengthsKvData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 获取bIdx对应batch的key和value的seqLength
-    int64_t actualSeqLengthsKvData = 0;
-    auto &actualSeqLengthsKvTensor = fiaInfo.opParamInfo.actualSeqLengths.tensor;
-    if (fiaInfo.isAccumKVSeq) {
-        // actualSeqLengths为累加形式
-        if (bIdx == 0U) {
-            actualSeqLengthsKvData = actualSeqLengthsKvTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsKvData = actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx] -
-                                     actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx - 1];
-        }
-    } else {
-        // 非累加形式
-        if (actualSeqLengthsKvTensor != nullptr) {
-            int64_t actSeqLenKVDims = actualSeqLengthsKvTensor->GetShapeSize();
-            actualSeqLengthsKvData = actSeqLenKVDims > 1 ? actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx]:
-                                     actualSeqLengthsKvTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsKvData = fiaInfo.s2Size;
-        }
-    }
-    return actualSeqLengthsKvData;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
@@ -489,10 +399,6 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FiaTilingInfo &fia
 
 ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureAlibi(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
             return ge::GRAPH_FAILED;

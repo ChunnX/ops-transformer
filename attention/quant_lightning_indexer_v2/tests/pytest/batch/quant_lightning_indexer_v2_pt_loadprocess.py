@@ -29,6 +29,7 @@ def test_qliv2_process(filepath, device_id=0):
     params = test_data['params']
     cpu_result = test_data['cpu_result']
     topk_value = test_data['topk_value']
+    cpu_topk_value = test_data['cpu_topk_value']
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
@@ -46,8 +47,10 @@ def test_qliv2_process(filepath, device_id=0):
     key_dequant_scale = test_data['key_dequant_scale'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    if output_idx_offset is not None:
+    if test_data['output_idx_offset'] is not None:
         output_idx_offset = test_data['output_idx_offset'].npu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_query'] is not None:
         cu_seqlens_query = test_data['cu_seqlens_query'].npu()
     else:
@@ -70,7 +73,7 @@ def test_qliv2_process(filepath, device_id=0):
         cmp_residual_k_for_npu = None
 
     #调用SFA算子
-    npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
+    npu_result, npu_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
@@ -91,6 +94,6 @@ def test_qliv2_process(filepath, device_id=0):
                                                     return_value = return_value)
     
     torch.npu.synchronize()
-
-    return cpu_result, npu_result, topk_value, params
+    npu_topk_value, _ = npu_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 

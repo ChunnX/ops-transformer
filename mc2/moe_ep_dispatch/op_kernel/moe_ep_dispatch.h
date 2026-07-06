@@ -29,10 +29,10 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "moe_ep_dispatch_tiling.h"
 
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/mc2_kernel_utils.h"
+#include "../common/mc2_moe_context.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -106,7 +106,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::Mc2MoeContext *mc2Context_{nullptr};
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> topkIdxGMTensor_;
@@ -688,9 +688,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         }
 
         if (sendTokenNum > 0) {
-            uint64_t sendDataSize = perSlotBytes_ * sendTokenNum;
-            uint64_t srcWorkspaceOffset = dstRankId * axisMaxBS_ * perSlotBytes_;
-            uint64_t dstRankWinOffset = epRankId_ * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
+            uint64_t sendDataSize = static_cast<uint64_t>(perSlotBytes_) * sendTokenNum;
+            uint64_t srcWorkspaceOffset = static_cast<uint64_t>(dstRankId) * axisMaxBS_ * perSlotBytes_;
+            uint64_t dstRankWinOffset = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
             GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
             hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
                                   slotWorkspaceAddr_ + srcWorkspaceOffset, sendDataSize);
