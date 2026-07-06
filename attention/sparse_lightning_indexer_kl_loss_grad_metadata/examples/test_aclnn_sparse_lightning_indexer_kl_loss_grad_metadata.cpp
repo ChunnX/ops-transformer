@@ -17,6 +17,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
 #include "acl/acl.h"
@@ -33,6 +34,13 @@
 constexpr uint32_t SLI_METADATA_MAX_CORE_NUM = 25;
 constexpr uint32_t SLI_METADATA_HEADER_SIZE = 8;
 constexpr uint32_t SLI_METADATA_SIZE = 64;
+
+constexpr uint32_t GRAD_METADATA_SIZE = 5;
+constexpr uint32_t TOTAL_NUM = 0;
+constexpr uint32_t FORMER_CORE_PROCESS_NUM = 1;
+constexpr uint32_t REMAIN_CORE_PROCESS_NUM = 2;
+constexpr uint32_t REMAIN_CORE_NUM = 3;
+constexpr uint32_t USED_CORE_NUM = 4;
 
 struct SliGradKLLossMetaData {
     int32_t coreNum;
@@ -215,6 +223,18 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
 
 void PrintMetadata(const SliGradKLLossMetaData &metadata)
 {
+    const char *socName = aclrtGetSocName();
+    std::string socVersion = (socName != nullptr) ? std::string(socName) : std::string();
+    bool isA5 = socVersion.find("Ascend910") == std::string::npos;
+    if (isA5) {
+        const int32_t *data = reinterpret_cast<const int32_t *>(&metadata);
+        printf("TOTAL_NUM               : %d\n", data[TOTAL_NUM]);
+        printf("FORMER_CORE_PROCESS_NUM : %d\n", data[FORMER_CORE_PROCESS_NUM]);
+        printf("REMAIN_CORE_PROCESS_NUM : %d\n", data[REMAIN_CORE_PROCESS_NUM]);
+        printf("REMAIN_CORE_NUM         : %d\n", data[REMAIN_CORE_NUM]);
+        printf("USED_CORE_NUM           : %d\n", data[USED_CORE_NUM]);
+        return;
+    }
     printf("coreNum          : %d\n", metadata.coreNum);
     printf("totalSize        : %d\n", metadata.totalSize);
     printf("splitFactorSize  : %d\n", metadata.splitFactorSize);
