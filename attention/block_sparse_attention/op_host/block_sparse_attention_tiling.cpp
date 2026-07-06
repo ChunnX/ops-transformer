@@ -1251,10 +1251,12 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
         OP_LOGE(bsaContext->GetNodeName(), "GetNpuInfo failed");
         return ret;
     }
-    ret = CheckNDFormat(bsaContext);
-    if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "CheckNDFormat failed");
-        return ret;
+    if (socVer_ == SOC_VER_950_CODE) {
+        ret = CheckNDFormat(bsaContext);
+        if (ret != ge::GRAPH_SUCCESS) {
+            OP_LOGE(bsaContext->GetNodeName(), "CheckNDFormat failed");
+            return ret;
+        }
     }
     if (GetInputLayout(bsaContext) != ge::GRAPH_SUCCESS ||
         ParseAttrs(bsaContext) != ge::GRAPH_SUCCESS ||
