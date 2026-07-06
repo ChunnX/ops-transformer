@@ -42,7 +42,7 @@ namespace ops {
         int64_t dimKX2;
         int64_t dimN;
         int64_t rankSize;
-    };
+    }; 
 
     ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext* context, const size_t gatherIndex);
     ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context);
