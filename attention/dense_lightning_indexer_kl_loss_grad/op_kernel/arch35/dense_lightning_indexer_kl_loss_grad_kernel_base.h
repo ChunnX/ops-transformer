@@ -72,6 +72,7 @@ public:
     GlobalTensor<T> softmaxOutGm;
     GlobalTensor<T> dWeightGm;
     GlobalTensor<OUT_T> dqGm;
+    GlobalTensor<OUT_T> dkGm;
     GlobalTensor<T> bmm3Res;
     // CV间共享buffer
     TBuf<> mm12ResBuf[3]; // UB上3buffer
@@ -111,6 +112,9 @@ public:
     uint32_t qPreBlockFactor;
     uint32_t qPreBlockTotal;
     uint32_t qPreBlockTail;
+    uint32_t kPreBlockFactor;
+    uint32_t kPreBlockTotal;
+    uint32_t kPreBlockTail;
     uint32_t weightPreBlockFactor;
     uint32_t weightPreBlockTotal;
     uint32_t weightPreBlockTail;
@@ -118,7 +122,9 @@ public:
     uint32_t softmaxOutPreBlockTotal;
     uint32_t softmaxOutPreBlockTail;
     uint32_t initdqSize;
+    uint32_t initdkSize;
     uint64_t dqOffset;
+    uint64_t dkOffset;
     uint32_t initdweightSize;
     uint64_t dweightOffset;
     uint32_t initsoftMaxSize;
@@ -145,6 +151,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
     dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
     dqGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
+    dkGm.SetGlobalBuffer((__gm__ OUT_T *)dKey);
 
     InitMMResBuf();
     InitWorkspace(workspace);
@@ -161,7 +168,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         // initCubeOP
         cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
         cubeBlock.InitCubeBuffers();
-        cubeBlock.InitGlobalBuffer(query, key, dQuery, reluRes, gatherSYRes, bmm3Res);
+        cubeBlock.InitGlobalBuffer(query, dQuery, key, dKey, reluRes, gatherSYRes, bmm3Res);
     }
 }
 
@@ -339,7 +346,6 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     if constexpr (Deterministic) {
         // ProcessDeter();
     } else {
-        // printf("!!!!! wenyu check Process Normal !!!!! \n");
         ProcessNormal();
     }
 }
@@ -418,12 +424,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
                 constInfo, runInfo[(s2TaskId + 1) % MODE_NUM_3].isLastBlock);
         }
     }
-    
     SyncAll<false>();
-    // if ASCEND_IS_AIV {
-    //     vecBlock.ReInitBuffers(pipe);
-    //     vecBlock.ProcessVector8();
-    // }
     FreeBuf();
 }
 
@@ -534,7 +535,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     runInfo.s2RealSize = currentS2Size;
     runInfo.kRealSize = currentS2Size;
     runInfo.s2Offset = s2Offset;
-    runInfo.isLastBlock = s2Offset + VEC_SY_BASESIZE > currentS2Size;
+    runInfo.isLastBlock = s2Offset + VEC_SY_BASESIZE >= currentS2Size;
     runInfo.kProcessSize = runInfo.s2RealSize - runInfo.s2Offset > 128 ? 128 : runInfo.s2RealSize - runInfo.s2Offset;
     runInfo.isAlign64 = runInfo.kProcessSize % 64 == 0;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
@@ -550,7 +551,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     //     (runInfo.kRealSize % runInfo.kBaseSize == 0) ? runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
 
     runInfo.queryIndexTensorOffset = runInfo.t1Index * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
-    runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2Size * constInfo.dSizeQueryIndex;
+    runInfo.keyIndexTensorOffset = runInfo.t2Index * constInfo.n2Size * constInfo.dSizeQueryIndex + runInfo.s2Offset * constInfo.dSizeQueryIndex;
     runInfo.firstNIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
     if (constInfo.subBlockIdx == 0) {
         runInfo.nIndexSize = runInfo.firstNIndexSize;
@@ -705,7 +706,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 {
     // printf("!!! init buffer !!!\n");
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    sYL1Buf.Init(l1BufferManager, 128 * 128 * sizeof(INPUT_T));
+    // sYL1Buf.Init(l1BufferManager, 128 * 128 * sizeof(INPUT_T));
     reluGradResL1Buf.Init(l1BufferManager, 128 * 128 * sizeof(INPUT_T));
     ubBufferManager.Init(pipe, UB_MAX_SIZE);
     bmm1Buffers.Init(ubBufferManager, 64 * 128 * sizeof(T));
@@ -802,6 +803,9 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         qPreBlockFactor = tilingData->multiCoreParams.qPreBlockFactor;
         qPreBlockTotal = tilingData->multiCoreParams.qPreBlockTotal;
         qPreBlockTail = tilingData->multiCoreParams.qPreBlockTail;
+        kPreBlockFactor = tilingData->multiCoreParams.kPreBlockFactor;
+        kPreBlockTotal = tilingData->multiCoreParams.kPreBlockTotal;
+        kPreBlockTail = tilingData->multiCoreParams.kPreBlockTail;
         weightPreBlockFactor = tilingData->multiCoreParams.weightPreBlockFactor;
         weightPreBlockTotal = tilingData->multiCoreParams.weightPreBlockTotal;
         weightPreBlockTail = tilingData->multiCoreParams.weightPreBlockTail;
@@ -810,7 +814,9 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         softmaxOutPreBlockTail = tilingData->multiCoreParams.softmaxOutPreBlockTail;
 
         initdqSize = vBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
+        initdkSize = vBlockIdx == kPreBlockTotal - 1 ? kPreBlockTail : kPreBlockFactor;
         dqOffset = (uint64_t)vBlockIdx * qPreBlockFactor;
+        dkOffset = (uint64_t)vBlockIdx * kPreBlockFactor;
         initdweightSize = vBlockIdx == weightPreBlockTotal - 1 ? weightPreBlockTail : weightPreBlockFactor;
         dweightOffset = (uint64_t)vBlockIdx * weightPreBlockFactor;
         initsoftMaxSize = vBlockIdx == softmaxOutPreBlockTotal - 1 ? softmaxOutPreBlockTail : softmaxOutPreBlockFactor;
@@ -818,6 +824,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         InitOutput<float>(softmaxOutGm[softMaxOffset], initsoftMaxSize, 0);
         InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
         InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
+        InitOutput<OUT_T>(dkGm[dkOffset], initdkSize, 0);
     }
     SyncAll<false>();
 }

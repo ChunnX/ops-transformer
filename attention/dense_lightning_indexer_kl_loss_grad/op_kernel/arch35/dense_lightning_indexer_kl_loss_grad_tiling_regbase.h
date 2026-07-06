@@ -200,6 +200,9 @@ public:
     int64_t qPreBlockFactor;
     int64_t qPreBlockTotal;
     int64_t qPreBlockTail;
+    int64_t kPreBlockFactor;
+    int64_t kPreBlockTotal;
+    int64_t kPreBlockTail;
     int64_t weightPreBlockFactor;
     int64_t weightPreBlockTotal;
     int64_t weightPreBlockTail;
@@ -255,6 +258,18 @@ public:
     {
         return qPreBlockTail;
     }
+    int64_t get_kPreBlockFactor() const
+    {
+        return kPreBlockFactor;
+    }
+    int64_t get_kPreBlockTotal() const
+    {
+        return kPreBlockTotal;
+    }
+    int64_t get_kPreBlockTail() const
+    {
+        return kPreBlockTail;
+    }
     int64_t get_weightPreBlockFactor() const
     {
         return weightPreBlockFactor;
@@ -295,6 +310,18 @@ public:
     void set_qPreBlockTail(int64_t value)
     {
         this->qPreBlockTail = value;
+    }
+    void set_kPreBlockFactor(int64_t value)
+    {
+        this->kPreBlockFactor = value;
+    }
+    void set_kPreBlockTotal(int64_t value)
+    {
+        this->kPreBlockTotal = value;
+    }
+    void set_kPreBlockTail(int64_t value)
+    {
+        this->kPreBlockTail = value;
     }
     void set_weightPreBlockFactor(int64_t value)
     {

@@ -885,10 +885,13 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     // query
     int64_t allNumQuery = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
         dlikGradBaseParams_->get_gSizeQueryIndex() * dlikGradBaseParams_->get_s1Size() * dAlign16;
+    int64_t allNumKey = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
+        dlikGradBaseParams_->get_s2Size() * dAlign16;
     // TND时候要按照真实的query的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumQuery = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
             dlikGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
+        allNumKey = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() * dAlign16;
     }
 
     // weight
@@ -902,11 +905,11 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
 
     // softmaxOut
     int64_t allNumSoftmaxOut = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_s1Size() *
-        dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_kSize();
+        dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_maxSeqlenK();
     // TND时候要按照真实的softmaxOut的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumSoftmaxOut =
-            dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_kSize();
+            dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() * dlikGradBaseParams_->get_maxSeqlenK();
     }
     uint32_t typeSize = B16;
     uint32_t usedCoreNum = aivNum;
@@ -933,6 +936,11 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     int64_t qPreBlockTotal = (allNumQuery + qPreBlockFactor - 1) / qPreBlockFactor;
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
+
+    int64_t kPreBlockFactor = (allNumKey + usedCoreNum - 1) / usedCoreNum;
+    int64_t kPreBlockTotal = (allNumKey + kPreBlockFactor - 1) / kPreBlockFactor;
+    int64_t kPreBlockTailTmp = allNumKey % kPreBlockFactor;
+    int64_t kPreBlockTail = kPreBlockTailTmp == 0 ? kPreBlockFactor : kPreBlockTailTmp;
 
     int64_t weightPreBlockFactor = 0;
     int64_t weightPreBlockTotal = 0;
@@ -961,6 +969,10 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     dlikGradMultiCoreParams_->set_qPreBlockFactor(qPreBlockFactor);
     dlikGradMultiCoreParams_->set_qPreBlockTotal(qPreBlockTotal);
     dlikGradMultiCoreParams_->set_qPreBlockTail(qPreBlockTail);
+
+    dlikGradMultiCoreParams_->set_kPreBlockFactor(kPreBlockFactor);
+    dlikGradMultiCoreParams_->set_kPreBlockTotal(kPreBlockTotal);
+    dlikGradMultiCoreParams_->set_kPreBlockTail(kPreBlockTail);
 
     dlikGradMultiCoreParams_->set_weightPreBlockFactor(weightPreBlockFactor);
     dlikGradMultiCoreParams_->set_weightPreBlockTotal(weightPreBlockTotal);

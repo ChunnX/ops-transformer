@@ -170,7 +170,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ke
 
     this->gatherSYResGm = gatherSYRes;
     this->reluGm = relu;
-    this->reduceSumResGm = reduceSumRes[constInfo.subBlockIdx * VEC_SY_BASESIZE * 3];
+    this->reduceSumResGm = reduceSumRes;
     this->scatterAddResGm = scatterAddRes;
 
     actualSeqQlenAddr = cuSeqlensQ;
@@ -576,11 +576,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector1(
     auto reduceSumTensor = this->reduceSumOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     
-    // pipe_barrier(PIPE_ALL);
-    // uint32_t array[] = {static_cast<uint32_t>(5), static_cast<uint32_t>(128)};
-    // AscendC::ShapeInfo shapeInfo(2,array);
-    // AscendC::DumpTensor(mmRes , 111, 5 * 128, shapeInfo);
-
     ProcessVec1Vf<T, float>(reduceSumTensor, mmRes, weightInUb, runInfo.nIndexSize, constInfo.syKBaseSize);
     this->reduceSumOutQue[runInfo.taskIdMod3].template EnQue(reduceSumTensor);
     this->reduceSumOutQue[runInfo.taskIdMod3].template DeQue<T>();
@@ -594,7 +589,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector1(
     CrossCoreSetFlag<1, PIPE_MTE3>(EVENT_ID2);
     this->weightInQue[runInfo.sTaskIdMod3].template FreeTensor(weightInUb);
     this->reduceSumOutQue[runInfo.taskIdMod3].template FreeTensor(reduceSumTensor);
-    // CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -666,10 +660,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessSoftmaxReduceSum(DLI
         ReduceSumVf(softmaxReduceSumTensor, softmaxTensor, tmpProcessSize);
         SetFlag<HardEvent::MTE2_V>(eventIdVToMte2);
     }
-    // pipe_barrier(PIPE_ALL);
-    // uint32_t array[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(1)};
-    // AscendC::ShapeInfo shapeInfo(2,array);
-    // AscendC::DumpTensor(softmaxReduceSumTensor , 111, 1, shapeInfo);
     WaitFlag<HardEvent::MTE2_V>(eventIdVToMte2);
     this->attnSoftmaxL1Que.template FreeTensor(softmaxTensor);
     this->softmaxReduceSumOutQue[runInfo.taskIdMod3].template FreeTensor(softmaxReduceSumTensor);
@@ -712,12 +702,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     DataCopyPad(softmaxTensor, attnSoftmaxL1Gm[runInfo.t1Index * constInfo.maxSeqlenK + runInfo.s2Offset], dataCopyParams, padParams);
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    pipe_barrier(PIPE_ALL);
-    uint32_t array[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(128)};
-    AscendC::ShapeInfo shapeInfo(2,array);
-    
-    AscendC::DumpTensor(reduceSumTensor , 111, 128, shapeInfo);
-    AscendC::DumpTensor(reduceOtherSumTensor , 222, 128, shapeInfo);
     
     if (runInfo.isAlign64) {
         ProcessVec6Vf<T, INPUT_T, true>(reluGradUb, dwTensor,
@@ -728,11 +712,17 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
             softmaxTensor, softmaxReduceSumTensor, weightInUb, reduceSumTensor, reduceOtherSumTensor,
             reluUb, lseInUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     }
-        
-    pipe_barrier(PIPE_ALL);
-    AscendC::DumpTensor(reduceOtherSumTensor , 333, 128, shapeInfo);
-
     CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
+
+    this->reduceSumOtherOutQue[runInfo.taskIdMod3].template EnQue(reduceOtherSumTensor);
+    this->reduceSumOtherOutQue[runInfo.taskIdMod3].template DeQue<T>();
+    uint64_t softmaxOutOffset = runInfo.t1Index * constInfo.maxSeqlenK + runInfo.s2Offset;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = runInfo.kProcessSize * sizeof(T);
+    dataCopyParams.srcStride = 1;
+    dataCopyParams.dstStride = 1;
+    DataCopyPad(softmaxOutGm[softmaxOutOffset], reduceOtherSumTensor, dataCopyParams);
+
     this->reluGradQue[runInfo.taskIdMod3].template EnQue(reluGradUb);
     this->reluGradQue[runInfo.taskIdMod3].template DeQue<INPUT_T>();
     LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
@@ -741,10 +731,9 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         { static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), static_cast<uint16_t>(runInfo.nIndexSize),
         0, static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize) });
     CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
-
+    this->dwQue[runInfo.sTaskIdMod3].template EnQue(dwTensor);
+    this->dwQue[runInfo.sTaskIdMod3].template DeQue<T>();
     if (runInfo.isLastBlock) {
-        this->dwQue[runInfo.sTaskIdMod3].template EnQue(dwTensor);
-        this->dwQue[runInfo.sTaskIdMod3].template DeQue<T>();
         LocalTensor<T> dwOutTensor = dwOutQue.template AllocTensor<T>();
         CastDupVf<T, T>(dwOutTensor, dwTensor, runInfo.nIndexSize);
         this->dwOutQue.template EnQue(dwOutTensor);
@@ -762,6 +751,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     this->reduceSumOtherOutQue[runInfo.taskIdMod3].template FreeTensor(reduceOtherSumTensor);
     this->reluGradQue[runInfo.taskIdMod3].template FreeTensor(reluGradUb);
     this->weightInQue[runInfo.sTaskIdMod3].template FreeTensor(weightInUb);
+    this->softmaxLseQue[runInfo.sTaskIdMod3].template FreeTensor(lseInUb);
     this->dwQue[runInfo.sTaskIdMod3].template FreeTensor(dwTensor);
     this->softmaxReduceSumOutQue[runInfo.taskIdMod3].template FreeTensor(softmaxReduceSumTensor);
     this->attnSoftmaxL1Que.template FreeTensor(attnSoftmaxL1Tensor);
