@@ -36,30 +36,30 @@
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
   - tensor转置：指若tensor shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景，即非连续tensor。
 
-- 计算公式：
-  - **非量化场景：**
+  - 计算公式：
+    - **非量化场景：**
 
-    $$
-     y_i=x_i\times weight_i + bias_i
-    $$
+      $$
+       y_i=x_i\times weight_i + bias_i
+      $$
 
-  - **量化场景：**
+    - **量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+      $$
 
-  - **反量化场景：**
+    - **反量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i
+      $$
 
-  - **伪量化场景：**
+    - **伪量化场景：**
 
-    $$
-     y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-    $$
+      $$
+       y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+      $$
 
 ## 函数原型
 
