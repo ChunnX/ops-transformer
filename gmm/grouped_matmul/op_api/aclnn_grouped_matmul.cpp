@@ -640,10 +640,7 @@ static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParam
   return ACLNN_SUCCESS;
 }
 
-static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
-{
-    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
-}
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams);
 
 static bool IsWeightNzMultiTensorCase(const gmm::GroupedMatmulParams &gmmParams)
 {
@@ -2103,6 +2100,11 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
                    opName, "y, weight", i, xDimNum - 1, yNDimValue, i, weightNDimValue);
     }
     return ACLNN_SUCCESS;
+}
+
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
 static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
