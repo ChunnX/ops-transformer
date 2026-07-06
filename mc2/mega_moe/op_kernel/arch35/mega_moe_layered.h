@@ -447,6 +447,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     PRINTF("============availableUb============:%u\n", availableUb);
     uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
     maxRoundSize = (maxRoundSize / 256U) * 256U;
+    PRINTF("============maxRoundSize============:%u\n", maxRoundSize);
     if (maxRoundSize == 0) { maxRoundSize = 256U; }
     if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxRoundSize)) {
         roundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
