@@ -20,6 +20,7 @@ fetched[i] = commBuffer[ownerRank(indices[i])][localEntryIdx(indices[i])]
 $$
 
 其中：
+
 - $indices[i]$为第i个token的全局索引，索引空间覆盖所有卡上的token，按统一的连续编号编排。
 - $ownerRank = indices[i] / num\_entries\_per\_rank$，表示该token所在的卡号，通过整除确定目标卡。
 - $localEntryIdx = indices[i] \mod num\_entries\_per\_rank$，表示该token在目标卡elastic buffer中的卡内索引，通过取余计算。
@@ -94,4 +95,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_aclnn_engram_fetch.cpp](./tests/test_aclnn_engram_fetch.cpp) | 通过`aclnnEngramFetch`接口方式调用engram_fetch算子。 |
+| aclnn接口 | [test_aclnn_engram_fetch.cpp](./tests/ut/op_api/test_aclnn_engram_fetch.cpp) | 通过`aclnnEngramFetch`接口方式调用engram_fetch算子。 |
