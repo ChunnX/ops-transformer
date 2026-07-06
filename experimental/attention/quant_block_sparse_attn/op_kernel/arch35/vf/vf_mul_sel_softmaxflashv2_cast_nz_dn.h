@@ -31,8 +31,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const T minValue, float keepProb, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -343,13 +344,13 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__simd_vf__ inline void
-ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                      __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                      __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb, __ubuf__ uint8_t *indexesUb, const uint32_t m,
-                      const uint32_t n, const uint32_t originN, const T scale, const T minValue, float keepProb,
-                      bool needAtten, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                      const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+__simd_vf__ inline void ProcessVec1DnUpdateVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
+    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    const T minValue, float keepProb, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -716,8 +717,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale = 1.0f)
+    const T minValue, float keepProb, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1027,9 +1029,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, const float pScale = 1.0f)
+    const T minValue, float keepProb, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0)
 {
+    RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
     RegTensor<float> vreg_x_sum_2;
