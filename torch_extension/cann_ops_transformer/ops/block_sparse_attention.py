@@ -45,124 +45,186 @@
  	 
  	 # Supported layouts and dtypes (single source of truth, mirrors the kernel:
  	 # block_sparse_attention_tiling.cpp / block_sparse_attention.cpp).
+	 _QUANT_MODE = (0, 1, 2)
  	 _LAYOUTS = ("TND", "BNSD", "BSND")
  	 _FP_DTYPES = (torch.float16, torch.bfloat16)          # FP16/BF16: out dtype == in dtype
  	 _FP8_DTYPES = (torch.float8_e4m3fn,)                  # FP8: out dtype ∈ {fp16, bf16}, 950 only
  	 _FP8_DEFAULT_OUT_DTYPE = torch.bfloat16
- 	 _FP4_DISGUISE_DTYPES = (torch.uint8,)                 # float4_e2m1fn_x2 disguised as uint8: out ∈ {fp16, bf16}
+ 	 _FP8_DESCALE_DTYPES = (torch.float32,)                # FP8 reverse-quant factor dtype
+ 	 _FP4_DISGUISE_DTYPES = (torch.uint8,)                 # float4_e2m1fn_x2 disguised as uint8: out = bf16
  	 _FP4_LOGICAL_DTYPES = (torch_npu.float4_e2m1fn_x2,)   # valid logical dtypes when q/k/v is uint8
  	 _FP4_DEFAULT_OUT_DTYPE = torch.bfloat16
+ 	 _FP4_DESCALE_DTYPES = (torch_npu.float8_e8m0fnu,)     # mxfp4 descale tensor dtype
  	 
  	 
- 	 def _resolve_out_dtype(in_dtype, attention_out_dtype):
- 	     """Resolve/validate the attentionOut dtype for a given input dtype.
+ 	 def _check_quant_mode(quant_mode):
+ 	     """Validate quant_mode is one of the supported values.
+
+ 	     Called at the very top of both entry points (eager `block_sparse_attention`
+ 	     and the registered `_meta` impl) so the downstream helpers
+ 	     (`_guard_soc_capabilities`, `_validate_quant_mode`, `_resolve_out_dtype`)
+ 	     can trust the value and skip re-checking. Keeps the error message in one
+ 	     place instead of duplicating it across three helpers.
+ 	     """
+ 	     if quant_mode not in _QUANT_MODE:
+ 	         raise ValueError(
+ 	             f"quant_mode must be one of {_QUANT_MODE} "
+ 	             f"(0=no quant, 1=FP8, 2=mxfp4), got {quant_mode}."
+ 	     )
+ 	 
+ 	 
+ 	 def _resolve_out_dtype(in_dtype, attention_out_dtype, quant_mode):
+ 	     """Resolve/validate the attentionOut dtype for a given quant_mode.
  	 
  	     Pure (no device access) so the Meta/FakeTensor path and the eager path
- 	     agree. The (in dtype → out dtype) pair is exactly what selects the kernel
+ 	     agree. The (quant_mode → out dtype) pair is exactly what selects the kernel
  	     binary, so getting this right is what keeps callers off the
  	     "Cannot find binary for op BlockSparseAttention" cliff:
- 	       • FP16/BF16 in  → out must equal in (default: in).
- 	       • FP8_E4M3FN in → out ∈ {fp16, bf16} (default: bf16); there is NO fp8 out
- 	         binary, so the old "out = in dtype" behaviour could never find a kernel.
- 	       • FP4_E2M1FN_X2 in (uint8-disguised) → out ∈ {bf16} (default: bf16);
- 	         the kernel dequantizes 4-bit floats to fp16/bf16, same as the FP8 path.
+ 	       • quant_mode=0 (FP16/BF16) → out must equal in (default: in).
+ 	       • quant_mode=1 (FP8_E4M3FN) → out ∈ {fp16, bf16} (default: bf16); there is
+ 	         NO fp8 out binary, so the old "out = in dtype" behaviour could never find
+ 	         a kernel.
+ 	       • quant_mode=2 (FP4_E2M1FN_X2, uint8-disguised) → out = bf16 (default: bf16);
+ 	         the kernel dequantizes 4-bit floats to bf16 only (no fp16 out binary).
  	     """
- 	     if in_dtype in _FP8_DTYPES:
+ 	     # Pre-condition: quant_mode is already validated by `_check_quant_mode`
+ 	     # at the entry point, so we dispatch directly.
+ 	     if quant_mode == 0:
+ 	         if in_dtype not in _FP_DTYPES:
+ 	             raise ValueError(
+ 	                 f"quant_mode=0 requires query/key/value dtype to be float16 or "
+ 	                 f"bfloat16, got {in_dtype}"
+ 	             )
+ 	         if attention_out_dtype is not None and attention_out_dtype != in_dtype:
+ 	             raise ValueError(
+ 	                 f"attention_out_dtype must equal the input dtype ({in_dtype}) for "
+ 	                 f"quant_mode=0 (float16/bfloat16) inputs, got {attention_out_dtype}"
+ 	             )
+ 	         return in_dtype
+ 	     if quant_mode == 1:
+ 	         if in_dtype not in _FP8_DTYPES:
+ 	             raise ValueError(
+ 	                 f"quant_mode=1 requires query/key/value dtype to be float8_e4m3fn, "
+ 	                 f"got {in_dtype}"
+ 	             )
  	         if attention_out_dtype is None:
  	             return _FP8_DEFAULT_OUT_DTYPE
  	         if attention_out_dtype not in _FP_DTYPES:
  	             raise ValueError(
  	                 f"attention_out_dtype must be torch.float16 or torch.bfloat16 for "
- 	                 f"float8_e4m3fn inputs, got {attention_out_dtype}"
+ 	                 f"quant_mode=1 (float8_e4m3fn) inputs, got {attention_out_dtype}"
  	             )
  	         return attention_out_dtype
- 	     if in_dtype in _FP4_DISGUISE_DTYPES:
- 	         # float4_e2m1fn_x2 is disguised as uint8; kernel dequantizes to fp16/bf16.
- 	         if attention_out_dtype is None:
- 	             return _FP4_DEFAULT_OUT_DTYPE
- 	         if attention_out_dtype not in _FP4_DEFAULT_OUT_DTYPE:
- 	             raise ValueError(
- 	                 f"attention_out_dtype must be torch.float16 or torch.bfloat16 for "
- 	                 f"float4_e2m1fn_x2 (uint8-disguised) inputs, got {attention_out_dtype}"
- 	             )
- 	         return attention_out_dtype
- 	     if in_dtype in _FP_DTYPES:
- 	         if attention_out_dtype is not None and attention_out_dtype != in_dtype:
- 	             raise ValueError(
- 	                 f"attention_out_dtype must equal the input dtype ({in_dtype}) for "
- 	                 f"float16/bfloat16 inputs, got {attention_out_dtype}"
- 	             )
- 	         return in_dtype
- 	     raise ValueError(
- 	         f"query/key/value dtype must be float16, bfloat16, float8_e4m3fn or uint8 "
- 	         f"(float4_e2m1fn_x2), got {in_dtype}"
- 	     )
+ 	     # quant_mode == 2: mxfp4 (float4_e2m1fn_x2 disguised as uint8).
+		 if quant_mode == 2:
+			if in_dtype not in _FP4_DISGUISE_DTYPES:
+				raise ValueError(
+					f"quant_mode=2 requires query/key/value dtype to be uint8 "
+					f"(float4_e2m1fn_x2 disguised as uint8), got {in_dtype}"
+				)
+			if attention_out_dtype is None:
+				return _FP4_DEFAULT_OUT_DTYPE
+			if attention_out_dtype != _FP4_DEFAULT_OUT_DTYPE:
+				raise ValueError(
+					f"attention_out_dtype must be torch.bfloat16 for "
+					f"quant_mode=2 (float4_e2m1fn_x2, uint8-disguised) inputs, "
+					f"got {attention_out_dtype}"
+			)
+ 	     return attention_out_dtype
  	 
  	 
- 	 def _validate_fp4_dtypes(query, key, value,
- 	                          q_dtype, k_dtype, v_dtype,
- 	                          q_descale_dtype, k_descale_dtype, v_descale_dtype,
+ 	 def _validate_quant_mode(query, key, value, quant_mode,
  	                          q_dequant_scale, k_dequant_scale, v_dequant_scale):
- 	     """Validate FP4 (float4_e2m1fn_x2, uint8-disguised) inputs.
+ 	     """Validate quant_mode against input dtypes and descale tensors.
 
- 	     No-op for FP8/FP16/BF16 inputs (the FP4 branch is only entered when
- 	     query.dtype is uint8). For FP4 inputs it enforces:
- 	       • q/k/v_dtype MUST be torch_npu.float4_e2m1fn_x2 (logical dtype).
- 	       • q/k/v_descale_dtype MUST be torch_npu.float8_e8m0fnu.
- 	       • q/k/v_dequant_scale (descale tensors) MUST be provided.
- 	     Mirrors quant_flash_attn.py:142-151. The C++ wrapper builds
- 	     TensorWrapper(t, descale_dtype) so the kernel resolves the right binary.
+ 	     quant_mode semantics:
+ 	       0 = no quantization (FP16/BF16) — descale tensors must be None.
+ 	       1 = FP8 quantization (float8_e4m3fn) — q/k/v must be float8_e4m3fn and
+ 	           descale tensors (FP32 reverse-quant factors) must be provided.
+ 	       2 = mxfp4 quantization (float4_e2m1fn_x2 disguised as uint8) — q/k/v
+ 	           must be uint8 and descale tensors (dtype float8_e8m0fnu) must be
+ 	           provided.
+
+ 	     The logical dtypes (float4_e2m1fn_x2 / float8_e8m0fnu) are inferred from
+ 	     quant_mode inside the C++ wrapper, so the Python caller only passes this
+ 	     single integer instead of 6 separate dtype parameters.
+
+ 	     Pre-condition: quant_mode is already validated by `_check_quant_mode`
+ 	     at the entry point, so only the per-mode descale rules are checked here.
  	     """
- 	     # q/k/v_dtype: logical dtype for the uint8-disguised fp4 tensors.
- 	     if query.dtype in _FP4_DISGUISE_DTYPES:
- 	         if q_dtype is None:
+ 	     if quant_mode == 1:
+ 	         # FP8: q/k/v must be float8_e4m3fn.
+ 	         if query.dtype not in _FP8_DTYPES:
  	             raise ValueError(
- 	                 "q_dtype can not be None when query is torch.uint8 "
- 	                 "(float4_e2m1fn_x2 disguised as uint8)."
+ 	                 f"quant_mode=1 (FP8) requires query.dtype to be torch.float8_e4m3fn, "
+ 	                 f"got {query.dtype}."
  	             )
- 	         if q_dtype not in _FP4_LOGICAL_DTYPES:
+ 	         if key.dtype not in _FP8_DTYPES:
  	             raise ValueError(
- 	                 f"q_dtype must be torch_npu.float4_e2m1fn_x2 for uint8 query, got {q_dtype}."
+ 	                 f"quant_mode=1 (FP8) requires key.dtype to be torch.float8_e4m3fn, "
+ 	                 f"got {key.dtype}."
  	             )
- 	     if key.dtype in _FP4_DISGUISE_DTYPES:
- 	         if k_dtype is None:
+ 	         if value.dtype not in _FP8_DTYPES:
  	             raise ValueError(
- 	                 "k_dtype can not be None when key is torch.uint8 "
- 	                 "(float4_e2m1fn_x2 disguised as uint8)."
+ 	                 f"quant_mode=1 (FP8) requires value.dtype to be torch.float8_e4m3fn, "
+ 	                 f"got {value.dtype}."
  	             )
- 	         if k_dtype not in _FP4_LOGICAL_DTYPES:
- 	             raise ValueError(
- 	                 f"k_dtype must be torch_npu.float4_e2m1fn_x2 for uint8 key, got {k_dtype}."
- 	             )
- 	     if value.dtype in _FP4_DISGUISE_DTYPES:
- 	         if v_dtype is None:
- 	             raise ValueError(
- 	                 "v_dtype can not be None when value is torch.uint8 "
- 	                 "(float4_e2m1fn_x2 disguised as uint8)."
- 	             )
- 	         if v_dtype not in _FP4_LOGICAL_DTYPES:
- 	             raise ValueError(
- 	                 f"v_dtype must be torch_npu.float4_e2m1fn_x2 for uint8 value, got {v_dtype}."
- 	             )
- 	     # descale_dtype + dequant_scale (descale tensors) are mandatory for FP4.
- 	     # They are the per-block scale factors; their logical dtype is carried
- 	     # into the kernel via TensorWrapper(t, descale_dtype).
- 	     if query.dtype in _FP4_DISGUISE_DTYPES:
- 	         if q_descale_dtype is None or k_descale_dtype is None or v_descale_dtype is None:
- 	             raise ValueError(
- 	                 "q_descale_dtype/k_descale_dtype/v_descale_dtype can not be None "
- 	                 "for float4_e2m1fn_x2 (uint8-disguised) inputs."
- 	             )
- 	         if q_descale_dtype is not torch_npu.float8_e8m0fnu:
- 	             raise ValueError("q_descale_dtype must be torch_npu.float8_e8m0fnu.")
- 	         if k_descale_dtype is not torch_npu.float8_e8m0fnu:
- 	             raise ValueError("k_descale_dtype must be torch_npu.float8_e8m0fnu.")
- 	         if v_descale_dtype is not torch_npu.float8_e8m0fnu:
- 	             raise ValueError("v_descale_dtype must be torch_npu.float8_e8m0fnu.")
+ 	         # descale tensors are mandatory for FP8 and must be float32.
  	         if q_dequant_scale is None or k_dequant_scale is None or v_dequant_scale is None:
  	             raise ValueError(
  	                 "q_dequant_scale/k_dequant_scale/v_dequant_scale can not be None "
- 	                 "for float4_e2m1fn_x2 (uint8-disguised) inputs (descale tensors)."
+ 	                 "for quant_mode=1 (FP8) inputs (FP32 reverse-quant factors)."
+ 	             )
+ 	         if q_dequant_scale.dtype not in _FP8_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"q_dequant_scale.dtype must be torch.float32 for "
+ 	                 f"quant_mode=1 (FP8) inputs, got {q_dequant_scale.dtype}."
+ 	             )
+ 	         if k_dequant_scale.dtype not in _FP8_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"k_dequant_scale.dtype must be torch.float32 for "
+ 	                 f"quant_mode=1 (FP8) inputs, got {k_dequant_scale.dtype}."
+ 	             )
+ 	         if v_dequant_scale.dtype not in _FP8_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"v_dequant_scale.dtype must be torch.float32 for "
+ 	                 f"quant_mode=1 (FP8) inputs, got {v_dequant_scale.dtype}."
+ 	             )
+ 	     elif quant_mode == 2:
+ 	         # mxfp4: q/k/v must be uint8 (float4_e2m1fn_x2 disguised as uint8).
+ 	         if query.dtype not in _FP4_DISGUISE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"quant_mode=2 (mxfp4) requires query.dtype to be torch.uint8 "
+ 	                 f"(float4_e2m1fn_x2 disguised as uint8), got {query.dtype}."
+ 	             )
+ 	         if key.dtype not in _FP4_DISGUISE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"quant_mode=2 (mxfp4) requires key.dtype to be torch.uint8, got {key.dtype}."
+ 	             )
+ 	         if value.dtype not in _FP4_DISGUISE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"quant_mode=2 (mxfp4) requires value.dtype to be torch.uint8, got {value.dtype}."
+ 	             )
+ 	         # descale tensors are mandatory for mxfp4 and must be float8_e8m0fnu.
+ 	         if q_dequant_scale is None or k_dequant_scale is None or v_dequant_scale is None:
+ 	             raise ValueError(
+ 	                 "q_dequant_scale/k_dequant_scale/v_dequant_scale can not be None "
+ 	                 "for quant_mode=2 (mxfp4) inputs (descale tensors)."
+ 	             )
+ 	         if q_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"q_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+ 	                 f"quant_mode=2 (mxfp4) inputs, got {q_dequant_scale.dtype}."
+ 	             )
+ 	         if k_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"k_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+ 	                 f"quant_mode=2 (mxfp4) inputs, got {k_dequant_scale.dtype}."
+ 	             )
+ 	         if v_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
+ 	             raise ValueError(
+ 	                 f"v_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+ 	                 f"quant_mode=2 (mxfp4) inputs, got {v_dequant_scale.dtype}."
  	             )
  	
  
@@ -178,8 +240,8 @@
  	     return "910B" in n or "91093" in n
  	 
  	 
- 	 def _guard_soc_capabilities(query, q_input_layout, kv_input_layout):
- 	     """Raise a clear error for FP8 / BSND on a chip that cannot run them.
+ 	 def _guard_soc_capabilities(query, q_input_layout, kv_input_layout, quant_mode):
+ 	     """Raise a clear error for FP8 / mxfp4 / BSND on a chip that cannot run them.
  	 
  	     Without this the op fails deep in the kernel with a cryptic
  	     "Cannot find bin of op BlockSparseAttention … float8_e4m3fn …" /
@@ -187,8 +249,7 @@
  	     arch-v220 build never compiled those binaries.
  	     """
  	     needs_arch35 = (
- 	         query.dtype in _FP8_DTYPES
- 	         or query.dtype in _FP4_DISGUISE_DTYPES
+ 	         quant_mode in (1, 2)  # FP8 or mxfp4
  	         or q_input_layout == "BSND"
  	         or kv_input_layout == "BSND"
  	     )
@@ -204,17 +265,17 @@
  	         return
  	     if _is_arch220_soc(device_name):
  	         reason = []
- 	         if query.dtype in _FP8_DTYPES:
- 	             reason.append("float8_e4m3fn inputs")
- 	         if query.dtype in _FP4_DISGUISE_DTYPES:
- 	             reason.append("float4_e2m1fn_x2 (uint8-disguised) inputs")
+ 	         if quant_mode == 1:
+ 	             reason.append("float8_e4m3fn inputs (quant_mode=1)")
+ 	         if quant_mode == 2:
+ 	             reason.append("float4_e2m1fn_x2 (uint8-disguised) inputs (quant_mode=2)")
  	         if "BSND" in (q_input_layout, kv_input_layout):
  	             reason.append("the BSND layout")
  	         raise RuntimeError(
  	             f"{' and '.join(reason)} require an Ascend 950 (arch35) chip, but the "
  	             f"current device is '{device_name}' (Atlas A2/A3, arch v220). "
  	             f"v220 supports float16/bfloat16 with the TND/BNSD layouts only. "
- 	             f"Use float16/bfloat16 + TND/BNSD here, or run FP8/BSND on a 950."
+ 	             f"Use float16/bfloat16 + TND/BNSD here, or run FP8/mxfp4/BSND on a 950."
  	         )
  	 
  	 
@@ -238,12 +299,7 @@
  	             "str q_input_layout=\"BNSD\", "
  	             "str kv_input_layout=\"BNSD\", "
  	             "int mask_type=0, "
-                 "int q_dtype=0, "
-                 "int k_dtype=0, "
-                 "int v_dtype=0, "
-                 "int q_descale_dtype=0, "
-                 "int k_descale_dtype=0, "
-                 "int v_descale_dtype=0, "
+                 "int quant_mode=0, "
  	             "float scale_value=1.0, "
  	             "int inner_precise=0, "
  	             "int block_size=0, "
@@ -263,10 +319,9 @@
  	                   actual_seq_lengths, actual_seq_lengths_kv,
  	                   num_heads, num_key_value_heads,
  	                   q_input_layout, kv_input_layout,
- 	                   mask_type, q_dtype=None, k_dtype=None, v_dtype=None,
- 	                   q_descale_dtype=None, k_descale_dtype=None, v_descale_dtype=None,
-                       scale_value, inner_precise, block_size,
- 	                   pre_tokens, next_tokens, softmax_lse_flag,
+ 	                   mask_type, quant_mode=0,
+                       scale_value=1.0, inner_precise=0, block_size=0,
+ 	                   pre_tokens=2147483647, next_tokens=2147483647, softmax_lse_flag=False,
  	                   q_dequant_scale=None, k_dequant_scale=None,
  	                   v_dequant_scale=None, attention_out_dtype=None):
  	             # Mirror the C++ wrapper's input constraints (block_sparse_attention.cpp)
@@ -276,6 +331,7 @@
  	             # equivalent to torch._check here and avoids accessing torch's protected
  	             # `_check` helper (CodeCheck protected-access / W0212). RuntimeError
  	             # matches what the C++ TORCH_CHECK surfaces as on the real path.
+ 	             _check_quant_mode(quant_mode)
  	             if block_size != 0:
  	                 raise RuntimeError(
  	                     "block_size must be 0 — paged KV cache is not yet supported by the kernel"
@@ -304,18 +360,13 @@
  	                 raise RuntimeError(
  	                     "q_input_layout and kv_input_layout must be identical"
  	                 )
- 	             # FP4 (float4_e2m1fn_x2, uint8-disguised) dtype + descale validation.
- 	             # No-op for FP8/FP16/BF16 inputs. Same checks as the eager path so
- 	             # graph / FakeTensor tracing fails at the same boundary.
- 	             _validate_fp4_dtypes(query, key, value,
- 	                                  q_dtype, k_dtype, v_dtype,
- 	                                  q_descale_dtype, k_descale_dtype, v_descale_dtype,
- 	                                  q_dequant_scale, k_dequant_scale, v_dequant_scale)
+ 	             # quant_mode is already validated by _check_quant_mode above;
+ 	             # _resolve_out_dtype also enforces the (quant_mode → out dtype) rules.
  	             # attentionOut keeps query's shape but takes the resolved out dtype
  	             # (fp8 in → fp16/bf16 out); _resolve_out_dtype enforces the rules.
- 	             resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype)
+ 	             resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype, quant_mode)
  	             # FP4 (float4_e2m1fn_x2, uint8-disguised): kernel dequantizes 4-bit floats
- 	             # to bf16/fp16 and two fp4 values pack into one uint8 byte, so attentionOut's
+ 	             # to bf16 only and two fp4 values pack into one uint8 byte, so attentionOut's
  	             # last dim is 2*D (mirrors quant_flash_attn.cpp:83-92; qDtypeRatio=2 for FP4).
  	             # FP8/FP16/BF16 inputs keep query's shape. MUST match the C++ wrapper's
  	             # allocation in block_sparse_attention.cpp.
@@ -356,12 +407,7 @@
  	                            q_input_layout="BNSD",
  	                            kv_input_layout="BNSD",
  	                            mask_type=0,
-                                q_dtype=None, 
-                                k_dtype=None, 
-                                v_dtype=None,
-                                q_descale_dtype=None, 
-                                k_descale_dtype=None, 
-                                v_descale_dtype=None,
+	                            quant_mode=0,
  	                            scale_value=1.0,
  	                            inner_precise=0,
  	                            block_size=0,
@@ -376,7 +422,7 @@
  	 
  	     Args:
  	         query, key, value: same dtype, one of float16 / bfloat16 / float8_e4m3fn,
- 	             or uint8 (float4_e2m1fn_x2 disguised as uint8, requires q/k/v_dtype).
+ 	             or uint8 (float4_e2m1fn_x2 disguised as uint8, requires quant_mode=2).
  	             BNSD: [B, N, S, D]; BSND: [B, S, N, D]; TND: [T, N, D].
  	         block_sparse_mask: int8 [B, N, ceil(S_q/block_x), ceil(S_kv/block_y)],
  	             1 = block kept, 0 = block skipped.
@@ -386,14 +432,12 @@
  	         q_input_layout, kv_input_layout: "TND", "BNSD" or "BSND" (must match).
  	             BSND requires an Ascend 950 (arch35) chip.
  	         mask_type: 0 = no mask (default).
- 	         q_dtype, k_dtype, v_dtype: logical dtype when query/key/value is uint8.
- 	             Required (all three) for float4_e2m1fn_x2 inputs (disguised as uint8);
- 	             must be torch_npu.float4_e2m1fn_x2. Must be None for FP16/BF16/FP8 inputs.
- 	         q_descale_dtype, k_descale_dtype, v_descale_dtype: descale dtype for FP4
- 	             dequant path. Required (all three) for float4_e2m1fn_x2 inputs
- 	             (disguised as uint8); must be torch_npu.float8_e8m0fnu. The C++
- 	             wrapper builds TensorWrapper(t, descale_dtype) so the kernel
- 	             resolves the right binary. Must be None for FP16/BF16/FP8 inputs.
+ 	         quant_mode: quantization mode. 0 = no quantization (FP16/BF16, default);
+ 	             1 = FP8 quantization (float8_e4m3fn inputs + FP32 reverse-quant scales);
+ 	             2 = mxfp4 quantization (float4_e2m1fn_x2 disguised as uint8 + float8_e8m0fnu
+ 	             descale tensors). The C++ wrapper infers the logical dtypes
+ 	             (ACL_FLOAT4_E2M1 / ACL_FLOAT8_E8M0) from quant_mode, so the caller
+ 	             does NOT need to pass q/k/v_dtype or q/k/v_descale_dtype separately.
  	         scale_value: softmax scale (typically 1/sqrt(D)).
  	         inner_precise: 0 = fp32 softmax (high precision), 1 = fp16, 4 = mixed.
  	             NOTE: Ascend 950PR/950DT only supports 4; A2/A3 only support 0/1.
@@ -402,16 +446,16 @@
  	         pre_tokens, next_tokens: 2147483647 = no causal window (default).
  	         softmax_lse_flag: if True, return a float32 LSE shaped per layout
  	             (TND [T,N,1]; BNSD [B,N,S,1]; BSND [B,S,N,1]); else an empty {0}.
- 	         q_dequant_scale, k_dequant_scale, v_dequant_scale: FP8-only (FLOAT8_E4M3FN
- 	             inputs) FP32 4-D reverse-quant factors for aclnnBlockSparseAttentionV2.
- 	             Required (all three) for FP8 inputs (FP32 reverse-quant factors) and
- 	             for FP4 inputs (descale tensors whose logical dtype is given by
- 	             q/k/v_descale_dtype). Must be None for FP16/BF16 inputs (then
- 	             passed through as nullptr). Shapes: q is
+ 	         q_dequant_scale, k_dequant_scale, v_dequant_scale: scale tensors for the
+ 	             quantized paths. For quant_mode=1 (FP8): FP32 4-D reverse-quant factors.
+ 	             For quant_mode=2 (mxfp4): descale tensors (logical dtype float8_e8m0fnu,
+ 	             inferred by the C++ wrapper). Required (all three) for quant_mode=1/2;
+ 	             must be None for quant_mode=0 (FP16/BF16). Shapes: q is
  	             [B, N, ceil(maxQ/128), 1]; k/v are [B, kvN, ceil(maxKV/{256|512}), 1].
  	         attention_out_dtype: dtype of attention_out. Default None → input dtype for
- 	             FP16/BF16; bfloat16 for FP8/FP4. FP8/FP4 inputs MUST map to float16 or
- 	             bfloat16 (there is no fp8/fp4 output kernel). FP16/BF16 inputs must map
+ 	             FP16/BF16; bfloat16 for FP8/FP4. FP8 inputs MUST map to float16 or
+ 	             bfloat16 (no fp8 output kernel); FP4 (quant_mode=2) inputs MUST map to
+ 	             bfloat16 only (no fp16/fp4 output binary). FP16/BF16 inputs must map
  	             to the same dtype as the input.
  	 
  	     Returns:
@@ -422,24 +466,25 @@
  	             an Atlas A2/A3 (arch v220) chip, which only supports float16/bfloat16
  	             with the TND/BNSD layouts.
  	     """
+ 	     # Validate quant_mode first — every downstream helper (_guard_soc_capabilities,
+ 	     # _validate_quant_mode, _resolve_out_dtype) assumes it is already in _QUANT_MODE.
+ 	     _check_quant_mode(quant_mode)
  	     # Reject FP8 / BSND early on chips that never compiled those binaries,
  	     # instead of the cryptic "Cannot find binary for op" failure at launch.
- 	     _guard_soc_capabilities(query, q_input_layout, kv_input_layout)
- 	     # FP4 (float4_e2m1fn_x2, uint8-disguised) dtype + descale validation.
- 	     # No-op for FP8/FP16/BF16 inputs. Mirrors quant_flash_attn.py:142-151.
- 	     _validate_fp4_dtypes(query, key, value,
- 	                          q_dtype, k_dtype, v_dtype,
- 	                          q_descale_dtype, k_descale_dtype, v_descale_dtype,
+ 	     _guard_soc_capabilities(query, q_input_layout, kv_input_layout, quant_mode)
+ 	     # Validate quant_mode against input dtypes and descale tensors.
+ 	     # No-op for quant_mode=0 (FP16/BF16). Mirrors quant_flash_attn.py:142-151.
+ 	     _validate_quant_mode(query, key, value, quant_mode,
  	                          q_dequant_scale, k_dequant_scale, v_dequant_scale)
  	     # Resolve here so eager execution and the registered Meta impl agree on the
  	     # attentionOut dtype (and so the kernel binary can be found).
- 	     resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype)
+ 	     resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype, quant_mode)
  	     return _op_module.npu_block_sparse_attention(
  	         query, key, value, block_sparse_mask,
  	         block_shape, actual_seq_lengths, actual_seq_lengths_kv,
  	         num_heads, num_key_value_heads,
  	         q_input_layout, kv_input_layout,
- 	         mask_type, q_dtype, k_dtype, v_dtype, q_descale_dtype, k_descale_dtype, v_descale_dtype,
+ 	         mask_type, quant_mode,
  	         scale_value, inner_precise, block_size,
  	         pre_tokens, next_tokens, softmax_lse_flag,
  	         q_dequant_scale, k_dequant_scale, v_dequant_scale,
