@@ -143,18 +143,27 @@ def check_param_valid(
 
 
 # ==============================================================================
-# Single Kernel: CV-separated architecture (0706)
+# Single Kernel: CV-separated architecture (0706: reverted to 0630 structure)
 # V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices → workspace
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
 # V scope 3: cast dQueryIndex FP32→FP16
-# 
-# NOTE: Originally planned double buffer across K-blocks, but discovered:
-# - Each core processes a different K-block (k_start:k_end), accessing disjoint workspace regions
-# - Cross-K-block synchronization via cross_flag would cause DEADLOCK (flag set by different core)
-# - Current implementation uses workspace dimension [2] but always uses index 0
-# - Future optimization: s1-level pipelining with ping-pong across s1_sub_blocks
+#
+# Performance Analysis (S1=1, K=2048):
+# - 0630: 0.830ms vs Official: 0.320ms (0.39x, ~3x slower)
+# - Main bottleneck: V0 pure scalar gather (128 iterations × 3 tensor accesses)
+#
+# Double Buffer Attempt (FAILED):
+# - Tried workspace[B, S1, 2, K, D] with ping-pong across K-blocks
+# - DEADLOCK: cross_flag is single-core internal sync, cannot sync across cores
+# - Each core processes different K-block (k_start:k_end), no workspace conflict
+#
+# Next Optimization Directions:
+# 1. Optimize V0 gather: batch read SparseIndices, vectorize if idx连续
+# 2. Reduce V1 scalar ops: precompute constants, reduce fill/barrier
+# 3. Tune BLOCK_K/BLOCK_N: increase Cube throughput
+# 4. S1-level pipelining: split s1_block into sub-blocks for V/C overlap (requires S1>1)
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
@@ -195,20 +204,20 @@ def tilelang_grad_kl_loss_single_kernel(
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 9
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (input, NOT workspace: host zeroes it)
-        # === WORKSPACES (11-21): Ping-Ppong buffers for gather results ===
-        GatherKey_ws: T.Tensor((B, S1, 2, K, DQuery), input_dtype),           # 11 [ping=0, pong=1]
-        GatherKeyRope_ws: T.Tensor((B, S1, 2, K, d_rope), input_dtype),       # 12
-        GatherKeyIndex_ws: T.Tensor((B, S1, 2, K, DQueryIndex), input_dtype), # 13
-        bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),                        # 14
-        bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),                     # 15
-        PReduced: T.Tensor((B, S1, K), calc_dtype),                           # 16
-        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                         # 17
-        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                           # 18
+        # === WORKSPACES (11-18) ===
+        GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 11
+        GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 12
+        GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 13
+        bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),                  # 14
+        bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),               # 15
+        PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 16
+        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 17
+        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 18
         # === OUTPUTS (19-22) ===
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),      # 19
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),        # 20
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),                # 21
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),                        # 22
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 19
+        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 20
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
+        LossOut: T.Tensor((B, S1, n_num), calc_dtype),                  # 22
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -218,14 +227,6 @@ def tilelang_grad_kl_loss_single_kernel(
             s1_end = T.min(s1_start + s1_block, S1)
             k_start = n_idx_k * n_block
             k_end = T.min(k_start + n_block, K)
-            
-            # NOTE: Double buffer across K-blocks is NOT needed!
-            # Each core processes a different K-block (k_start:k_end),
-            # so different cores access disjoint regions of workspace.
-            # No cross-K-block synchronization required.
-            # 
-            # Ping-pong dimension [2] is kept for future s1-level pipelining,
-            # but currently unused (use index 0 for all operations).
 
             # ============================================================
             # V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices
@@ -241,12 +242,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         idx = SparseIndices[bz, s1_id, 0, k_id]
                         if idx >= 0:
                             T.copy(Key[bz, idx, 0, 0:DQuery], key_row_ub)
-                            T.copy(key_row_ub, GatherKey_ws[bz, s1_id, 0, k_id, 0:DQuery])
+                            T.copy(key_row_ub, GatherKey_ws[bz, s1_id, k_id, 0:DQuery])
                             T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_row_ub)
-                            T.copy(ki_row_ub, GatherKeyIndex_ws[bz, s1_id, 0, k_id, 0:DQueryIndex])
+                            T.copy(ki_row_ub, GatherKeyIndex_ws[bz, s1_id, k_id, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_row_ub)
-                                T.copy(kr_row_ub, GatherKeyRope_ws[bz, s1_id, 0, k_id, 0:d_rope])
+                                T.copy(kr_row_ub, GatherKeyRope_ws[bz, s1_id, k_id, 0:d_rope])
 
                 T.set_cross_flag("V", 10)
 
@@ -269,10 +270,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             rope_d = d_idx - d_num_query
                             T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1)
                         if d_idx < d_num_query:
-                            T.copy(GatherKey_ws[bz, s1_row, 0, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GK_L1)
+                            T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GK_L1)
                         else:
                             rope_d = d_idx - d_num_query
-                            T.copy(GatherKeyRope_ws[bz, s1_row, 0, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1)
+                            T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1)
                         T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                     T.copy(C_L0C, bmm1Res[bz, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
@@ -283,7 +284,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for k_idx in T.serial(d_num_query_index):
                         T.copy(QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block], QI_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, 0, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
+                        T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
                         T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                     T.copy(C2_L0C, bmm2Res[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
 
@@ -509,7 +510,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, 0, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
+                        T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
                         T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
                         T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
 
@@ -748,15 +749,13 @@ def sparse_lightning_indexer_grad_kl_loss(
         n_num_ws = K // BLOCK_N
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
-            d_query_index_accum, \
-                gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
+            d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
                 d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out = ws
         else:
-            # Double buffer: dimension [2] for ping(0) and pong(1)
-            gather_key_ws = torch.zeros(B, S1, 2, K, DQuery, dtype=input_dtype, device=query.device)
-            gather_key_rope_ws = torch.zeros(B, S1, 2, K, d_rope, dtype=input_dtype, device=query.device)
-            gather_key_index_ws = torch.zeros(B, S1, 2, K, DQueryIndex, dtype=input_dtype, device=query.device)
+            gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
+            gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
+            gather_key_index_ws = torch.zeros(B, S1, K, DQueryIndex, dtype=input_dtype, device=query.device)
             bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
             bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
             p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
@@ -767,12 +766,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
             loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
-            _workspace_cache[ws_key] = (
-                d_query_index_accum,
-                gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
-                bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-                d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out
-            )
+            _workspace_cache[ws_key] = (d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
+                                        bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
+                                        d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
 
         # Zero workspaces before each call (gather_ws filled by V0 scope)
         d_query_index_accum.zero_()
@@ -786,9 +782,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_index, key_index,                    # 5-6
             weights, softmax_max, softmax_sum,         # 7-9
             d_query_index_accum,                       # 10 (input, host-zeroed)
-            # Ping-pong workspaces (11-13): dimension [2] for ping/pong
+            # Workspaces (11-18)
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 11-13
-            # Other workspaces (14-18)
             bmm1_res_ws, bmm2_res_ws,                  # 14-15
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 16-18
             # Outputs (19-22)
@@ -811,12 +806,8 @@ def sparse_lightning_indexer_grad_kl_loss(
                 key, key_index, key_rope, sparse_indices,
                 B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
             )
-            # Check both ping (index 0) and pong (index 1) buffers
-            for buf_idx in [0, 1]:
-                gki_ws_slice = gather_key_index_ws[:, :, buf_idx, :, :]  # [B, S1, K, DQueryIndex]
-                gki_diff = (gki_ws_slice.float() - expected_gki.float()).abs()
-                buf_name = "ping" if buf_idx == 0 else "pong"
-                print(f"[DEBUG] GatherKeyIndex_{buf_name}_ws vs host_gather: max_diff={gki_diff.max().item():.6e}, mean_diff={gki_diff.mean().item():.6e}")
+            gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
+            print(f"[DEBUG] GatherKeyIndex_ws vs host_gather: max_diff={gki_diff.max().item():.6e}, mean_diff={gki_diff.mean().item():.6e}")
             # Also check dQueryIndexAccum before cast
             print(f"[DEBUG] dQueryIndexAccum: max={d_query_index_accum.max().item():.6e}, min={d_query_index_accum.min().item():.6e}, has_nan={torch.isnan(d_query_index_accum).any().item()}, has_inf={torch.isinf(d_query_index_accum).any().item()}")
 
