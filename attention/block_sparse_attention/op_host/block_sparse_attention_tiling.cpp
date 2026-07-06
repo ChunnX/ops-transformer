@@ -174,17 +174,17 @@ static ge::graphStatus CheckFormat(ge::Format format)
 ge::graphStatus BSATiling::CheckNDFormat(gert::TilingContext *bsaContext)
 {
     auto queryFormat = static_cast<ge::Format>(
-        ge::GetPrimaryFormat(bsaContext->GetInputDesc(QUERY_INDEX)->GetFormat()));
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(QUERY_INDEX)->GetStorageFormat()));
     OP_CHECK_IF(CheckFormat(queryFormat) != ge::GRAPH_SUCCESS,
                OP_LOGE(bsaContext->GetNodeName(), "query check format failed"),
                return ge::GRAPH_FAILED);
     auto keyFormat = static_cast<ge::Format>(
-        ge::GetPrimaryFormat(bsaContext->GetInputDesc(KEY_INDEX)->GetFormat()));
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(KEY_INDEX)->GetStorageFormat()));
     OP_CHECK_IF(CheckFormat(keyFormat) != ge::GRAPH_SUCCESS,
                OP_LOGE(bsaContext->GetNodeName(), "key check format failed"),
                return ge::GRAPH_FAILED);
     auto valueFormat = static_cast<ge::Format>(
-        ge::GetPrimaryFormat(bsaContext->GetInputDesc(VALUE_INDEX)->GetFormat()));
+        ge::GetPrimaryFormat(bsaContext->GetInputDesc(VALUE_INDEX)->GetStorageFormat()));
     OP_CHECK_IF(CheckFormat(valueFormat) != ge::GRAPH_SUCCESS,
                OP_LOGE(bsaContext->GetNodeName(), "value check format failed"),
                return ge::GRAPH_FAILED);
@@ -242,7 +242,7 @@ ge::graphStatus BSATiling::CheckNDFormat(gert::TilingContext *bsaContext)
     }
 
     auto attentionOutFormat = static_cast<ge::Format>(
-        ge::GetPrimaryFormat(bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetFormat()));
+        ge::GetPrimaryFormat(bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetStorageFormat()));
     OP_CHECK_IF(CheckFormat(attentionOutFormat) != ge::GRAPH_SUCCESS,
                OP_LOGE(bsaContext->GetNodeName(), "attentionOut check format failed"),
                return ge::GRAPH_FAILED);
