@@ -170,12 +170,6 @@ private:
                                                    __ubuf__ uint16_t *halfScaleLocalAddr,
                                                    uint16_t mSize, uint16_t nSize);
 
-    __aicore__ inline void VFDoSwigluAndQuantForMXInterleavedBf16(
-        __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
-        __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
-        __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
-        __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize);
-
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
                                         uint16_t loopNumScale);
@@ -673,138 +667,6 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMXInterleavedBf16(
-    __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
-    __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
-    __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
-    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize)
-{
-    uint32_t alignDim1In = static_cast<uint32_t>(nSize) * SWIGLU_N_HALF;
-    uint32_t alignDim1Out = Ops::Base::CeilAlign(static_cast<uint32_t>(nSize),
-        static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
-    uint16_t dim0VfTimes = mSize;
-    uint16_t dim1VfTimes = nSize / VF_LEN_FP32;
-    uint32_t dim1Tail = nSize % VF_LEN_FP32;
-    uint16_t dim1TailTimes = 0;
-    uint16_t dim1Tail2 = 0;
-    uint32_t mask1Num = 0;
-    uint32_t mask2Num = 0;
-    uint32_t mask3Num = 0;
-    auto x1UbAddr1 = firstSrc;
-    auto x2UbAddr1 = secondSrc;
-    auto swigluUbAddr1 = gluResAddr;
-    auto swigluUbAddr2 = gluResAddr;
-    bfloat16_t numZero = 0;
-    if (dim1Tail > 0) {
-        mask1Num = dim1Tail;
-        dim1TailTimes = 1;
-        uint32_t padNum = alignDim1Out - dim1VfTimes * VF_LEN_FP32;
-        if (padNum <= VF_LEN_FP32) {
-            mask2Num = padNum;
-        } else {
-            dim1Tail2 = 1;
-            mask2Num = VF_LEN_FP32;
-            mask3Num = padNum - VF_LEN_FP32;
-        }
-        uint32_t offsetAlign = dim1VfTimes * VF_LEN_FP32;
-        x1UbAddr1 = firstSrc + offsetAlign;
-        x2UbAddr1 = secondSrc + offsetAlign;
-        swigluUbAddr1 = gluResAddr + offsetAlign;
-        swigluUbAddr2 = gluResAddr + offsetAlign + dim1TailTimes * VF_LEN_FP32;
-    }
-    float scalarOne = 1.0f;
-    float negScalarOne = -1.0f;
-    __VEC_SCOPE__
-    {
-        AscendC::MicroAPI::RegTensor<bfloat16_t> vregX1;
-        AscendC::MicroAPI::RegTensor<bfloat16_t> vregX2;
-        AscendC::MicroAPI::RegTensor<float> vregX1F;
-        AscendC::MicroAPI::RegTensor<float> vregX2F;
-        AscendC::MicroAPI::RegTensor<float> negReg;
-        AscendC::MicroAPI::RegTensor<float> expReg;
-        AscendC::MicroAPI::RegTensor<float> addsReg;
-        AscendC::MicroAPI::RegTensor<float> sigmoidReg;
-        AscendC::MicroAPI::RegTensor<float> outFReg;
-        AscendC::MicroAPI::RegTensor<bfloat16_t> outTReg;
-        AscendC::MicroAPI::MaskReg mask =
-            AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::MaskReg mask1 = AscendC::MicroAPI::UpdateMask<float>(mask1Num);
-        AscendC::MicroAPI::MaskReg mask2 = AscendC::MicroAPI::UpdateMask<float>(mask2Num);
-        AscendC::MicroAPI::MaskReg mask3 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(mask3Num);
-        for (uint16_t dim0vfLoopIdx = 0; dim0vfLoopIdx < dim0VfTimes; dim0vfLoopIdx++) {
-            for (uint16_t dim1vfLoopIdx = 0; dim1vfLoopIdx < dim1VfTimes; dim1vfLoopIdx++) {
-                AscendC::MicroAPI::AddrReg srcIdxOffset =
-                    AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(
-                        dim0vfLoopIdx, alignDim1In, dim1vfLoopIdx, VF_LEN_FP32);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vregX1, firstSrc, srcIdxOffset);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vregX2, secondSrc, srcIdxOffset);
-                AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(vregX1F, vregX1, mask);
-                AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(vregX2F, vregX2, mask);
-
-                AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask);
-                AscendC::MicroAPI::Exp(expReg, negReg, mask);
-                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);
-                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask);
-                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask);
-
-                AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_FP16_BF16>(outTReg, outFReg, mask);
-                AscendC::MicroAPI::AddrReg outOffset =
-                    AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(
-                        dim0vfLoopIdx, alignDim1Out, dim1vfLoopIdx, VF_LEN_FP32);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    gluResAddr, outTReg, outOffset, mask);
-            }
-            AscendC::MicroAPI::AddrReg srcIdxOffset1 =
-                AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(dim0vfLoopIdx, alignDim1In);
-            AscendC::MicroAPI::AddrReg outOffset1 =
-                AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(dim0vfLoopIdx, alignDim1Out);
-            for (uint16_t aa = 0; aa < dim1TailTimes; aa++) {
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vregX1, x1UbAddr1, srcIdxOffset1);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vregX2, x2UbAddr1, srcIdxOffset1);
-                AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(vregX1F, vregX1, mask1);
-                AscendC::MicroAPI::Cast<float, bfloat16_t, CAST_ZERO>(vregX2F, vregX2, mask1);
-
-                AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
-                AscendC::MicroAPI::Exp(expReg, negReg, mask1);
-                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
-                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask1);
-                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask1);
-
-                AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_FP16_BF16>(outTReg, outFReg, mask1);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    swigluUbAddr1, outTReg, outOffset1, mask2);
-            }
-            for (uint16_t cc = 0; cc < dim1Tail2; cc++) {
-                AscendC::MicroAPI::Duplicate(vregX1, numZero);
-                AscendC::MicroAPI::DataCopy<bfloat16_t>(swigluUbAddr2, vregX1, outOffset1, mask3);
-            }
-        }
-    }
-
-    uint32_t totalDataInUb = mSize * alignDim1Out;
-    uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;
-    uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * SWIGLU_N_HALF - 1) /
-        (vlForHalfNumber_ * SWIGLU_N_HALF);
-    uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;
-    ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
-    ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
-    }
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
-        ComputeDataForQuantTargetFp4(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
-    }
-    return;
-}
-
-BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
                                                                                        uint16_t pingpongIdx)
 {
@@ -829,17 +691,10 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
 
     if constexpr (IsInterleaved_) {
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
-        if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
-            VFDoSwigluAndQuantForMXInterleavedBf16(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                l0cOutUbBase, l0cOutUbSecondAddr,
-                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
-        } else {
-            VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, true>(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                l0cOutUbBase, l0cOutUbSecondAddr,
-                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
-        }
+        VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, true>(
+            quantOutputInUbAddr, quantScaleOutputInUbAddr,
+            l0cOutUbBase, l0cOutUbSecondAddr,
+            gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
     } else {
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, false>(
