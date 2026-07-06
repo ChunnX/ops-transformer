@@ -151,6 +151,127 @@ public:
     this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
+    aicore_config.Input("context")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("x")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_BF16})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    // Explicit positional DataType lists to limit dtype-format combinations.
+    // 24 combos = 6 weight types x 4 (topk_ids {BF16,FP32} x topk_weights {BF16,FP32})
+    // weight1/weight2 are paired one-to-one at each index.
+    aicore_config.Input("topk_ids")
+        .ParamType(REQUIRED)
+        .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT,  // E5M2
+                   ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT,  // E4M3FN ND
+                   ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT,  // E4M3FN NZ
+                   ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT,  // E2M1 ND
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                   ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT,  // E2M1 NZ
+                   ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT   // E2M1 NZ_C0_32
+#endif
+                   })
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("topk_weights")
+        .ParamType(REQUIRED)
+        .DataType({ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,  // E5M2
+                   ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,  // E4M3FN ND
+                   ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,  // E4M3FN NZ
+                   ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,  // E2M1 ND
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                   ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,  // E2M1 NZ
+                   ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT   // E2M1 NZ_C0_32
+#endif
+                   })
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("weight1")
+        .ParamType(DYNAMIC)
+        .DataType({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1
+#endif
+                   })
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+                 })
+        .AutoContiguous();
+    aicore_config.Input("weight2")
+        .ParamType(DYNAMIC)
+        .DataType({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1
+#endif
+                   })
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+                 })
+        .AutoContiguous();
+    aicore_config.Input("weight_scales1")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("weight_scales2")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("bias1")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("bias2")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("x_active_mask")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_INT8})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config.Input("scales")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+
+    aicore_config.Output("y")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_BF16})
+        .FormatList({ge::FORMAT_ND});
+    aicore_config.Output("expert_token_nums")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND});
+
     aicore_config.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
