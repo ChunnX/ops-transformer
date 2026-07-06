@@ -254,13 +254,16 @@ public:
                                        LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
                                        RunInfoX runInfo)
     {
+        // 注意：AIV 侧 CrossCoreWaitFlag/SetFlag 只能用单次调用，不能加 +AIV0_AIV1_OFFSET。
+        // AIV0/AIV1 各自执行一次 SetFlag(N)，通过硬件自动映射到 AIC 端的 count[N] / count[N+16]，
+        // 从而满足 AIC 侧的双次 WaitFlag(N) + WaitFlag(N+16)。
+        // 若 AIV 显式调用 SetFlag(N+16)，会触发硬件 4-bit 截断导致双写同一 AIC 计数器，造成精度错误。
 #ifdef SKIP_V1
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         return;
 #endif
-
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
@@ -866,6 +869,7 @@ public:
     template<typename BmmResT>
     __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId, RunInfoX runInfo)
     {
+        // AIV 侧只做单次 WaitFlag(N)，+AIV0_AIV1_OFFSET 在 AIV 端无效（见 ProcessVec1 注释）。
 #ifdef SKIP_V2
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
         if constexpr (bmm2Write2Ub) {
@@ -873,7 +877,6 @@ public:
         }
         return;
 #endif
-
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
 
         if constexpr (bmm2Write2Ub) {
