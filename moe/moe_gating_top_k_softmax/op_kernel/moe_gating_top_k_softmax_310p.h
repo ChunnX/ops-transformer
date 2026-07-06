@@ -59,14 +59,16 @@ public:
         gmSync_.SetGlobalBuffer((__gm__ int32_t *)workspace, WorkspaceSize);
         gmYTmp_.SetGlobalBuffer((__gm__ T1*)workspace + WorkspaceSize / sizeof(T1)
                                                     + GetBlock() * oneCoreRow_ * kAlign_, rowWork_ * kAlign_);
-        gmExpertTmp_.SetGlobalBuffer((__gm__ T2*)workspace + WorkspaceSize / sizeof(T2) + numRow_ * kAlign_ * sizeof(T1) / sizeof(T2)
-                                                    + GetBlock() * oneCoreRow_ * kAlign_, rowWork_ * kAlign_);
-        gmRowTmp_.SetGlobalBuffer((__gm__ T2*)workspace + WorkspaceSize / sizeof(T2) + numRow_ * kAlign_ * sizeof(T1) / sizeof(T2)
-                                                    + GetBlock() * oneCoreRow_ * kAlign_ + rowWork_ * kAlign_, rowWork_ * kAlign_);
+        gmExpertTmp_.SetGlobalBuffer((__gm__ T2*)workspace
+                                     + WorkspaceSize / sizeof(T2) + numRow_ * kAlign_ * sizeof(T1) / sizeof(T2)
+                                     + GetBlock() * oneCoreRow_ * kAlign_, rowWork_ * kAlign_);
+        gmRowTmp_.SetGlobalBuffer((__gm__ T2*)workspace + WorkspaceSize / sizeof(T2)
+                                  + numRow_ * kAlign_ * sizeof(T1) / sizeof(T2)
+                                  + GetBlock() * oneCoreRow_ * kAlign_ + rowWork_ * kAlign_, rowWork_ * kAlign_);
         offset0 = 0; // input x
         offset1 = offset0 + oneCoreRow_ * numCol_ * sizeof(T1); // output Y
         offset2 = offset1 + oneCoreRow_ * kAlign_ * sizeof(T1); // output ExpertIdx
-        offset3 = offset2 + oneCoreRow_ * kAlign_ * sizeof(T2); 
+        offset3 = offset2 + oneCoreRow_ * kAlign_ * sizeof(T2);
         offset4 = offset3 + oneCoreRow_ * numCol_ * sizeof(T1);
         offset5 = offset4 + oneCoreRow_ * kAlign_ * sizeof(T2);
         offset6 = offset5 + 0;                                  // to the end
