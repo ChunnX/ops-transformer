@@ -1270,15 +1270,20 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
         }
     } else if (archCode == SOC_ASCEND910B) {
+        uint64_t swigluSize = info.isQuantRouting ? 1UL : 2UL;
+        uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + // expandedRowIdx
-                                    // cumsum + preSumBeforeRank + preSumRankInExpert
-                                    info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 3 +
-                                    info.maxRecvTokenNum * sizeof(float) * 2 + // perTokenScale GMM1&2
-                                    info.maxRecvTokenNum * info.N * sizeof(int16_t) * 2 + // GMM1 Out
-                                    info.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 + // GMM2 Out
-                                    info.maxRecvTokenNum * info.K + // quantizedToken
-                                    info.maxRecvTokenNum * k2 + // swiglu mid
-                                    info.worldSize * sizeof(int32_t) * 16; // sync
+            // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
+            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
+            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
+            info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
+            info.worldSize * sizeof(int32_t) * 16UL; // sync
+        if (info.isQuantRouting) {
+            megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2
+        }
+        if (info.isW4A8) {
+            megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
+        }
     }
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
