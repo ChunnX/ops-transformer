@@ -104,7 +104,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, NzFormatWeightX2)
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "", 0,
+        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
         ACLNN_SUCCESS);
 }
 
@@ -130,7 +130,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Fp8Float32Output)
     TensorDesc output = {{32, 128}, ACL_FLOAT, ACL_FORMAT_ND};
     RunQuantMatmulAllReduceV5Ut(
         op::SocVersion::ASCEND910B, x1, x2, bias.ToAclTypeRawPtr(), x3.ToAclTypeRawPtr(), x1Scale.ToAclTypeRawPtr(),
-        x2Scale, nullptr, nullptr, output, "", 0, ACLNN_SUCCESS);
+        x2Scale, nullptr, nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2Int8)
@@ -142,7 +142,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2Int8)
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     const char* group = "group";
     const char* reduceOp = "sum";
-    const char* commMode = "";
+    const char* commMode = "ai_cpu";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
@@ -189,7 +189,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedX2With2DScale)
     TensorDesc x2Scale = {{2, 128}, ACL_FLOAT, ACL_FORMAT_ND, {1, 2}};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "", 0,
+        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
         ACLNN_SUCCESS);
 }
 
@@ -202,7 +202,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, TransposedFloat4WithMxScale)
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunQuantMatmulAllReduceV5Ut(
         op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, x1Scale.ToAclTypeRawPtr(), x2Scale, nullptr, nullptr,
-        output, "", 0, ACLNN_SUCCESS);
+        output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend310PPreTransposedWeight)
@@ -212,7 +212,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend310PPreTransposedWeight)
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunQuantMatmulAllReduceV5Ut(
-        op::SocVersion::ASCEND310P, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "", 0,
+        op::SocVersion::ASCEND310P, x1, x2, nullptr, nullptr, nullptr, x2Scale, nullptr, nullptr, output, "ai_cpu", 0,
         ACLNN_SUCCESS);
 }
 

@@ -148,6 +148,48 @@ TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fp32_001_tnd)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fp16_3d_bsd_broadcast_a5)
+{
+    optiling::RotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbedding",
+                                              {
+                                                  // input info
+                                                  {{{8, 4096, 128}, {8, 4096, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 4096, 128}, {1, 4096, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 4096, 128}, {1, 4096, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{8, 4096, 128}, {8, 4096, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo, "Ascend950", 40, 196608);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingKey, 20020);
+    ASSERT_EQ(tilingInfo.blockNum, 40);
+    ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1);
+    ASSERT_EQ(tilingInfo.workspaceSizes[0], 16 * 1024 * 1024);
+
+    auto tilingData = reinterpret_cast<const int64_t *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingInfo.tilingDataSize / sizeof(int64_t), 19);
+    EXPECT_EQ(tilingData[0], 8);    // B
+    EXPECT_EQ(tilingData[1], 0);    // CosB, BAB kernel treats cos as B-broadcast
+    EXPECT_EQ(tilingData[2], 4096); // S
+    EXPECT_EQ(tilingData[3], 128);  // D
+    EXPECT_EQ(tilingData[4], 1);    // N
+    EXPECT_EQ(tilingData[5], 8);    // blockNumB
+    EXPECT_EQ(tilingData[6], 1);    // blockFactorB
+    EXPECT_EQ(tilingData[7], 5);    // blockNumS
+    EXPECT_EQ(tilingData[8], 820);  // blockFactorS
+    EXPECT_EQ(tilingData[16], 1);   // ubFactorN
+    EXPECT_EQ(tilingData[18], 0);   // rotaryMode
+}
+
 // Test regular rotate_half path (10xx keys) with shape that does NOT trigger FullLoadXD
 // FullLoadXD requires axisLenR3==1; here rThirdDim=4 so regular path is used.
 // x=[2,8,4,64], cos=[1,1,4,64] → BNSD layout

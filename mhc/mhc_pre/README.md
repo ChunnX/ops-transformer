@@ -29,6 +29,14 @@ h_{in} &=\vec{x^{'}_{l}}H^{pre}_l
 \end{aligned}
 $$
 
+- **注**：
+
+$$
+\begin{aligned}
+RMSNorm(\vec{x}) = \frac{\vec{x}}{\sqrt{\frac{1}{d} \sum_{\dim=-2,\text{keepdim}=\text{True}} x_i^2 + \epsilon}}
+\end{aligned}
+$$
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">

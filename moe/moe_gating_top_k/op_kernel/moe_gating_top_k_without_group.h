@@ -152,7 +152,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::ComputeX()
         eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventIdSToV);
         WaitFlag<HardEvent::S_V>(eventIdSToV);
-        Muls(xNormTensor, xNormTensor, 1.0f / sumValue, expertCount_);
+        Duplicate(xInLocalTensor, sumValue, expertCount_);
+        PipeBarrier<PIPE_V>();
+        Div(xNormTensor, xNormTensor, xInLocalTensor, expertCount_);
         PipeBarrier<PIPE_V>();
     }
     if (addBias_) {

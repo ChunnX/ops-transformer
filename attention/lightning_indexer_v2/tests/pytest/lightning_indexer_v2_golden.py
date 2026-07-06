@@ -19,6 +19,7 @@ import numpy as np
 import math
 import ctypes
 import copy
+import ast
 import cann_ops_transformer
 from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
@@ -147,12 +148,13 @@ class GeneralizedLIV2:
                                                                                         :curr_actualSeq_q,
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_fp16(b_idx)
                 y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1
-                if self.layout_query == "TND":
-                    offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
-                else:
-                    offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
-                offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
-                y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
+                if output_idx_offset is not None:
+                    if self.layout_query == "TND":
+                        offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
+                    else:
+                        offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
+                    offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
+                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
                 y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
@@ -435,7 +437,8 @@ class GeneralizedLIV2:
             next_tokens = S2 - S1
             next_tokens_list.append(next_tokens)
             act_k = actualSeqLengthsK[i]
-            atten_masks = self.create_mask(m_shape, act_k, S1, cmpResidualK[i])
+            residual = cmpResidualK[i] if cmpResidualK is not None else 0
+            atten_masks = self.create_mask(m_shape, act_k, S1, residual)
             re_mask_batch.append(np.array(atten_masks, dtype=np.bool_))
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
@@ -481,7 +484,7 @@ class GeneralizedLIV2:
                 actual_seq_lengths_query = seqused_q
                 self.has_seqused_q = True
             else:
-                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32)
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
@@ -498,7 +501,7 @@ class GeneralizedLIV2:
                 actual_seq_lengths_key = seqused_k
                 self.has_seqused_k = True
             else:
-                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(torch.int32)
             actualSeqLengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
@@ -510,7 +513,8 @@ class GeneralizedLIV2:
         query = query.cpu()
         key = key.cpu()
         weights = weights.cpu()
-        output_idx_offset = output_idx_offset.cpu()
+        if output_idx_offset is not None:
+            output_idx_offset = output_idx_offset.cpu()
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
         if self.layout_query == "TND":
@@ -589,11 +593,41 @@ def trans_prefix_actseq(self,list):
                 raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
         return list_new
 
-def liv2_output_single(params):
+def liv2_output_single(params, is_batch = False):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
     cmp_ratio, return_value, max_seqlen_q = params
+
+    if is_batch:
+        if qk_dtype == 'FP16':
+            qk_dtype = torch.float16
+        else:
+            qk_dtype = torch.bfloat16
+
+        if cu_seqlens_q is not None:
+            cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
+        if cu_seqlens_k is not None:
+            cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
+        if seqused_q is not None:
+            seqused_q = ast.literal_eval(seqused_q)
+        if seqused_k is not None:
+            seqused_k = ast.literal_eval(seqused_k)
+        if cmp_residual_k is not None:
+            cmp_residual_k = ast.literal_eval(cmp_residual_k)
+        if query_datarange is not None:
+            query_datarange = ast.literal_eval(query_datarange)
+        if key_datarange is not None:
+            key_datarange = ast.literal_eval(key_datarange)
+        if weights_datarange is not None:
+            weights_datarange = ast.literal_eval(weights_datarange)
+        if output_idx_offset is not None:
+            output_idx_offset = ast.literal_eval(output_idx_offset)
+            if layout_query == "TND":
+                output_idx_offset_size = q_t_size * 1
+            else:
+                output_idx_offset_size = batch_size * q_seq * 1
+            output_idx_offset = [[random.randint(output_idx_offset[0], output_idx_offset[1]) for _ in range(output_idx_offset_size)] for _ in range(1)]
 
     test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
@@ -670,6 +704,17 @@ def liv2_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
+        # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
+        properties = torch.npu.get_device_properties()
+        if "Ascend950" in properties.name:
+            key_stride = 10  # 0轴非连续增加stride
+            bytes_per_token = head_dim + key_stride # 整个非连续的长度
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
+            key_flat = key.view(block_num, block_size * k_head_num * head_dim)
+            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
+            blockFusion = blockFusion.npu()
+            key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+
         key = key.npu()
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
@@ -703,42 +748,65 @@ def liv2_output_single(params):
             max_seqlen_k = max(seqused_k).item()
         else:
             max_seqlen_k = k_seq
-    # metadata = lightning_indexer_metadata(
-    #                             num_heads_q = q_head_num,
-    #                             num_heads_k = k_head_num,
-    #                             head_dim = head_dim,
-    #                             topk = topk,
-    #                             cu_seqlens_q = cu_seqlens_q,
-    #                             cu_seqlens_k = cu_seqlens_k,
-    #                             seqused_q = seqused_q,
-    #                             seqused_k = seqused_k,
-    #                             cmp_residual_k = cmp_residual_k,
-    #                             batch_size = batch_size,
-    #                             max_seqlen_q = max_seqlen_q,
-    #                             max_seqlen_k = max_seqlen_k,
-    #                             layout_q = layout_query,
-    #                             layout_k = layout_key,
-    #                             mask_mode = mask_mode,
-    #                             cmp_ratio = cmp_ratio)
+    metadata = lightning_indexer_metadata(
+                                num_heads_q = q_head_num,
+                                num_heads_k = k_head_num,
+                                head_dim = head_dim,
+                                topk = topk,
+                                cu_seqlens_q = cu_seqlens_q,
+                                cu_seqlens_k = cu_seqlens_k,
+                                seqused_q = seqused_q,
+                                seqused_k = seqused_k,
+                                cmp_residual_k = cmp_residual_k,
+                                batch_size = batch_size,
+                                max_seqlen_q = max_seqlen_q,
+                                max_seqlen_k = max_seqlen_k,
+                                layout_q = layout_query,
+                                layout_k = layout_key,
+                                mask_mode = mask_mode,
+                                cmp_ratio = cmp_ratio)
 
-    # metadata = metadata.npu()
-    metadata = None
-    npu_result, npu_topk_value = lightning_indexer(query, key, weights,
-                                             cu_seqlens_q = cu_seqlens_q,
-                                             cu_seqlens_k = cu_seqlens_k,
-                                             seqused_q = seqused_q,
-                                             seqused_k = seqused_k,
-                                             cmp_residual_k = cmp_residual_k,
-                                             block_table = block_table,
-                                             output_idx_offset = output_idx_offset,
-                                             metadata = metadata,
-                                             topk = topk,
-                                             max_seqlen_q = max_seqlen_q,
-                                             layout_q = layout_query,
-                                             layout_k = layout_key,
-                                             mask_mode = mask_mode,
-                                             cmp_ratio = cmp_ratio,
-                                             return_value = return_value)
-    torch.npu.synchronize()
-    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
-    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
+    metadata = metadata.npu()
+
+    if is_batch:
+        output_tensors = {
+            "params":params,
+            "cpu_result": cpu_result,
+            "topk_value": topk_value,
+            "query": query,
+            "key":key,
+            "weights": weights,
+            "output_idx_offset": output_idx_offset,
+            "cu_seqlens_q": cu_seqlens_q,
+            "cu_seqlens_k": cu_seqlens_k,
+            "seqused_q": seqused_q,
+            "seqused_k": seqused_k,
+            "cmp_residual_k": cmp_residual_k,
+            "block_table": block_table,
+            "metadata": metadata,
+            "layout_query":layout_query,
+            "layout_key":layout_key,
+            "cmp_ratio":cmp_ratio,
+            "max_seqlen_q": max_seqlen_q
+        }
+        return output_tensors
+    else:
+        npu_result, npu_topk_value = lightning_indexer(query, key, weights,
+                                                cu_seqlens_q = cu_seqlens_q,
+                                                cu_seqlens_k = cu_seqlens_k,
+                                                seqused_q = seqused_q,
+                                                seqused_k = seqused_k,
+                                                cmp_residual_k = cmp_residual_k,
+                                                block_table = block_table,
+                                                output_idx_offset = output_idx_offset,
+                                                metadata = metadata,
+                                                topk = topk,
+                                                max_seqlen_q = max_seqlen_q,
+                                                layout_q = layout_query,
+                                                layout_k = layout_key,
+                                                mask_mode = mask_mode,
+                                                cmp_ratio = cmp_ratio,
+                                                return_value = return_value)
+        torch.npu.synchronize()
+        npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+        return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value

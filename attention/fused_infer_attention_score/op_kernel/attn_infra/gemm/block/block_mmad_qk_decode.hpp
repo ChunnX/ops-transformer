@@ -161,7 +161,7 @@ public:
             if (keyBnStride != 0) {
                 kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
             } else {
-                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
             }
         } else {
             kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;

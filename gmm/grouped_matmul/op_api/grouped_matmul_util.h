@@ -36,6 +36,10 @@ constexpr size_t MX_SPLIT_K_SINGLE_X_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SCALE_DIM = 3UL;
 constexpr size_t MX_SPLIT_K_PER_TOKEN_SCALE_DIM = 3UL;
+constexpr size_t MX_MULTI_ANTIQUANT_SCALE_DIM = 3UL;
+constexpr size_t MX_SINGLE_ANTIQUANT_SCALE_DIM = 4UL;
+constexpr size_t MX_MULTI_BIAS_DIM = 1UL;
+constexpr size_t MX_SINGLE_BIAS_DIM = 2UL;
 
 constexpr size_t MX_TUPLE_X_DIM_INDEX = 0UL;
 constexpr size_t MX_TUPLE_WEIGHT_DIM_INDEX = 1UL;

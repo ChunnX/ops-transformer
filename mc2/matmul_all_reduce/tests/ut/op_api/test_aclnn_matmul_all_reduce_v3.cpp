@@ -99,7 +99,7 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, Ascend310PWithoutX3)
     TensorDesc bias = {{16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunMatmulAllReduceV3Ut(
-        op::SocVersion::ASCEND310P, x1, x2, bias.ToAclTypeRawPtr(), nullptr, output, "", ACLNN_SUCCESS);
+        op::SocVersion::ASCEND310P, x1, x2, bias.ToAclTypeRawPtr(), nullptr, output, "ai_cpu", ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnMatmulAllReduceV3ExtraTest, TransposedX2)
@@ -108,7 +108,7 @@ TEST_F(AclnnMatmulAllReduceV3ExtraTest, TransposedX2)
     TensorDesc x2 = {{32, 16}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 32}};
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     RunMatmulAllReduceV3Ut(
-        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "", ACLNN_SUCCESS);
+        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, output, "ai_cpu", ACLNN_SUCCESS);
 }
 
 TEST_F(AclnnMatmulAllReduceV3ExtraTest, LaunchApiNullExecutor)

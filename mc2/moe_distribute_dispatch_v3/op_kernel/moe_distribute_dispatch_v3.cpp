@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #endif
 
-#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h")
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h"
