@@ -96,9 +96,8 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
     const uint32_t perBlockEleNum = 32 / 2;
     bool flagAlignExperts = (col % perBlockEleNum == 0);
     if (!flagAlignExperts) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "expert count", std::to_string(col).c_str(),
-            "Expert count must be 32-byte aligned.");
+        OP_LOGE(context_->GetNodeName(),
+            "expert count (=%u) must be 32 bytes align, please check.", col);
         return false;
     }
     const size_t x_dim_num = 2;
