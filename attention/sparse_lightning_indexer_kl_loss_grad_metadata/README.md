@@ -92,7 +92,7 @@
     </tr>
     <tr>
       <td>topk</td>
-      <td>属性</td>
+      <td>可选属性</td>
       <td>表示从Query中筛选出的关键稀疏token的个数，当前支持[1, 2048]和4096、8192。</td>
       <td>INT32</td>
       <td>-</td>
