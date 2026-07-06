@@ -1056,16 +1056,9 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
         if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
             if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                           AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-                if (singleN_ == GROUP_PERF_VL_BF16) {
-                    VFDoSwigluAndQuantForMXInterleavedBf16GroupPerf(
-                        quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                        l0cOutUbBase, l0cOutUbSecondAddr, halfScaleAddr, mSize, singleN_);
-                } else {
-                    VFDoSwigluAndQuantForMXInterleavedBf16(
-                        quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                        l0cOutUbBase, l0cOutUbSecondAddr,
-                        gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
-                }
+                VFDoSwigluAndQuantForMXInterleavedBf16GroupPerf(
+                    quantOutputInUbAddr, quantScaleOutputInUbAddr,
+                    l0cOutUbBase, l0cOutUbSecondAddr, halfScaleAddr, mSize, singleN_);
             } else {
                 VFDoSwigluAndQuantForMXInterleavedBf16(
                     quantOutputInUbAddr, quantScaleOutputInUbAddr,
