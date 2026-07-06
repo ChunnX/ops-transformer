@@ -397,7 +397,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const c
     if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
@@ -437,7 +437,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
     if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
