@@ -36,5 +36,6 @@ struct MegaMoeTilingData {
     float clampLimit;
     uint8_t groupedMatmulMode;
     int64_t topoType;
+    int32_t topkWeightsMode;
 };
 #endif
