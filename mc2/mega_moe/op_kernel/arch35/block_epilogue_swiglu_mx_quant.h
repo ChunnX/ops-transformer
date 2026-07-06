@@ -47,7 +47,7 @@ constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr uint32_t MAX_SINGLE_MN = 256 * 256;  // 与 mega_moe_impl.h L1_TILE_M * L1_TILE_N 保持一致
+constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -107,10 +107,6 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_82 = {
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-// IsInterleaved_ = false（默认）：右矩阵 B 是 [gate || up] 分两半，GMM1 内做 2 次 mmad，分别写 l0cOutUbFirst_ / l0cOutUbSecond_
-// IsInterleaved_ = true ：右矩阵 B 已被预先交织，每 256 列 = 128 列 gate + 128 列 up，GMM1 内只做 1 次 mmad，
-//                         写 l0cOutUbFirst_ 即可；swiglu 同 UB 内读 gate 半 + up 半。
-// 默认值只放在类声明，成员函数定义用不带默认的 macro，避免 C++ "default argument redefinition" 报错。
 #define BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS                                                             \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,                              \
               typename DataTypeX1Scale_, bool IsTensorList_, bool IsInterleaved_>
@@ -157,8 +153,6 @@ public:
     __aicore__ inline void Init(Params const &params);
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
-    // pingpongIdx：仅交织分支用，0=ping(读 UB[0..]), 1=pong(读 UB[MAX_SINGLE_MN*sizeof(In)..]).
-    // 非交织分支忽略此参数。
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                        uint16_t pingpongIdx = 0);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
@@ -168,9 +162,6 @@ private:
     __aicore__ inline void VFDoSwigluForMX(uint16_t mSize, uint16_t pingpongIdx = 0);
     __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN, uint16_t pingpongIdx = 0);
 
-    // nSize 是 swiglu 输出 N。
-    // 所有 UB 地址（outputDst/scaleDst/firstSrc/secondSrc/gluResAddr/maxExpAddr/halfScaleLocalAddr）
-    // 都由 caller 选 ping 或 pong 版本传入。pingpong 时整组缓冲整体偏移 128KB（= MAX_SINGLE_MN*sizeof(DataTypeIn)）。
     template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false>
     __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
@@ -179,8 +170,6 @@ private:
                                                    __ubuf__ uint16_t *halfScaleLocalAddr,
                                                    uint16_t mSize, uint16_t nSize);
 
-    // Future interleaved bf16 path uses one UB row as [gate | up]. Current upstream callers keep
-    // IsInterleaved_ at its default false value, so this path is prepared but not selected.
     __aicore__ inline void VFDoSwigluAndQuantForMXInterleavedBf16(
         __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
         __ubuf__ bfloat16_t *firstSrc, __ubuf__ bfloat16_t *secondSrc,
@@ -217,10 +206,6 @@ private:
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
-    // l0cOutUbSecond_：仅在 GMM1 pingpong 启用（UbFirst+UbSecond 都 ≤ UB_CAPACITY）时真正占用 128KB。
-    // 当 MAX_SINGLE_MN * sizeof(DataTypeIn) * 2 > 256KB 时（L1_TILE_M=256），单块 UbFirst 已经占满整 UB，
-    // pingpong 关闭。这里把 UbSecond 的 offset 折叠到 0（与 UbFirst alias，绝不会被访问），
-    // 避免描述符越界。
     static constexpr uint32_t kUbSecondOffset =
         (MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U <= 256U * 1024U)
             ? (MAX_SINGLE_MN * sizeof(DataTypeIn))
@@ -269,21 +254,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
         fpEmax_ = FP4_E1M2_MAX_EXP;
     }
 
-    // 重构UB内存。
-    //   bf16+pingpong 下 UB 被 l0cOutUbFirst_ (UB[0..128KB] bf16) + l0cOutUbSecond_ (UB[128..256KB] bf16) 占满。
-    //   alias 组（gluRes_/quantOutput_/scales/quantScaleBlock）必须整组塞进单半区 128KB，pong 整体 +128KB 才不越界。
-    //   原来按 MAX_SINGLE_MN（mmad full N=256 输出）声明 alias 是过度声明：swiglu 输出实际只有 m × n_half = MAX_SINGLE_MN/2
-    //   个元素，CopyOutputFromUb2Gm/CopyScaleFromUb2Gm/ComputeMaxExp 等也都按 m × n_half 访问，故压成一半安全。
-    //   单 buffer（非 pingpong）模式下也能用同样布局，省下来的 UB 闲着也没影响。
-    //   每半区布局 (m=256, n_half=128 时)：
-    //     gluRes_                [0..64KB]    swiglu bf16 输出 = m*n_half*2
-    //     quantOutput_           [64..96KB]   quant int8 = m*n_half
-    //     quantScaleOutput_      [96..97KB]   m*n_half/32 int8
-    //     maxExp_                [97..99KB]   m*n_half/32 uint16
-    //     halfScale_             [99..101KB]  m*n_half/32 uint16
-    //     quantScaleBlockOutput_ [101..109KB] baseM*32 int8
-    //   总计 109KB ≤ 128KB ✓。pong 整体偏移 128KB → 末端 237KB ≤ 256KB ✓。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = MAX_SINGLE_MN / SWIGLU_N_HALF; // m*n_half
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS = MAX_SINGLE_MN / SWIGLU_N_HALF;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -566,10 +537,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
     __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr,
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
-    uint16_t mSize, uint16_t nSize) // mSize=128, nSize=swiglu 输出 N
+    uint16_t mSize, uint16_t nSize)
 {
-    // 交织：mmad 输出行宽 = 2 * swiglu N（gate || up 拼在同一行），firstSrc/secondSrc 跨步用这个值。
-    // 非交织：两个独立 UB，每个行宽 = swiglu N（= mmad 输出 N），保持原来按 ONE_BLK_SIZE 对齐的算法。
     uint32_t nSrcUbAligned;
     if constexpr (IsInterleavedSrc) {
         nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
@@ -839,14 +808,7 @@ __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
                                                                                        uint16_t pingpongIdx)
 {
-    // Pingpong：ping 在 UB[0..128KB]，pong 在 UB[128..256KB]。整套 swigluquant buffer（mmad in,
-    // gluRes, quantOutput, scales）都跟着 ping/pong 区整体偏移 128KB（= MAX_SINGLE_MN*sizeof(DataTypeIn) 字节）。
-    // 注意每种 LocalTensor 的 pointer arithmetic 是按元素的，所以 +N 对不同类型的 T 含义不同：
-    //   DataTypeIn(=float, 4B): +MAX_SINGLE_MN 个元素 = 128KB
-    //   bfloat16_t (2B):        +MAX_SINGLE_MN*2 个元素 = 128KB
-    //   int8_t (1B):            +MAX_SINGLE_MN*4 个元素 = 128KB
-    //   uint16_t (2B):          +MAX_SINGLE_MN*2 个元素 = 128KB
-    constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;  // 128KB 用 DataTypeIn 元素数
+    constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
     constexpr uint32_t pongElemOf_int8 = MAX_SINGLE_MN * sizeof(DataTypeIn);
     constexpr uint32_t pongElemOf_uint16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(uint16_t);
@@ -866,7 +828,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
         (__ubuf__ uint16_t *)halfScale_.GetPhyAddr() + pongMul * pongElemOf_uint16;
 
     if constexpr (IsInterleaved_) {
-        // 交织：gate 在 mmad 每行前 singleN_ 列，up 在后 singleN_ 列；secondSrc 偏到 up 半。
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
         if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
             VFDoSwigluAndQuantForMXInterleavedBf16(
@@ -880,7 +841,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
                 gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
         }
     } else {
-        // 非交织：firstSrc = l0cOutUbFirst_(=gate), secondSrc = l0cOutUbSecond_(=up)
         __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
         VFDoSwigluAndQuantForMX<SwigluQuantMsg::QuantMode::MX_PERGROUP_MODE, false>(
             quantOutputInUbAddr, quantScaleOutputInUbAddr,
@@ -895,7 +855,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxSca
                                                                                            uint16_t scaleBlockN,
                                                                                            uint16_t pingpongIdx)
 {
-    // pingpong：pong 区整体偏移 128KB = MAX_SINGLE_MN*sizeof(DataTypeIn) 字节（int8 ptr +N 即 N 字节）
     const uint32_t pongShift = (IsInterleaved_ && pingpongIdx == 1U) ? MAX_SINGLE_MN * sizeof(DataTypeIn) : 0U;
     __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr() + pongShift;
     __ubuf__ int8_t *quantScaleBlockOutputInUbAddr =
@@ -953,14 +912,12 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
     VFDoSwigluForMX(singleM_, pingpongIdx); // switch(x)*y 计算quant quantScale
     if constexpr (!(IsInterleaved_ && AscendC::IsSameType<DataTypeIn, bfloat16_t>::value)) {
-        TransMxScaleLayout(singleM_, scaleBlockN_, pingpongIdx); // 非目标路径保留旧的 scale staging
+        TransMxScaleLayout(singleM_, scaleBlockN_, pingpongIdx); // 重排scale
     }
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-    // pingpong：pong 区把 quantOutput_/quantScaleBlockOutput_ 的起点整体偏移 128KB
-    // LocalTensor<int8_t> 的 [N] 偏移按元素（=字节）计，PONG 偏移 = MAX_SINGLE_MN * sizeof(DataTypeIn) 字节
     if constexpr (IsInterleaved_) {
-        constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);  // 128KB = 131072 int8
+        constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
         if (pingpongIdx == 1U) {
             AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[PONG_INT8_ELEMS];
             AscendC::LocalTensor<int8_t> quantScaleBlockPong = quantScaleBlockOutput_[PONG_INT8_ELEMS];
