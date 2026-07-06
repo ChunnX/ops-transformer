@@ -101,6 +101,34 @@ constexpr static MatmulApiStaticTiling GetMMTiling(const MatmulApiStaticTiling &
     return tiling;
 }
 
+template <HardEvent event>
+__aicore__ inline void GmmsqSetWaitFlag()
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(event));
+    SetFlag<event>(eventId);
+    WaitFlag<event>(eventId);
+}
+
+__aicore__ inline void GmmsqCubeVecStageSync()
+{
+    SyncAll<false>();
+}
+
+__aicore__ inline void GmmsqWorkspaceReuseStageSync()
+{
+    SyncAll<false>();
+}
+
+__aicore__ inline void GmmsqPipelineStageSync()
+{
+    SyncAll<false>();
+}
+
+__aicore__ inline void GmmsqPipelineStageSyncWithWorkspace()
+{
+    SyncAll<true>();
+}
+
 template <class AT_, class BT_, class CT_>
 struct MMImplTypeStatic {
     using AT = AT_;

@@ -103,14 +103,14 @@ __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Process()
             pipe->Reset();
         }
 
-        SyncAll<false>();
+        GmmsqPipelineStageSync();
         // 2.第n次中处理 && 第n+1次前处理 && 第n-1次后处理 并行
         midProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx);
 
         preProcess.Process(workspaceSplitConfig, workspaceSplitLoopIdx + 1, pipe);
         if ASCEND_IS_AIV {
             pipe->Reset();
-            SyncAll<true>();
+            GmmsqPipelineStageSyncWithWorkspace();
         }
         postProcess.Process(tempWorkspaceSplitConfig, workspaceSplitLoopIdx - 1, pipe);
         // 3.第n-1次后处理需要保留第n次的切分数据
@@ -119,14 +119,14 @@ __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Process()
         if ASCEND_IS_AIV {
             pipe->Reset();
         }
-        SyncAll<false>();
+        GmmsqPipelineStageSync();
         // 3.前一次后处理 && 后一次MM 并行
     }
     // reset
     if ASCEND_IS_AIV {
         pipe->Reset();
     }
-    SyncAll<false>();
+    GmmsqPipelineStageSync();
     // // 4.最后一次后处理
     postProcess.Process(workspaceSplitConfig, workspaceSplitConfig.loopCount - 1, pipe);
     if ASCEND_IS_AIV {
