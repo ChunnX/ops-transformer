@@ -38,6 +38,7 @@ using namespace AscendC;
 static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
+static constexpr uint8_t BUFFER_NUM = 2;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -81,7 +82,6 @@ private:
 
     GlobalTensor<int32_t> hitCountGm_;
 
-    LocalTensor<XType> ubToken_;
     LocalTensor<int32_t> ubHitCount_;
     LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
@@ -95,9 +95,7 @@ private:
     LocalTensor<int64_t> ubHitCountRowI64_;
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
-    LocalTensor<ScalesType> ubScales_;
 
-    TBuf<QuePosition::VECIN> ubTokenBuf_;
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
@@ -111,7 +109,7 @@ private:
     TBuf<QuePosition::VECIN> ubHitCountRowI64Buf_;
     TBuf<QuePosition::VECIN> ubStageWeightsBuf_;
     TBuf<QuePosition::VECIN> ubStageMetaBuf_;
-    TBuf<QuePosition::VECIN> ubScalesBuf_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tokenQueue_;
 
     uint32_t expertSum_{0};
     uint32_t maxSlotsPerAiv_{0};
@@ -121,6 +119,7 @@ private:
     uint32_t scalesBytes_{0};
     uint32_t scalesElems_{0};
     uint32_t metaOffset_{0};
+    uint32_t tokenQueueBufBytes_{0};
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
     uint32_t paddedMetaElems_{0};
@@ -197,7 +196,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
-    uint32_t ubTokenBytes     = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -220,9 +218,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
-    tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
     ubRecvCnt_ = ubRecvCntBuf_.Get<int32_t>();
-    ubToken_ = ubTokenBuf_.Get<XType>();
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     
     if constexpr (!IsCached) {
@@ -258,10 +254,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         scalesElems_ = (scalesBytes_ == 0U) ? 0U : (scalesBytes_ / sizeof(ScalesType));
         uint32_t scalesBytesAlign = Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN;
         metaOffset_ += scalesBytesAlign;
-        tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
-        ubScales_ = ubScalesBuf_.Get<ScalesType>();
         recvScalesGm_.SetGlobalBuffer((__gm__ ScalesType *)recvScales);
     }
+
+    tokenQueueBufBytes_ = metaOffset_;
+
+    tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, tokenQueueBufBytes_);
 
     DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
@@ -425,7 +423,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
                     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
                     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-                    DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
+                    LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
+                    DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         GlobalTensor<ScalesType> srcScalesTensor;
                         srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_),
@@ -433,15 +432,19 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                         DataCopyParams scalesCopyParams{1U,
                             static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
                         DataCopyPadParams scalesPadParams{false, 0, 0, 0};
-                        DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
+                        DataCopyPad(tokenTensor[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                                    srcScalesTensor, scalesCopyParams, scalesPadParams);
                     }
-                    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                    DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+                    tokenQueue_.EnQue(tokenTensor);
+                    LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
+                    DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
 
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         DataCopyParams scalesCopyParams{1U,
                             static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-                        DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
+                        DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
+                                    tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                                    scalesCopyParams);
                     }
 
                     if constexpr (HasTopkWeights) {
@@ -460,7 +463,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     }
                     stageIdx++;
                     localWrittenRow++;
-                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+                    tokenQueue_.FreeTensor(tokenOut);
                 }
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -520,7 +523,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
         DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
         DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-        DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
+        LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
+        DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
 
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
             GlobalTensor<ScalesType> srcScalesTensor;
@@ -529,7 +533,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             DataCopyParams scalesCopyParams{1U,
                 static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
             DataCopyPadParams scalesPadParams{false, 0, 0, 0};
-            DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
+            DataCopyPad(tokenTensor[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                        srcScalesTensor, scalesCopyParams, scalesPadParams);
         }
 
         if constexpr (HasTopkWeights) {
@@ -543,15 +548,18 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
 
-        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        tokenQueue_.EnQue(tokenTensor);
+        LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
         uint32_t globalRow = startId + i;
-        DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+        DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
             DataCopyParams scalesCopyParams{1U,
                 static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-            DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
+            DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
+                        tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                        scalesCopyParams);
         }
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        tokenQueue_.FreeTensor(tokenOut);
     }
 
     if constexpr (HasTopkWeights) {
