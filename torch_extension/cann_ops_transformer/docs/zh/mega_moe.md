@@ -1125,12 +1125,57 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     </table>
 
 - **参数一致性约束**：
-    - 调用算子过程中使用的`epWorldSize`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+    - 调用算子过程中使用的`epWorldSize`、`ccl_buffer_size`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
     - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`参数取值需保持一致。
-    - 各卡的通信域缓存区大小（`HCCL_BUFFSIZE`）应当一致。
+    - 各卡的通信域缓存区大小（`ccl_buffer_size`）应当一致，且不能低于按公式计算出的最小值。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
+
+      $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
+
+      **A2 场景：**
+
+      ```
+      offsetTokenPerExpert = EP × CeilAlign(EP × expertPerRank + 1, 128) × 4B
+
+      // winIn
+      offsetAAfterDispatch = maxRecvTokenNum × (quant ? H + 512 : H × 2)
+      offsetD              = BS × topK × H × 2B
+      winInTensorSize      = offsetAAfterDispatch + offsetD
+
+      // winOut
+      offsetA              = BS × topK × (quant ? H + 512 : H × 2)
+      offsetC              = maxRecvTokenNum × H × 2B
+      winOutTensorSize     = offsetA + offsetC
+
+      offsetTensor         = max(winInTensorSize, winOutTensorSize)
+                             + (quant ? maxRecvTokenNum × 4B : 0)
+
+      // sync flags
+      offsetFlag           = EP × 512B
+                             + EP × expertPerRank × 64B
+                             + EP × 64B
+      ```
+
+      **A3 场景：**
+
+      ```
+      offsetTokenPerExpert = EP × CeilAlign(EP × expertPerRank + 1, 128) × 4B
+
+      // winIn（A3 仅 winIn，无 winOut）
+      offsetAAfterDispatch = BS × topK × (quant ? H + 512 : H × 2)
+      offsetD              = BS × topK × H × 2B
+      winInTensorSize      = offsetAAfterDispatch + offsetD
+
+      offsetTensor         = winInTensorSize
+                             + (quant ? BS × topK × 4B : 0)
+
+      // sync flags（A3 仅 CrossRankSync）
+      offsetFlag           = EP × 512B
+      ```
+
+      其中 $EP$ = `epWorldSize`，$expertPerRank$ = `moeExpertNum / epWorldSize`，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatchQuantMode = 4`）。预留空间 10 MB 为内部元数据对齐与安全余量。该值即 `get_mega_moe_ccl_buffer_size` 接口的返回值。
     - 通信域各节点的驱动版本应当相同。
     - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
@@ -1251,7 +1296,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - 单算子模式调用：
 
-  下面示例将三个接口按调用顺序串联：先用 get_mega_moe_ccl_buffer_size 计算 HCCL 通信 buffer 大小并设置 HCCL_BUFFSIZE，再用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
+  下面示例将三个接口按调用顺序串联：先用 get_mega_moe_ccl_buffer_size 计算通信域缓存区大小并创建通信域，再用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
 
   ```python
   import os
@@ -1285,11 +1330,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       torch_npu.npu.set_device(rank % rank_per_dev)
       print(f"current device set: {torch_npu.npu.current_device()}")
 
-  def init_hccl_comm(rank):
+  def init_hccl_comm(rank, buffer_size):
       # 创建HCCL通信链路并初始化EP域
       print(f'[INFO] device_{rank} 创建HCCL通信链路')
       master_ip = '127.0.0.1'
-      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
+      options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+ 	  options.hccl_config = {"hccl_buffer_size": buffer_size}  # 单位：MB，描述windowIn或windowOut的大小
+      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001', pg_options=options)
       print(f"device_{rank} init_process_group success")
 
       print(f"device {rank} 初始化EP域")
@@ -1328,7 +1375,6 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   ):
       print(f"{os.getpid()=}{rank=}")
       set_device(rank)
-      ep_hcomm_info, ep_group = init_hccl_comm(rank)
       print(f'[INFO] device_{rank} 构造megamoe算子输入数据')
       megamoe_kwargs = get_megamoe_kwargs(
           x=x,
@@ -1339,13 +1385,14 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
           weights_scales2=weights_scales2,
           expert_scales=expert_scales,
       )
-      # 步骤1：计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB），并设置HCCL_BUFFSIZE环境变量
+      # 步骤1：计算通信域缓存区大小（单位：MB）
       buffer_size = get_mega_moe_ccl_buffer_size(
           world_size, num_experts, BS, topK, H,
           dispatch_quant_mode=4, dispatch_quant_out_dtype=23
       )
-      os.environ['HCCL_BUFFSIZE'] = f'{buffer_size}'
+      # 通过通信域缓存区大小初始化通信域
       print(f"[INFO] device_{rank} buffer_size is {buffer_size}")
+      ep_hcomm_info, ep_group = init_hccl_comm(rank, buffer_size)
       # 步骤2：构造distribute_buffer（SymmBuffer结构体）
       distribute_buffer = get_symm_buffer_for_mega_moe(
           ep_group, num_experts=num_experts,
