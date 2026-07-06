@@ -649,7 +649,7 @@ def gen_ori_kv(
         ori_block_table = None
     elif layout_kv == "BSND":
         ori_block_table = None
-        ori_k_in_pa_shape = ori_k_bnsd_npu.permute(0, 2, 1, 3).contiguous()
+        ori_k_in_pa_shape = ori_k_bnsd_npu.reshape(B, ori_max_s2, N2, D).contiguous()
     else:
         ori_k_in_pa_shape, ori_block_table = _build_block_table_and_pa(
             ori_k_bnsd_npu,
@@ -703,7 +703,7 @@ def gen_cmp_kv(
         cmp_block_table = None
     elif layout_kv == "BSND":
         cmp_block_table = None
-        cmp_k_in_pa_shape = cmp_k_bnsd_npu.permute(0, 2, 1, 3).contiguous()
+        cmp_k_in_pa_shape = cmp_k_bnsd_npu.reshape(B, cmp_max_s2, N2, D).contiguous()
     else:
         cmp_k_in_pa_shape, cmp_block_table = _build_block_table_and_pa(
             cmp_k_bnsd_npu,
