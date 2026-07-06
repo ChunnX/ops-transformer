@@ -1,0 +1,186 @@
+===============================================================================
+MegaMoe 模块化重构报告
+===============================================================================
+
+一、原始结构
+  单一文件 mega_moe.h (1376行):
+    - class MegaMoe 包含所有逻辑 (Init + Process 及全部私有方法)
+    - 多核分发与单核计算混合在同一类方法中
+    - blockIdx_/aivCoreIdx_/subBlockIdx_/blockNum_/blockAivNum_ 等全局索引
+      直接作为类成员变量，在各方法内部隐式使用
+
+二、新模块化结构
+  modules/ 目录下 9 个文件:
+
+  文件                     模块               行数   说明
+  ───────────────────────────────────────────────────────────────────
+  mega_moe_tile_info.h     共享类型            62    TileInfo结构体 + TilingByTile()
+  topk_gather.h            1.TopKGather       170    SendMaskCal + SendCntCal + ResetFlagList
+  token_dispatch.h         2.TokenDispatch    350    QuantProcessInRank + TripleInfoCalAndDispatch + CopyGMToGMPerToken + ExpertTokenNumCopyOut
+  gmm1.h                   3.GMM1             195    UpdateGroupParams(kGmm1) + UpdateGlobalBuffer(kGmm1) + GroupMatmulWithSwigluQuant
+  swiglu_quant.h           4.SwigluQuant       87    BlockEpilogueSwigluMxQuant 单核接口封装
+  gmm2.h                   5.GMM2             305    UpdateGroupParams(kGmm2) + UpdateGlobalBuffer(kGmm2) + GroupMatmulWithCombine + ProcessCombine + ResetGmm2CombineSyncCounters
+  combine_send.h           6.CombineSend      140    CombineTokens + CombineTokensLayered + CombineSendTokenToRemote
+  combine_reduce.h         7.CombineReduce    180    Unpermute + CrossRankSyncInWorldSize + BuffInit
+  mega_moe.h               多核入口           540    从 blockIdx 计算 TileInfo → 调用7个模块
+
+三、核心变换规则
+  ───────────────────────────────────────────────────────────────────
+
+  1) blockIdx 替换为 TileInfo 显式参数:
+
+     原始:
+       uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();    // 类成员
+       uint32_t aivCoreIdx_ = GetBlockIdx();                    // 类成员
+       uint32_t subBlockIdx_ = GetSubBlockIdx();                // 类成员
+       uint32_t blockNum_ = GetBlockNum();                      // 类成员
+       uint32_t blockAivNum_ = GetBlockNum() * 2;               // 类成员
+
+     新:
+       struct TileInfo {
+           uint32_t tileIdx;       // ← blockIdx_  (AIC核索引)
+           uint32_t totalTiles;    // ← blockNum_  (AIC核总数)
+           uint32_t aivTileIdx;    // ← aivCoreIdx_ (AIV核索引)
+           uint32_t aivTotalTiles; // ← blockAivNum_ (AIV核总数)
+           uint32_t subTileIdx;    // ← subBlockIdx_ (子块索引0/1)
+       };
+       // 在 mega_moe.h Process() 中一次性计算:
+       tile_.tileIdx     = blockIdx_;
+       tile_.totalTiles  = blockNum_;
+       tile_.aivTileIdx  = aivCoreIdx_;
+       tile_.aivTotalTiles = blockAivNum_;
+       tile_.subTileIdx  = subBlockIdx_;
+
+  2) 循环分核替换:
+
+     原始:
+       for (int32_t curExpertId = aivCoreIdx_; curExpertId < totalExperts;
+            curExpertId += blockAivNum_, ++iter)
+     新:
+       for (int32_t curExpertId = tile.aivTileIdx; curExpertId < totalExperts;
+            curExpertId += tile.aivTotalTiles, ++iter)
+
+  3) TilingByCore → TilingByTile:
+
+     原始:
+       TilingByCore(totalLen, coreLen, coreOffset, align);
+       // 内部使用 GetBlockIdx()/GetBlockNum()
+     新:
+       TilingByTile(totalLen, tileLen, tileOffset, tile.aivTileIdx, tile.aivTotalTiles, align);
+       // 显式传入 tileIdx/totalTiles, 不使用硬件API
+
+  4) 类成员变量 → 模块State结构体:
+
+     原始:
+       class MegaMoe { ... uint32_t maskSlotSize_; LocalTensor<...> tensor_; ... };
+     新:
+       struct TopKGatherState { ... uint32_t maskSlotSize; LocalTensor<...> tensor; ... };
+       // 各模块独立State, mega_moe.h负责组装与传递
+
+  5) AtomicAdd flag中的 blockIdx_ → tile.tileIdx:
+
+     原始:
+       ... + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+     新:
+       ... + static_cast<uint64_t>(tile.tileIdx) * INT_CACHELINE;
+
+  6) expertRevNumsGlobalTensor偏移中 blockIdx_ → tile.tileIdx:
+
+     原始:
+       expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_]
+     新:
+       expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * state.aicNum + INT32_PER_256B * tile.tileIdx]
+
+  7) subBlockIdx_ 判断 → tile.subTileIdx:
+
+     原始:
+       if (subBlockIdx_ == 1) { ... }
+       if (GetSubBlockIdx() != 0) { ... }
+     新:
+       if (tile.subTileIdx == 1) { ... }
+       if (tile.subTileIdx != 0) { ... }
+
+四、各模块详细变换
+  ───────────────────────────────────────────────────────────────────
+
+  Module 1: TopKGather (topk_gather.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    SendMaskCal()                SendMaskCal(state, tile)           aivCoreIdx_→tile.aivTileIdx, blockAivNum_→tile.aivTotalTiles
+    SendCntCal()                 SendCntCal(state, tile, ...)       blockIdx_→tile.tileIdx, aicNum作为state成员
+    ResetFlagList()              ResetFlagList(state, tile, ...)    TilingByCore→TilingByTile(tile.aivTileIdx, tile.aivTotalTiles)
+
+  Module 2: TokenDispatch (token_dispatch.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    QuantProcessInRank()         QuantProcessInRank(state, tile)    TilingByCore→TilingByTile(tile.aivTileIdx, tile.aivTotalTiles)
+    TripleInfoCalAndDispatch()   TripleInfoCalAndDispatch(...)      blockIdx_→tile.tileIdx, blockNum_→tile.totalTiles
+    CopyGMToGMPerToken()         CopyGMToGMPerToken(...)            无直接blockIdx引用(参数传入)
+    ExpertTokenNumCopyOut()      ExpertTokenNumCopyOut(...)         无直接blockIdx引用
+
+  Module 3: GMM1 (gmm1.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    UpdateGroupParams<kGmm1>()   UpdateGroupParams(state, tile)     blockIdx_→tile.tileIdx, subBlockIdx_→tile.subTileIdx
+    UpdateGlobalBuffer<kGmm1>()  UpdateGlobalBuffer(state, tile)    仅epilogueOp通过state传递
+    GroupMatmulWithSwigluQuant() GroupMatmulWithSwigluQuant(...)    startBlockIdx/vecSetSyncCom通过state传递
+
+  Module 4: SwigluQuant (swiglu_quant.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    (epilogueOp_成员)            RunEpilogue(state, tile)           subBlockIdx_→tile.subTileIdx判断
+
+  Module 5: GMM2 (gmm2.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    UpdateGroupParams<kGmm2>()   UpdateGroupParams(state, tile)     blockIdx_→tile.tileIdx (读取expertRevNums)
+    UpdateGlobalBuffer<kGmm2>()  UpdateGlobalBuffer(state, tile)    参数通过state传递
+    GroupMatmulWithCombine()     GroupMatmulWithCombine(...)        通过state传递参数
+    ProcessCombine()             ProcessCombine(state, tile)        aivCoreIdx_→tile.aivTileIdx, blockAivNum_→tile.aivTotalTiles, subBlockIdx_→tile.subTileIdx
+    ResetGmm2CombineSyncCounters ResetGmm2CombineSyncCounters(...)  TilingByCore→TilingByTile
+
+  Module 6: CombineSend (combine_send.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    CombineTokens()              CombineTokens(state, tile)         params通过state传递
+    CombineTokensLayered()       CombineTokensLayered(...)          同上
+    CombineSendTokenToRemote()   CombineSendTokenToRemote(...)      底层mega_moe_combine_send.h仍使用GetBlockIdx(待后续重构)
+
+  Module 7: CombineReduce (combine_reduce.h)
+    原始方法                     新函数                             变换
+    ─────────────────────────────────────────────────────────────────
+    Unpermute()                  Unpermute(state, tile)             TilingByCore→TilingByTile(tile.aivTileIdx, tile.aivTotalTiles)
+    CrossRankSyncInWorldSize()   CrossRankSyncInWorldSize(...)      aivCoreIdx_→tile.aivTileIdx, blockAivNum_→tile.aivTotalTiles
+    UnpermuteBuffInit()          BuffInit(state, tile, ...)         同上
+
+  多核入口 (modules/mega_moe.h)
+    原始                         新                                 变换
+    ─────────────────────────────────────────────────────────────────
+    class MegaMoe::Process()     class MegaMoe::Process()           在Process()开头计算TileInfo
+                                   随后调用各模块的state+tile参数化函数
+                                   blockIdx仅在Init/Process中使用(多核分发层)
+
+五、待后续重构的深层依赖
+  ───────────────────────────────────────────────────────────────────
+  以下文件仍内部使用 GetBlockIdx()/GetBlockNum()/GetSubBlockIdx():
+    - mega_moe_impl.h: GroupMatmulSwigluQuant/GroupMatmul2 内部的tile调度循环
+    - mega_moe_combine_send.h: CombineSendTokenToRemote 的分核逻辑
+    - block_epilogue_swiglu_mx_quant.h: GetSubBlockIdx() 用于 UB 分配
+  这些是底层计算kernel实现, 本次重构聚焦于 mega_moe.h 的高层编排逻辑抽取,
+  底层kernel的 tileIdx 参数化可作为后续迭代任务。
+
+六、验证结果
+  ───────────────────────────────────────────────────────────────────
+  对7个模块文件做 grep 检查:
+    GetBlockIdx   → 0 匹配
+    GetBlockNum   → 0 匹配
+    GetSubBlockIdx→ 0 匹配
+    blockIdx_     → 0 匹配
+    aivCoreIdx_   → 0 匹配
+    subBlockIdx_  → 0 匹配
+    blockAivNum_  → 0 匹配
+    blockNum_     → 0 匹配
+
+  所有 blockIdx 引用仅在 modules/mega_moe.h (多核入口) 中出现,
+  用于从硬件API计算 TileInfo, 随后传递给各单核模块。
+===============================================================================
