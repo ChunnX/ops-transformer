@@ -35,7 +35,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
             "float? activation_clamp=None, " \
             "int? dispatch_quant_out_dtype=None,  " \
-            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None) -> (Tensor, Tensor)"
+            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, " \
+            "int topk_weights_mode=0) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -46,7 +47,8 @@ class _MegaMoeOpBuilder(OpBuilder):
                               combine_quant_mode=0, comm_alg="",
                               num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                               dispatch_quant_out_dtype=None,
-                              weight1_type=None, weight2_type=None, topo_type=None):
+                              weight1_type=None, weight2_type=None, topo_type=None,
+                              topk_weights_mode=0):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -73,14 +75,15 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   combine_quant_mode=0, comm_alg="",
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
-                   weight1_type=None, weight2_type=None, topo_type=None):
+                  weight1_type=None, weight2_type=None, topo_type=None,
+                  topk_weights_mode=0):
     _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
         max_recv_token_num, dispatch_quant_mode, combine_quant_mode, comm_alg,
         num_max_tokens_per_rank, activation, activation_clamp, dispatch_quant_out_dtype,
-        weight1_type, weight2_type, topo_type)
+        weight1_type, weight2_type, topo_type, topk_weights_mode)
 
 
 class SymmBuffer:
@@ -96,7 +99,8 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: Optional[int] = None,
         combine_quant_mode: int = 0,
-        comm_alg: str = ""
+        comm_alg: str = "",
+        topk_weights_mode: int = 0
     ):
         # Metadata
         self.group = group
@@ -121,6 +125,7 @@ class SymmBuffer:
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
         self.topo_type = self._ctx_manager.topo_type
+        self.topk_weights_mode = topk_weights_mode
 
 
 def get_mega_moe_ccl_buffer_size(
@@ -184,7 +189,8 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[int] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = ""
+    comm_alg: str = "",
+    topk_weights_mode: int = 0
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -198,7 +204,8 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_mode,
         dispatch_quant_out_dtype,
         combine_quant_mode,
-        comm_alg
+        comm_alg,
+        topk_weights_mode
     )
 
 
@@ -246,5 +253,6 @@ def mega_moe(
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
-        topo_type=sym_buffer.topo_type
+        topo_type=sym_buffer.topo_type,
+        topk_weights_mode=sym_buffer.topk_weights_mode
     )
