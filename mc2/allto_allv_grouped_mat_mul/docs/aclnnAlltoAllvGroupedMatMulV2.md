@@ -31,6 +31,7 @@
     $$
     mmY = mmX \times mmWeight
     $$
+
 相较于`aclnnAlltoAllvGroupedMatMul`接口，该接口变更如下：
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
