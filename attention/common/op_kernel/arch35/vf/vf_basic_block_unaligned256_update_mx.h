@@ -242,8 +242,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             Max(vreg_max_tmp0, vreg_sel0, vreg_sel1, preg_all_float);
             Max(vreg_max_tmp1, vreg_sel2_new, vreg_sel3_new, preg_all_float);
             Max(vreg_max_tmp2, vreg_max_tmp0, vreg_max_tmp1, preg_all_float);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_src_max,
-                                                                                              vreg_max_tmp2, preg_all_float);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_src_max, vreg_max_tmp2, preg_all_float);
         } else {
             Select(vreg_src_x3_new, vreg_src_x3, vreg_min, preg_ori_tail_n1);
             Select(vreg_src_x4_new, vreg_src_x4, vreg_min, preg_ori_tail_n2); // select tail
@@ -258,8 +258,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             Max(vreg_max_tmp0, vreg_src_x1, vreg_src_x2, preg_all_float);
             Max(vreg_max_tmp1, vreg_src_x3_new, vreg_src_x4_new, preg_all_float);
             Max(vreg_max_tmp2, vreg_max_tmp0, vreg_max_tmp1, preg_all_float);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_src_max,
-                                                                                              vreg_max_tmp2, preg_all_float);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_src_max, vreg_max_tmp2, preg_all_float);
         }
         // sink
         if constexpr (hasSink) {

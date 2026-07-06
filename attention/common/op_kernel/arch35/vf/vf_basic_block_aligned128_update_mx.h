@@ -187,16 +187,16 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
                                                               vreg_select_unroll, preg_all_float);
             Max(vreg_max_tmp, vreg_select, vreg_select_unroll, preg_all_float);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
-                                                                                              vreg_max_tmp, preg_all_float);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_input_max, vreg_max_tmp, preg_all_float);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
                                                               vreg_x_src, preg_all_float);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
                                                               vreg_x_src_unroll, preg_all_float);
             Max(vreg_max_tmp, vreg_x_src, vreg_x_src_unroll, preg_all_float);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
-                                                                                              vreg_max_tmp, preg_all_float);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                vreg_input_max, vreg_max_tmp, preg_all_float);
         }
         if constexpr (hasSink) {
             Max(vreg_input_max, vreg_input_max, vreg_sink_input, preg_all_float);
