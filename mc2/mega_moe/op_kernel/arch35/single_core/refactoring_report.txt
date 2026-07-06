@@ -1,0 +1,425 @@
+================================================================================
+  MegaMoe 单核拆分重构报告（single_core/ redo 版本）
+  对比原始 arch35/mega_moe.h → single_core/ 9 文件拆分方案
+  生成时间: 2026-07-06
+================================================================================
+
+一、总体概览
+─────────────────────────────────────────────────────────────────────────────────
+
+原始文件:  arch35/mega_moe.h                 1376 行  单一模板类 MegaMoe
+
+拆分后文件:
+  single_core/mega_moe_tile_info.h      59 行   TileInfo 结构体 + TilingByTile
+  single_core/topk_gather.h            201 行   TopKGather 命名空间
+  single_core/token_dispatch.h         313 行   TokenDispatch 命名空间
+  single_core/gmm1.h                   159 行   GMM1 命名空间 (struct Gmm1)
+  single_core/swiglu_quant.h            68 行   SwigluQuant 命名空间
+  single_core/gmm2.h                   240 行   GMM2 命名空间 (class Gmm2Module)
+  single_core/combine_send.h            81 行   CombineSend 命名空间
+  single_core/combine_reduce.h         188 行   CombineReduce 命名空间
+  single_core/mega_moe.h              485 行   多核编排器 (class MegaMoe)
+                                                 ──────
+  合计                                 1794 行  (+418 行, +30.4%)
+
+新增行数来源:
+  - 每个 module 文件需要 copyright/header guard/include 块
+  - 函数签名从隐式 this→显式参数列表，参数数量增加
+  - orchestrator 保留全部 buffer 声明 + Init + BuffInit + Process 调用组装
+
+设计原则（与首次 modules/ 版本的区别）:
+  - class MegaMoe 保留所有成员变量和 buffer 所有权，不做拆分
+  - module 文件只包含纯计算逻辑（namespace 内自由函数或 struct/class 的 static 方法）
+  - 通过显式参数传入 buffer 引用 + TileInfo，避免 buffer 定义重复
+  - orchestrator Process() 在入口处从硬件 API 计算 TileInfo，然后传给所有 module 调用
+
+二、核心标识替换总表
+─────────────────────────────────────────────────────────────────────────────────
+
+  原始标识            │ 拆分后替换              │ 出现范围
+──────────────────────┼─────────────────────────┼───────────────────────────
+  blockIdx_           │ tile.tileIdx            │ SendCntCal, TripleInfoCalAndDispatch, UpdateGroupParams<kGmm1/kGmm2>
+  aivCoreIdx_         │ tile.aivTileIdx         │ SendMaskCal, ResetGmm2CombineSyncCounters, ProcessCombine, CrossRankSyncInWorldSize
+  blockAivNum_        │ tile.aivTotalTiles      │ SendMaskCal stride, ResetGmm2CombineSyncCounters total/stride, ProcessCombine grouping, CrossRankSyncInWorldSize stride
+  subBlockIdx_        │ tile.subTileIdx         │ UpdateGroupParams<kGmm1> (AIV0/AIV1 分支), ProcessCombine A8W4 过滤, RunEpilogue
+  blockNum_           │ tile.totalTiles         │ TripleInfoCalAndDispatch stride
+  blockNumPerRank_    │ blockNumPerRank 参数    │ TripleInfoCalAndDispatch 分组
+  aicNum_             │ aicNum 参数             │ SendCntCal GM offset, ResetFlagList flag 计算, UpdateGroupParams<kGmm1/kGmm2> GM offset
+  TilingByCore(...)   │ TilingByTile(...)       │ QuantProcessInRank, ResetFlagList, ResetGmm2CombineSyncCounters, Unpermute
+                       + tileIdx, totalTiles     │
+  cumsumRevCntInRank_ │ cumsumRevCntInRank 引用 │ SendCntCal 累加（需跨 expert 保持，改为引用参数）
+  cumsumInfoGlobalTensor_ │ cumsumInfoGlobalTensor 引用 │ SendCntCal A8W4 路径 GM 恢复/写回, ExpertTokenNumCopyOut A8W4 路径
+
+  orchestrator mega_moe.h 中仍保留的硬件 API 调用（合法：多核入口计算 TileInfo）:
+    GetBlockIdx() / GetTaskRation()  → tile.tileIdx      (Process 第349行, Init 第244行 cumsum stride)
+    GetBlockNum()                    → tile.totalTiles     (Process 第350行)
+    GetBlockIdx()                    → tile.aivTileIdx     (Process 第351行)
+    GetBlockNum() * 2                → tile.aivTotalTiles  (Process 第352行, SendAndQuantBuffInit 第304行)
+    GetSubBlockIdx()                 → tile.subTileIdx     (Process 第353行)
+
+三、逐模块对照详情
+─────────────────────────────────────────────────────────────────────────────────
+
+3.1 mega_moe_tile_info.h (59 行)
+────────────────────────────────
+  新增文件，原始 mega_moe.h 无对应独立模块。
+
+  内容:
+    - struct TileInfo { tileIdx, totalTiles, aivTileIdx, aivTotalTiles, subTileIdx }
+    - using TupleShape / BlockOffset / ExpertLoopState（从原始 class 内部类型提取）
+    - TilingByTile() 函数: 替代 mega_moe_base.h 中的 TilingByCore()
+      TilingByCore 内部调用 GetBlockIdx()/GetBlockNum()，
+      TilingByTile 将 coreIdx/coreNum 改为显式 tileIdx/totalTiles 参数。
+      算法逻辑完全一致: CeilDiv → CeilAlign → 边界裁剪。
+
+3.2 topk_gather.h (201 行) — namespace TopKGather
+────────────────────────────────
+  对应原始函数:
+    ResetFlagList           (原 419-442 行)
+    ResetGmm2CombineSyncCounters (原 949-965 行, 从 ResetFlagList 中合并调用)
+    SendMaskCal             (原 479-535 行)
+    SendCntCal              (原 607-656 行)
+
+  变换:
+    ResetFlagList:
+      - TilingByCore(flagNum, ...) → MegaMoeModules::TilingByTile(flagNum, ..., tile.aivTileIdx, tile.aivTotalTiles, 1)
+      - if constexpr (CombineQuantMode != COMBINE_NO_QUANT) → if (combineQuantEnabled) 运行时 bool 参数
+      - 类成员 resetTensor_ / swigluToGmm2FlagGm_ → 显式引用参数
+      - aicNum_ → aicNum 参数
+
+    ResetGmm2CombineSyncCounters:
+      - TilingByCore(totalCounters, ...) → TilingByTile(..., tile.aivTileIdx, tile.aivTotalTiles)
+      - blockAivNum_ → tile.aivTotalTiles
+      - 类成员 resetTensor_ → 显式引用参数
+
+    SendMaskCal:
+      - aivCoreIdx_ 循环起点 → tile.aivTileIdx
+      - blockAivNum_ 循环步长 → tile.aivTotalTiles
+      - 类成员 topkIdsTensor_ / sendMaskTensor_ / sendGatherOutTensor_ → 显式引用参数
+      - rankId_ / worldSize_ / expertPerRank_ / sendTotalNum_ / maskAlignSize_ / maskSlotSize_ / maskWinOffset_ → 显式参数
+
+    SendCntCal:
+      - blockIdx_ → tile.tileIdx (expertRevNumsGlobalTensor offset, AtomicAdd flag offset)
+      - cumsumRevCntInRank_ → uint64_t& cumsumRevCntInRank 引用参数（跨 expert 保持累加）
+      - aicNum_ → aicNum 参数
+      - if constexpr (ENABLE_A8W4) → bool enableA8W4 运行时参数
+      - 类成员多个 tensor → 显式引用参数
+
+3.3 token_dispatch.h (313 行) — namespace TokenDispatch
+────────────────────────────────
+  对应原始函数:
+    ExpertTokenNumCopyOut    (原 448-470 行)
+    QuantProcessInRank       (原 541-597 行)
+    CopyGMToGMPerToken       (原 668-749 行)
+    TripleInfoCalAndDispatch (原 758-825 行)
+
+  模板参数 (每函数单独声明):
+    <ActivationType, QuantOutType, QuantScaleOutType, QuantMode, ENABLE_A8W4>
+
+  变换:
+    ExpertTokenNumCopyOut:
+      - 无 blockIdx 引用，仅类成员 → 显式参数替换
+      - EVENT_ID0/1 → 硬编码 0/1 (原代码也用 SyncFuncStatic<S_MTE3, SYNC_EVENT_ID2> 等)
+
+    QuantProcessInRank:
+      - TilingByCore(m_, ...) → TilingByTile(m, ..., tile.aivTileIdx, tile.aivTotalTiles, 1)
+      - 类成员 xInTensor1_/2_, xOutTensor1_/2_, mxTempTensor_ → 显式引用参数
+      - m_ / k_ / mxQuant* → 显式参数
+
+    CopyGMToGMPerToken:
+      - 无直接 blockIdx 引用
+      - A_ELEMS_PER_BYTE 从类 constexpr → 函数内 constexpr (Std::IsSame<QuantOutType, fp4x2_e2m1_t>)
+      - 类成员多个 tensor → 显式引用参数
+
+    TripleInfoCalAndDispatch:
+      - blockIdx_ 循环起点 → tile.tileIdx
+      - blockNum_ 循环步长 → tile.totalTiles
+      - blockNumPerRank_ → blockNumPerRank 显式参数
+      - 类成员 → 显式参数
+      - tripleTensor_ 从类成员改为函数内 LocalTensor 局部分配（原代码也是在函数内动态分配）
+
+3.4 gmm1.h (159 行) — namespace MegaMoeModules::GMM1
+────────────────────────────────
+  对应原始函数:
+    UpdateGroupParams<kGmm1>  (原 835-892 行中 kGmm1 分支)
+    UpdateGlobalBuffer<kGmm1> (原 900-944 行中 kGmm1 分支)
+    GroupMatmulWithSwigluQuant (原 1217-1238 行)
+
+  组织方式: struct Gmm1<...> 含 static 方法
+  （而非 namespace 自由函数，因为需要 constexpr A_ELEMS_PER_BYTE/B_ELEMS_PER_BYTE/C_ELEMS_PER_BYTE + BlockEpilogue typedef）
+
+  变换:
+    UpdateGroupParams<kGmm1>:
+      - blockIdx_ → tile.tileIdx (sendCntFlag offset, expertRevNums offset)
+      - aicNum_ → aicNum 参数
+      - subBlockIdx_ == 0 → tile.subTileIdx == 0
+      - subBlockIdx_ == 1 分支使用 sendCnt → tile.subTileIdx != 0 分支使用 sendCnt
+      - expertRevNumsGlobalTensor_ → 显式引用参数
+
+    UpdateGlobalBuffer<kGmm1>:
+      - epilogueOp_ → epilogueOp 引用参数
+      - 类成员 params_ → const Params& params 参数
+
+    GroupMatmulWithSwigluQuant:
+      - epilogueOp_ → epilogueOp 引用参数
+      - startBlockIdx_ / vecSetSyncCom_ → 引用参数
+      - 逻辑完全保留: ENABLE_A8W4 → A8W4 路径; else → NZ/generic 分支
+
+3.5 swiglu_quant.h (68 行) — namespace SwigluQuant
+────────────────────────────────
+  对应原始: BlockEpilogueSwigluMxQuant 操作器的 Init/UpdateNextProblem/调用
+
+  新增内容（原始代码中这些逻辑嵌在 Init/Process 内）:
+    - InitEpilogue: 包装 epilogueOp_.Init()
+    - UpdateNextProblem: 包装 epilogueOp_.UpdateNextProblem()
+    - RunEpilogue: 包装 epilogueOp_(blockShape, blockCoord)
+      subBlockIdx_ → tile.subTileIdx 检查 (仅 AIV subTileIdx==0 执行)
+
+  注: 当前 orchestrator 未直接调用 SwigluQuant::InitEpilogue/RunEpilogue，
+      epilogueOp_.Init() 仍在 orchestrator Init() 中执行，
+      epilogue 的调用下沉到 MegaMoeImpl::GroupMatmulSwigluQuant 内部。
+      SwigluQuant 模块作为未来将 epilogue 调用也提取为显式参数的预留接口。
+
+3.6 gmm2.h (240 行) — namespace GMM2
+────────────────────────────────
+  对应原始函数:
+    UpdateGroupParams<kGmm2>      (原 835-892 行中 kGmm2 分支)
+    UpdateGlobalBuffer<kGmm2>     (原 900-944 行中 kGmm2 分支)
+    ResetGmm2CombineSyncCounters  (原 949-965 行)
+    InitCombineBuffers            (原 970-980 行)
+    ProcessCombine                (原 988-1052 行)
+    GroupMatmulWithCombine        (原 1246-1271 行)
+
+  组织方式: class Gmm2Module<...> 含成员方法
+  （需保留 constexpr 类型计算 + 内部调用 ProcessCombine）
+
+  变换:
+    UpdateGroupParams<kGmm2>:
+      - blockIdx_ → tile.tileIdx (expertRevNums offset)
+      - aicNum_ → params.tilingData->aicNum (从 Params 获取)
+      - expertRevNumsGlobalTensor_ → 显式引用参数
+
+    UpdateGlobalBuffer<kGmm2>:
+      - 类成员 params_ → const Params& params
+      - 类成员 → 显式参数
+
+    ResetGmm2CombineSyncCounters:
+      - TilingByCore → MegaMoeModules::TilingByTile(..., tile.aivTileIdx, tile.aivTotalTiles)
+      - blockAivNum_ → tile.aivTotalTiles
+      - 类成员 resetTensor_ → 显式引用参数
+
+    ProcessCombine:
+      - aivCoreIdx_ → tile.aivTileIdx (myCounterAddr, ComputeCoreGrouping)
+      - blockAivNum_ → tile.aivTotalTiles (totalCoresForGrouping, myCounterAddr)
+      - subBlockIdx_ → tile.subTileIdx (A8W4 过滤)
+      - 类成员 k_ / rankId_ / combineUbTensorSize_ → 显式参数
+
+    GroupMatmulWithCombine:
+      - gmm2PingPongIdx_ → 引用参数
+      - startBlockIdx_ / vecSetSyncCom_ → 引用参数
+      - ProcessCombine 内部调用 → this.ProcessCombine(..., tile, ...)
+
+3.7 combine_send.h (81 行) — namespace CombineSend
+────────────────────────────────
+  对应原始: mega_moe_combine_send.h 中 CombineTokens / CombineTokensLayered / CombineTokenGroup
+
+  变换:
+    - 全部为薄包装器，签名与 MegaMoeCombineImpl 原始函数一致，额外传入 TileInfo（当前未使用）
+    - CombineSendTokenToRemote 有已知问题注释:
+      内部仍调用 GetBlockIdx()/GetBlockNum()，违反单核模型，需未来重构
+
+  注: 当前 orchestrator Process() 未直接调用 CombineSend 模块，
+      combine 路径的调用下沉到 MegaMoeCombineImpl::CombineTokenGroup (在 gmm2.h ProcessCombine 内)。
+      CombineSend 模块作为未来将 CombineSendTokenToRemote 也提取为显式参数的预留接口。
+
+3.8 combine_reduce.h (188 行) — namespace CombineReduce
+────────────────────────────────
+  对应原始函数:
+    UnpermuteBuffInit → BuffInit (原 1058-1120 行)
+    Unpermute          (原 1126-1186 行)
+    CrossRankSyncInWorldSize (原 1192-1210 行)
+
+  新增: struct CombineReduceBuffers<CombineQuantMode> 持有 Unpermute 所需的全部 UB tensor
+
+  变换:
+    BuffInit:
+      - 类成员 dataResTensor_ 等 → CombineReduceBuffers 结构体
+      - TopkWeightsType 模板参数处理 (float/bf16 cast) 保留
+      - 无 blockIdx 引用
+
+    Unpermute:
+      - TilingByCore(m_, ...) → TilingByTile(m, ..., tile.aivTileIdx, tile.aivTotalTiles, 1)
+      - 类成员 tensor_ → buf 结构体成员引用
+      - EVENT_ID0/1 → 硬编码 0/1
+
+    CrossRankSyncInWorldSize:
+      - aivCoreIdx_ → tile.aivTileIdx (syncCount offset, 循环起点)
+      - blockAivNum_ → tile.aivTotalTiles (循环步长)
+      - 类成员 params_ / rankId_ / worldSize_ → 从 params 获取
+
+3.9 mega_moe.h (485 行) — 多核编排器
+────────────────────────────────
+  对应原始: class MegaMoe 全部 (Init, BuffInit 系列, Process)
+
+  保留内容:
+    - 全部成员变量声明（与原始完全一致，包括所有 LocalTensor/GlobalTensor/uint/scalar）
+    - Init() 方法: 与原始完全一致（硬件 API 仅用于 cumsum stride 计算）
+    - DispatchBuffInit(): 与原始完全一致
+    - SendAndQuantBuffInit(): 略有改动 — blockAivNum_ 局部变量用于 resetTensor 大小计算
+      (原代码用类成员 blockAivNum_ = GetBlockNum()*2，此处改为局部 uint32_t blockAivNum = GetBlockNum()*2)
+
+  新增内容:
+    - TileInfo tile 在 Process() 入口计算:
+        tile.tileIdx = GetBlockIdx() / GetTaskRation();
+        tile.totalTiles = GetBlockNum();
+        tile.aivTileIdx = GetBlockIdx();
+        tile.aivTotalTiles = GetBlockNum() * 2;
+        tile.subTileIdx = GetSubBlockIdx();
+
+    - using Gmm1Module / Gmm2Module / CombineReduceBuffers typedef
+    - gmm1Module_ / gmm2Module_ / combineReduceBuf_ 成员
+
+  Process() 流程对照 (原始 → 拆分后):
+    ┌──────────────────────────────┬──────────────────────────────────────────────────────┐
+    │ 原始 Process()               │ 拆分后 Process()                                     │
+    ├──────────────────────────────┼──────────────────────────────────────────────────────┤
+    │ SendAndQuantBuffInit()       │ SendAndQuantBuffInit()           (保留在 orchestrator) │
+    │ SendMaskCal()                │ TopKGather::SendMaskCal(tile, ...)                    │
+    │ ResetFlagList()              │ TopKGather::ResetFlagList(tile, ...)                  │
+    │ QuantProcessInRank()         │ TokenDispatch::QuantProcessInRank<...>(tile, ...)     │
+    │ SyncAll<false>()             │ SyncAll<false>()                 (保留在 orchestrator) │
+    │ CrossRankSyncInWorldSize()   │ CombineReduce::CrossRankSyncInWorldSize<...>(tile,..) │
+    │ DispatchBuffInit()           │ DispatchBuffInit()               (保留在 orchestrator) │
+    │ SendCntCal(0, nextSendCnt)   │ TopKGather::SendCntCal(tile, 0, ...)                  │
+    │ UpdateGroupParams<kGmm1>     │ gmm1Module_.UpdateGroupParams<kGmm1>(..., tile, ...)  │
+    │ UpdateGlobalBuffer<kGmm1>    │ gmm1Module_.UpdateGlobalBuffer<kGmm1>(..., epilogueOp_)│
+    │ TripleInfoCalAndDispatch     │ TokenDispatch::TripleInfoCalAndDispatch<...>(tile,...) │
+    │ expert loop:                 │ expert loop:                                          │
+    │   SendCntCal(e+1, ...)       │   TopKGather::SendCntCal(tile, e+1, ...)              │
+    │   UpdateGroupParams<kGmm1>   │   gmm1Module_.UpdateGroupParams<kGmm1>(..., tile, ...) │
+    │   UpdateGlobalBuffer<kGmm1>  │   gmm1Module_.UpdateGlobalBuffer<kGmm1>(...)          │
+    │   TripleInfoCalAndDispatch   │   TokenDispatch::TripleInfoCalAndDispatch<...>(tile,..)│
+    │   UpdateGroupParams<kGmm1>   │   gmm1Module_.UpdateGroupParams<kGmm1>(..., tile, ...) │
+    │   UpdateGlobalBuffer<kGmm1>  │   gmm1Module_.UpdateGlobalBuffer<kGmm1>(...)          │
+    │   GroupMatmulWithSwigluQuant │   gmm1Module_.GroupMatmulWithSwigluQuant(...)          │
+    │ EndSync                      │ EndSync                          (保留在 orchestrator) │
+    │ ExpertTokenNumCopyOut        │ TokenDispatch::ExpertTokenNumCopyOut<...>(...)        │
+    │ InitCombineBuffers           │ gmm2Module_.InitCombineBuffers(k_, ...)               │
+    │ expert loop GMM2:            │ expert loop GMM2:                                     │
+    │   UpdateGroupParams<kGmm2>   │   gmm2Module_.UpdateGroupParams(..., tile, ...)       │
+    │   UpdateGlobalBuffer<kGmm2>  │   gmm2Module_.UpdateGlobalBuffer(...)                 │
+    │   GroupMatmulWithCombine     │   gmm2Module_.GroupMatmulWithCombine(..., tile, ...)  │
+    │ EndGMM2Sync                  │ EndGMM2Sync                     (保留在 orchestrator) │
+    │ SyncAll<true>()              │ SyncAll<true>()                  (保留在 orchestrator) │
+    │ UnpermuteBuffInit            │ CombineReduce::BuffInit<..., TopkWeightsType>(buf,..) │
+    │ CrossRankSyncInWorldSize     │ CombineReduce::CrossRankSyncInWorldSize<...>(tile,..) │
+    │ Unpermute                    │ CombineReduce::Unpermute<...>(tile, buf, ...)         │
+    └──────────────────────────────┴──────────────────────────────────────────────────────┘
+
+四、模板参数传递方式
+─────────────────────────────────────────────────────────────────────────────────
+
+  原始: class MegaMoe<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode>
+        所有方法共享同一模板参数列表，内部类型 (QuantOutType 等) 作为类 typedef 自动可用。
+
+  拆分后:
+    - orchestrator mega_moe.h: 保留原始完整模板参数列表，计算所有派生类型
+    - 各 module 文件: 只接收自己需要的类型参数子集:
+
+      topk_gather.h:    无模板参数（纯运行时参数）
+      token_dispatch.h: <ActivationType, QuantOutType, QuantScaleOutType, QuantMode, ENABLE_A8W4>
+      gmm1.h:           struct Gmm1Module<QuantOutType, Weight1Type, SwigluQuantOutType, QuantScaleOutType, QuantMode, ENABLE_A8W4, ENABLE_A4W4>
+      swiglu_quant.h:   <SwigluQuantOutType, QuantScaleOutType>
+      gmm2.h:           class Gmm2Module<QuantOutType, Weight1Type, SwigluQuantOutType, QuantScaleOutType, QuantMode, CombineQuantMode, ENABLE_A8W4, ENABLE_A4W4>
+      combine_send.h:   <ElementMMadOut2> 或 <QuantMode, ElementMMadOut2>
+      combine_reduce.h: <CombineQuantMode> + BuffInit 额外需要 <TopkWeightsType>
+
+    - orchestrator 通过 using typedef 将 module 类型与自身模板绑定:
+        using Gmm1Module = MegaMoeModules::GMM1::Gmm1Module<QuantOutType, Weight1Type, ...>;
+        using Gmm2Module = GMM2::Gmm2Module<QuantOutType, Weight1Type, ...>;
+
+    - constexpr bool (ENABLE_A8W4, CombineQuantMode != COMBINE_NO_QUANT) 的传递:
+      部分模块接收为模板参数 (gmm1.h, gmm2.h)
+      部分模块接收为运行时 bool 参数 (topk_gather.h 的 combineQuantEnabled / enableA8W4)
+      原因: namespace 自由函数无法接收 constexpr bool 作为模板参数同时又保持签名简洁，
+            故 TopKGather 的 ResetFlagList/SendCntCal 改用运行时 bool；
+            GMM1/GMM2 的 struct/class 可以在模板参数中保留 constexpr bool 用于 if constexpr 分支。
+
+五、与首次 modules/ 版本的设计差异
+─────────────────────────────────────────────────────────────────────────────────
+
+  | 维度               | 首次 modules/ 版本                    | redo single_core/ 版本                |
+  |────────────────────|───────────────────────────────────────|───────────────────────────────────────|
+  | buffer 所有权       | 每个模块 State struct 复制 buffer 声明  | orchestrator class 独占所有 buffer     |
+  |                    | → 定义重复, 所有权模糊                  | → module 通过引用参数接收              |
+  | 函数形式            | namespace 自由函数                     | namespace 自由函数 / struct 静态方法   |
+  |                    |                                        | / class 成员方法 (gmm1/gmm2 需要       |
+  |                    |                                        |   constexpr typedef)                   |
+  | TileInfo            | 无独立文件, 内嵌在各模块               | 独立 mega_moe_tile_info.h             |
+  | ExpertLoopState     | 各模块自定义                           | 统一在 mega_moe_tile_info.h            |
+  | TupleShape/BlockOffset | 各模块自定义                       | 统一在 mega_moe_tile_info.h            |
+  | orchestrator        | 独立 orchestrator 文件调用模块         | mega_moe.h 即 orchestrator             |
+  |                    | class 仍持有 buffer 但更薄             | class 保留原始结构 + Process 组装调用   |
+
+六、已知问题与未来重构范围
+─────────────────────────────────────────────────────────────────────────────────
+
+  6.1 深层依赖仍使用 GetBlockIdx
+    - mega_moe_impl.h: GroupMatmulSwigluQuant / GroupMatmul2 / GroupMatmul2CombineA8W4
+      内部调用 ComputeCoreGrouping(aivCoreIdx_, ...) → 未提取
+    - mega_moe_combine_send.h: CombineSendTokenToRemote
+      内部调用 GetBlockIdx()/GetBlockNum() → combine_send.h 已注释标记
+    - block_epilogue_swiglu_mx_quant.h: 内部可能有 GetSubBlockIdx() → 未验证
+
+    这些文件不在本次拆分范围内（约束: 保持原始依赖文件不动），
+    未来需逐层下沉提取。
+
+  6.2 constexpr bool 运行时化
+    TopKGather::SendCntCal 的 enableA8W4 参数从 constexpr → bool，
+    导致 if constexpr (ENABLE_A8W4) 变为 if (enableA8W4)，
+    编译器无法在 false 分支做类型检查消除。
+    当前不影响功能（运行时分支选择正确），
+    但理想做法是将 SendCntCal 也改为模板参数传入 ENABLE_A8W4。
+
+  6.3 EVENT_ID 宏
+    combine_reduce.h Unpermute 中 EVENT_ID0/1 改为硬编码 0/1，
+    因 AscendC::EVENT_ID0 在 include 链中未定义。
+    原始代码使用 EVENT_ID0 = 0, EVENT_ID1 = 1，数值一致，
+    但建议未来确认宏定义来源并统一。
+
+  6.4 winRankAddr_ 全局变量
+    combine_reduce.h CrossRankSyncInWorldSize 使用 winRankAddr_[i]，
+    此全局变量定义在 mega_moe_base.h (inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE])。
+    orchestrator Init() 中已初始化 winRankAddr_[]，
+    但 module 文件依赖全局变量的链接正确性。
+    未来可考虑将 winRankAddr_ 也作为参数传入。
+
+  6.5 orchestrator 保留的 BuffInit 函数
+    DispatchBuffInit() / SendAndQuantBuffInit() 仍为 orchestrator 类方法，
+    因为它们负责 UB tensor 地址分配，与 buffer 所有权绑定。
+    未来可考虑将 BuffInit 也提取为 module 函数（传入 buffer 结构体引用），
+    但需注意 UB 地址分配必须与 buffer 使用在同一 class 生命周期内。
+
+七、验证结果
+─────────────────────────────────────────────────────────────────────────────────
+
+  禁止标识在 module 文件中的出现统计 (grep -rn):
+
+    GetBlockIdx    : 0 代码行 (仅注释中出现 7 次)
+    GetBlockNum    : 0 代码行 (仅注释中出现 6 次)
+    GetSubBlockIdx : 0 代码行 (仅注释中出现 5 次)
+    blockIdx_      : 0 代码行 (仅注释中出现 9 次)
+    aivCoreIdx_    : 0 代码行 (仅注释中出现 7 次)
+    subBlockIdx_   : 0 代码行 (仅注释中出现 6 次)
+    blockAivNum_   : 0 代码行 (仅注释中出现 6 次)
+    blockNum_      : 0 代码行 (仅注释中出现 5 次)
+    TilingByCore   : 0 代码行 (仅 mega_moe_tile_info.h 注释中出现 1 次)
+
+    orchestrator mega_moe.h 中合法保留:
+    GetBlockIdx()   : 3 次 (Process tile 计算 + Init cumsum stride + SendAndQuantBuffInit)
+    GetBlockNum()   : 3 次 (Process tile 计算 + Init cumsum stride + SendAndQuantBuffInit)
+    GetSubBlockIdx(): 1 次 (Process tile 计算)
+
+================================================================================
+  报告结束
+================================================================================
