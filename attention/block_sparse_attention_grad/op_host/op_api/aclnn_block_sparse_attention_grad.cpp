@@ -126,7 +126,6 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     CHECK_COND(dqDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dqOut dtype must match query dtype.");
     CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
     CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
-    std::cout<<op::ToString(params.query->GetStorageFormat()).GetString()<<std::endl;
     // format检查
     if (params.query->GetStorageFormat() != ge::FORMAT_ND ||
         params.key->GetStorageFormat() != ge::FORMAT_ND ||
