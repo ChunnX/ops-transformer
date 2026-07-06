@@ -693,10 +693,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     // gradZ_res = ExpGrad(z_res, skGrad)
     __local_mem__ U *zResPtr = zPtr + 2 * nAlign_;
     __local_mem__ U *gradZResPtr = gradZPtr + 2 * nAlign_;
-    // AscendC::printf("[DBG] before ExpGrad blk=%d\n", GetBlockIdx());
+    AscendC::DumpTensor(zBuf_.template Get<U>(), 204, lenBs * kAlign_);
     ExpGradSimdVf(gradZResPtr, skGradPtr, zResPtr, idxBs, lenBs);
-    // AscendC::printf("[DBG] after ExpGrad blk=%d\n", GetBlockIdx());
-    // AscendC::DumpTensor(gradZBuf_.template Get<U>(), 204, lenBs * kAlign_);
+    {
+        auto gradZUb = gradZBuf_.template Get<U>();
+        AscendC::DumpTensor(gradZUb[2 * nAlign_], 205, lenBs * nnAlign_);
+    }
 
     gradHResQue_.FreeTensor(gradHResUb);
 
@@ -881,16 +883,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
     __local_mem__ U *normOutPtr   = reinterpret_cast<__local_mem__ U *>(normOutUb.GetPhyAddr());
 
     auto tmpDivUb  = tmpDivBuf_.template Get<U>();
-    auto tmpDiv2Ub = tmpDiv2Buf_.template Get<U>();
     auto tmpDiv3Ub = tmpDiv3Buf_.template Get<U>();
-    auto tmpDiv4Ub = tmpDiv4Buf_.template Get<U>();
     auto tmpMulUb  = tmpMulBuf_.template Get<U>();
     auto tmpUb     = tmpBuf_.template Get<U>();
 
     __local_mem__ U *tmpDivPtr  = reinterpret_cast<__local_mem__ U *>(tmpDivUb.GetPhyAddr());
-    __local_mem__ U *tmpDiv2Ptr = reinterpret_cast<__local_mem__ U *>(tmpDiv2Ub.GetPhyAddr());
     __local_mem__ U *tmpDiv3Ptr = reinterpret_cast<__local_mem__ U *>(tmpDiv3Ub.GetPhyAddr());
-    __local_mem__ U *tmpDiv4Ptr = reinterpret_cast<__local_mem__ U *>(tmpDiv4Ub.GetPhyAddr());
     __local_mem__ U *tmpMulPtr  = reinterpret_cast<__local_mem__ U *>(tmpMulUb.GetPhyAddr());
     __local_mem__ U *tmpPtr     = reinterpret_cast<__local_mem__ U *>(tmpUb.GetPhyAddr());
 
@@ -902,20 +900,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
         __local_mem__ U *rowSumBase = sumOutRowPtr + iter * ubFactorBS_ * nAlign_;
         __local_mem__ U *rowNormBase = normOutPtr + iter * ubFactorBS_ * nnAlign_;
 
-        if (iter == skIterCount_ - 1) {
-            // AscendC::printf("[DBG SK] iter=%d colSumBase=%d rowSumBase=%d rowNormBase=%d\n",
-            // AscendC::printf("[DBG SK] skGrad[0]=%f skGrad[1]=%f colSum[0]=%f colSum[1]=%f\n",
-            // AscendC::DumpTensor(sumOutColBuf_.template Get<U>(), 210, 8);
-            // AscendC::DumpTensor(sumOutRowBuf_.template Get<U>(), 211, 8);
-            // AscendC::DumpTensor(normOutBuf_.template Get<U>(), 212, 8);
-        }
-
-        // ---- Stage 1: tmpMul/tmpDiv/tmpDiv2 ----
+        // Stage 1+2: tmpDiv = skGrad/colSum, tmp = sum_k(skGrad*normOut/colSum²)
         __VEC_SCOPE__
         {
             MicroAPI::RegTensor<U> colSumReg, rowNormReg, skGradReg;
-            MicroAPI::RegTensor<U> tmpDivReg, tmpDiv2Reg, tmpMulReg;
-            MicroAPI::RegTensor<U> colSumSqReg;
+            MicroAPI::RegTensor<U> tmpDivReg, tmpMulReg, colSumSqReg, tmpDiv2Reg, reduceSumReg;
             MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
             uint32_t maskLenN = static_cast<uint32_t>(n_);
 
@@ -926,45 +915,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
 
                 MicroAPI::DataCopy(colSumReg, colSumBase + bsOffN);
                 MicroAPI::Mul(colSumSqReg, colSumReg, colSumReg, maskN);
+                MicroAPI::Duplicate(reduceSumReg, U(0), maskN);
 
                 for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
                     MicroAPI::DataCopy(rowNormReg, rowNormBase + bsOff + k * nAlign_);
                     MicroAPI::DataCopy(skGradReg, skGradPtr + bsOff + k * nAlign_);
 
-                    MicroAPI::Mul(tmpMulReg, rowNormReg, skGradReg, maskN);
-                    MicroAPI::DataCopy(tmpMulPtr + bsOff + k * nAlign_, tmpMulReg, maskN);
-
                     MicroAPI::Div(tmpDivReg, skGradReg, colSumReg, maskN);
                     MicroAPI::DataCopy(tmpDivPtr + bsOff + k * nAlign_, tmpDivReg, maskN);
 
+                    MicroAPI::Mul(tmpMulReg, rowNormReg, skGradReg, maskN);
                     MicroAPI::Div(tmpDiv2Reg, tmpMulReg, colSumSqReg, maskN);
-                    MicroAPI::DataCopy(tmpDiv2Ptr + bsOff + k * nAlign_, tmpDiv2Reg, maskN);
-                }
-            }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-        }
-
-        if (iter == skIterCount_ - 1) {
-            AscendC::printf("[DBG SK] after Stage1\n");
-            // AscendC::DumpTensor(tmpDivBuf_.template Get<U>(), 220, 8);
-            // AscendC::DumpTensor(tmpDiv2Buf_.template Get<U>(), 221, 8);
-            // AscendC::DumpTensor(tmpMulBuf_.template Get<U>(), 222, 8);
-        }
-
-        // ---- Stage 2: tmp = sum_k(tmpDiv2) ----
-        __VEC_SCOPE__
-        {
-            MicroAPI::RegTensor<U> tmpDiv2Reg, reduceSumReg;
-            MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
-            uint32_t maskLenN = static_cast<uint32_t>(n_);
-
-            for (uint16_t j = 0; j < bsLenLoop; j++) {
-                maskN = MicroAPI::UpdateMask<U>(maskLenN);
-                int64_t bsOff = j * nnAlign_;
-                int64_t bsOffN = j * nAlign_;
-                MicroAPI::Duplicate(reduceSumReg, U(0), maskN);
-                for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
-                    MicroAPI::DataCopy(tmpDiv2Reg, tmpDiv2Ptr + bsOff + k * nAlign_);
                     MicroAPI::Add(reduceSumReg, reduceSumReg, tmpDiv2Reg, maskN);
                 }
                 MicroAPI::DataCopy(tmpPtr + bsOffN, reduceSumReg, maskN);
@@ -972,18 +933,18 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         }
 
-        if (iter == skIterCount_ - 1) {
-            AscendC::printf("[DBG SK] after Stage2\n");
-            // AscendC::DumpTensor(tmpBuf_.template Get<U>(), 230, 8);
-        }
-
-        // ---- Stage 3: tmpDiv3/tmpDiv4 ----
+        // Stage 3+4: gradRow=tmpDiv-tmp; tmpDiv3=gradRow/rowSum;
+        //   colReduce=sum_m(gradRow*normOut/rowSum) 行内求和; skGrad=tmpDiv3-colReduce
         __VEC_SCOPE__
         {
             MicroAPI::RegTensor<U> tmpDivReg, rowNormReg, tmpSubReg, gradXRowNormedReg;
             MicroAPI::RegTensor<U> tmpDiv3Reg, tmpDiv4Reg, rowSumBcastReg;
+            MicroAPI::RegTensor<U> colReduceReg, colReduceBcastReg, skGradReg, zeroReg;
             MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
+            MicroAPI::MaskReg allMask = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
             uint32_t maskLenN = static_cast<uint32_t>(n_);
+
+            MicroAPI::Duplicate(zeroReg, U(0), allMask);
 
             for (uint16_t j = 0; j < bsLenLoop; j++) {
                 maskN = MicroAPI::UpdateMask<U>(maskLenN);
@@ -997,61 +958,22 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
                     MicroAPI::DataCopy(tmpDivReg, tmpDivPtr + bsOff + k * nAlign_);
                     MicroAPI::DataCopy(rowNormReg, rowNormBase + bsOff + k * nAlign_);
 
-                    // gradRow = tmpDiv - tmp  (golden: x_grad/col_sum - sum(x_grad*normOut/col_sum²))
                     MicroAPI::Sub(tmpSubReg, tmpDivReg, gradXRowNormedReg, maskN);
                     MicroAPI::Duplicate(rowSumBcastReg, rowSumVal, maskN);
                     MicroAPI::Div(tmpDiv3Reg, tmpSubReg, rowSumBcastReg, maskN);
+                    MicroAPI::DataCopy(tmpDiv3Ptr + bsOff + k * nAlign_, tmpDiv3Reg, maskN);
+
                     MicroAPI::Mul(tmpDiv4Reg, tmpSubReg, rowNormReg, maskN);
                     MicroAPI::Div(tmpDiv4Reg, tmpDiv4Reg, rowSumBcastReg, maskN);
-
-                    MicroAPI::DataCopy(tmpDiv3Ptr + bsOff + k * nAlign_, tmpDiv3Reg, maskN);
-                    MicroAPI::DataCopy(tmpDiv4Ptr + bsOff + k * nAlign_, tmpDiv4Reg, maskN);
-                }
-            }
-            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-        }
-
-        if (iter == skIterCount_ - 1) {
-            AscendC::printf("[DBG SK] after Stage3\n");
-            AscendC::DumpTensor(tmpDiv3Buf_.template Get<U>(), 240, lenBs * nnAlign_);
-            AscendC::DumpTensor(tmpDiv4Buf_.template Get<U>(), 241, lenBs * nnAlign_);
-        }
-
-        // ---- Stage 4: skGrad = tmpDiv3 - sum_m(tmpDiv4[k][m]) ----
-        // golden: colReduce[i] = sum_j(tmpDiv4[i][j]), 广播到每列
-        // 注意: Reduce<SUM> 不尊重 mask, 会对整个 VReg 求和, padding 必须为 0
-        __VEC_SCOPE__
-        {
-            MicroAPI::RegTensor<U> tmpDiv3Reg, tmpDiv4Reg, colReduceReg, colReduceBcastReg, skGradReg;
-            MicroAPI::RegTensor<U> zeroReg;
-            MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
-            MicroAPI::MaskReg allMask = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
-            uint32_t maskLenN = static_cast<uint32_t>(n_);
-
-            MicroAPI::Duplicate(zeroReg, U(0), allMask);
-
-            for (uint16_t j = 0; j < bsLenLoop; j++) {
-                maskN = MicroAPI::UpdateMask<U>(maskLenN);
-                int64_t bsOff = j * nnAlign_;
-                int64_t bsOffN = j * nAlign_;
-
-                for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
-                    MicroAPI::DataCopy(tmpDiv4Reg, tmpDiv4Ptr + bsOff + k * nAlign_);
                     MicroAPI::Select(tmpDiv4Reg, tmpDiv4Reg, zeroReg, maskN);
                     MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(colReduceReg, tmpDiv4Reg, allMask);
                     MicroAPI::Duplicate(colReduceBcastReg, colReduceReg, maskN);
 
-                    MicroAPI::DataCopy(tmpDiv3Reg, tmpDiv3Ptr + bsOff + k * nAlign_);
                     MicroAPI::Sub(skGradReg, tmpDiv3Reg, colReduceBcastReg, maskN);
                     MicroAPI::DataCopy(skGradPtr + bsOff + k * nAlign_, skGradReg, maskN);
                 }
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-        }
-
-        if (iter == skIterCount_ - 1) {
-            AscendC::printf("[DBG SK] after Stage4\n");
-            // AscendC::DumpTensor(tmpBuf_.template Get<U>(), 250, lenBs * nAlign_);
         }
     }
 }
@@ -1087,71 +1009,70 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
         MicroAPI::RegTensor<U> sumAllReg, sumAllBcastReg, isMaxReg, expGradReg;
         MicroAPI::RegTensor<U> idxReg, idxSelectReg, zeroReg, oneReg, negInfReg;
         MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg maskNN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg allMask = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg cmpMask, maxMask;
         uint32_t maskLenN = static_cast<uint32_t>(n_);
-        uint32_t maskLenNN = static_cast<uint32_t>(nn_);
 
-        MicroAPI::Duplicate(zeroReg, U(0), maskN);
-        MicroAPI::Duplicate(oneReg, U(1), maskN);
-        MicroAPI::Duplicate(negInfReg, U(-3.402823466e+38F), maskN);
+        MicroAPI::Duplicate(zeroReg, U(0), allMask);
+        MicroAPI::Duplicate(oneReg, U(1), allMask);
+        MicroAPI::Duplicate(negInfReg, U(-3.402823466e+38F), allMask);
 
         for (uint16_t i = 0; i < bsLenLoop; i++) {
             maskN = MicroAPI::UpdateMask<U>(maskLenN);
-            maskNN = MicroAPI::UpdateMask<U>(maskLenNN);
             int64_t bsOffZ = i * kAlign_;
-            int64_t bsOff = i * nnAlign_;
+            int64_t bsOffSk = i * nnAlign_;
+            int64_t bsOut = i * kAlign_;
 
-            // Step 1: Find max and isMax per row (n_ rows × n_ cols, each row padded to nAlign_)
+            // Step 1: Find max and isMax per row
             for (uint16_t j = 0; j < static_cast<uint16_t>(n_); j++) {
                 int64_t rowOffZ = bsOffZ + j * nAlign_;
-                int64_t rowOff = bsOff + j * nAlign_;
+                int64_t rowOffSk = bsOffSk + j * nAlign_;
+                int64_t rowOut = bsOut + j * nAlign_;
                 MicroAPI::DataCopy(zResReg, zResPtr + rowOffZ);
+                MicroAPI::Select(zResReg, zResReg, negInfReg, maskN);
 
-                // Find max value and index
-                MicroAPI::Reduce<MicroAPI::ReduceType::MAX, U, U>(zResMaxReg, zResReg, maskN);
+                MicroAPI::Reduce<MicroAPI::ReduceType::MAX, U, U>(zResMaxReg, zResReg, allMask);
                 MicroAPI::Duplicate(zResMaxBcastReg, zResMaxReg, maskN);
 
-                // Compare to find max position
                 MicroAPI::Compare<U>(maxMask, zResMaxBcastReg, zResReg, maskN);
                 MicroAPI::Arange(idxReg, 0);
                 MicroAPI::Select(idxSelectReg, idxReg, negInfReg, maxMask);
                 MicroAPI::Reduce<MicroAPI::ReduceType::MAX, U, U>(zResMaxIdxReg, idxSelectReg, maskN);
                 MicroAPI::Select(isMaxReg, oneReg, zeroReg, maxMask);
 
-                // Store max and isMax per row (aligned)
-                MicroAPI::DataCopy(zResMaxPtr + rowOff, zResMaxBcastReg, maskN);
-                MicroAPI::DataCopy(isMaxPtr + rowOff, isMaxReg, maskN);
+                MicroAPI::DataCopy(zResMaxPtr + rowOffSk, zResMaxBcastReg, maskN);
+                MicroAPI::DataCopy(isMaxPtr + rowOffSk, isMaxReg, maskN);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
             // Step 2: exp(z - max) * skGrad → tmpMul
-            // Load full n×n matrix (aligned)
             for (uint16_t j = 0; j < static_cast<uint16_t>(n_); j++) {
                 int64_t rowOffZ = bsOffZ + j * nAlign_;
-                int64_t rowOff = bsOff + j * nAlign_;
+                int64_t rowOffSk = bsOffSk + j * nAlign_;
                 MicroAPI::DataCopy(zResReg, zResPtr + rowOffZ);
-                MicroAPI::DataCopy(zResMaxReg, zResMaxPtr + rowOff);
-                MicroAPI::DataCopy(skGradReg, skGradPtr + rowOff);
+                MicroAPI::DataCopy(zResMaxReg, zResMaxPtr + rowOffSk);
+                MicroAPI::DataCopy(skGradReg, skGradPtr + rowOffSk);
                 MicroAPI::Sub(tmpSubReg, zResReg, zResMaxReg, maskN);
                 MicroAPI::Exp(tmpExpReg, tmpSubReg, maskN);
                 MicroAPI::Mul(tmpMulReg, tmpExpReg, skGradReg, maskN);
-                MicroAPI::DataCopy(tmpMulPtr + rowOff, tmpMulReg, maskN);
+                MicroAPI::DataCopy(tmpMulPtr + rowOffSk, tmpMulReg, maskN);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
-            // Step 3: expGrad = tmpMul - isMax * sum(tmpMul) per row
+            // Step 3: expGrad = tmpMul - isMax * sum(tmpMul)
             for (uint16_t j = 0; j < static_cast<uint16_t>(n_); j++) {
-                int64_t rowOff = bsOff + j * nAlign_;
-                MicroAPI::DataCopy(tmpMulReg, tmpMulPtr + rowOff);
-                MicroAPI::DataCopy(isMaxReg, isMaxPtr + rowOff);
-
-                MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(sumAllReg, tmpMulReg, maskN);
+                int64_t rowOffSk = bsOffSk + j * nAlign_;
+                int64_t rowOut = bsOut + j * nAlign_;
+                MicroAPI::DataCopy(tmpMulReg, tmpMulPtr + rowOffSk);
+                MicroAPI::Select(tmpMulReg, tmpMulReg, zeroReg, maskN);
+                MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(sumAllReg, tmpMulReg, allMask);
                 MicroAPI::Duplicate(sumAllBcastReg, sumAllReg, maskN);
+
+                MicroAPI::DataCopy(isMaxReg, isMaxPtr + rowOffSk);
                 MicroAPI::Mul(tmpMul2Reg, isMaxReg, sumAllBcastReg, maskN);
                 MicroAPI::Sub(expGradReg, tmpMulReg, tmpMul2Reg, maskN);
 
-                MicroAPI::DataCopy(expGradPtr + rowOff, expGradReg, maskN);
+                MicroAPI::DataCopy(expGradPtr + rowOut, expGradReg, maskN);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         }
