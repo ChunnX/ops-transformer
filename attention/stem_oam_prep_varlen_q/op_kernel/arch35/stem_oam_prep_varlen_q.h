@@ -162,8 +162,8 @@ __simd_vf__ inline void ComputeWeightedGroupSumVf(
 {
     using namespace AscendC::MicroAPI;
 
-    constexpr uint16_t FLOAT_REP_SIZE = 64;
-    uint16_t dLoops = dimQk / FLOAT_REP_SIZE;
+    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vlIterF = (dimQk + VL_F - 1) / VL_F;
 
     RegTensor<float> qReg;
     RegTensor<float> scaleBrcReg;
@@ -171,21 +171,20 @@ __simd_vf__ inline void ComputeWeightedGroupSumVf(
     MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
 
     for (uint16_t g = 0; g < S; g++) {
-        for (uint16_t vi = 0; vi < dLoops; vi++) {
+        for (uint16_t vi = 0; vi < vlIterF; vi++) {
             Duplicate(accReg, 0.0f, maskAll);
             for (uint16_t r = 0; r < R; r++) {
                 uint16_t row_idx = r * S + g;
                 uint32_t scaleOffset = static_cast<uint32_t>(row_idx) * numQHeads + headIdx;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(
+                DataCopy<float, LoadDist::DIST_BRC_B32>(
                     scaleBrcReg, scalePtr + scaleOffset);
-                uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * FLOAT_REP_SIZE;
-                LoadAlign(qReg, qFP32Ptr + qOffset);
+                uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * VL_F;
+                DataCopy(qReg, qFP32Ptr + qOffset);
                 Mul(qReg, qReg, scaleBrcReg, maskAll);
                 Add(accReg, accReg, qReg, maskAll);
             }
-            uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * FLOAT_REP_SIZE;
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(
-                (__ubuf__ float*&)groupSumPtr + outOffset, accReg, maskAll);
+            uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * VL_F;
+            DataCopy(groupSumPtr + outOffset, accReg, maskAll);
         }
     }
 }
@@ -454,31 +453,20 @@ private:
     {
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
-        LocalTensor<float> qFP32Local = qBlockFP32Buf_.Get<float>();
-        LocalTensor<float> scalesLocal = scalesBuf_.Get<float>();
-        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
+        __ubuf__ float* qFP32Ptr =
+            (__ubuf__ float*)qBlockFP32Buf_.Get<float>().GetPhyAddr();
+        __ubuf__ float* scalePtr =
+            (__ubuf__ float*)scalesBuf_.Get<float>().GetPhyAddr();
+        __ubuf__ float* groupSumPtr =
+            (__ubuf__ float*)groupSumBuf_.Get<float>().GetPhyAddr();
 
-        Duplicate(groupSumLocal, 0.0f, S_ * dim_qk_);
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-
-        for (uint16_t g = 0; g < S_; g++) {
-            for (uint16_t d = 0; d < dim_qk_; d++) {
-                float acc = 0.0f;
-                for (uint16_t r = 0; r < R_; r++) {
-                    uint16_t row_idx = r * S_ + g;
-                    uint32_t scaleOffset = static_cast<uint32_t>(row_idx) * num_q_heads_ + head_idx_;
-                    uint32_t qIdx = static_cast<uint32_t>(row_idx) * dim_qk_ + d;
-                    float qVal = qFP32Local.GetValue(qIdx);
-                    float sVal = scalesLocal.GetValue(scaleOffset);
-                    acc += qVal * sVal;
-                }
-                uint32_t outIdx = static_cast<uint32_t>(g) * dim_qk_ + d;
-                groupSumLocal.SetValue(outIdx, acc);
-            }
-        }
-        SetFlag<HardEvent::S_V>(EVENT_ID0);
-        WaitFlag<HardEvent::S_V>(EVENT_ID0);
+        VF_CALL<ComputeWeightedGroupSumVf>(qFP32Ptr, scalePtr, groupSumPtr,
+            static_cast<uint16_t>(S_),
+            static_cast<uint16_t>(R_),
+            static_cast<uint16_t>(dim_qk_),
+            static_cast<uint16_t>(num_q_heads_),
+            static_cast<uint16_t>(head_idx_));
+        PipeBarrier<PIPE_V>();
     }
 
     /**
