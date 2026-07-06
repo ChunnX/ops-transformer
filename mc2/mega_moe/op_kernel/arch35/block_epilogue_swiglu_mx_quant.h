@@ -160,7 +160,6 @@ public:
 
 private:
     __aicore__ inline void VFDoSwigluForMX(uint16_t mSize, uint16_t pingpongIdx = 0);
-    __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN, uint16_t pingpongIdx = 0);
 
     template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false>
     __aicore__ inline void VFDoSwigluAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
@@ -189,8 +188,6 @@ private:
 
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
-    __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
-
     __aicore__ inline void CopyScaleFromUb2GmCompact(uint64_t blockCount, uint64_t offset,
                                                      AscendC::LocalTensor<int8_t> &src);
     // GM ADDR
@@ -207,7 +204,6 @@ private:
     AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, kUbSecondOffset, MAX_SINGLE_MN};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
-    AscendC::LocalTensor<int8_t> quantScaleBlockOutput_;
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
@@ -215,7 +211,6 @@ private:
 
     int64_t n_;
     int64_t scaleN_;
-    int64_t scaleBlockN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
     uint32_t singleM_; // cur singleShapeM
     uint32_t singleN_;
@@ -262,10 +257,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     constexpr uint32_t halfScaleOffset = maxExpOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
     halfScale_ = AscendC::LocalTensor<uint16_t>(
         AscendC::TPosition::VECCALC, halfScaleOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
-    constexpr uint32_t quantScaleBlockOffset = halfScaleOffset +
-        MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
-    quantScaleBlockOutput_ = AscendC::LocalTensor<int8_t>(
-        AscendC::TPosition::VECOUT, quantScaleBlockOffset, params_->baseM * AscendC::ONE_BLK_SIZE);
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -308,19 +299,6 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         ub2GmParams.dstStride = n_ - singleN_;
     }
     AscendC::DataCopyPad(quantOutputGlobal_[offset], src, ub2GmParams);
-}
-
-BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
-    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
-{
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
-        * MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
-    ub2GmParams.blockLen = blockScaleN * sizeof(int8_t); // 8
-    ub2GmParams.blockCount = blockCount; // 128
-    ub2GmParams.dstStride = (scaleN_ - blockScaleN) * sizeof(int8_t);
-    AscendC::DataCopyPad(quantScaleGlobal_[offset], src, ub2GmParams);
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -705,33 +683,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxScaleLayout(uint16_t mSize,
-                                                                                           uint16_t scaleBlockN,
-                                                                                           uint16_t pingpongIdx)
-{
-    const uint32_t pongShift = (IsInterleaved_ && pingpongIdx == 1U) ? MAX_SINGLE_MN * sizeof(DataTypeIn) : 0U;
-    __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr() + pongShift;
-    __ubuf__ int8_t *quantScaleBlockOutputInUbAddr =
-        (__ubuf__ int8_t *)quantScaleBlockOutput_.GetPhyAddr() + pongShift;
-    // scale layout: (mSize*8) -> (mSize,32)
-    __VEC_SCOPE__
-    {
-        for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) { // 128
-            uint32_t elemNum = scaleBlockN; // 8
-            AscendC::MicroAPI::MaskReg maskScaleN = AscendC::MicroAPI::UpdateMask<int8_t>(elemNum);
-            AscendC::MicroAPI::RegTensor<int8_t> vreg0;
-            AscendC::MicroAPI::UnalignReg u0, u1;
-            auto srcUb = quantScaleOutputInUbAddr + mIdx * scaleBlockN;
-            AscendC::MicroAPI::DataCopyUnAlignPre(u0, srcUb); // 初始化
-            AscendC::MicroAPI::DataCopyUnAlign(vreg0, u0, srcUb); // ?
-            auto dstUb = quantScaleBlockOutputInUbAddr + mIdx * AscendC::ONE_BLK_SIZE; // mId * 32
-            AscendC::MicroAPI::DataCopy<int8_t, AscendC::MicroAPI::StoreDist::DIST_NORM_B8>(dstUb, vreg0, maskScaleN);
-        }
-    }
-}
-
-BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline auto BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
 {
     return l0cOutUbFirst_;
@@ -751,8 +702,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
 {
     singleM_ = Get<M_VALUE>(blockShape); // 128
     singleN_ = Get<N_VALUE>(blockShape); // 256
-    scaleBlockN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE))
-        * MXFP_MULTI_BASE_SIZE;
     blockCoord_ = blockCoord;
 
     if (singleM_ == 0) {
@@ -766,34 +715,22 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
     VFDoSwigluForMX(singleM_, pingpongIdx); // switch(x)*y 计算quant quantScale
-    if constexpr (!(IsInterleaved_ && AscendC::IsSameType<DataTypeIn, bfloat16_t>::value)) {
-        TransMxScaleLayout(singleM_, scaleBlockN_, pingpongIdx); // 重排scale
-    }
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     if constexpr (IsInterleaved_) {
         constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
         if (pingpongIdx == 1U) {
             AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[PONG_INT8_ELEMS];
-            AscendC::LocalTensor<int8_t> quantScaleBlockPong = quantScaleBlockOutput_[PONG_INT8_ELEMS];
             AscendC::LocalTensor<int8_t> quantScalePong = quantScaleOutput_[PONG_INT8_ELEMS];
             CopyOutputFromUb2Gm(singleM_, yOffset, quantOutputPong);
-            if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
-                CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScalePong);
-            } else {
-                CopyScaleFromUb2Gm(singleM_, yScaleOffset, quantScaleBlockPong);
-            }
+            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScalePong);
         } else {
             CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-            if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
-                CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
-            } else {
-                CopyScaleFromUb2Gm(singleM_, yScaleOffset, quantScaleBlockOutput_);
-            }
+            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
         }
     } else {
         CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-        CopyScaleFromUb2Gm(singleM_, yScaleOffset, quantScaleBlockOutput_);
+        CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
