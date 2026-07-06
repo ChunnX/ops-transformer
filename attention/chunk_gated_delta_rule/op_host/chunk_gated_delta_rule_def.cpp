@@ -42,7 +42,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("initial_state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("actual_seq_lengths")
@@ -64,10 +64,10 @@ public:
             .AutoContiguous();
         this->Output("final_state")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-            
+
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
 
         OpAICoreConfig aicoreConfig;
@@ -79,6 +79,16 @@ public:
             .ExtendCfgInfo("softsync.flag", "true");
         this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
+
+        OpAICoreConfig config_950;
+        config_950.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("softsync.flag", "true")
+            .ExtendCfgInfo("opFile.value", "chunk_gated_delta_rule_apt");
+        this->AICore().AddConfig("ascend950", config_950);
     }
 };
 OP_ADD(ChunkGatedDeltaRule); // 添加算子信息库
