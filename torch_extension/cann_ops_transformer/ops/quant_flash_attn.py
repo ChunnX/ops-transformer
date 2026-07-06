@@ -52,7 +52,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
 
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
-            "Tensor? p_scale=None, "
+            "Tensor? block_table=None, Tensor? p_scale=None, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
@@ -87,6 +87,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
             q_descale: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
             quant_mode: int,
+            block_table: Optional[torch.Tensor] = None,
             p_scale: Optional[torch.Tensor] = None,
             cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
@@ -212,6 +213,7 @@ def quant_flash_attn(
         q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
         q_descale: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
         quant_mode: int,
+        block_table: Optional[torch.Tensor] = None,
         p_scale: Optional[torch.Tensor] = None,
         cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
         seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
@@ -233,6 +235,7 @@ def quant_flash_attn(
         q, k, v,
         q_descale, k_descale, v_descale,
         quant_mode,
+        block_table,
         p_scale,
         cu_seqlens_q, cu_seqlens_kv,
         seqused_q, seqused_kv,

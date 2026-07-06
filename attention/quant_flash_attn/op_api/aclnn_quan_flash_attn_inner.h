@@ -21,6 +21,7 @@ extern "C" {
 extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional,
     const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,

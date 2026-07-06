@@ -23,8 +23,8 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, True, True, True, True, True, True, True])
+        [False, False, False, False, False, False, False, False, False, False, False, False, False],
+        [False, False, False, True, True, True, True, True, True, True, True, True, True])
     def QuantFlashAttn(q: Tensor,
         k: Tensor,
         v: Tensor,
@@ -32,6 +32,7 @@ if _TORCHAIR_AVAILABLE:
         k_descale: Tensor,
         v_descale: Tensor,
         quant_mode: int,
+        block_table: Optional[Tensor] = None,
         p_scale: Optional[Tensor] = None,
         cu_seqlens_q: Optional[Tensor] = None,
         cu_seqlens_kv: Optional[Tensor] = None,
@@ -64,6 +65,7 @@ if _TORCHAIR_AVAILABLE:
         k_descale: Tensor,
         v_descale: Tensor,
         quant_mode: int,
+        block_table: Tensor = None,
         p_scale: Tensor = None,
         cu_seqlens_q: Tensor = None,
         cu_seqlens_kv: Tensor = None,

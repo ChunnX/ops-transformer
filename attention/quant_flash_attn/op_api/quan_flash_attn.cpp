@@ -21,6 +21,7 @@ OP_TYPE_REGISTER(QuantFlashAttn);
 const std::array<const aclTensor *, 2> QuantFlashAttn(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional,
     const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,
@@ -37,12 +38,15 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     int32_t paBlockSize, int32_t returnSoftmaxLse,
     aclOpExecutor *executor)
 {
-    L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, pScaleOptional,
+    L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
            cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
            quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
            layoutQ, layoutKv, layoutOut, paBlockSize, returnSoftmaxLse);
 
+    if (blockTableOptional == nullptr) {
+        blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
     if (pScaleOptional == nullptr) {
         pScaleOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     }
@@ -72,7 +76,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(QuantFlashAttn,
-                           OP_INPUT(q, k, v, qDescale, kDescale, vDescale, pScaleOptional,
+                           OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                                     cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
@@ -85,7 +89,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         QuantFlashAttn,
-        OP_INPUT(q, k, v, qDescale, kDescale, vDescale, pScaleOptional,
+        OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                  cuSeqlensQOptional, cuSeqlensKvOptional,
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),

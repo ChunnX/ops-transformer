@@ -41,6 +41,7 @@ quant_flash_attn(
     const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     const at::Tensor &q_descale, const at::Tensor &k_descale, const at::Tensor &v_descale,
     int64_t quant_mode,
+    const c10::optional<at::Tensor> &block_table,
     const c10::optional<at::Tensor> &p_scale,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
@@ -100,7 +101,7 @@ quant_flash_attn(
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
 
     ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale,
-              p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
+              block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
               quant_mode,
               softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_kv_ptr,
               layout_out_ptr, pa_block_size, return_softmax_lse, attentionOutput, softmaxLse);

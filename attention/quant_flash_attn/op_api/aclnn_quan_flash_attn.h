@@ -34,6 +34,8 @@ extern "C" {
  *                                  Shape depends on quantization granularity.
  * @param kDescale            [IN]  key descale tensor. Dtype E8M0 (quant_mode=1).
  * @param vDescale            [IN]  value descale tensor. Dtype E8M0 (quant_mode=1).
+ * @param blockTableOptional  [IN]  optional. Block index table for paged attention, INT32.
+ *                                  shape=(B, max_num_blocks_per_seq). Required when layout_kv is PA_*.
  * @param pScaleOptional      [IN]  optional. P scale tensor for per-token scaling.
  * @param cuSeqlensQOptional  [IN]  optional. Query cumulative sequence lengths, INT32.
  *                                  shape=(B+1,). Effective in TND variable-length scenario.
@@ -72,6 +74,7 @@ extern "C" {
 aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional,
     const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,

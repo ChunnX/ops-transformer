@@ -30,6 +30,7 @@ extern "C" {
 aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional,
     const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
@@ -53,7 +54,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     QuantFlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
     aclnnStatus ret = aclnnInnerQuantFlashAttnGetWorkspaceSize(
-        q, k, v, qDescale, kDescale, vDescale, pScaleOptional,
+        q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
         cuSeqlensQOptional, cuSeqlensKvOptional,
         sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
         quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
