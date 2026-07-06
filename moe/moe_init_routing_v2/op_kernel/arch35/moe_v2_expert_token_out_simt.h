@@ -45,6 +45,8 @@ private:
     __gm__ int32_t *expertTokensCountOrCumsumGm_;
     GlobalTensor<int32_t> expertTokensCountOrCumsumGmOut;
     __gm__ int32_t *expertFirstIndexGm_;
+    __gm__ int32_t *expandedExpertIdxIndexGm_;
+    __gm__ int32_t *expandedRowIdxIndexGm_;
 
     LocalTensor<int32_t> lastExpertIdCunsum_;
     __ubuf__ int32_t *lastExpertIdCunsumAddr_;
@@ -58,6 +60,7 @@ private:
     int64_t perLoopRows_;
     int64_t lastLoopRows_;
     int64_t expertNum_;
+    int64_t expertCapacity_;
     int64_t dropPadMode_ = 0;
     int64_t expertTokensCountOrCumsumFlag_ = 0;
     int64_t expertTokensBeforeCapacityFlag_ = 0;
@@ -100,6 +103,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Init(GM_ADDR expertTokensCountOr
     this->totalLength_ = tilingData->n * tilingData->k;
     this->srcToDstTilingData = &(tilingData->srcToDstComputeParamsOp);
     this->expertNum_ = tilingData->expertNum;
+    this->expertCapacity_ = tilingData->expertCapacity;
     this->dropPadMode_ = tilingData->dropPadMode;
     this->expertTokensCountOrCumsumFlag_ = tilingData->expertTokensCountOrCumsumFlag;
     this->expertTokensBeforeCapacityFlag_ = tilingData->expertTokensBeforeCapacityFlag;
@@ -147,65 +151,74 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Init(GM_ADDR expertTokensCountOr
 
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ExpertFirstIndexComputeSimt(
-    int64_t coreRows, int64_t startIndex, int64_t totalLength, __gm__ int32_t *expertFirstIndexGm,
-    __gm__ int32_t *expandedExpertIdxGm)
+    int64_t coreRows, int64_t startIndex, int64_t totalLength, int64_t expertNum,
+    __gm__ int32_t *expertFirstIndexGm, __gm__ int32_t *expandedExpertIdxGm)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {
         int64_t curIndex = index + startIndex;
         int32_t curExpertId = expandedExpertIdxGm[curIndex];
-        if (curIndex == 0) {
+        if (curIndex == 0 && curExpertId >= 0 && curExpertId < static_cast<int32_t>(expertNum)) {
             expertFirstIndexGm[curExpertId] = 0;
         }
         if (curIndex == totalLength - 1) {
-            return;
+            continue;
         }
         int64_t nextIndex = curIndex + 1;
         int32_t nextExpertId = expandedExpertIdxGm[nextIndex];
-        if (curExpertId != nextExpertId) {
+        if (curExpertId != nextExpertId && nextExpertId >= 0 && nextExpertId < static_cast<int32_t>(expertNum)) {
             expertFirstIndexGm[nextExpertId] = nextIndex;
         }
     }
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void TokensComputeSimt(
-    int64_t coreRows, int64_t startIndex, int64_t totalLength, __gm__ int32_t *expertFirstIndexGm,
-    __gm__ int32_t *expandedExpertIdxGm, __gm__ int32_t *expertTokensBeforeCapacityGm)
+    int64_t coreRows, int64_t startIndex, int64_t totalLength, int64_t expertNum,
+    __gm__ int32_t *expertFirstIndexGm, __gm__ int32_t *expandedExpertIdxGm,
+    __gm__ int32_t *expertTokensBeforeCapacityGm)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {
         int64_t curIndex = index + startIndex;
         int64_t nextIndex = curIndex + 1;
         int32_t curExpertId = expandedExpertIdxGm[curIndex];
+        bool curExpertIdValid = curExpertId >= 0 && curExpertId < static_cast<int32_t>(expertNum);
         if (curIndex == totalLength - 1) { // 最后一个数
-            expertTokensBeforeCapacityGm[curExpertId] = nextIndex - expertFirstIndexGm[curExpertId];
-            return;
+            if (curExpertIdValid) {
+                expertTokensBeforeCapacityGm[curExpertId] = nextIndex - expertFirstIndexGm[curExpertId];
+            }
+            continue;
         }
         int32_t nextExpertId = expandedExpertIdxGm[nextIndex];
-        if (curExpertId != nextExpertId) {
+        if (curExpertId != nextExpertId && curExpertIdValid) {
             expertTokensBeforeCapacityGm[curExpertId] = nextIndex - expertFirstIndexGm[curExpertId];
         }
     }
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void CumsumComputeSimt(
-    int64_t coreRows, int64_t startIndex, int64_t totalLength, __gm__ int32_t *expandedExpertIdxGm,
-    __gm__ int32_t *expertTokensCountOrCumsumGm, __ubuf__ int32_t *lastExpertIdCunsumAddr)
+    int64_t coreRows, int64_t startIndex, int64_t totalLength, int64_t expertNum,
+    __gm__ int32_t *expandedExpertIdxGm, __gm__ int32_t *expertTokensCountOrCumsumGm,
+    __ubuf__ int32_t *lastExpertIdCunsumAddr)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {
         int64_t curIndex = startIndex + index;
         int32_t curExpertId = expandedExpertIdxGm[curIndex];
+        bool curExpertIdValid = curExpertId >= 0 && curExpertId < static_cast<int32_t>(expertNum);
         if (curIndex == totalLength - 1) { // 最后一个数
             if (threadIdx.y == 0) {
-                lastExpertIdCunsumAddr[0] = curExpertId;
+                lastExpertIdCunsumAddr[0] = curExpertIdValid ? curExpertId : static_cast<int32_t>(expertNum);
                 lastExpertIdCunsumAddr[1] = curIndex + 1;
             }
-            return;
+            continue;
         }
         int32_t nextExpertId = expandedExpertIdxGm[curIndex + 1];
-        if (curExpertId != nextExpertId) {
-            int32_t count = nextExpertId - curExpertId;
+        if (curExpertId != nextExpertId && curExpertIdValid) {
+            int32_t nextExpertIdLimit = nextExpertId < curExpertId ? curExpertId : nextExpertId;
+            nextExpertIdLimit = nextExpertIdLimit > static_cast<int32_t>(expertNum) ?
+                                static_cast<int32_t>(expertNum) : nextExpertIdLimit;
+            int32_t count = nextExpertIdLimit - curExpertId;
             int32_t num = threadIdx.y;
             for (; num < count; num += blockDim.y) {
                 expertTokensCountOrCumsumGm[curExpertId + num] = curIndex + 1;
@@ -224,7 +237,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
     if (this->blockIdx_ < this->needCoreNum_) {
         asc_vf_call<ExpertFirstIndexComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1},
                                                    this->coreRows_, this->startIndex_, this->totalLength_,
-                                                   expertFirstIndexGm_, expandedExpertIdxGm_);
+                                                   this->expertNum_, expertFirstIndexGm_, expandedExpertIdxGm_);
     }
 
     this->SyncAll();
@@ -235,7 +248,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
 
     if (this->expertCount_ && this->blockIdx_ < this->needCoreNum_) {
         asc_vf_call<TokensComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_,
-                                         this->startIndex_, this->totalLength_, expertFirstIndexGm_,
+                                         this->startIndex_, this->totalLength_, this->expertNum_, expertFirstIndexGm_,
                                          expandedExpertIdxGm_, expertTokensBeforeCapacityGm_);
     }
 
@@ -244,7 +257,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
             THREAD_NUM / this->threadNum_ > MAX_THREAD_DIM_Y_NUM ? MAX_THREAD_DIM_Y_NUM : THREAD_NUM / this->threadNum_;
         asc_vf_call<CumsumComputeSimt>(
             dim3{static_cast<uint32_t>(this->threadNum_), static_cast<uint32_t>(threadDimY), 1}, this->coreRows_,
-            this->startIndex_, this->totalLength_, expandedExpertIdxGm_, expertTokensCountOrCumsumGm_,
+            this->startIndex_, this->totalLength_, this->expertNum_, expandedExpertIdxGm_, expertTokensCountOrCumsumGm_,
             lastExpertIdCunsumAddr_);
     }
 
@@ -253,7 +266,7 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
         int32_t expertId = lastExpertIdCunsumAddr_[0];
         int32_t cunsumNum = lastExpertIdCunsumAddr_[1];
         int32_t count = expertNum_ - expertId;
-        if (count > 0) {
+        if (expertId >= 0 && expertId < expertNum_ && count > 0) {
             InitOutput(expertTokensCountOrCumsumGmOut[expertId], static_cast<uint32_t>(count), cunsumNum);
         }
     }

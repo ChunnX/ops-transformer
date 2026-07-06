@@ -89,7 +89,9 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyInZeroIndices(int64_t progress
 {
     this->indicesOffset = progress * this->perLoopRows;
     LocalTensor<int32_t> expandedRowIdxIndexLocal = expandedRowIdxIndexCopyInQueue.AllocTensor<int32_t>();
-    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>((this->currentLoopRows + 1) * sizeof(int32_t)), 0, 0, 0};
+    bool isLastLoop = this->blockIdx == this->gatherOutTilingData->needCoreNum - 1 && progress == this->rowLoops - 1;
+    int64_t copyRows = isLastLoop ? this->currentLoopRows : this->currentLoopRows + 1;
+    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(copyRows * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(expandedRowIdxIndexLocal, expandedRowIdxIndexGm_[indicesOffset], dataCopyParams, dataCopyPadParams);
     expandedRowIdxIndexCopyInQueue.EnQue<int32_t>(expandedRowIdxIndexLocal);
@@ -198,17 +200,17 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
         this->coreRows = this->gatherOutTilingData->lastCoreRows;
         this->perLoopRows = this->gatherOutTilingData->lastCorePerLoopRows;
         this->lastLoopRows = this->gatherOutTilingData->lastCoreLastLoopRows;
-        this->rowLoops = this->gatherOutTilingData->perCoreLoops;
+        this->rowLoops = this->gatherOutTilingData->lastCoreLoops;
     } else {
         this->coreRows = this->gatherOutTilingData->perCoreRows;
         this->perLoopRows = this->gatherOutTilingData->perCorePerLoopRows;
         this->lastLoopRows = this->gatherOutTilingData->perCoreLastLoopRows;
-        this->rowLoops = this->gatherOutTilingData->lastCoreLoops;
+        this->rowLoops = this->gatherOutTilingData->perCoreLoops;
     }
     this->colLoops = this->gatherOutTilingData->colLoops;
 
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->coreRows * this->cols);
-    expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, tilingData->n * tilingData->k * this->cols);
+    expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->activateRows * this->cols);
     expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx +
                                          this->blockIdx * this->gatherOutTilingData->perCoreRows,
                                      Align(this->coreRows, sizeof(int32_t)));
@@ -225,7 +227,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
         this->lastLoopCols = this->gatherOutTilingData->lastLoopCols;
         pipe->InitBuffer(inputActivationsCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopCols, sizeof(T)));
     }
-    pipe->InitBuffer(expandedRowIdxIndexCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopRows, sizeof(int32_t)));
+    pipe->InitBuffer(expandedRowIdxIndexCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopRows + 1, sizeof(int32_t)));
 }
 
 template <typename T>

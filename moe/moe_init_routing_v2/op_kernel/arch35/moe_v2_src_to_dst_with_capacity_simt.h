@@ -92,25 +92,35 @@ __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::Init(GM_ADD
 
 template <typename T, typename TilingData>
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeCapacitySimt(
-    int64_t coreRows, int64_t startIndex, int64_t expertCapacity, __gm__ int32_t *sortedExpertIdGm,
-    __gm__ int32_t *sortedExpertIdIndexGm, __gm__ volatile int32_t *expertFirstIndexGm,
-    __gm__ int32_t *expandedRowIdxGm, __gm__ int32_t *expandedRowIdxIndexGm)
+    int64_t coreRows, int64_t startIndex, int64_t totalLength, int64_t expertCapacity, int64_t expertNum,
+    __gm__ int32_t *sortedExpertIdGm, __gm__ int32_t *sortedExpertIdIndexGm,
+    __gm__ volatile int32_t *expertFirstIndexGm, __gm__ int32_t *expandedRowIdxGm,
+    __gm__ int32_t *expandedRowIdxIndexGm)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {
-        int32_t curIndex = index + startIndex;
+        int64_t curIndex = index + startIndex;
+        if (curIndex < 0 || curIndex >= totalLength) {
+            continue;
+        }
         int32_t expertId = sortedExpertIdGm[curIndex];
+        if (expertId < 0 || expertId >= static_cast<int32_t>(expertNum) || expertCapacity <= 0) {
+            expandedRowIdxIndexGm[curIndex] = 0;
+            continue;
+        }
         int32_t expertIdFirstIndex = expertFirstIndexGm[expertId];
-        int32_t curExpertIndex = curIndex - expertIdFirstIndex;
+        int32_t curExpertIndex = static_cast<int32_t>(curIndex - expertIdFirstIndex);
+        int32_t expandedRowIdxIndex = (expertId + 1) * expertCapacity - 1;
         if (curExpertIndex + 1 <= static_cast<int32_t>(expertCapacity)) {
             int32_t dstIndex = sortedExpertIdIndexGm[curIndex];
-            int32_t expandedRowIdxIndex = expertId * expertCapacity + curExpertIndex;
-            expandedRowIdxGm[dstIndex] = expandedRowIdxIndex;
-            expandedRowIdxIndexGm[curIndex] = expandedRowIdxIndex; // 记录原始expandedRowIdxIndex
-        } else {
-            int32_t expandedRowIdxIndex = (expertId + 1) * expertCapacity - 1;
-            expandedRowIdxIndexGm[curIndex] = expandedRowIdxIndex;
+            if (curExpertIndex >= 0) {
+                expandedRowIdxIndex = expertId * expertCapacity + curExpertIndex;
+                if (dstIndex >= 0 && dstIndex < static_cast<int32_t>(totalLength)) {
+                    expandedRowIdxGm[dstIndex] = expandedRowIdxIndex;
+                }
+            }
         }
+        expandedRowIdxIndexGm[curIndex] = expandedRowIdxIndex; // 记录原始expandedRowIdxIndex
     }
 }
 
@@ -120,8 +130,8 @@ __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::Process()
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
         asc_vf_call<ComputeCapacitySimt<T, TilingData>>(
             dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
-            this->expertCapacity_, sortedExpertIdGm_, sortedExpertIdIndexGm_, expertFirstIndexGm_, expandedRowIdxGm_,
-            expandedRowIdxIndexGm_);
+            this->totalLength_, this->expertCapacity_, this->expertNum_, sortedExpertIdGm_, sortedExpertIdIndexGm_,
+            expertFirstIndexGm_, expandedRowIdxGm_, expandedRowIdxIndexGm_);
     }
     this->SyncAll();
 }
