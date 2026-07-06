@@ -306,6 +306,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 eps_sum_ub = T.alloc_ub((1,), calc_dtype)
                 softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
+                sm_col_ub = T.alloc_ub((G, 1), calc_dtype)        # (128,1) column for broadcast
+                w_col_ub = T.alloc_ub((Nidx1, 1), calc_dtype)     # (64,1) column for broadcast
 
                 for s1_id in T.serial(s1_start, s1_end):
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
@@ -315,18 +317,21 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     # barrier removed: sm_sum ops → bmm1_copy, no data dependency
 
-                    # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
+                    # P_reduced: column×row broadcast replaces 256 UB-scalar ops
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    for g_id in range(G):
-                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_max_ub[g_id])
-                    # barrier removed: mul→sub, VEC→VEC sequential (same as reduce_sum→add)
+                    # sm_2d = sm_max ⊗ ones (outer product via broadcast)
+                    T.tile.fill(rsy_bc_ub, 1.0)          # row of ones: (1, n_block)
+                    T.tile.fill(sm_col_ub, 1.0)          # column of ones: (G, 1)
+                    T.tile.mul(sm_col_ub, sm_col_ub, sm_max_ub)  # (G,1) *= (G,): fill col with sm_max
+                    T.tile.mul(sm_2d_ub, sm_col_ub, rsy_bc_ub)   # (G,n_block) = (G,1) * (1,n_block)
+                    # barrier removed: mul→sub, VEC→VEC sequential
                     T.tile.sub(bmm1_ub, bmm1_ub, sm_2d_ub)
                     T.tile.exp(bmm1_ub, bmm1_ub)
                     # rebuild sm_2d with sm_sum for div
-                    for g_id in range(G):
-                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_sum_ub[g_id])
+                    T.tile.fill(sm_col_ub, 1.0)
+                    T.tile.mul(sm_col_ub, sm_col_ub, sm_sum_ub)  # fill col with sm_sum
+                    T.tile.mul(sm_2d_ub, sm_col_ub, rsy_bc_ub)   # (G,n_block) = (G,1) * (1,n_block)
                     # barrier removed: mul→div, VEC→VEC sequential
                     T.tile.div(bmm1_ub, bmm1_ub, sm_2d_ub)
                     T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
@@ -334,14 +339,13 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
+                    # ReduceSumY: column×row broadcast replaces 64 UB-scalar ops
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                     T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
-                    # barrier removed: cast→fill, different buffers, VEC→VEC sequential
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    for k in range(Nidx1):
-                        T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
-                    # barrier removed: mul→fill, different buffers, VEC→VEC sequential
+                    # weight_2d = weights ⊗ ones (rsy_bc_ub still filled with 1.0 from above)
+                    T.tile.fill(w_col_ub, 1.0)
+                    T.tile.mul(w_col_ub, w_col_ub, weight_all_ub)       # (Nidx1,1) *= (Nidx1,)
+                    T.tile.mul(weight_2d_ub, w_col_ub, rsy_bc_ub)       # (Nidx1,n_block) = (Nidx1,1) * (1,n_block)
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
                     T.tile.fill(rsy_max_ub, -1e30)
