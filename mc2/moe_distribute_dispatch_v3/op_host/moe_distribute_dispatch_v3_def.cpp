@@ -119,6 +119,7 @@ public:
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
+    // arch35 (A5): dedicated kernel entry
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
@@ -129,7 +130,8 @@ public:
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_true")
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_dispatch_v3_apt");
 
     this->AICore().AddConfig("ascend910_93", aicore_config);
     this->AICore().AddConfig("ascend950", aicore_config);
