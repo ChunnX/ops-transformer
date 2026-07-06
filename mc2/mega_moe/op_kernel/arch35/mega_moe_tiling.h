@@ -35,5 +35,6 @@ struct MegaMoeTilingData {
     int64_t combineQuantMode;
     float clampLimit;
     uint8_t groupedMatmulMode;
+    uint32_t ubSize;  // 单 AIV UB 总字节数(host 由平台查得), prefill 模板动态算 route batch 用
 };
 #endif

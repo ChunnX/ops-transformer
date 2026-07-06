@@ -17,10 +17,17 @@
 #define ENABLE_TENSOR_API
 #endif
 
+// 大 bs Prefill 路径开关：1=启用 MegaMoePrefill，0=退回 MegaMoe
+#define ENABLE_PREFILL_BS 1
+
 #include "kernel_operator.h"
 
 #ifdef ENABLE_TENSOR_API
+#if ENABLE_PREFILL_BS
+#include "mega_moe_prefill.h"
+#else
 #include "mega_moe.h"
+#endif
 #endif
 
 #include "mega_moe_tiling.h"
@@ -43,8 +50,13 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-    MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
-        DispatchQuantOutType, CombineQuantOutType> op;
+#if ENABLE_PREFILL_BS
+        MegaMoePrefill<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
+            DispatchQuantOutType, CombineQuantOutType> op;
+#else
+        MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
+            DispatchQuantOutType, CombineQuantOutType> op;
+#endif
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                 scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
         op.Process();

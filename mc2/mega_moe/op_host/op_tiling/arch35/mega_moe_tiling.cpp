@@ -994,6 +994,12 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
 
+    // UB 大小由平台查询, prefill 模板动态算 route batch 用
+    uint64_t ubSize = 0U;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    tilingData->ubSize = static_cast<uint32_t>(ubSize);
+
     return ge::GRAPH_SUCCESS;
 }
 
