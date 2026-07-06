@@ -75,6 +75,17 @@ constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t NUM_8 = 8;
 constexpr bool NO_BIAS = false;
 constexpr int64_t DOUBLE_ROW = 2;
+constexpr uint32_t GMMSQ_CROSS_CORE_SYNC_MODE = 0x2;
+constexpr uint32_t GMMSQ_INTER_BLOCK_SYNC_MODE = 0x0;
+// Pipeline and split workspace use slot flags 0-7. Same-kind barriers keep the
+// repository convention of 8 for AIV and 9 for AIC, avoiding flag-id overlap.
+constexpr uint16_t GMMSQ_PIPE_PRE_READY_FLAG0 = 0;
+constexpr uint16_t GMMSQ_PIPE_PRE_FREE_FLAG0 = 2;
+constexpr uint16_t GMMSQ_PIPE_MID_READY_FLAG0 = 4;
+constexpr uint16_t GMMSQ_PIPE_MID_FREE_FLAG0 = 6;
+constexpr uint16_t GMMSQ_SPLIT_WS_FREE_FLAG0 = 0;
+constexpr uint16_t GMMSQ_AIV_INTER_BLOCK_BARRIER_FLAG = 8;
+constexpr uint16_t GMMSQ_AIC_INTER_BLOCK_BARRIER_FLAG = 9;
 constexpr MatmulConfig CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
 constexpr MatmulConfig GetMMStaticCFG()
 {
@@ -109,27 +120,127 @@ __aicore__ inline void GmmsqSetWaitFlag()
     WaitFlag<event>(eventId);
 }
 
-// These barriers protect GM workspace stages shared by all cube and vector cores.
+__aicore__ inline uint16_t GmmsqDoubleBufferFlag(uint16_t flag0, int64_t loopIdx)
+{
+    return flag0 + static_cast<uint16_t>(loopIdx & 1);
+}
+
+template <uint32_t mode, const pipe_t pipe>
+__aicore__ inline void GmmsqCrossCoreSetFlag(uint16_t flagId)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreSetFlag<mode, pipe>(flagId);
+#endif
+}
+
+__aicore__ inline void GmmsqCrossCoreWaitFlag(uint16_t flagId)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreWaitFlag(flagId);
+#endif
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void GmmsqAicInterBlockBarrier()
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreSetFlag<GMMSQ_INTER_BLOCK_SYNC_MODE, pipe>(GMMSQ_AIC_INTER_BLOCK_BARRIER_FLAG);
+        GmmsqCrossCoreWaitFlag(GMMSQ_AIC_INTER_BLOCK_BARRIER_FLAG);
+    }
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void GmmsqAivInterBlockBarrier()
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreSetFlag<GMMSQ_INTER_BLOCK_SYNC_MODE, pipe>(GMMSQ_AIV_INTER_BLOCK_BARRIER_FLAG);
+        GmmsqCrossCoreWaitFlag(GMMSQ_AIV_INTER_BLOCK_BARRIER_FLAG);
+    }
+}
+
+// This barrier protects GM workspace stages shared by all cube and vector cores.
 // A paired CrossCoreSetFlag/CrossCoreWaitFlag only models one producer-consumer edge,
-// so it is not equivalent until the workspace is partitioned into per-producer slots.
+// so it is not equivalent for the all-cube to all-vector stage.
 __aicore__ inline void GmmsqAllCoreCubeVecStageBarrier()
 {
     SyncAll<false>();
 }
 
-__aicore__ inline void GmmsqAllCoreWorkspaceReuseBarrier()
+__aicore__ inline void GmmsqWaitSplitWorkspaceFree(int64_t loopIdx)
 {
-    SyncAll<false>();
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_SPLIT_WS_FREE_FLAG0, loopIdx));
+    }
 }
 
-__aicore__ inline void GmmsqAllCorePipelineStageBarrier()
+__aicore__ inline void GmmsqNotifySplitWorkspaceFree(int64_t loopIdx)
 {
-    SyncAll<false>();
+    if ASCEND_IS_AIV {
+        GmmsqAivInterBlockBarrier<PIPE_MTE3>();
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+            GmmsqDoubleBufferFlag(GMMSQ_SPLIT_WS_FREE_FLAG0, loopIdx));
+    }
 }
 
-__aicore__ inline void GmmsqAllCorePipelineWorkspaceBarrier()
+__aicore__ inline void GmmsqWaitPipelinePreReady(int64_t loopIdx)
 {
-    SyncAll<true>();
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelinePreReady(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqAivInterBlockBarrier<PIPE_MTE3>();
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+            GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelinePreFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelineMidReady(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelineMidDone(int64_t loopIdx, int64_t loopCount)
+{
+    if ASCEND_IS_AIC {
+        GmmsqAicInterBlockBarrier<PIPE_FIX>();
+        if (loopIdx < loopCount - DOUBLE_BUFFER) {
+            GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_FREE_FLAG0, loopIdx));
+        }
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+            GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelineMidFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelinePostDone(int64_t loopIdx, int64_t loopCount)
+{
+    if ASCEND_IS_AIV {
+        if (loopIdx < loopCount - DOUBLE_BUFFER) {
+            GmmsqAivInterBlockBarrier<PIPE_MTE3>();
+            GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_FREE_FLAG0, loopIdx));
+        }
+    }
 }
 
 template <class AT_, class BT_, class CT_>

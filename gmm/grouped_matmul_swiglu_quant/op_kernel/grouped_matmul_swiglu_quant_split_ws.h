@@ -209,7 +209,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
 
         if ASCEND_IS_AIC {
             if (workspaceSplitLoopIdx >= parallelNum) { // first parallelNum core no need to wait
-                GmmsqAllCoreWorkspaceReuseBarrier();
+                GmmsqWaitSplitWorkspaceFree(workspaceSplitLoopIdx);
             }
             MNConfig mnConfig;
             int32_t prevSplitValue = workspaceSplitConfig.leftMatrixStartIndex;
@@ -284,7 +284,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
                 quantOutQueue.FreeTensor(quantLocal);
             }
             if (workspaceSplitLoopIdx < workspaceSplitConfig.loopCount - parallelNum) {
-                GmmsqAllCoreWorkspaceReuseBarrier();
+                GmmsqNotifySplitWorkspaceFree(workspaceSplitLoopIdx);
             }
         }
     }
