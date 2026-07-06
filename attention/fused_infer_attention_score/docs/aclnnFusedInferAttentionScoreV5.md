@@ -833,7 +833,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>value的反量化的方式。</td>
         <td>
         <ul>
-            <li>模式编号与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode模式编号0-6与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode为8时，代表per-channel-group模式。
             <li>用户不特意指定时建议传入0。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
