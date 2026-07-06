@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "chunk_gated_delta_rule_tiling_data.h"
+#include "../chunk_gated_delta_rule_tiling_data.h"
 #include "chunk_gated_delta_rule_stage1.h"
 #include "chunk_gated_delta_rule_stage2.h"
 #include "chunk_gated_delta_rule_stage3.h"

@@ -36,6 +36,7 @@ namespace ChunkGatedDeltaRule {
         int64_t stageWorkspaceSz;
         int64_t stageOneParaNum;
         float scale;
+        int64_t stateIsFp32;
         AscendC::tiling::TCubeTiling matmulTilingFp32;  // for MT_FP32: fp32 -> fp32
     };
     #pragma pack(pop)

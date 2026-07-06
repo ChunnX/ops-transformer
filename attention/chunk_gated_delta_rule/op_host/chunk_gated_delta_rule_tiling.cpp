@@ -72,6 +72,7 @@ void ChunkGatedDeltaRuleTiling::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo_.ubSize);
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    socVersion_ = ascendcPlatform.GetSocVersion();
 
     if (compileInfo_.aivNum <= 0 || compileInfo_.aicNum <= 0) {
         OP_LOGE(context_->GetNodeName(), "aivNum <= 0 or aicNum <= 0");
@@ -310,9 +311,17 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16 || stateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype and state dtype should be bfloat16"),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32"),
+                return ge::GRAPH_FAILED);
+    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGE(context_->GetNodeName(), "FP32 state is only supported on Ascend950");
+        return ge::GRAPH_FAILED;
+    }
+    tilingData_.stateIsFp32 = (stateDtype == ge::DT_FLOAT) ? 1 : 0;
 
     auto actualSeqLengthsDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
     OP_CHECK_IF(actualSeqLengthsDtype != ge::DT_INT32,
@@ -328,8 +337,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
     auto finalStateDtype = context_->GetOutputDesc(OUTPUT_FINAL_STATE_IDX)->GetDataType();
     OP_CHECK_IF(outDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "output dtype should be bfloat16"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(finalStateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(finalStateDtype != ge::DT_BF16 && finalStateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "final_state dtype should be bfloat16 or float32"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
