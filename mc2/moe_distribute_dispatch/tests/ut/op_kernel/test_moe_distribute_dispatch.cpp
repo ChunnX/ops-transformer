@@ -15,8 +15,8 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_dispatch_tiling_def.h"
-#include "../../../op_kernel/moe_distribute_dispatch.cpp"
-#include "../../../op_kernel/moe_distribute_dispatch_tiling_key.h"
+#include "../../../op_kernel/arch22/moe_distribute_dispatch.cpp"
+#include "../../../op_kernel/arch22/moe_distribute_dispatch_tiling_key.h"
 
 class MoeDistributeDispatchTest : public testing::Test {
 protected:
