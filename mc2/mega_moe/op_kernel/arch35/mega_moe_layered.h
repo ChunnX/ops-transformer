@@ -158,6 +158,11 @@ private:
     uint64_t sendTotalNum_ = 0;
     uint32_t maskAlignSize_ = 0;
     uint32_t maskSlotSize_ = 0;    // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
+    uint32_t roundSendTotalNum_ = 0;  // 分轮次：每轮处理的 token*topK 数量（256 对齐保证 GM 写 32B 对齐）
+    uint32_t roundCompareCount_ = 0;  // 分轮次：每轮 CompareScalar 的元素数
+    uint32_t roundMaskAlignSize_ = 0; // 分轮次：每轮部分 mask 的字节大小（32B 对齐）
+    uint32_t roundMaskSlotSize_ = 0;  // 分轮次：每轮部分 [mask|count] 槽位字节大小
+    uint32_t totalRounds_ = 0;        // 分轮次：总轮数 = CeilDiv(sendTotalNum, roundSendTotalNum)
     uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
@@ -182,6 +187,7 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
+    static constexpr uint32_t SEND_MASK_UB_LIMIT = 248U * 1024U;
     static constexpr uint32_t MAX_CORENUM_USE_SEND = 8U;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
@@ -405,6 +411,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
 
 // ======================================================================================
 // SendAndQuantBuffInit：SendMaskCal & ResetFlagList localTensor申请
+// --------------------------------------------------------------------------------------
+//   大 bs 场景下 sendTotalNum 可能超出 UB 248KB 限制，因此按 roundSendTotalNum_ 分轮次
+//   分配 UB 张量（topkIds / sendMask / sendGatherOut），每轮仅加载一部分 topkIds，
+//   在 UB 中计算部分 mask 后拼写到 workspace 对应偏移，最终合并为完整 mask slot。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
@@ -414,16 +424,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     }
     LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
     hcomm_.Init(hcommTensor_, ALIGN_512);
-    // Tensor用处：SendMaskCal 函数中搬运本卡的 topkIds；
-    // Tensor大小：该Tensor在进行CompareScalar时，compareCount_要求256B对齐，申请大小256字节对齐；
-    uint32_t topkIdsTensorAddr = ALIGN_512;
-    uint32_t topkIdsTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
-        static_cast<int64_t>(ALIGN_256));
-    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
-    // Tensor用处：ResetFlagList中对于workSpace上的Flag位置区域进行清理；
-    // Tensor大小：大小为清理区域大小均分到所有的blockAivNum_；
-    // SwiGluToGmm2区 DispatchToGmm1区 SendCntCalToUpdParams区，三段在workSpace上连续；
-    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
+
+    // 计算 resetTensor 大小（与原逻辑一致）
     uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
@@ -435,21 +437,50 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
+
+    // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
+    // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
+    //            = 8R + R/4 + 64  (R 为 256 对齐时 CeilAlign(R/8,32)=R/8)
+    // 解: R <= (available - 64) * 4 / 33，再 floor-align 到 256（保证 GM 写 32B 对齐）
+    uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize;
+    uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts;
+    uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
+    roundSendTotalNum_ = (maxRoundSize / 256U) * 256U;
+    if (roundSendTotalNum_ == 0) { roundSendTotalNum_ = 256U; }
+    if (roundSendTotalNum_ > static_cast<uint32_t>(sendTotalNum_)) {
+        uint32_t alignedTotal = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
+        roundSendTotalNum_ = (alignedTotal < roundSendTotalNum_) ? alignedTotal : roundSendTotalNum_;
+    }
+    roundCompareCount_ = roundSendTotalNum_;
+    roundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(roundCompareCount_) / 8, static_cast<int64_t>(ALIGN_32)));
+    roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
+    totalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_)));
+
+    // Tensor用处：SendMaskCal 每轮搬运本卡 topkIds 的一个子段；
+    // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
+    uint32_t topkIdsTensorAddr = ALIGN_512;
+    uint32_t topkIdsTensorSize = roundCompareCount_ * sizeof(int32_t);
+    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
+
+    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
-    // Tensor用处：SendMaskCal函数中用于存储mask位；
-    // Tensor大小：大小maskSlotSize_与保持一致，DOUBLE_BUFFER为2，开启双buffer；
+
+    // Tensor用处：SendMaskCal 每轮存储部分 mask 位；DOUBLE_BUFFER 双缓冲；
+    // Tensor大小：roundMaskSlotSize_（每轮部分 [mask|count] 槽位大小）；
     uint32_t sendMaskAddr = resetTensorAddr + resetTensorSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
-            sendMaskAddr + static_cast<uint32_t>(index) * maskSlotSize_, maskSlotSize_);
+            sendMaskAddr + static_cast<uint32_t>(index) * roundMaskSlotSize_, roundMaskSlotSize_);
     }
-    // Tensor用处：SendMaskCal函数中用于GatherMask的dstTensor；
-    // Tensor大小：大小为一次GatherMaksk长度compareCount_对齐到256；
-    // SendMaskCal GatherMask 计 count 用的废弃输出 scratch(compareCount_ 个 int, 256B 对齐)。
-    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskSlotSize_;
-    uint32_t sendGatherOutSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_ * sizeof(int32_t)),
-        static_cast<int64_t>(ALIGN_256));
+
+    // Tensor用处：SendMaskCal 每轮 GatherMask 计 count 的废弃输出 scratch；
+    // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
+    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * roundMaskSlotSize_;
+    uint32_t sendGatherOutSize = roundCompareCount_ * sizeof(int32_t);
     sendGatherOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr,
         sendGatherOutSize / sizeof(int32_t));
 }
@@ -514,8 +545,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ExpertTokenNumCo
 // ======================================================================================================
 // SendMaskCal：对本卡 topk 按通信域内所有专家id计算mask位，并发送至目标专家卡
 // ------------------------------------------------------------------------------------------------------
-//   Phase 1: 本卡 topk 的搬入；
-//   Phase 2: 根据专家id进行CompareScalar & GatherMask，生成mask位与count总数，doubleBuffer进行计算并进行发送；
+//   大 bs 场景下 sendTotalNum 可能超出 UB 限制，因此按 roundSendTotalNum_ 分轮次计算：
+//   Phase 1: 对每个全局专家，逐轮加载 topkIds 子段 → CompareScalar → 部分 mask；
+//   Phase 2: 每轮部分 mask 拼写到 workspace/win 对应字节偏移，GatherMask 累加本轮 count；
+//   Phase 3: 所有轮次完成后，写入 total count，URMA 发送完整 mask slot。
 // ======================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
@@ -523,74 +556,100 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     if constexpr(g_coreType == AIC) {
         return;
     }
-    // Phase 1: 加载本卡 topk 到 topkIdsTensor_ (compareCount_ 个 int, 尾部补 0)
-    GlobalTensor<int32_t> srcGlobalTensor;
-    srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
-    Duplicate<int32_t>(topkIdsTensor_, 0, compareCount_);
-    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
-    DataCopyExtParams loadParams{1U, static_cast<uint32_t>(sendTotalNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
-    DataCopyPad(topkIdsTensor_, srcGlobalTensor, loadParams, loadPad);
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-
-    // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
-    // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
-    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID1, EVENT_ID2};
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
-        SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
-    }
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
-    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize_) / sizeof(int32_t);  // count 在槽内 int32 偏移
-    DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(maskSlotSize_), 0U, 0U, 0U};
-    int32_t iter = 0;
-    GlobalTensor<uint8_t> dstGlobalTensor;
-    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
-            int32_t curExpertId = curRankId * expertPerRank_ + expertIdIndex;
-            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
-            LocalTensor<int32_t> maskBufI32 = maskBuf.template ReinterpretCast<int32_t>();
-            WaitFlag<AscendC::HardEvent::MTE3_V>(eventId); // 等本 buffer 上一轮 MTE3 推送完成
-            CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, compareCount_);
-            // 同步算 count: GatherMask 对 mask 取 set-bit 数(mask=sendTotalNum_ 跳过尾部 padding)。
-            uint64_t sendCnt = 0;
-            GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
-                static_cast<uint32_t>(sendTotalNum_), {1, 1, 0, 0}, sendCnt);
-            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();   // count 标量就绪
-            maskBufI32.SetValue(countWordIdx, static_cast<int32_t>(sendCnt));  // 写入槽内 count
-            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>(); // count 对 MTE3 可见(V 已被 V_S 排空)
 
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts);
+         curRankId += blockAivNum_) {
+        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex) {
+            int32_t curExpertId = static_cast<int32_t>(curRankId * expertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
             uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
                 static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
                 static_cast<uint64_t>(maskSlotSize_);
-            dstGlobalTensor.SetGlobalBuffer(
-                (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
-            if (curRankId == rankId_) {
-                dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetRankWinAddrWithOffset(rankId_, dstOffset)));
+            uint64_t totalSendCnt = 0;
+
+            for (uint32_t roundIdx = 0; roundIdx < totalRounds_; ++roundIdx) {
+                uint64_t roundStart = static_cast<uint64_t>(roundIdx) * static_cast<uint64_t>(roundSendTotalNum_);
+                uint64_t roundLen64 = (roundIdx + 1 < totalRounds_) ? static_cast<uint64_t>(roundSendTotalNum_) :
+                    sendTotalNum_ - roundStart;
+                uint32_t roundLen = static_cast<uint32_t>(roundLen64);
+                uint32_t curRoundCompareCount = (roundLen == roundSendTotalNum_) ? roundCompareCount_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(roundLen) * sizeof(int32_t),
+                        static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t));
+                uint32_t curRoundMaskAlignSize = (roundLen == roundSendTotalNum_) ? roundMaskAlignSize_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(curRoundCompareCount) / 8,
+                        static_cast<int64_t>(ALIGN_32)));
+
+                // Phase 1: 加载本轮 topkIds 子段（零填充尾部）
+                Duplicate<int32_t>(topkIdsTensor_, 0, roundCompareCount_);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+                GlobalTensor<int32_t> roundSrcGlobal;
+                roundSrcGlobal.SetGlobalBuffer((__gm__ int32_t*)(params_.expertIdxGmAddr +
+                    static_cast<uint64_t>(roundStart) * sizeof(int32_t)));
+                DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
+                DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
+                DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+
+                // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
+                LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER];
+                LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
+                CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, curRoundCompareCount);
+                uint64_t roundSendCnt = 0;
+                GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
+                    static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
+                totalSendCnt += roundSendCnt;
+                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+                SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+
+                // Phase 2b: 将本轮部分 mask 写入 workspace 或 local win 对应字节偏移
+                // roundByteOffset = roundStart/8，因 roundSendTotalNum_ 为 256 对齐，该偏移 32B 对齐
+                uint64_t roundByteOffset = static_cast<uint64_t>(roundStart) / 8U;
+                uint32_t writeBytes = (static_cast<uint64_t>(curRoundMaskAlignSize) <=
+                    static_cast<uint64_t>(maskAlignSize_) - roundByteOffset) ?
+                    curRoundMaskAlignSize :
+                    static_cast<uint32_t>(static_cast<uint64_t>(maskAlignSize_) - roundByteOffset);
+                DataCopyExtParams partialMaskCopyParams{1U, writeBytes, 0U, 0U, 0U};
+
+                if (curRankId == rankId_) {
+                    GlobalTensor<uint8_t> winDstGlobal;
+                    winDstGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetRankWinAddrWithOffset(
+                        rankId_, dstOffset + roundByteOffset)));
+                    DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
+                } else {
+                    GlobalTensor<uint8_t> wsDstGlobal;
+                    wsDstGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr +
+                        srcOffset + roundByteOffset));
+                    DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
+                }
+                PipeBarrier<PIPE_ALL>();
             }
-            DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
-            PipeBarrier<PIPE_ALL>();
-            if (curRankId != rankId_) {
+
+            // Phase 3: 写入 total count 并发送完整 mask slot
+            if (curRankId == rankId_) {
+                __gm__ int32_t* winCountPtr = reinterpret_cast<__gm__ int32_t*>(GetRankWinAddrWithOffset(
+                    rankId_, dstOffset + maskAlignSize_));
+                WriteGmByPassDCache(winCountPtr, static_cast<int32_t>(totalSendCnt));
+                PipeBarrier<PIPE_ALL>();
+            } else {
+                __gm__ int32_t* wsCountPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.maskSlotPtr +
+                    srcOffset + maskAlignSize_);
+                WriteGmByPassDCache(wsCountPtr, static_cast<int32_t>(totalSendCnt));
+                PipeBarrier<PIPE_ALL>();
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
                     localGmAddr, maskSlotSize_);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
     }
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
-    }
-    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        if (curRankId == rankId_) {
-            continue;
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts); curRankId += blockAivNum_) {
+        if (curRankId != rankId_) {
+            hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
         }
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
     }
 }
 
