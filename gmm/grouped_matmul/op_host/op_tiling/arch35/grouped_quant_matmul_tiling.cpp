@@ -453,7 +453,8 @@ actual is %zu",
         auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
         auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
         OP_CHECK_IF(
-            xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue ||
+                xScaleLastDim != MXFP_MULTI_BASE_SIZE,
             OP_LOGE_FOR_INVALID_SHAPE(
                 inputParams_.opType, "perTokenScale", ShapeToString(xScaleShape),
                 inputParams_.transA ? ShapeDimsToString(expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE)
@@ -483,7 +484,8 @@ actual is %zu",
             return false);
     }
     OP_CHECK_IF(
-        xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+        xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue ||
+            xScaleLastDim != MXFP_MULTI_BASE_SIZE,
         OP_LOGE_FOR_INVALID_SHAPE(
             inputParams_.opType, "perTokenScale", ShapeToString(xScaleShape),
             inputParams_.transA ? ShapeDimsToString(expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE)
@@ -563,7 +565,8 @@ bool GroupedQmmTiling::CheckQuantParamsForMxQuantMode(const gert::StorageShape *
 }
 
 
-bool GroupedQmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape, uint64_t expectedNSize) const
+bool GroupedQmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape,
+                                                             uint64_t expectedNSize) const
 {
     auto wScaleDimNum = wScaleShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;

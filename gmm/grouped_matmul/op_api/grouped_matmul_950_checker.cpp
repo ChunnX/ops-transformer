@@ -514,17 +514,22 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
                                          .GetDim(pertokenScaleDimNum - 1);
     auto weightNDimValue = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(weightNIndex);
     auto inferedScaleKDimValue = (xKDimValue + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE;
-    auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleDimNum - 1);
+    auto scaleLastDimValue =
+        GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(scaleDimNum - 1);
     CHECK_RET(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     GMM_CHECK_REPORT(xMDimValue == pertokenMDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), xName_.c_str(),
             ViewShapeToString(GetInputTensor(gmmParams_.x, tensorIndex.x)),
             "axis M of x must be equal to axis M of perTokenScale [" + std::to_string(pertokenMDimValue) + "]"));
     if (IsWeightNzMultiTensorCase()) {
-        auto scaleFirstDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
-        auto scaleSecondDimValue = GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(1);
-        const bool isNkLayout = scaleFirstDimValue == weightNDimValue && scaleSecondDimValue == inferedScaleKDimValue;
-        const bool isKnLayout = scaleFirstDimValue == inferedScaleKDimValue && scaleSecondDimValue == weightNDimValue;
+        auto scaleFirstDimValue =
+            GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(0);
+        auto scaleSecondDimValue =
+            GetInputTensor(gmmParams_.scaleOptional, tensorIndex.scale)->GetViewShape().GetDim(1);
+        const bool isNkLayout =
+            scaleFirstDimValue == weightNDimValue && scaleSecondDimValue == inferedScaleKDimValue;
+        const bool isKnLayout =
+            scaleFirstDimValue == inferedScaleKDimValue && scaleSecondDimValue == weightNDimValue;
         const bool isBroadcastLayout = scaleFirstDimValue == 1L || scaleSecondDimValue == 1L;
         GMM_CHECK_REPORT(isNkLayout || isKnLayout || isBroadcastLayout,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
