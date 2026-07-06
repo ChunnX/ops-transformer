@@ -239,8 +239,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
     metaOffset_ = hAlignSize_;
     epWorldSizeAlign_ = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    cntPerRankSizeAlign_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     // perRank state+count
+    cntPerRankSizeAlign_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     counterCnt_ = epWorldSizeAlign_ / sizeof(int32_t);
     epWorldSizeAlign512_ = Ceil(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     cntPerRankSizeAlign512_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -330,42 +330,38 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerRank(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t startRankId, uint32_t endRankId)
 {
-    if (startRankId > epWorldSize_) {
+    if (startRankId >= epWorldSize_) {
         return;
     }
 
-    uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t mask = calCnt / axisK_;
-    uint32_t sumSizeAlign = Ceil(calCnt / axisK_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t shape[2] = {calCnt / axisK_, axisK_};
+    uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t tokenCnt = calCnt / axisK_;
+    uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
+    uint32_t tokenCntAlign = Ceil(tokenCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int16_t);
+    uint32_t mask = tokenCnt;
+    uint32_t shape[2] = {tokenCnt, axisK_};
     LocalTensor<int16_t> dstTensorInt16 = dstExpBuf_.Get<int16_t>();
-    LocalTensor<int16_t> tempTensorInt16 = topkIdsBuf_.GetWithOffset<int16_t>(tmpOffset/ sizeof(int16_t), 0);
-    LocalTensor<int32_t> tempTensorInt32 = topkIdsBuf_.Get<int32_t>();
-    LocalTensor<int32_t> sumTensorInt32 = tempBuf_.GetWithOffset<int32_t>(sumSizeAlign / sizeof(int32_t), 0);
-    LocalTensor<uint32_t> maskTensorInt32 = tempBuf_.GetWithOffset<uint32_t>(sumSizeAlign / sizeof(uint32_t),
-        sumSizeAlign);
-    LocalTensor<uint8_t> gatherMaskTensorInt8 = maskTensorInt32.template ReinterpretCast<uint8_t>();
-    LocalTensor<uint8_t> maskTensorInt8 = topkIdsBuf_.GetWithOffset<uint8_t>(tmpOffset / sizeof(uint8_t), tmpOffset);
+    LocalTensor<int16_t> tempTensorInt16 = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
+    LocalTensor<uint16_t> maskTensorInt16 = topkIdsBuf_.GetWithOffset<uint16_t>(calCntAlign, tmpOffset);
+    LocalTensor<uint8_t> gatherMaskTensorInt8 = maskTensorInt16.template ReinterpretCast<uint8_t>();
 
     Duplicate<int16_t>(dstTensorInt16, static_cast<int16_t>(moeExpertNumPerRank_), calCnt);
     Div(tempTensorInt16, expertIdsTensor, dstTensorInt16, calCnt);
     // 筛选无效expert id 消除影响
-    CompareScalar(maskTensorInt8, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::LT, calCnt);
-    Select(dstTensorInt16, maskTensorInt8, expertIdsTensor, tempTensorInt16,
-        AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, calCnt);
+    CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
+    Select(dstTensorInt16, gatherMaskTensorInt8, tempTensorInt16, static_cast<int16_t>(-1),
+        AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCnt);
 
     for (uint32_t dstRankId = startRankId; dstRankId < endRankId; dstRankId++) {
         // 筛选出发送到目标卡的token
         uint64_t rsvdCnt = 0;
         Subs(expertIdsTensor, dstTensorInt16, static_cast<int16_t>(dstRankId), calCnt);
         Abs(tempTensorInt16, expertIdsTensor, calCnt);
-        Mins(expertIdsTensor, tempTensorInt16, static_cast<int16_t>(1), calCnt); // 目标 0 非目标 1
-        Cast(tempTensorInt32, expertIdsTensor, RoundMode::CAST_NONE, calCnt);
-        ReduceSum<int32_t, Pattern::Reduce::AR, true>(sumTensorInt32, tempTensorInt32, shape, false);
-        Duplicate<uint32_t>(maskTensorInt32, 0, sumSizeAlign / sizeof(uint32_t));    // GatherMask前清0
-        CompareScalar(gatherMaskTensorInt8, sumTensorInt32, static_cast<int32_t>(axisK_), AscendC::CMPMODE::LT,
-            calCnt / axisK_);
-        GatherMask(tempTensorInt32, sumTensorInt32, maskTensorInt32, true, mask, {1, 1, 0, 0}, rsvdCnt);
+        ReduceMin<int16_t, Pattern::Reduce::AR, true>(expertIdsTensor, tempTensorInt16, shape, false);  // 0为目标
+        Duplicate<uint16_t>(maskTensorInt16, 0, tokenCntAlign);    // GatherMask前清0
+        CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::EQ,
+            tokenCntAlign);
+        GatherMask(tempTensorInt16, expertIdsTensor, maskTensorInt16, true, mask, {1, 1, 0, 0}, rsvdCnt);
         SyncFunc<AscendC::HardEvent::V_S>();
         uint32_t offset = (dstRankId - startRankId) * COUNTER_STRIDE + 1;
         int32_t curRankCnt = sendCntTensor_.GetValue(offset) + static_cast<int32_t>(rsvdCnt);
@@ -377,7 +373,7 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerExpert(
     LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t startExpertId, uint32_t endExpertId)
 {
-    if (startExpertId > moeExpertNum_) {
+    if (startExpertId >= moeExpertNum_) {
         return;
     }
 
@@ -385,13 +381,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
     LocalTensor<uint16_t> maskTensorInt16 = topkIdsBuf_.Get<uint16_t>();
     LocalTensor<int16_t> dstTensorInt16 = dstExpBuf_.Get<int16_t>();
     uint32_t mask = calCnt;
-    uint32_t countAlign = Ceil(calCnt * sizeof(int16_t), UB_ALIGN) * UB_ALIGN / sizeof(int16_t);
+    uint32_t calCntAlign = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int16_t);
 
     for (uint32_t dstExpertId = startExpertId; dstExpertId < endExpertId; dstExpertId++) {
         uint64_t rsvdCnt = 0;
-        Duplicate<uint16_t>(maskTensorInt16, 0, countAlign);    // GatherMask前清0
+        Duplicate<uint16_t>(maskTensorInt16, 0, calCntAlign);    // GatherMask前清0
         CompareScalar(gatherMaskTensorInt8, expertIdsTensor, static_cast<int16_t>(dstExpertId),
-            AscendC::CMPMODE::EQ, calCnt);
+            AscendC::CMPMODE::EQ, calCntAlign);
         GatherMask(dstTensorInt16, expertIdsTensor, maskTensorInt16, true, mask, {1, 1, 0, 0}, rsvdCnt);
         SyncFunc<AscendC::HardEvent::V_S>();
         int32_t curExpertCnt = sendCntTensor_.GetValue(dstExpertId - startExpertId);
@@ -408,7 +404,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
     uint32_t perGroupTokenNum = PER_GROUP_SIZE / sizeof(int16_t) / axisK_;
     uint32_t groupCnt = Ceil(axisBS_, perGroupTokenNum);
     uint32_t calCnt = perGroupTokenNum * axisK_;
-    uint32_t perGroupSizeAlign = Ceil(calCnt * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t perGroupSizeAlign = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t cntPerRankSizeAlign256 = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t),
         ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t maxSizePerCore = moeExpertNumAlign_ > cntPerRankSizeAlign256 ? moeExpertNumAlign_ : cntPerRankSizeAlign256;
@@ -425,7 +421,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 
     if (aivId_ < calRankCoreNum_) {  // 前面的核做per rank count计算
         SplitToCore(epWorldSize_, calRankCoreNum_, startId, endId, numPerCore, true);
-        if (startId > epWorldSize_) {
+        if (startId >= epWorldSize_) {
             return;
         }
         // 两两一组，每组第一个位置填充1，作为状态位
@@ -433,7 +429,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
         Duplicate<int64_t>(sendCntTensorInt64, static_cast<int64_t>(1), cntPerRankSizeAlign256 / sizeof(int64_t));
     } else {    // 后面的核做per expert count计算
         SplitToCore(moeExpertNum_, calExpertCoreNum_, startId, endId, numPerCore, false);
-        if (startId > moeExpertNum_) {
+        if (startId >= moeExpertNum_) {
             return;
         }
     }
@@ -555,7 +551,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
