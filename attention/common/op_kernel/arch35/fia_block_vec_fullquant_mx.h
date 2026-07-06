@@ -135,6 +135,12 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    // [样例] 用 Mutex 替代 Bmm2ResCastAndCopyOut 里 attenOut 的 V_MTE3 set/wait (RAW)
+    MutexID attenOutMutexId;
+    // [WAR] InitOutput(MTE3 memset GM) 与 V 复用剩余 UB 的互斥
+    // 注意: ClearOutput 在 AllocEventID 之前调用, 故用固定 MutexID 常量(原 initOutputEventId=0 同理是编译期常量)
+    // attenOutMutexId 动态分配从 0 起, 固定 id 取高位 26 避免冲突
+    static constexpr MutexID initOutMutexId = 26U;
     TBuf<> softmaxMaxBuf[PRELOAD_N + 1];
     TBuf<> softmaxSumBuf[PRELOAD_N + 1];
     TBuf<> softmaxExpBuf[PRELOAD_N + 1];
@@ -230,12 +236,16 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
+            // [WAR] mutex 初始空闲, 无需 prime
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore();
             if (constInfo.isSoftmaxLseEnable) {
                 InitLseOutputSingleCore();
             }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // [WAR] drain: V 等最后一次 memset(MTE3) 释放后再 SyncAll
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            AscendC::Mutex::Lock<PIPE_V>(initOutMutexId);
+            AscendC::Mutex::Unlock<PIPE_V>(initOutMutexId);
             SyncAll();
         }
     }
@@ -262,7 +272,9 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // [WAR] MTE3 memset 段自闭合: 取(等上一复用者)->memset->释放
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            AscendC::Mutex::Lock<PIPE_MTE3>(initOutMutexId);
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
@@ -270,7 +282,8 @@ public:
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            AscendC::Mutex::Unlock<PIPE_MTE3>(initOutMutexId);
         }
     }
 
@@ -288,10 +301,13 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // [WAR] MTE3 memset 段自闭合
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            AscendC::Mutex::Lock<PIPE_MTE3>(initOutMutexId);
             matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            AscendC::Mutex::Unlock<PIPE_MTE3>(initOutMutexId);
         }
     }
 
@@ -708,7 +724,10 @@ public:
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // [统一] stage2OutBuf 与 attenOut 同址(见 Bmm2ResCastAndCopyOut SetAddr), 用单 mutex 覆盖整块 buffer 生命周期
+        // V 在此取 buffer(等上轮 MTE3 拷完), 替代 WaitFlag<MTE3_V>; 全程 V 持有, 拷出函数内交给 MTE3
+        // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        AscendC::Mutex::Lock<PIPE_V>(attenOutMutexId);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
@@ -746,12 +765,18 @@ public:
                 }
             }
             if (DealRowCount == 0) {
-                SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+                // [统一] 无拷出, V 直接释放 buffer (MTE3 未介入)
+                // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+                AscendC::Mutex::Unlock<PIPE_V>(attenOutMutexId);
                 return;
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, DealRowCount);
+            // 拷出路径: buffer 已在 Bmm2ResCastAndCopyOut 内由 MTE3 Unlock, 此处不再释放
+            return;
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // [统一] 非 isLastS2Loop: 仅 V 写了 stage2, 未拷出, V 释放
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        AscendC::Mutex::Unlock<PIPE_V>(attenOutMutexId);
     }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -762,6 +787,8 @@ public:
 
         attenOut.SetAddr(vec2ResUb.address_);
 
+        // [统一] buffer 锁由外层 ProcessVec2OnUb(707) 的 Lock<PIPE_V> 持有, 此处不再 Lock<PIPE_V>(避免双重加锁)
+        // V 写 attenOut(与 vec2ResUb 同址) 完成后交给 MTE3 拷出
         if constexpr (!POST_QUANT) {
             RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
             Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
@@ -769,10 +796,13 @@ public:
             PostQuant(runInfo, attenOut, vec2ResUb, mStartVec, mDealSize, dSizeAligned64);
             RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         }
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        AscendC::Mutex::Unlock<PIPE_V>(attenOutMutexId);   // V 写完, 释放
+        AscendC::Mutex::Lock<PIPE_MTE3>(attenOutMutexId);  // MTE3 取(等V写完)
 
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize, gmDealRowCount);
+        AscendC::Mutex::Unlock<PIPE_MTE3>(attenOutMutexId); // MTE3 拷完, 释放供下轮V
     }
 
     template <typename VEC2_RES_T>
@@ -958,8 +988,12 @@ public:
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
+        // [统一] buffer 锁由外层 ProcessVec2OnUb(707) 的 Lock<PIPE_V> 持有, 此处不再 Lock<PIPE_V>
+        // V 写(上游)完成, 交给 MTE3 拷出
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
+        AscendC::Mutex::Unlock<PIPE_V>(attenOutMutexId);   // V 写完, 释放
+        AscendC::Mutex::Lock<PIPE_MTE3>(attenOutMutexId);  // MTE3 取
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
 
@@ -969,6 +1003,7 @@ public:
         dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
+        AscendC::Mutex::Unlock<PIPE_MTE3>(attenOutMutexId);
     }
 
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
@@ -1063,18 +1098,22 @@ public:
         mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
         vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
         vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        // [清理] mte3ToVId 的计算路径(707/745/750)已全部转 Mutex, prime/drain 空转移除
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        attenOutMutexId = AllocMutexID(); // [样例] Bmm2ResCastAndCopyOut 用
     }
 
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        // [清理] mte3ToVId prime 已移除, 对应 drain 也移除
+        // WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
+        // WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
+        ReleaseMutexID(attenOutMutexId); // [样例]
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb,
