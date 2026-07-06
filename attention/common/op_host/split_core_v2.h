@@ -262,7 +262,7 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
 // main
 void SplitFD(FAMetaData &result);
 void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, FAMetaData &result);
-bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, const SplitParam &param);
+bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param);
 void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param);
 void LogSplitCoreResult(const FAMetaData &result);
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result);

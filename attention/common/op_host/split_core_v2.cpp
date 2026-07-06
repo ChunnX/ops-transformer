@@ -654,9 +654,9 @@ void SplitFD(FAMetaData &result)
     fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, const SplitParam &param)
+bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param)
 {
-    const int64_t full_block_cost = CalcCost(param.mBaseSize, param.s2BaseSize);
+    const int64_t full_block_cost = CalcCost(actualMFdsize, param.s2BaseSize);
     if (noFdCost <= param.fdLeastBlock * full_block_cost) {
         return false;
     }
@@ -777,14 +777,14 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     }
 
     // 根据shape判断是否要开FD
-    if (param.streamK){
+    if (param.streamK && result.fdRes.fdNum > 0){
         splitContext.splitParam.streamK = false;
         CalcSplitPlan(result.usedCoreNum, INT64_MAX, splitContext, tmpResult);
-        if (!CheckChooseWithFd(tmpResult.maxCost, result.maxCost, param)) {
+        uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
+        if (!CheckChooseWithFd(tmpResult.maxCost, result.maxCost, std::min(maxFdSize, param.mBaseSize), param)) {
             CopyTmpResult(tmpResult, result);
         }
     }
-
     // 3、存在FD任务，对FD进行负载均衡分配
     if (result.fdRes.fdNum > 0U) {
         SplitFD(result);
