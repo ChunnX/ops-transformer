@@ -356,28 +356,27 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         # barrier removed: next iteration's bmm2Res copy overwrites bmm2_ub
 
+                    # GlobalSoftmaxI: compute global sum (no per-block SoftmaxI writes)
                     T.tile.fill(rsy_sum_ub, 0)
-                    T.barrier_all()
                     for n_idx_iter in T.serial(n_num):
                         T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
                         T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                        T.barrier_all()
-                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
                         T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                        # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
                     T.tile.fill(eps_sum_ub, 1e-8)
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
                     T.barrier_all()
 
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
-                        T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
+                    # Per-core SoftmaxI: only compute+write MY K block (others don't need it)
+                    T.copy(ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], rsy_chunk_ub)
+                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
+                    T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                    T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # dWeight, reluGrad for MY K block (same V scope, no cross flag)
                     # Buffer reuse from earlier phases:
