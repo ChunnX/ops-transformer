@@ -6,12 +6,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    x     |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    x     |
-| Atlas 200I/500 A2 推理产品                      |    x     |
-| Atlas 推理系列产品                              |    x     |
-| Atlas 训练系列产品                              |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    x     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    x     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -24,7 +24,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnSparseFlashMlaGradMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnSparseFlashMlaGradMetadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnSparseFlashMlaGradMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnSparseFlashMlaGradMetadata"执行计算。
 
 ``` cpp
 aclnnStatus aclnnSparseFlashMlaGradMetadataGetWorkspaceSize(
@@ -98,90 +98,90 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
-      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B，)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同q token对应的ori_kv部分关键稀疏token的个数。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, S1, N2)或(T1, N2)</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同q token对应的cmp_kv部分关键稀疏token的个数。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, S1, N2)或(T1, N2)</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -453,22 +453,22 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
         <tr>
             <td>workspace</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace内存地址</td>
+            <td>在Device侧申请的workspace内存地址。</td>
         </tr>
         <tr>
             <td>workspaceSize</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseFlashMlaGradMetadataGetWorkspaceSize获取</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseFlashMlaGradMetadataGetWorkspaceSize获取。</td>
         </tr>
         <tr>
             <td>executor</td>
             <td>输入</td>
-            <td>op执行器，包含了算子计算流程</td>
+            <td>op执行器，包含了算子计算流程。</td>
         </tr>
         <tr>
             <td>stream</td>
             <td>输入</td>
-            <td>指定执行任务的Stream</td>
+            <td>指定执行任务的Stream。</td>
         </tr>
     </tbody>
     </table>
@@ -480,7 +480,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
 ## 约束说明
 
   - aclnnSparseFlashMlaGradMetadata默认确定性实现。
-
+  - B（Batch）表示输入样本批量大小。
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息。
     - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Batch信息。
