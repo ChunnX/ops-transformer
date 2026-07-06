@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MegaMoe Interleaved 调度设计可视化</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-soft: #eef3fb;
+      --ink: #172033;
+      --muted: #5d6b82;
+      --line: #d7deea;
+      --line-strong: #b7c2d4;
+      --blue: #2563eb;
+      --cyan: #0e7490;
+      --green: #15803d;
+      --amber: #b45309;
+      --red: #b42318;
+      --shadow: 0 12px 30px rgba(22, 34, 51, 0.08);
+      --radius: 8px;
+      font-family:
+        "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC",
+        system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        linear-gradient(180deg, #eef4ff 0, rgba(238, 244, 255, 0) 360px),
+        var(--bg);
+    }
+
+    main {
+      width: min(1500px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 24px;
+      line-height: 1.2;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #eef2f8;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    .page-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 28px;
+      align-items: stretch;
+      margin-bottom: 26px;
+    }
+
+    .headline {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 280px;
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #ffffff 0%, #f7fbff 58%, #edf6ff 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      width: fit-content;
+      margin-bottom: 16px;
+      padding: 5px 10px;
+      border: 1px solid #c8d7ee;
+      border-radius: 999px;
+      color: #1d4ed8;
+      background: #eff6ff;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      max-width: 860px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .toc {
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .toc h2 {
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    .toc-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .toc a {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--ink);
+      text-decoration: none;
+      background: #fbfcff;
+    }
+
+    .toc a:hover {
+      border-color: #9db3d5;
+      background: #f4f8ff;
+    }
+
+    .toc span {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .assumption-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      min-height: 92px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcff;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font-size: 23px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .metric .hint {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .rule-box {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .rule {
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fbff;
+    }
+
+    .rule strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .rule p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .scenario {
+      margin-top: 24px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+    }
+
+    .scenario:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .scenario-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    .scenario-title p {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .badge-line {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: #26364f;
+      background: #f7faff;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .note {
+      padding: 12px 14px;
+      border-left: 4px solid var(--amber);
+      border-radius: 6px;
+      background: #fff8ed;
+      color: #6c3d05;
+      font-size: 13px;
+      line-height: 1.55;
+      margin-bottom: 14px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .aic-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .aic-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+    }
+
+    .aic-head p {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .aic-number {
+      min-width: 74px;
+      text-align: right;
+      color: var(--blue);
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .aic-body {
+      padding: 16px 18px 18px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 13px;
+    }
+
+    .data-table caption {
+      margin-bottom: 8px;
+      text-align: left;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .data-table th,
+    .data-table td {
+      border: 1px solid var(--line);
+      padding: 8px 9px;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    .data-table th {
+      background: #f1f5fb;
+      color: #25334a;
+      font-weight: 800;
+    }
+
+    .data-table td {
+      background: #ffffff;
+    }
+
+    .mini-table {
+      margin-top: 10px;
+    }
+
+    .route-wrap {
+      overflow-x: auto;
+      padding-bottom: 3px;
+    }
+
+    .route-table {
+      min-width: 620px;
+      table-layout: auto;
+    }
+
+    .route-table th:first-child,
+    .route-table td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      min-width: 112px;
+      background: #eef4fd;
+      font-weight: 800;
+    }
+
+    .route-table tbody td:not(:first-child) {
+      min-width: 78px;
+      text-align: center;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-weight: 700;
+    }
+
+    .route-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 58px;
+      min-height: 28px;
+      border-radius: 6px;
+      border: 1px solid #c4d7fb;
+      color: #1e3a8a;
+      background: #eff6ff;
+    }
+
+    .tile-panel {
+      margin-top: 16px;
+      border-top: 1px dashed var(--line-strong);
+      padding-top: 15px;
+    }
+
+    .tile-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .tile-title p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .formula {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .formula-item {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcff;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .formula-item strong {
+      color: var(--ink);
+    }
+
+    .map-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .sample-table th:nth-child(1),
+    .sample-table td:nth-child(1) {
+      width: 28%;
+    }
+
+    .sample-table th:nth-child(2),
+    .sample-table td:nth-child(2) {
+      width: 32%;
+    }
+
+    .sample-table td:last-child {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfcff;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .dot.green {
+      background: var(--green);
+    }
+
+    .dot.amber {
+      background: var(--amber);
+    }
+
+    .compact {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .footer-note {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    @media (max-width: 1180px) {
+      .page-head,
+      .split,
+      .map-grid,
+      .formula {
+        grid-template-columns: 1fr;
+      }
+
+      .assumption-grid,
+      .rule-box {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      main {
+        width: min(100% - 22px, 1500px);
+        padding-top: 16px;
+      }
+
+      .headline,
+      .toc,
+      .section {
+        padding: 16px;
+      }
+
+      .assumption-grid,
+      .rule-box {
+        grid-template-columns: 1fr;
+      }
+
+      .scenario-title,
+      .aic-head,
+      .tile-title {
+        display: block;
+      }
+
+      .badge-line {
+        justify-content: flex-start;
+        margin-top: 10px;
+      }
+
+      .aic-number {
+        margin-top: 10px;
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="page-head">
+      <section class="headline">
+        <div class="eyebrow">MegaMoe interleaved</div>
+        <h1>core group × wave slot 与 tile 级映射对照</h1>
+        <p class="subtitle">
+          这个静态页只展示调度设计的直观关系：主路由表决定每个 core group 在每个 wave slot 执行哪个
+          <code>Expert.Wave</code>；tile 映射表只展示单个 wave 内 GMM1/GMM2 tile 如何摊到该组 core。
+        </p>
+      </section>
+      <nav class="toc" aria-label="场景导航">
+        <h2>场景索引</h2>
+        <div class="toc-grid" id="toc"></div>
+      </nav>
+    </header>
+
+    <section class="section" aria-labelledby="assumptions-title">
+      <h2 id="assumptions-title">固定假设</h2>
+      <div class="assumption-grid">
+        <div class="metric">
+          <div class="label">调度模式</div>
+          <div class="value">interleaved</div>
+          <div class="hint">rank 内 4 个 expert 的 wave 交错铺开</div>
+        </div>
+        <div class="metric">
+          <div class="label">tokens / expert</div>
+          <div class="value">1024</div>
+          <div class="hint">bs=512, topk=8, expertPerRank=4</div>
+        </div>
+        <div class="metric">
+          <div class="label">waves / expert</div>
+          <div class="value">4</div>
+          <div class="hint">waveM=256，1024 / 256 = 4</div>
+        </div>
+        <div class="metric">
+          <div class="label">GMM tile</div>
+          <div class="value">256×256 / 128×256</div>
+          <div class="hint">GMM1=256×256，GMM2=128×256</div>
+        </div>
+      </div>
+      <div class="rule-box">
+        <div class="rule">
+          <strong>推荐 group 数</strong>
+          <p><code>groupNum = min(floor(aic / gmm1Tiles), 4)</code>，目标是让 <code>groupSize >= gmm1Tiles</code>。</p>
+        </div>
+        <div class="rule">
+          <strong>GMM1 tile 数</strong>
+          <p><code>gmm1Tiles = ceil(n / 256)</code>，单 wave 的 M 维已经固定为 256。</p>
+        </div>
+        <div class="rule">
+          <strong>GMM2 tile 数</strong>
+          <p><code>gmm2Tiles = ceil(256 / 128) * ceil(h / 256)</code>，即 <code>2 * ceil(h / 256)</code>。</p>
+        </div>
+      </div>
+      <div class="legend" aria-label="图例">
+        <span><i class="dot"></i>CG × slot 是主路由</span>
+        <span><i class="dot green"></i>tile → core 是单 wave 内公式推导</span>
+        <span><i class="dot amber"></i>tile 映射不进入主路由表</span>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="scenarios-title">
+      <h2 id="scenarios-title">场景计算与路由表</h2>
+      <div id="scenario-root"></div>
+    </section>
+
+    <p class="footer-note">
+      表内 core 编号均为当前 AIC 总数下的本 rank 本地编号；示例默认取 <code>CG0 slot0 = E0.W0</code> 的单 wave。
+    </p>
+  </main>
+
+  <script>
+    const EXPERTS_PER_RANK = 4;
+    const WAVE_M = 256;
+    const WAVES_PER_EXPERT = 4;
+    const AIC_OPTIONS = [32, 36];
+
+    const scenarios = [
+      {
+        id: "s4096-4096",
+        title: "场景 A：h = n = 4096",
+        h: 4096,
+        n: 4096,
+        note: ""
+      },
+      {
+        id: "s7068-4096",
+        title: "场景 B：h = 7068, n = 4096",
+        h: 7068,
+        n: 4096,
+        note: "这里按用户给出的 h=7068 计算，ceil(7068/256)=28；如果 h 写作 7168，ceil(7168/256)=28，tile 数相同。"
+      },
+      {
+        id: "s7168-2048",
+        title: "场景 C：h = 7168, n = 2048",
+        h: 7168,
+        n: 2048,
+        note: ""
+      }
+    ];
+
+    const toc = document.getElementById("toc");
+    const root = document.getElementById("scenario-root");
+
+    scenarios.forEach((scenario) => {
+      const gmm1Tiles = Math.ceil(scenario.n / 256);
+      const hTiles = Math.ceil(scenario.h / 256);
+      const gmm2Tiles = Math.ceil(WAVE_M / 128) * hTiles;
+      const tocLink = document.createElement("a");
+      tocLink.href = `#${scenario.id}`;
+      tocLink.innerHTML = `<strong>${scenario.title.replace("场景 ", "")}</strong><span>GMM1 ${gmm1Tiles}, GMM2 ${gmm2Tiles}</span>`;
+      toc.appendChild(tocLink);
+
+      const section = document.createElement("article");
+      section.className = "scenario";
+      section.id = scenario.id;
+      section.innerHTML = `
+        <div class="scenario-title">
+          <div>
+            <h3>${scenario.title}</h3>
+            <p>gmm1Tiles=<code>${gmm1Tiles}</code>；ceil(h/256)=<code>${hTiles}</code>；gmm2Tiles=<code>${gmm2Tiles}</code>。</p>
+          </div>
+          <div class="badge-line">
+            <span class="badge">h=${scenario.h}</span>
+            <span class="badge">n=${scenario.n}</span>
+            <span class="badge">gmm1Tiles=${gmm1Tiles}</span>
+            <span class="badge">gmm2Tiles=${gmm2Tiles}</span>
+          </div>
+        </div>
+        ${scenario.note ? `<div class="note">${scenario.note}</div>` : ""}
+        <div class="split">
+          ${AIC_OPTIONS.map((aic) => renderAicCard(aic, scenario, gmm1Tiles, hTiles, gmm2Tiles)).join("")}
+        </div>
+      `;
+      root.appendChild(section);
+    });
+
+    function renderAicCard(aic, scenario, gmm1Tiles, hTiles, gmm2Tiles) {
+      const groupNum = Math.min(Math.floor(aic / gmm1Tiles), WAVES_PER_EXPERT);
+      const groups = makeGroups(aic, groupNum);
+      const slots = Math.ceil((EXPERTS_PER_RANK * WAVES_PER_EXPERT) / groupNum);
+      const cgRows = groups.map((group) => renderRouteRow(group, slots, groupNum)).join("");
+      const ranges = groups.map((group) => `CG${group.index}: core ${group.start}-${group.end}`).join("；");
+      const sampleGroup = groups[0];
+      return `
+        <section class="aic-card">
+          <div class="aic-head">
+            <div>
+              <h3>${aic} AIC</h3>
+              <p>推荐 groupNum=<code>${groupNum}</code>；每组 core：${groups.map((g) => g.size).join("+")}；${ranges}</p>
+            </div>
+            <div class="aic-number">${aic}</div>
+          </div>
+          <div class="aic-body">
+            <table class="data-table">
+              <caption>场景结果：按 <code>groupSize >= gmm1Tiles</code> 的基础策略分组。</caption>
+              <thead>
+                <tr>
+                  <th>项目</th>
+                  <th>数值</th>
+                  <th>解释</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>GMM1 tiles</td>
+                  <td>${gmm1Tiles}</td>
+                  <td>ceil(${scenario.n}/256)</td>
+                </tr>
+                <tr>
+                  <td>GMM2 tiles</td>
+                  <td>${gmm2Tiles}</td>
+                  <td>ceil(256/128) * ceil(${scenario.h}/256) = 2 * ${hTiles}</td>
+                </tr>
+                <tr>
+                  <td>core group</td>
+                  <td>${groupNum} 组</td>
+                  <td>${ranges}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="tile-panel">
+              <div class="tile-title">
+                <h3>core group × wave slot 主路由表</h3>
+                <p>同一列 slot 表示并发的一轮；先铺 E0..E3，再推进 W0..W3。</p>
+              </div>
+              <div class="route-wrap">
+                <table class="data-table route-table">
+                  <thead>
+                    <tr>
+                      <th>core group</th>
+                      ${Array.from({ length: slots }, (_, slot) => `<th>slot${slot}</th>`).join("")}
+                    </tr>
+                  </thead>
+                  <tbody>${cgRows}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="tile-panel">
+              <div class="tile-title">
+                <h3>单 wave tile → core 示例</h3>
+                <p>取 <code>CG0 slot0 = E0.W0</code>；tile 映射由公式推导，不写入主路由表。</p>
+              </div>
+              <div class="formula">
+                <div class="formula-item">
+                  <strong>GMM1</strong><br>
+                  tileN=<code>0..${gmm1Tiles - 1}</code>，core=<code>${sampleGroup.start} + tileN % ${sampleGroup.size}</code>。
+                </div>
+                <div class="formula-item">
+                  <strong>GMM2</strong><br>
+                  tileId=<code>mTile * ${hTiles} + hTile</code>，core=<code>${sampleGroup.start} + tileId % ${sampleGroup.size}</code>。
+                </div>
+              </div>
+              <div class="map-grid">
+                ${renderGmm1Sample(sampleGroup, gmm1Tiles)}
+                ${renderGmm2Sample(sampleGroup, hTiles, gmm2Tiles)}
+              </div>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function makeGroups(aic, groupNum) {
+      const base = Math.floor(aic / groupNum);
+      return Array.from({ length: groupNum }, (_, index) => {
+        const start = index * base;
+        const end = start + base - 1;
+        return { index, start, end, size: base };
+      });
+    }
+
+    function renderRouteRow(group, slots, groupNum) {
+      const cells = Array.from({ length: slots }, (_, slot) => {
+        const taskIndex = slot * groupNum + group.index;
+        if (taskIndex >= EXPERTS_PER_RANK * WAVES_PER_EXPERT) {
+          return "<td>-</td>";
+        }
+        const expert = taskIndex % EXPERTS_PER_RANK;
+        const wave = Math.floor(taskIndex / EXPERTS_PER_RANK);
+        return `<td><span class="route-cell">E${expert}.W${wave}</span></td>`;
+      }).join("");
+      return `
+        <tr>
+          <td>CG${group.index}<br><span class="compact">core ${group.start}-${group.end}</span></td>
+          ${cells}
+        </tr>
+      `;
+    }
+
+    function renderGmm1Sample(group, gmm1Tiles) {
+      const samples = sampleIndices(gmm1Tiles);
+      const scope = sampleScope(gmm1Tiles);
+      const rows = samples.map((tileN) => `
+        <tr>
+          <td>${tileN}</td>
+          <td>(M0, N${tileN})</td>
+          <td>core ${group.start + (tileN % group.size)}</td>
+        </tr>
+      `).join("");
+      return `
+        <table class="data-table sample-table">
+          <caption>GMM1 tile=256×256，单 wave 共 ${gmm1Tiles} 个 tile；${scope}。</caption>
+          <thead>
+            <tr>
+              <th>tileN</th>
+              <th>tile 坐标</th>
+              <th>映射 core</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderGmm2Sample(group, hTiles, gmm2Tiles) {
+      const samples = sampleIndices(gmm2Tiles);
+      const scope = sampleScope(gmm2Tiles);
+      const rows = samples.map((tileId) => {
+        const mTile = Math.floor(tileId / hTiles);
+        const hTile = tileId % hTiles;
+        return `
+          <tr>
+            <td>${tileId}</td>
+            <td>(M${mTile}, H${hTile})</td>
+            <td>core ${group.start + (tileId % group.size)}</td>
+          </tr>
+        `;
+      }).join("");
+      return `
+        <table class="data-table sample-table">
+          <caption>GMM2 tile=128×256，单 wave 共 ${gmm2Tiles} 个 tile；${scope}。</caption>
+          <thead>
+            <tr>
+              <th>tileId</th>
+              <th>tile 坐标</th>
+              <th>映射 core</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function sampleIndices(total) {
+      if (total <= 10) {
+        return Array.from({ length: total }, (_, index) => index);
+      }
+      const picked = [0, 1, 2, 3, 4, 5, total - 2, total - 1];
+      return picked.filter((value, index, array) => array.indexOf(value) === index);
+    }
+
+    function sampleScope(total) {
+      return total <= 10 ? "下表全量列出" : "下表列出首 6 个和末 2 个 tile";
+    }
+  </script>
+</body>
+</html>
