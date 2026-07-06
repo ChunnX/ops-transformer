@@ -727,23 +727,23 @@ public:
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, vecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
-            uint32_t dealRowCount;
+            uint32_t DealRowCount;
             if (USE_DN) {
-                dealRowCount = runInfo.actVecMSize;
+                DealRowCount = runInfo.actVecMSize;
             } else {
                 uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
                 if (constInfo.subBlockIdx == 0) {
-                    dealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
+                    DealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
                 } else {
                     int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
-                    dealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
+                    DealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
                 }
             }
-            if (dealRowCount == 0) {
+            if (DealRowCount == 0) {
                 SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
                 return;
             }
-            CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, dealRowCount);
+            CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, DealRowCount);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
