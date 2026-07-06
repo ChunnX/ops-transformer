@@ -94,4 +94,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_aclnn_engram_fetch.cpp](./tests/test_aclnn_engram_fetch.cpp) | 通过`aclnnEngramFetch`接口方式调用engram_fetch算子。 |
+| aclnn接口 | [test_aclnn_engram_fetch.cpp](./tests/ut/op_api/test_aclnn_engram_fetch.cpp) | 通过`aclnnEngramFetch`接口方式调用engram_fetch算子。 |
