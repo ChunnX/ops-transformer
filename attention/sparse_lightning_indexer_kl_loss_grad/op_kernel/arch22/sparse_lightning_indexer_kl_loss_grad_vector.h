@@ -994,7 +994,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIKLLo
                     ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2);
                 } else {
                     DataCopyExtParams dataCopyParams(
-                        keyOffset1Pass + keyOffset1Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
+                        keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
                     );
                     int64_t keyStartOffset = (keyOffset1Pass) ? keyOffset1 : keyOffset2;
                     int64_t ubStartOffset = (keyOffset1Pass) ? ub1Offset : ub2Offset;
@@ -1096,7 +1096,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
                 ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2);
             } else {
                 DataCopyExtParams dataCopyParams(
-                    keyOffset1Pass + keyOffset1Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
+                    keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
                 );
                 int64_t keyStartOffset = (keyOffset1Pass) ? keyOffset1 : keyOffset2;
                 int64_t ubStartOffset = (keyOffset1Pass) ? ub1Offset : ub2Offset;
