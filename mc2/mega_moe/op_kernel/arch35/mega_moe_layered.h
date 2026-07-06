@@ -904,7 +904,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
     hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
         copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-    printf("drain done\n");
+    //printf("drain done\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
@@ -1026,7 +1026,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         TEventID eventId = kBufEvents[primeIdx];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+        PipeBarrier<PIPE_ALL>();
         ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, primeIdx, copyInNum);
+        PipeBarrier<PIPE_ALL>();
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
@@ -1051,7 +1053,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             // WaitFlag 此处等待的是本轮刚发出的 SetFlag<MTE3_MTE2>(eventId),即等本槽 MTE3 完成。
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
             uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
+            PipeBarrier<PIPE_ALL>();
             ReceiveTokenFromRmtServer(relayRank, remoteCopyOffset, outIdx, copyInNum);
+            PipeBarrier<PIPE_ALL>();
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
