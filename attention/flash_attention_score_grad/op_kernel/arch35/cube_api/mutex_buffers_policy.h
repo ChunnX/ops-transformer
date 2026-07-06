@@ -206,6 +206,20 @@ public:
             return c_;
         }
     }
+
+    __aicore__ inline MutexBuffer<bufferType, syncType> &GetReused(bool isNextS2IdxNoChange) {
+        if (isNextS2IdxNoChange) {
+            if (flag2_ == 0) {
+                return a_;
+            } else if (flag2_ == 1) {
+                return b_;
+            } else {
+                return c_;
+            }
+        } else {
+            return GetReused();
+        }
+    }
 private:
     MutexBuffer<bufferType, syncType> a_;
     MutexBuffer<bufferType, syncType> b_;
@@ -238,39 +252,52 @@ public:
         d_.UnInit();
     }
 
-    __aicore__ inline MutexBuffer<bufferType, syncType> &Get(uint32_t id) {
-        uint32_t flag = id % 4;
-        if (flag == 0) {
+    __aicore__ inline MutexBuffer<bufferType, syncType> &Get() {
+        if (flag1_ == 0) {
+            flag1_ = 1;
             return a_;
-        } else if (flag == 1) {
+        } else if (flag1_ == 1) {
+            flag1_ = NUM_2;
             return b_;
-        } else if (flag == 2) {
+        } else if (flag1_ == 2) {
+            flag1_ = 3;
             return c_;
         } else {
+            flag1_ = 0;
             return d_;
         }
     }
 
-    __aicore__ inline MutexBuffer<bufferType, syncType> &Get() {
-        auto& buffer = Get(head_);
-        head_++;
-        return buffer;
-    }
-
-    __aicore__ inline MutexBuffer<bufferType, syncType> &GetReused() {
-        auto& buffer = Get(used_);
-        used_ = (used_ - tail_ + 1) % (head_ - tail_) + tail_;
-        return buffer;
-    }
-
-    __aicore__ inline MutexBuffer<bufferType, syncType> &GetFree() {
-        if (tail_ == used_) {
-            used_++;
+    // Q复用
+    __aicore__ inline MutexBuffer<bufferType, syncType> &GetPre() {
+        if (flag1_ == 0) {
+            return d_;
+        } else if (flag1_ == 1) { 
+            return a_;
+        } else if (flag1_ == 2) {
+            return b_;
+        } else {
+            return c_;
         }
-        auto& buffer = Get(tail_);
-        tail_++;
-        return buffer;
     }
+
+    // KV复用
+    __aicore__ inline MutexBuffer<bufferType, syncType> &GetReused() {
+        if (flag2_ == 0) { 
+            flag2_ = 1;
+            return a_;
+        } else if (flag2_ == 1) { 
+            flag2_ = NUM_2;
+            return b_;
+        } else if (flag2_ == 2) {
+            flag2_ = 3;
+            return c_;
+        } else {
+            flag2_ = 0;
+            return d_;
+        }
+    }
+
 private:
     MutexBuffer<bufferType, syncType> a_;
     MutexBuffer<bufferType, syncType> b_;
@@ -279,6 +306,8 @@ private:
     uint32_t tail_ = 0;
     uint32_t head_ = 0;
     uint32_t used_ = 0;
+    uint32_t flag1_ = 0;
+    uint32_t flag2_ = 0;
 };
 
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
