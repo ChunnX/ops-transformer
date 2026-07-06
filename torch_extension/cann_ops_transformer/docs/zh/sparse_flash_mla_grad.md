@@ -2,14 +2,12 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
@@ -71,27 +69,67 @@
 ## 函数原型
 
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla_grad_metadata
-sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
-                            cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
-                            seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
-                            cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-                            batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
-                            ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
-                            ori_win_left=-1, ori_win_right=-1,
-                            layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True) -> Tensor
+cann_ops_transformer.sparse_flash_mla_grad_metadata(
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    *，
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    batch_size=None,
+    max_seqlen_q=None,
+    max_seqlen_ori_kv=None,
+    max_seqlen_cmp_kv=None,
+    ori_topk=None,
+    cmp_topk=None,
+    cmp_ratio=None,
+    ori_mask_mode=0,
+    cmp_mask_mode=0,
+    ori_win_left=-1,
+    ori_win_right=-1,
+    layout_q="BSND",
+    layout_kv="BSND",
+    has_ori_kv=True,
+    has_cmp_kv=True
+) -> Tensor
 ```
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla_grad
-sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
-                        ori_sparse_indices=None, cmp_sparse_indices=None, cu_seqlens_q=None,
-                        cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None,
-                        seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None, 
-                        ori_topk_length=None, cmp_topk_length=None, 
-                        sinks=None, metadata=None,
-                        softmax_scale=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
-                        ori_win_left=-1, ori_win_right=-1,
-                        layout_q="BSND", layout_kv="BSND") -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+cann_ops_transformersparse_flash_mla_grad(
+    q,
+    dout,
+    attn_out,
+    softmax_lse,
+    *,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None, 
+    ori_topk_length=None,
+    cmp_topk_length=None, 
+    sinks=None, metadata=None,
+    softmax_scale=None,
+    cmp_ratio=None,
+    ori_mask_mode=0,
+    cmp_mask_mode=0,
+    ori_win_left=-1,
+    ori_win_right=-1,
+    layout_q="BSND",
+    layout_kv="BSND"
+) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -209,12 +247,17 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 | metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
 
 ## 约束说明
-
+- 该接口支持训练场景下使用。
+- 该接口支持单算子模式和aclgraph模式。
 - 参数q、dout、attn_out、ori_kv、cmp_kv的数据类型必须保持一致。
 - 各个场景关于cmp_kv、cmp_sparse_indices的使用说明如下：
     - SWA场景：要求cmp_kv == None && cmp_sparse_indices == None
     - SCFA场景：要求cmp_kv != None && cmp_sparse_indices != None
     - CFA场景：要求cmp_kv != None && cmp_sparse_indices == None
+
+## 确定性计算
+
+- 默认支持确定性计算
 
 ## 调用示例
 

@@ -37,35 +37,35 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1，)，仅layout_q为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，维度为B+1，仅layout_k为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1，)，仅layout_k为TND场景下必传，第一个值固定为0。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，shape为(B，)。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Key实际参与运算的Sequence Length，shape为(B，)。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，维度为B。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B，)。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -156,7 +156,7 @@
   </tbody>
   </table>
 
-  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
 
 ## 约束说明
 
@@ -171,5 +171,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn API | [test_aclnn_sparse_lightning_indexer_kl_loss_grad_metadata](./examples/test_aclnn_sparse_lightning_indexer_kl_loss_grad_metadata.cpp) | 通过[aclnnSparseLightningIndexerKLLossGradMetadata](./docs/aclnnSparseLightningIndexerKLLossGradMetadata.md)接口调用SparseLightningIndexerKLLossGradMetadata算子 |
-| PyTorch API | [test_torch_sparse_lightning_indexer_kl_loss_grad_metadata](./examples/test_torch_sparse_lightning_indexer_kl_loss_grad_metadata.py) | 通过[torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)接口调用SparseLightningIndexerKLLossGradMetadata算子 |
+| aclnn API | [test_aclnn_sparse_lightning_indexer_kl_loss_grad_metadata](./examples/test_aclnn_sparse_lightning_indexer_kl_loss_grad_metadata.cpp) | 通过[aclnnSparseLightningIndexerKLLossGradMetadata](./docs/aclnnSparseLightningIndexerKLLossGradMetadata.md)接口调用SparseLightningIndexerKLLossGradMetadata算子。 |
+| PyTorch API | [test_torch_sparse_lightning_indexer_kl_loss_grad_metadata](./examples/test_torch_sparse_lightning_indexer_kl_loss_grad_metadata.py) | 通过[torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)接口调用SparseLightningIndexerKLLossGradMetadata算子。 |

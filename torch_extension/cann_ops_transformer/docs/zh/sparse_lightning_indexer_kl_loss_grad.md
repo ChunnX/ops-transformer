@@ -2,14 +2,12 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
@@ -158,7 +156,7 @@ sparse_lightning_indexer_kl_loss_grad(
 | mask_mode | int | 可选 | sparse mask 模式。0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
 | cmp_ratio | int | 可选 | key 压缩比例，当前支持[1, 128]，默认值为 1。 | int32 | - |
 
-<ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
+<ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
 
 ## 返回值说明
 
@@ -178,6 +176,7 @@ sparse_lightning_indexer_kl_loss_grad(
 ## 约束说明
 
 - 该接口支持训练场景。
+- 该接口支持单算子模式和aclgraph模式。
 - `q`、`k` 的数据类型必须保持一致，支持 `float16` 和 `bfloat16`。
 - `w`、`attn_softmax_l1_norm`、`dw`、`softmax_out` 的数据类型应为 `float32`。
 - `sparse_indices`、`cu_seqlens_q`、`cu_seqlens_k`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`metadata` 的数据类型应为 `int32`。
@@ -189,6 +188,10 @@ sparse_lightning_indexer_kl_loss_grad(
 - `mask_mode` 当前支持 `0` 和 `3`。
 - `cmp_ratio` 取值范围为 `[1, 128]`。
 - 压缩 key 且 `mask_mode=3` 时，压缩前 key 长度通过 `compressed_k_len * cmp_ratio + cmp_residual_k[b]` 计算。CP 切分场景中，每个 CP shard 单独调用时，`q` 传入当前 shard 的 query 长度，`k` 传入该 shard 对应的压缩后 key 前缀长度，并按该公式传入对应的 `cmp_residual_k`。
+
+## 确定性计算
+
+- 默认支持确定性计算
 
 ## 调用示例
 
