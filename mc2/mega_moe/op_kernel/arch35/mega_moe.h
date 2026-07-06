@@ -44,8 +44,9 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
-                                  typename Weight1Type, int32_t QuantMode, int32_t CombineQuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode
+                                  typename Weight1Type, int32_t QuantMode, int32_t CombineQuantMode, \
+                                  bool TopkWeightsMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsMode
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -135,6 +136,8 @@ private:
     uint32_t mxQuantTokenAlignBytes_ = 0;
     uint32_t mxQuantScaleAlignBytes_ = 0;
     uint32_t mxQuantTokenScaleAlignBytes_ = 0;
+    uint32_t weightAlignBytes_ = 0;
+    int32_t topkWeightsMode_ = 0; // 仅用于 PeermemInfo/WorkspaceInfo 构造，kernel 逻辑用模板参数 TopkWeightsMode
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
@@ -192,8 +195,10 @@ private:
     // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
     static constexpr uint32_t C_ELEMS_PER_BYTE = Std::IsSame<SwigluQuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
 
+    static constexpr uint32_t GMM1_TILE_M = TopkWeightsMode ? MegaMoeImpl::L1_TILE_M_128 : MegaMoeImpl::L1_TILE_M_256;
+
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
-        QuantScaleOutType, QuantScaleOutType, true>;
+        QuantScaleOutType, QuantScaleOutType, true, false, GMM1_TILE_M, MegaMoeImpl::L1_TILE_N, TopkWeightsMode>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -217,7 +222,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
     maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
-        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
+        static_cast<int64_t>(maxOutputSize_), static_cast<int64_t>(GMM1_TILE_M)));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
         static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
     hiddenDim_ = tilingData->hiddenDim;
@@ -248,8 +253,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     cumsumInfoGlobalTensor_.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
-        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
-        tilingData->clampLimit});
+        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr,
+        params_.workspaceInfo.tripleInfoPtr,
+        tilingData->clampLimit, tilingData->topkWeightsMode});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr -
         params_.peermemInfo.rankSyncInWorldPtr);
@@ -267,6 +273,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     mxQuantScaleAlignBytes_ = mxQuantScaleNumAlignPerToken_ * sizeof(uint8_t);
     mxQuantTokenScaleAlignBytes_ = Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
         static_cast<uint32_t>(ALIGN_32));
+    topkWeightsMode_ = tilingData->topkWeightsMode;
+    if constexpr (TopkWeightsMode) {
+        weightAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(topK_ * sizeof(float)),
+            static_cast<uint32_t>(ALIGN_32));
+        mxQuantTokenScaleAlignBytes_ = Ops::Base::CeilAlign(
+            mxQuantTokenScaleAlignBytes_ + weightAlignBytes_,
+            static_cast<uint32_t>(ALIGN_32));
+    }
 }
 
 // =================================================================================================
@@ -319,6 +333,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
         static_cast<int64_t>(ALIGN_32));
+    if constexpr (TopkWeightsMode) {
+        tokenScaleSize = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tokenScaleSize + weightAlignBytes_),
+            static_cast<int64_t>(ALIGN_32));
+    }
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
@@ -384,11 +403,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
     // Tensor用处：QuantProcessInRank函数中用于存储量化输出结果；
     // Tensor大小：token长度Align256字节对齐 + scale存储长度，当前支持mxfp8量化，xOutTensor1_与xOutTensor2_为双buffer；
+    // 权重前移模式下追加 weightAlignBytes_ 用于存储 topK 个权重；
     uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
     uint32_t xOutTokenBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
         static_cast<uint32_t>(ALIGN_256));
     uint32_t xOutTensorSize1 = xOutTokenBytes +
         Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+    if constexpr (TopkWeightsMode) {
+        xOutTensorSize1 = Ops::Base::CeilAlign(xOutTensorSize1 + weightAlignBytes_,
+            static_cast<uint32_t>(ALIGN_32));
+    }
     xOutTensor1_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1,
         xOutTensorSize1 / sizeof(ActivationType));
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize1;
@@ -563,6 +587,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyExtParams xCopyOutParams = {1U,
         static_cast<uint32_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), 0U, 0U, 0U};
+    if constexpr (TopkWeightsMode) {
+        xCopyOutParams.blockLen = Ops::Base::CeilAlign(
+            xCopyOutParams.blockLen + weightAlignBytes_,
+            static_cast<uint32_t>(ALIGN_32));
+    }
+    uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
@@ -575,8 +605,34 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
         auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
         DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
-        SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        if constexpr (TopkWeightsMode) {
+            GlobalTensor<TopkWeightsType> weightGm;
+            weightGm.SetGlobalBuffer((__gm__ TopkWeightsType*)(params_.probsGmAddr +
+                (curentOffset + index) * topK_ * sizeof(TopkWeightsType)));
+            if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+                // bf16: 先读到临时 buffer，再 Cast 到 weight 区，避免 in-place 覆盖
+                LocalTensor<TopkWeightsType> weightBf16Tmp = mxTempTensor_.ReinterpretCast<TopkWeightsType>();
+                DataCopyPad(weightBf16Tmp, weightGm,
+                    {1U, static_cast<uint32_t>(topK_ * sizeof(TopkWeightsType)), 0U, 0U, 0U},
+                    {false, 0U, 0U, 0U});
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                LocalTensor<float> weightFp32Ub =
+                    xOutTensor[weightOffsetInUb].template ReinterpretCast<float>();
+                Cast(weightFp32Ub, weightBf16Tmp, AscendC::RoundMode::CAST_NONE, topK_);
+                PipeBarrier<PIPE_V>();
+            } else {
+                LocalTensor<TopkWeightsType> weightUb =
+                    xOutTensor[weightOffsetInUb].template ReinterpretCast<TopkWeightsType>();
+                DataCopyPad(weightUb, weightGm,
+                    {1U, static_cast<uint32_t>(topK_ * sizeof(TopkWeightsType)), 0U, 0U, 0U},
+                    {false, 0U, 0U, 0U});
+            }
+        }
+        if constexpr (!(TopkWeightsMode && Std::IsSame<TopkWeightsType, bfloat16_t>::value)) {
+            SetFlag<AscendC::HardEvent::MTE2_V>(event);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        }
         __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
         __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTempTensor_.GetPhyAddr();
         __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTempTensor_[Ops::Base::CeilAlign(
@@ -684,6 +740,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         MXFP_MULTI_BASE_SIZE;  // 输出 token-scale 长度,紧密排列
     uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
         static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
+    if constexpr (TopkWeightsMode) {
+        copyInNum = Ops::Base::CeilAlign(
+            static_cast<int64_t>(copyInNum + weightAlignBytes_),
+            static_cast<int64_t>(ALIGN_32));
+    }
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
@@ -707,6 +768,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
         DataCopy(copyTmpTensors_[primeIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+        if constexpr (TopkWeightsMode) {
+            SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
+            WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
+            uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
+            LocalTensor<int32_t> bufWeightsInt32 =
+                copyTmpTensors_[primeIdx][weightOffsetInUb].template ReinterpretCast<int32_t>();
+            int32_t weightBits = bufWeightsInt32.GetValue(static_cast<uint32_t>(topkIndex % topK_));
+            tripleTensor_[primeIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
+        }
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
@@ -721,13 +791,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
         LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
         LocalTensor<QuantScaleOutType> bufScale =
             tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+        // triple 即时写 GM（S_MTE3 保证 SetValue 对 tripleTensor_ 的写入已完成）
+        WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
+        DataCopy(tripleGlobalTensor[copyIdx * INT32_PER_256B], tripleTensor_[outIdx * INT32_PER_256B], INT32_PER_256B);
+        // token/scale 写 GM，为 triple 的 GM 写提交提供天然 MTE3 屏障
         DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
-        // triple 即时写 GM（S_MTE3 保证 SetValue 对 tripleTensor_ 的写入已完成）
-        WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
-        DataCopy(tripleGlobalTensor[copyIdx * INT32_PER_256B], tripleTensor_[outIdx * INT32_PER_256B], INT32_PER_256B);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         SetFlag<AscendC::HardEvent::MTE3_S>(eventId);   // MTE3 读完 triple，S 可覆盖
 
@@ -742,6 +813,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
             DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
             WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+            if constexpr (TopkWeightsMode) {
+                SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
+                WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
+                uint32_t weightOffsetInUb = mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_;
+                LocalTensor<int32_t> bufWeightsInt32 =
+                    copyTmpTensors_[outIdx][weightOffsetInUb].template ReinterpretCast<int32_t>();
+                int32_t weightBits = bufWeightsInt32.GetValue(static_cast<uint32_t>(nextTopkIndex % topK_));
+                tripleTensor_[outIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
+            }
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOKEN_ID, nextTokenIndex);
             tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOPK_INDEX, nextTopkIndex % topK_);
@@ -766,7 +846,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
     // Phase 1: 分组分核进行三元组组装以及token dispatch
-    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(GMM1_TILE_M);
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
     uint32_t topkIndexTensorSize =
@@ -1097,7 +1177,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(
     LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
     LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
     for (int32_t expId = 0; expId < topK_; ++expId) {
-        float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
+        float expScale = 0.0f;
+        if constexpr (!TopkWeightsMode) {
+            expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
+        }
         auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
         auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
         auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
@@ -1123,13 +1206,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(
                 bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
         }
         PipeBarrier<PIPE_V>();
-        if (expId == 0) {
-            Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+        if constexpr (TopkWeightsMode) {
+            if (expId == 0) {
+                DataCopy(dataResFp32Tensor_, dataInFp32, k_);
+            } else {
+                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                PipeBarrier<PIPE_V>();
+            }
         } else {
-            Muls(dataInFp32, dataInFp32, expScale, k_);
-            PipeBarrier<PIPE_V>();
-            Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-            PipeBarrier<PIPE_V>();
+            if (expId == 0) {
+                Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+            } else {
+                Muls(dataInFp32, dataInFp32, expScale, k_);
+                PipeBarrier<PIPE_V>();
+                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                PipeBarrier<PIPE_V>();
+            }
         }
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
     }
@@ -1220,7 +1312,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLen) {
         int32_t curTokens = (batchStart + batchLen > coreLen) ? (coreLen - batchStart) : batchLen;
 
-        UnpermuteLoadWeights(coreOffset, batchStart, curTokens, topKWeightsBf16Tensor_);
+        if constexpr (!TopkWeightsMode) {
+            UnpermuteLoadWeights(coreOffset, batchStart, curTokens, topKWeightsBf16Tensor_);
+        }
 
         // ── 内层：token 循环 ──
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -1272,20 +1366,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
 {
     if constexpr (ENABLE_A8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
-            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-            epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsMode>(
+            epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+            state.expertBeforeCnt);
     } else {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>(
-                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
+                GMM1_TILE_M, TopkWeightsMode>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                state.expertBeforeCnt);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, false,
+                GMM1_TILE_M, TopkWeightsMode>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                state.expertBeforeCnt);
         }
     }
 }
