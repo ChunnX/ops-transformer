@@ -59,8 +59,8 @@ namespace op_api {
 // float8_e8m0fnu. The wrapper builds TensorWrapper(t, dtype) with these
 // values so the kernel sees ACL_FLOAT4_E2M1 / ACL_FLOAT8_E8M0 instead of
 // ACL_UINT8. Mirrors quant_flash_attn.cpp. make_wrapper is in aclnn_common.h:246.
-const int64_t FLOAT4_E2M1 = static_cast<int64_t>(at::ScalarType::Float4_e2m1fn_x2);
-const int64_t FLOAT8_E8M0 = static_cast<int64_t>(at::ScalarType::Float8_e8m0fnu);
+const int64_t FLOAT4_E2M1 = static_cast<int64_t>(296);
+const int64_t FLOAT8_E8M0 = static_cast<int64_t>(293);
 
 std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	const at::Tensor &query,
@@ -296,9 +296,12 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 		TensorWrapper q_wrapper = make_wrapper(query, FLOAT4_E2M1);
 		TensorWrapper k_wrapper = make_wrapper(key,   FLOAT4_E2M1);
 		TensorWrapper v_wrapper = make_wrapper(value, FLOAT4_E2M1);
-		TensorWrapper q_descale_wrapper = make_wrapper(q_dequant_scale, FLOAT8_E8M0);
-		TensorWrapper k_descale_wrapper = make_wrapper(k_dequant_scale, FLOAT8_E8M0);
-		TensorWrapper v_descale_wrapper = make_wrapper(v_dequant_scale, FLOAT8_E8M0);
+		// Descale tensors are mandatory for quant_mode=2 (validated above by
+		// check_dequant), so dereferencing the optional is safe. make_wrapper takes
+		// const at::Tensor& (aclnn_common.h:246), not c10::optional<at::Tensor>.
+		TensorWrapper q_descale_wrapper = make_wrapper(*q_dequant_scale, FLOAT8_E8M0);
+		TensorWrapper k_descale_wrapper = make_wrapper(*k_dequant_scale, FLOAT8_E8M0);
+		TensorWrapper v_descale_wrapper = make_wrapper(*v_dequant_scale, FLOAT8_E8M0);
 		ACLNN_CMD(aclnnBlockSparseAttentionV2,
 				q_wrapper, k_wrapper, v_wrapper,
 				block_sparse_mask,

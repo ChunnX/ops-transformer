@@ -54,7 +54,7 @@ _FP8_DESCALE_DTYPES = (torch.float32,)                # FP8 reverse-quant factor
 _FP4_DISGUISE_DTYPES = (torch.uint8,)                 # float4_e2m1fn_x2 disguised as uint8: out = bf16
 _FP4_LOGICAL_DTYPES = (torch_npu.float4_e2m1fn_x2,)   # valid logical dtypes when q/k/v is uint8
 _FP4_DEFAULT_OUT_DTYPE = torch.bfloat16
-_FP4_DESCALE_DTYPES = (torch_npu.float8_e8m0fnu,)     # mxfp4 descale tensor dtype
+_FP4_DESCALE_DTYPES = (torch.float8_e8m0fnu,)     # mxfp4 descale tensor dtype
 
 
 def _check_quant_mode(quant_mode):
@@ -213,17 +213,17 @@ def _validate_quant_mode(query, key, value, quant_mode,
 			)
 		if q_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
 			raise ValueError(
-				f"q_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+				f"q_dequant_scale.dtype must be torch.float8_e8m0fnu for "
 				f"quant_mode=2 (mxfp4) inputs, got {q_dequant_scale.dtype}."
 			)
 		if k_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
 			raise ValueError(
-				f"k_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+				f"k_dequant_scale.dtype must be torch.float8_e8m0fnu for "
 				f"quant_mode=2 (mxfp4) inputs, got {k_dequant_scale.dtype}."
 			)
 		if v_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
 			raise ValueError(
-				f"v_dequant_scale.dtype must be torch_npu.float8_e8m0fnu for "
+				f"v_dequant_scale.dtype must be torch.float8_e8m0fnu for "
 				f"quant_mode=2 (mxfp4) inputs, got {v_dequant_scale.dtype}."
 			)
 
