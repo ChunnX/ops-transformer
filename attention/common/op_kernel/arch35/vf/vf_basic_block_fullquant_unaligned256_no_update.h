@@ -44,17 +44,17 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
     RegTensor<half> vreg_in_max;
     RegTensor<half> vreg_input_max;
     RegTensor<half> vreg_max_new;
-    RegTensor<half> vreg_max;
     RegTensor<half> vreg_max_2;
+    RegTensor<half> vreg_max;
 
-    RegTensor<float> vreg_exp_0_1;
-    RegTensor<float> vreg_exp_1_1;
-    RegTensor<float> vreg_exp_2_1;
-    RegTensor<float> vreg_exp_3_1;
     RegTensor<float> vreg_exp_0_2;
     RegTensor<float> vreg_exp_1_2;
     RegTensor<float> vreg_exp_2_2;
     RegTensor<float> vreg_exp_3_2;
+    RegTensor<float> vreg_exp_0_1;
+    RegTensor<float> vreg_exp_1_1;
+    RegTensor<float> vreg_exp_2_1;
+    RegTensor<float> vreg_exp_3_1;
 
     RegTensor<T2> vreg_exp_merge_tmp_f8_1_1;  // 前8行
     RegTensor<T2> vreg_exp_merge_tmp_f8_1_2;
@@ -135,8 +135,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_input_x_unroll_1, vreg_max, preg_all);
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_input_x_2, vreg_max_2, preg_all);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_input_x_2, vreg_max_2, preg_all);
-            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2,
+                                                 vreg_max_2, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2,
+                                                vreg_max_2, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all);  // ADD计算
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
@@ -145,7 +147,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);  // cast计算
+            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1,
+                vreg_exp_0_1, preg_all);  // cast计算
             Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
@@ -154,7 +157,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
                (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);  // or计算
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1,
                (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1,
+               (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,
                (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
 
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
