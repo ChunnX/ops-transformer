@@ -448,6 +448,18 @@ def li_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
+        
+        # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
+        properties = torch.npu.get_device_properties()
+        if "Ascend950" in properties.name:
+            key_stride = 10  # 0轴非连续增加stride
+            bytes_per_token = head_dim + key_stride # 整个非连续的长度
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
+            key_flat = key.view(block_num, block_size * k_head_num * head_dim)
+            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
+            blockFusion = blockFusion.npu()
+            key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+        
         key = key.npu()
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
 
