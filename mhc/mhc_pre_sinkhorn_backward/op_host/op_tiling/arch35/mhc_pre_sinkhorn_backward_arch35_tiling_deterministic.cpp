@@ -273,21 +273,23 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
 
     int64_t totalBs = batchSize_ * seqLength_;
     int64_t kDim = n_ * n_ + 2 * n_;
+    int64_t nAlignElem = (n_ * FP32_BYTE_SIZE + 31) / 32 * 32 / FP32_BYTE_SIZE;
+    int64_t nnAlignElem = n_ * nAlignElem;
+    int64_t biasBaseElem = (3 * FP32_BYTE_SIZE + 31) / 32 * 32 / FP32_BYTE_SIZE;
+    int64_t perCoreElem = biasBaseElem + 2 * nAlignElem + nnAlignElem;
 
-    // 新方案 WS 布局 (gradXFromRms 不落 WS, gradNormOut 不落 WS):
+    // WS 布局:
     // 1. xFp32[B*S, N, C]
     // 2. gradXFromHin[B*S, N, C]
-    // 3. gradHcBeforeNorm[B*S, K]  (供 AIC mm1)
-    // 4. gradXFromMatmul[B*S, N*C] (AIC mm1 输出)
-    // 5. gradAlpha[3 * usedCoreNum] (跨核归约)
-    // 6. gradBias[usedCoreNum * K]  (跨核归约)
+    // 3. gradHcBeforeNorm[B*S, K]
+    // 4. gradXFromMatmul[B*S, N*C]
+    // 5. gradAlphaBias[usedCoreNum, perCoreElem] (跨核归约, 单核累加)
     size_t userWorkspaceSize =
-        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // xFp32
-        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // gradXFromHin
-        totalBs * kDim * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                         // gradHcBeforeNorm
-        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                      // gradXFromMatmul
-        3 * usedCoreNum_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                       // gradAlpha
-        (2 * usedCoreNum_ * n_ + usedCoreNum_ * n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL; // gradBias
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+        totalBs * kDim * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+        totalBs * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+        usedCoreNum_ * perCoreElem * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
