@@ -18,6 +18,7 @@
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
 #include <dlfcn.h> // dlopen 动态加载
+#include "acl/acl_rt.h" // 运行时判断cann ver
 
 namespace ops {
 const std::string FUSION_PASS_NAME = "MatmulAllToAllTransposeA5FusionPass";
@@ -74,6 +75,15 @@ namespace {
         auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
             perm.ToTensorHolder(builder).GetCTensorHolder());
         return result;
+    }
+
+    ge::CustomPassStage GetMatmulAlltoAllTransposeA5FusionPassStage() {
+        int32_t version = 0;
+        aclsysGetVersionNum("ge_compiler", &version);
+        if (version >= GRAPH_FUSION_SUPPORT_VERSION) {
+            return CustomPassStage::kCompatibleInherited;
+        }
+        return CustomPassStage::kBeforeInferShape;
     }
 }
 
@@ -403,6 +413,13 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAllToAllTransposeA5FusionPass");
 
+    // 9.0.0 版本前运行降级stage 空跑
+    int32_t geCompilerVersion = 0;
+    aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
+    if (geCompilerVersion < GRAPH_FUSION_SUPPORT_VERSION) {
+        return false;
+    }
+
     // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
@@ -451,6 +468,6 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
 }
 
 REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
-    .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
+    .Stage(GetMatmulAlltoAllTransposeA5FusionPassStage);
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION
