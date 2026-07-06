@@ -115,6 +115,7 @@ public:
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
+    // arch22 (A2/A3): default kernel entry (opFile -> arch22/...cpp).
     OpAICoreConfig aicore_config_A2;
     aicore_config_A2.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
@@ -127,6 +128,7 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_false")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
+    // arch35 (A5): dedicated kernel entry (opFile -> arch35/..._apt.cpp).
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
@@ -137,10 +139,11 @@ public:
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_true")
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "moe_distribute_dispatch_v2_apt");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->AICore().AddConfig("ascend910_93", aicore_config);
+    this->AICore().AddConfig("ascend910_93", aicore_config_A2);
     this->AICore().AddConfig("ascend910b", aicore_config_A2);
     this->MC2().HcclGroup({"group_ep", "group_tp"});
   }
