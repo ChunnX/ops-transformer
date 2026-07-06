@@ -385,6 +385,8 @@ public:
                     pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+            // 一次循环拷贝32个S1的scale，每个S1对应8个scale
+            // actVecMSize为64，通过2次拷贝覆盖完整的S1分形需求
             for (uint16_t i = 0; i < 2; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes * 8],
                     pScaleSubLoop0Tensor, {1, 8, 0, 0});
