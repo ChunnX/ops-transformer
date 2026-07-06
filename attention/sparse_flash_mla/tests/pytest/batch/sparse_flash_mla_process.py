@@ -89,37 +89,42 @@ def call_npu(input_data):
     if cmp_block_table is not None:
         cmp_block_table = cmp_block_table.npu()
 
-    # 生成 metadata
-    print("sparse_flash_mla_metadata...")
-    metadata = torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
-        num_heads_q=N1,
-        num_heads_kv=N2,
-        head_dim=D,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
-        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
-        seqused_q=seqused_q,
-        seqused_ori_kv=seqused_ori_kv,
-        seqused_cmp_kv=seqused_cmp_kv,
-        cmp_residual_kv=cmp_residual_kv,
-        ori_topk_length=ori_topk_length,
-        cmp_topk_length=cmp_topk_length,
-        batch_size=B,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_ori_kv=max_seqlen_ori_kv,
-        max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        ori_topk=K if ori_sparse_indices is not None else 0,
-        cmp_topk=K if cmp_sparse_indices is not None else 0,
-        cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
-        ori_mask_mode=ori_mask_mode,
-        cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
-        ori_win_left=ori_win_left,
-        ori_win_right=ori_win_right,
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        has_ori_kv=ori_kv != None,
-        has_cmp_kv=cmp_kv != None)
-
+    # 生成 metadata。golden 已经执行过 metadata 时，复用同一份分核信息。
+    metadata = input_data.get('metadata')
+    if metadata is not None:
+        print("reuse sparse_flash_mla_metadata...")
+        metadata = metadata.npu() if not getattr(metadata, "is_npu", False) else metadata
+    else:
+        print("sparse_flash_mla_metadata...")
+        metadata = torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
+            num_heads_q=N1,
+            num_heads_kv=N2,
+            head_dim=D,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+            seqused_q=seqused_q,
+            seqused_ori_kv=seqused_ori_kv,
+            seqused_cmp_kv=seqused_cmp_kv,
+            cmp_residual_kv=cmp_residual_kv,
+            ori_topk_length=ori_topk_length,
+            cmp_topk_length=cmp_topk_length,
+            batch_size=B,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_ori_kv=max_seqlen_ori_kv,
+            max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+            ori_topk=K if ori_sparse_indices is not None else 0,
+            cmp_topk=K if cmp_sparse_indices is not None else 0,
+            cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
+            ori_mask_mode=ori_mask_mode,
+            cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            has_ori_kv=ori_kv != None,
+            has_cmp_kv=cmp_kv != None)
+    torch.npu.synchronize()
     # 统一调用 sparse_flash_mla，所有参数可选带默认值
     print("sparse_flash_mla...")
     npu_result, softmax_lse = torch.ops.cann_ops_transformer.sparse_flash_mla(q,

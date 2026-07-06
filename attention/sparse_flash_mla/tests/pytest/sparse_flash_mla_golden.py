@@ -15,6 +15,7 @@ import numpy as np
 import os
 import pytest
 import random
+import sys
 import torch
 
 DATA_RANGE_LEFT = -10
@@ -25,16 +26,122 @@ DATA_RANGE_RIGHT = 10
 # 1 切S2
 # 2 AMLA
 
-RUN_MODE = 1
+# RUN_MODE: 0=朴素softmax, 1=单循环FA(sinks计入1次), 2=FD分段+sinks只计入首段(sinks_once)
+RUN_MODE = 2
+
+# RUN_MODE == 1 时 sinks 的处理方式
+# 1: 单循环方式（全局只初始化一次 row_max=sinks/row_sum=1），sinks 只计入 1 次（正确）
+# 2: FD 分段 + sinks 只计入首段，sinks 只计入 1 次（正确）
+SINKS_HANDLE_MODE = 1
 
 np.random.seed(42)
 torch.manual_seed(42)
+
+AIC_CORE_MAX_NUM = 36
+FA_METADATA_SIZE = 9
+S2_BASE_SIZE = 128
+
+
+FA_CORE_ENABLE_INDEX = 0
+FA_BN2_START_INDEX = 1
+FA_M_START_INDEX = 2
+FA_S2_START_INDEX = 3
+FA_BN2_END_INDEX = 4
+FA_M_END_INDEX = 5
+FA_S2_END_INDEX = 6
+
+
+def _as_int(value):
+    if isinstance(value, torch.Tensor):
+        return int(value.item())
+    return int(value)
+
+
+def _metadata_to_cpu(metadata):
+    if metadata is None:
+        return None
+    if isinstance(metadata, torch.Tensor):
+        return metadata.detach().cpu().to(torch.int32)
+    return torch.tensor(metadata, dtype=torch.int32)
+
+
+def parse_smla_metadata(metadata):
+    metadata = _metadata_to_cpu(metadata)
+    if metadata is None:
+        return []
+    flat = metadata.reshape(-1)
+    fa_records = []
+    for core_idx in range(AIC_CORE_MAX_NUM):
+        base = core_idx * FA_METADATA_SIZE
+        row = flat[base:base + FA_METADATA_SIZE].tolist()
+        if row[FA_CORE_ENABLE_INDEX] == 0:
+            continue
+        fa_records.append({
+            "core_idx": core_idx,
+            "bn2_start": int(row[FA_BN2_START_INDEX]),
+            "s1_start": int(row[FA_M_START_INDEX]),
+            "s2_start_block": int(row[FA_S2_START_INDEX]),
+            "bn2_end": int(row[FA_BN2_END_INDEX]),
+            "s1_end": int(row[FA_M_END_INDEX]),
+            "s2_end_block": int(row[FA_S2_END_INDEX]),
+        })
+    return fa_records
+
+
+def _register_torch_extension():
+    if hasattr(torch.ops.cann_ops_transformer, 'sparse_flash_mla_metadata'):
+        return
+    torch_ext_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                   '../../../../torch_extension'))
+    if torch_ext_path not in sys.path:
+        sys.path.insert(0, torch_ext_path)
+    from cann_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
+
+
+def generate_smla_metadata(metadata_input, tensor_input):
+    _register_torch_extension()
+    layout_q = tensor_input['layout_q'] if isinstance(tensor_input['layout_q'], str) else tensor_input['layout_q'][0]
+    ori_sparse_indices = tensor_input['ori_sparse_indices']
+    cmp_sparse_indices = tensor_input['cmp_sparse_indices']
+
+    def maybe_npu(tensor):
+        return tensor.npu() if tensor is not None else None
+
+    return torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
+        num_heads_q=metadata_input['N1'],
+        num_heads_kv=metadata_input['N2'],
+        head_dim=metadata_input['D'],
+        cu_seqlens_q=maybe_npu(tensor_input.get('cu_seqlens_q')),
+        cu_seqlens_ori_kv=maybe_npu(tensor_input.get('cu_seqlens_ori_kv')),
+        cu_seqlens_cmp_kv=maybe_npu(tensor_input.get('cu_seqlens_cmp_kv')),
+        seqused_q=maybe_npu(tensor_input.get('seqused_q')),
+        seqused_ori_kv=maybe_npu(tensor_input.get('seqused_ori_kv')),
+        seqused_cmp_kv=maybe_npu(tensor_input.get('seqused_cmp_kv')),
+        cmp_residual_kv=maybe_npu(tensor_input.get('cmp_residual_kv')),
+        ori_topk_length=None,
+        cmp_topk_length=None,
+        batch_size=metadata_input['B'],
+        max_seqlen_q=metadata_input['max_seqlen_q'],
+        max_seqlen_ori_kv=metadata_input['max_seqlen_ori_kv'],
+        max_seqlen_cmp_kv=metadata_input['max_seqlen_cmp_kv'],
+        ori_topk=metadata_input['K'] if ori_sparse_indices is not None else 0,
+        cmp_topk=metadata_input['K'] if cmp_sparse_indices is not None else 0,
+        cmp_ratio=metadata_input['cmp_ratio'] if metadata_input['cmp_ratio'] is not None else 1,
+        ori_mask_mode=tensor_input['ori_mask_mode'],
+        cmp_mask_mode=tensor_input['cmp_mask_mode'] if tensor_input['cmp_mask_mode'] is not None else 3,
+        ori_win_left=tensor_input['ori_win_left'],
+        ori_win_right=tensor_input['ori_win_right'],
+        layout_q=layout_q,
+        layout_kv=tensor_input['layout_kv'],
+        has_ori_kv=tensor_input['ori_kv'] is not None,
+        has_cmp_kv=tensor_input['cmp_kv'] is not None)
+
 
 class GeneralizedSFA:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                  block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv,
                  cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
-                 ori_win_right, ori_topk_length, cmp_topk_length):
+                 ori_win_right, ori_topk_length, cmp_topk_length, metadata=None):
         self.layout_q = layout_q
         self.layout_kv = layout_kv
         self.q_type = q_type
@@ -65,6 +172,122 @@ class GeneralizedSFA:
         self.ori_win_right = ori_win_right
         self.ori_topk_length = ori_topk_length
         self.cmp_topk_length = cmp_topk_length
+        self.fa_records = parse_smla_metadata(metadata)
+        self.s2_split_ranges = {}
+
+    def _bn2_idx(self, batch_idx, n2_idx):
+        return batch_idx * self.N2 + n2_idx
+
+    def _convert_s2_block_to_token(self, s2_block_idx, ori_len, cmp_len):
+        if s2_block_idx <= 0:
+            return 0
+        ori_block_num = math.ceil(ori_len / S2_BASE_SIZE) if ori_len > 0 else 0
+        block_idx = int(s2_block_idx)
+        if block_idx <= ori_block_num:
+            return min(block_idx * S2_BASE_SIZE, ori_len)
+        return ori_len + min((block_idx - ori_block_num) * S2_BASE_SIZE, cmp_len)
+
+    def _build_s2_split_ranges(self, row_s2_lengths):
+        split_ranges = {}
+        for fa in self.fa_records:
+            bn2_start = fa["bn2_start"]
+            s1_start = fa["s1_start"]
+            bn2_end = fa["bn2_end"]
+            s1_end = fa["s1_end"]
+            s2_start_block = fa["s2_start_block"]
+            s2_end_block = fa["s2_end_block"]
+            print("s2_end_block: ", s2_end_block)
+            def add_split_range(bn2_idx, s1_idx, start_block, end_block):
+                row_key = (bn2_idx, s1_idx)
+                if row_key not in row_s2_lengths:
+                    return
+                ori_len, cmp_len = row_s2_lengths[row_key]
+                total_len = ori_len + cmp_len
+                if total_len <= 0:
+                    return
+                start_token = self._convert_s2_block_to_token(start_block, ori_len, cmp_len) if start_block != 0 else 0
+                end_token = self._convert_s2_block_to_token(end_block, ori_len, cmp_len) if end_block != 0 else total_len
+                # print(start_token, end_token)
+                if end_token <= start_token:
+                    return
+                split_ranges.setdefault(row_key, []).append({
+                    "B": bn2_idx // self.N2,
+                    "S1": s1_idx,
+                    "S2_START": start_token,
+                    "S2_END": end_token,
+                })
+
+            if s2_start_block != 0 and s2_end_block != 0 and bn2_end == bn2_start and s1_end == s1_start:
+                add_split_range(bn2_start, s1_start, s2_start_block, s2_end_block)
+            else:
+                if s2_start_block != 0:
+                    add_split_range(bn2_start, s1_start, s2_start_block, 0)
+                if s2_end_block != 0:
+                    add_split_range(bn2_end, s1_end, 0, s2_end_block)
+        self.s2_split_ranges = split_ranges
+
+    def _get_s2_split_ranges_for_row(self, bn2_idx, s1_idx):
+        ranges = self.s2_split_ranges.get((bn2_idx, s1_idx))
+        return ranges if ranges and len(ranges) > 1 else None
+
+    def _run_online_softmax_range(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, start_token, end_token,
+                                  include_sinks=True):
+        ori_len = cur_ori_k_fp32.size(0)
+        cmp_len = 0 if cur_cmp_k_fp32 is None else cur_cmp_k_fp32.size(0)
+        row_sum = torch.ones((q_curr_fp32.size(0)), dtype=torch.float32) if include_sinks else \
+                  torch.zeros((q_curr_fp32.size(0)), dtype=torch.float32)
+        if include_sinks:
+            row_max = cur_sinks.clone().to(dtype=torch.float32)
+        else:
+            row_max = torch.full((q_curr_fp32.size(0),), float('-inf'), dtype=torch.float32)
+        cur_attn_out = torch.zeros((q_curr_fp32.size(0), q_curr_fp32.size(1)), dtype=torch.float32)
+        segment = []
+        if start_token < ori_len:
+            ori_start = min(start_token, ori_len)
+            ori_end = min(end_token, ori_len)
+            if ori_end > ori_start:
+                segment=cur_ori_k_fp32[ori_start:ori_end, :]
+        else:
+            cmp_start = max(start_token - ori_len, 0)
+            cmp_end = min(end_token - ori_len, cmp_len)
+            if cur_cmp_k_fp32 is not None and cmp_end > cmp_start:
+                segment=cur_cmp_k_fp32[cmp_start:cmp_end, :]
+        for offset in range(0, segment.size(0), S2_BASE_SIZE):
+            k_tile = segment[offset:offset + S2_BASE_SIZE, :]
+            v_tile = k_tile.clone()
+            scale_res = torch.matmul(q_curr_fp32, k_tile.T) * self.softmax_scale
+            row_max_old = row_max.clone()
+            row_max_tmp = torch.max(scale_res, dim=1)[0]
+            row_max = torch.max(row_max, row_max_tmp)
+            update_mul = torch.exp(row_max_old - row_max)
+            cur_softmax_res = torch.exp(scale_res - row_max.unsqueeze(1))
+            row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+            cur_o = torch.matmul(cur_softmax_res.to(dtype=q_curr_fp32.dtype), v_tile)
+            cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
+        return row_max, row_sum, cur_attn_out / row_sum.unsqueeze(1)
+
+    def _run_fd_golden(self, q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_split_ranges, sinks_once=False):
+        partial_max = []
+        partial_sum = []
+        partial_out = []
+        for split_idx, s2_range in enumerate(s2_split_ranges):
+            include_sinks = (split_idx == 0) if sinks_once else True
+            row_max, row_sum, out = self._run_online_softmax_range(
+                q_curr_fp32, cur_sinks, cur_ori_k_fp32, cur_cmp_k_fp32, s2_range["S2_START"], s2_range["S2_END"],
+                include_sinks=include_sinks)
+            partial_max.append(row_max)
+            partial_sum.append(row_sum)
+            partial_out.append(out)
+        stacked_max = torch.stack(partial_max, dim=0)
+        stacked_sum = torch.stack(partial_sum, dim=0)
+        global_max = torch.max(stacked_max, dim=0)[0]
+        lse_exp = torch.exp(stacked_max - global_max.unsqueeze(0)) * stacked_sum
+        global_sum = torch.sum(lse_exp, dim=0)
+        result = torch.zeros_like(partial_out[0])
+        for split_idx, out in enumerate(partial_out):
+            weight = (lse_exp[split_idx] / global_sum).unsqueeze(1)
+            result = result + weight * out
+        return result, global_max, global_sum
 
     def calculate_by_bnsd(self, q_bnsd, ori_k_bnsd, ori_sparse_indices_bnsd, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv,
                           cmp_residual_kv, sinks, template_idx, cmp_k_bnsd=None, cmp_sparse_indices_bnsd=None, seqused_q=None,
@@ -84,6 +307,25 @@ class GeneralizedSFA:
             act_q = [q_bnsd.shape[2]] * B
         G = int(self.N1 / self.N2)
         s2_base_size = 512
+        row_s2_lengths = {}
+        if self.fa_records:
+            for b_idx in range(B):
+                cur_act_q_pre = _as_int(act_q[b_idx])
+                if seqused_ori_kv is not None:
+                    cur_ori_act_kv_pre = _as_int(seqused_ori_kv[b_idx])
+                elif cu_seqlens_ori_kv is not None:
+                    cur_ori_act_kv_pre = _as_int(cu_seqlens_ori_kv[b_idx + 1] - cu_seqlens_ori_kv[b_idx])
+                else:
+                    cur_ori_act_kv_pre = ori_k_bnsd.size()[2]
+                if seqused_cmp_kv != None:
+                    cur_cmp_act_kv_pre = _as_int(seqused_cmp_kv[b_idx])
+                elif cu_seqlens_cmp_kv != None:
+                    cur_cmp_act_kv_pre = _as_int(cu_seqlens_cmp_kv[b_idx + 1] - cu_seqlens_cmp_kv[b_idx])
+                else:
+                    cur_cmp_act_kv_pre = 0
+                for s1_idx in range(cur_act_q_pre):
+                    row_s2_lengths[(b_idx, s1_idx)] = (cur_ori_act_kv_pre, cur_cmp_act_kv_pre)
+            self._build_s2_split_ranges(row_s2_lengths)
 
         for i_B in range(B):
             print(f"i_B = {i_B}/{B}")
@@ -185,6 +427,17 @@ class GeneralizedSFA:
                             softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
                             softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
                     elif RUN_MODE == 1:
+                        # bn2_idx = self._bn2_idx(i_B, i_N2)
+                        # s2_split_ranges = self._get_s2_split_ranges_for_row(bn2_idx, i_S1)
+                        # if s2_split_ranges:
+                        #     cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                        #     cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
+                        #     fd_out, fd_max, fd_sum = self._run_fd_golden(
+                        #         q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, s2_split_ranges)
+                        #     attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
+                        #     if return_softmax_lse:
+                        #         softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
+                        #     continue
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
                             total_s2_loop_time = 0
@@ -211,7 +464,6 @@ class GeneralizedSFA:
                             v_tile = k_tile.clone()
                             mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
                             scale_res = mm1_res * self.softmax_scale  # 外层for S1 循环，据实拷入数据，因此不需要mask
-
                             row_max_old = row_max.clone()
                             row_max_tmp = torch.max(scale_res, dim=1)[0]
                             # row_max_tmp = row_max_tmp.unsqueeze(1)
@@ -221,6 +473,7 @@ class GeneralizedSFA:
                             update_mul_expand = update_mul.unsqueeze(1)
                             cur_softmax_res = torch.exp(scale_res - row_max_expand)
                             row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+                            # print(row_sum)
                             cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
                             cur_o = torch.matmul(cur_softmax_res, v_tile)
                             cur_attn_out = cur_attn_out * update_mul_expand + cur_o
@@ -229,70 +482,50 @@ class GeneralizedSFA:
                         if return_softmax_lse:
                             softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(row_sum + 1e-10)
                     elif RUN_MODE == 2:
-                        ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
-                        total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
-
-                        cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                        row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)  # due to sinks
-                        row_max = torch.empty((G, 1), dtype=torch.float32)
-                        row_max = cur_sinks
-                        O_flash = torch.empty((G, q_bnsd.shape[3]), dtype=torch.float32).uniform_(2 ** (-80), 2 ** (-80)) # 注意D轴
-
-                        rcof_old = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                        # FD分段 + sinks只计入首段(sinks_once)
+                        bn2_idx = self._bn2_idx(i_B, i_N2)
+                        s2_split_ranges = self._get_s2_split_ranges_for_row(bn2_idx, i_S1)
+                        if s2_split_ranges:
+                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                            cur_cmp_k_for_fd = None if cur_cmp_k == [] else cur_cmp_k.to(dtype=torch.float32)
+                            fd_out, fd_max, fd_sum = self._run_fd_golden(
+                                q_curr_fp32, cur_sinks, cur_ori_k_bnsd_fp32, cur_cmp_k_for_fd, s2_split_ranges,
+                                sinks_once=True)
+                            attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = fd_out.to(dtype=q_bnsd.dtype)
+                            if return_softmax_lse:
+                                softmax_lse[i_B, i_N2, i_S1, :] = fd_max + torch.log(fd_sum + 1e-10)
+                            continue
+                        # 无FD分段时退化为单循环
+                        if empty_flag_ori:
+                            ori_s2_loop_time = 0
+                            total_s2_loop_time = 0
+                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                        else:
+                            ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
+                            total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
+                            cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                            row_max = cur_sinks
 
                         for i_S2 in range(total_s2_loop_time):
-                            if i_S2 < ori_s2_loop_time: # ori_kv
-                                if i_S2 < ori_s2_loop_time - 1:
-                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:(i_S2 + 1) * s2_base_size, :]
-                                else:
-                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:, :]
-                            else: # cmp_kv
-                                if i_S2 < total_s2_loop_time - 1:
-                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:(i_S2 + 1) * s2_base_size, :]
-                                else:
-                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:, :]
+                            if i_S2 < ori_s2_loop_time:
+                                k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:(i_S2 + 1) * s2_base_size, :]
+                            else:
+                                k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:, :]
                             v_tile = k_tile.clone()
-
-                            mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
-                            scale_res = mm1_res * self.softmax_scale  # 外层for S1 循环，据实拷入数据，因此不需要mask
-
+                            scale_res = torch.matmul(q_curr_fp32, k_tile.T) * self.softmax_scale
                             row_max_old = row_max.clone()
                             row_max_tmp = torch.max(scale_res, dim=1)[0]
                             row_max = torch.max(row_max, row_max_tmp)
                             update_mul = torch.exp(row_max_old - row_max)
-                            row_max_expand = row_max.unsqueeze(1)
-                            log_2 = torch.log(torch.tensor(2.0))
-
-                            if i_S2 == 0:
-                                ni = torch.round((-row_max) / log_2)
-                                ni_old = ni.clone()
-                            else:
-                                ni_old = ni.clone()
-                                ni = torch.round((-row_max) / log_2)
-
-                            cur_softmax_res = torch.exp(scale_res - row_max_expand)
+                            cur_softmax_res = torch.exp(scale_res - row_max.unsqueeze(1))
                             row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
-                            tmp_scale = torch.exp(row_max / log_2 + ni) * log_2
-                            tmp_scale_16 = tmp_scale.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
-                            tmp_scale_16_expand = tmp_scale_16.unsqueeze(1)
-                            cur_softmax_res = cur_softmax_res * tmp_scale_16_expand
                             cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
                             cur_o = torch.matmul(cur_softmax_res, v_tile)
-                            rcof = tmp_scale / tmp_scale_16
-                            eps = (rcof_old / rcof - 1) * 1.5
-
-                            if i_S2 != 0:
-                                N = torch.clamp((ni - ni_old), min=-30).to(torch.float32) + eps + 1e-6
-                                N_up = (N * torch.tensor(2 ** (23), dtype=torch.float32)).to(torch.int32)
-                                N_up_expand = N_up.unsqueeze(1)
-                                O_int = O_flash.view(torch.int32) + N_up_expand
-                                O_fp = O_int.view(torch.float32)
-                                O_flash = O_fp + cur_o
-                            else:
-                                O_flash = O_flash + cur_o
-                            rcof_old = rcof
-                        row_sum_expand = row_sum.unsqueeze(1)
-                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (O_flash / row_sum_expand / tmp_scale_16_expand).to(dtype=q_bnsd.dtype)
+                            cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
+                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (cur_attn_out / row_sum.unsqueeze(1)).to(dtype=q_bnsd.dtype)
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(row_sum + 1e-10)
                     else:
                         raise ValueError(f"unsupported RUN_MODE:{RUN_MODE}")
         return attn_out, softmax_lse
@@ -972,7 +1205,8 @@ def gen_data(params, template_mode=None):
         cmp_k = None
         cmp_topk_length = None
 
-    sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
+    # sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
+    sinks = torch.full((N1,), float('-inf'), dtype=torch.float)
 
     # kv_cache 0轴非连续
     properties = torch.npu.get_device_properties()
@@ -992,9 +1226,62 @@ def gen_data(params, template_mode=None):
             blockFusion2 = blockFusion2.npu()
             cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
 
+    metadata_input = {
+        'N1': N1,
+        'N2': N2,
+        'D': D,
+        'cu_seqlens_q': cu_seqlens_q,
+        'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
+        'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
+        'seqused_q': seqused_q,
+        'seqused_ori_kv': seqused_ori_kv,
+        'seqused_cmp_kv': seqused_cmp_kv,
+        'cmp_residual_kv': cmp_residual_kv,
+        'ori_topk_length': None,
+        'cmp_topk_length': None,
+        'B': B,
+        'max_seqlen_q': max_seqlen_q,
+        'max_seqlen_ori_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+        'max_seqlen_cmp_kv': max(seqused_cmp_kv) if seqused_cmp_kv is not None else 0,
+        'K': K,
+        'cmp_ratio': cmp_ratio,
+        'ori_mask_mode': ori_mask_mode,
+        'cmp_mask_mode': cmp_mask_mode,
+        'ori_win_left': ori_win_left,
+        'ori_win_right': ori_win_right,
+        'layout_q': layout_q,
+        'layout_kv': layout_kv,
+    }
+    tensor_input = {
+        'q': q,
+        'ori_kv': ori_k if layout_kv == "TND" else ori_k_in_pa_shape,
+        'cmp_kv': cmp_k_in_pa_shape,
+        'ori_sparse_indices': ori_sparse_indices,
+        'cmp_sparse_indices': cmp_sparse_indices,
+        'ori_block_table': ori_block_table,
+        'cmp_block_table': cmp_block_table,
+        'cu_seqlens_q': cu_seqlens_q,
+        'cu_seqlens_ori_kv':cu_seqlens_ori_kv,
+        'cu_seqlens_cmp_kv':cu_seqlens_cmp_kv,
+        'seqused_q': seqused_q,
+        # 'seqused_kv': seqused_kv,
+        'seqused_ori_kv': seqused_ori_kv,
+        'seqused_cmp_kv': seqused_cmp_kv,
+        'cmp_residual_kv': cmp_residual_kv,
+        'sinks': sinks,
+        'softmax_scale': softmax_scale,
+        'ori_mask_mode': ori_mask_mode,
+        'cmp_mask_mode': cmp_mask_mode,
+        'ori_win_left': ori_win_left,
+        'ori_win_right': ori_win_right,
+        'layout_q': layout_q,
+        'layout_kv': layout_kv
+    }
+    metadata = generate_smla_metadata(metadata_input, tensor_input)
+
     test_sas = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                               block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, softmax_scale,
-                              cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, ori_topk_length, cmp_topk_length)
+                              cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, ori_topk_length, cmp_topk_length, metadata)
     cpu_result, softmax_lse = test_sas.forward(q, ori_k, ori_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv,
                                                cmp_residual_kv, sinks, template_idx, cmp_k, cmp_sparse_indices, seqused_q, ori_topk_length, cmp_topk_length, return_softmax_lse)
     input_data = {
@@ -1015,58 +1302,9 @@ def gen_data(params, template_mode=None):
         # 固定参数
         'params': params,
         # 输入张量
-        'metadata_input': {
-            'N1': N1,
-            'N2': N2,
-            'D': D,
-            'cu_seqlens_q': cu_seqlens_q,
-            'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
-            'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
-            'seqused_q': seqused_q,
-            'seqused_ori_kv': seqused_ori_kv,
-            'seqused_cmp_kv': seqused_cmp_kv,
-            'cmp_residual_kv': cmp_residual_kv,
-            'ori_topk_length': None,
-            'cmp_topk_length': None,
-            'B': B,
-            'max_seqlen_q': max_seqlen_q,
-            'max_seqlen_ori_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
-            'max_seqlen_cmp_kv': max(seqused_cmp_kv) if seqused_cmp_kv is not None else 0,
-            'K': K,
-            'cmp_ratio': cmp_ratio,
-            'ori_mask_mode': ori_mask_mode,
-            'cmp_mask_mode': cmp_mask_mode,
-            'ori_win_left': ori_win_left,
-            'ori_win_right': ori_win_right,
-            'layout_q': layout_q,
-            'layout_kv': layout_kv,
-        },
-
-        'input': {
-            'q': q,
-            'ori_kv': ori_k if layout_kv == "TND" else ori_k_in_pa_shape,
-            'cmp_kv': cmp_k_in_pa_shape,
-            'ori_sparse_indices': ori_sparse_indices,
-            'cmp_sparse_indices': cmp_sparse_indices,
-            'ori_block_table': ori_block_table,
-            'cmp_block_table': cmp_block_table,
-            'cu_seqlens_q': cu_seqlens_q,
-            'cu_seqlens_ori_kv':cu_seqlens_ori_kv,
-            'cu_seqlens_cmp_kv':cu_seqlens_cmp_kv,
-            'seqused_q': seqused_q,
-            # 'seqused_kv': seqused_kv,
-            'seqused_ori_kv': seqused_ori_kv,
-            'seqused_cmp_kv': seqused_cmp_kv,
-            'cmp_residual_kv': cmp_residual_kv,
-            'sinks': sinks,
-            'softmax_scale': softmax_scale,
-            'ori_mask_mode': ori_mask_mode,
-            'cmp_mask_mode': cmp_mask_mode,
-            'ori_win_left': ori_win_left,
-            'ori_win_right': ori_win_right,
-            'layout_q': layout_q,
-            'layout_kv': layout_kv
-        },
+        'metadata_input': metadata_input,
+        'metadata': metadata,
+        'input': tensor_input,
         'cpu_output': cpu_result,
         'softmax_lse': softmax_lse
     }
