@@ -15,7 +15,7 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_combine_tiling_def.h"
-#include "../../../op_kernel/moe_distribute_combine.cpp"
+#include "../../../op_kernel/moe_distribute_combine.cpp"	 
 #include "../../../op_kernel/moe_distribute_combine_tiling_key.h"
 
 
