@@ -162,7 +162,6 @@ __aicore__ inline void GMMA8W4PostProcess::MulPertokenScale(uint32_t loopIdx, Ve
                                                             WorkSpaceSplitConfig &workspaceSplitConfig)
 {
     float scale = perTokenScaleGM.GetValue(loopIdx + workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx);
-    GmmsqSetWaitFlag<HardEvent::S_V>();
     Muls(mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], scale, gmmSwiglu->tokenLen);
     PipeBarrier<PIPE_V>();
 }
@@ -205,7 +204,6 @@ __aicore__ inline void GMMA8W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     quantScaleLocal.SetValue(loopIdx, quantScale);
     GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     quantScale = 1 / quantScale;
-    GmmsqSetWaitFlag<HardEvent::S_V>();
     Muls(mmLocal_fp32[preOffset], mmLocal_fp32[preOffset], quantScale, halfTokenLen);
     PipeBarrier<PIPE_V>();
     LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
@@ -215,7 +213,6 @@ __aicore__ inline void GMMA8W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     LocalTensor<int8_t> castSpace = reduceWorkspace.Get<int8_t>(UB_BLOCK_UNIT_SIZE);
     CastFp32ToInt8Template(quantLocal, mmLocal_fp32, castSpace, dstTempOffset, srcTempOffset, tempCount);
     PipeBarrier<PIPE_V>();
-    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     mmOutQueue.EnQue(mmLocal_fp32);
     quantOutQueue.EnQue(quantLocal);
 }

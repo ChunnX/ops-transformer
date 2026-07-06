@@ -151,8 +151,6 @@ __aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig &workspac
         WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
         totalM = workspaceSplitLoopIdx < workspaceSplitConfig.loopCount - 1 ? workspaceSplitConfig.notLastTaskSize :
                                                                               workspaceSplitConfig.lastLoopTaskSize;
-        SetFlag<HardEvent::S_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
         CalculateTaskInfoEachCore(curCoreTaskNum, curCoreStartOffset);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0); // 0
         SetFlag<HardEvent::MTE3_V>(EVENT_ID0); // 1
