@@ -81,6 +81,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
     OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
+    OP_LOGD(nodeName, "topkWeightsMode is %d", tilingData->topkWeightsMode);
 }
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -358,7 +359,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
-    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     if (numMaxTokensPerRank != 0) {
         OP_TILING_CHECK(
             numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank || numMaxTokensPerRank % epWorldSize != 0,
@@ -367,6 +367,15 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                        std::to_string(epWorldSize) + ")) == 0")
                                           .c_str()),
             return ge::GRAPH_FAILED);
+    }
+
+    auto topkWeightsModePtr = attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsModeIndex));
+    if (topkWeightsModePtr != nullptr) {
+        int64_t topkWeightsMode = static_cast<int64_t>(*topkWeightsModePtr);
+        OP_TILING_CHECK(topkWeightsMode != 0 && topkWeightsMode != 1,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsMode", std::to_string(topkWeightsMode).c_str(),
+                                                  "only support 0(disabled) or 1(enabled)"),
+                        return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1069,6 +1078,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
     tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    auto topkWeightsModePtr = attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsModeIndex));
+    tilingData->topkWeightsMode = (topkWeightsModePtr != nullptr && *topkWeightsModePtr == 1) ? 1 : 0;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
                                               (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
