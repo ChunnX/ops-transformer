@@ -136,14 +136,10 @@ HcclResult CcuKernelCombineSetup::Algorithm()
         cntA += oneVarA;                          // 运行期计数：0→A_
     }
 
-    // ============ 6. RecordExpectCount ============
-    for (uint32_t r = 0; r < epWorldSize_; ++r) {
-        if (r == epRankId_) continue;
-        uint32_t ch = (r < epRankId_) ? r : r - 1;
-        event_.SetMask(1U);
-        CHK_RET(RecordExpectCount(channels_[ch], sendBytesPerPeer_[r], COMBINE_SETUP_CCU_TAG, event_, 1U));
-        CHK_RET(WaitEvent(event_));
-    }
+    // ============ 6. RecordExpectCount 已下移到段 7 之后（见下方，与 dispatch_setup 同治）============
+    //   ★ 专业人士反馈 + 根因坐实：record_expect_count 必须放在【所有数据发完之后】
+    //     （WriteNbWithArriveNotify + LocalCopyNb 全部发射完成）。原实现放在写之前 → 大批量时对端
+    //     totalCntXn 判定时序错、cross 回传部分未交付。sendBytesPerPeer_ 段 5 已算好（Variable 持久）。
 
     // ============ 7. DoMainLoop：逐 expandX 行送回 owner combine 数据区（payload+scale）============
     CcuRep::Variable ownerVarB  = CreateVariable();
@@ -194,6 +190,16 @@ HcclResult CcuKernelCombineSetup::Algorithm()
         xDataRow  += hBytesVar;
         xScaleRow += scaleBytesVar;
         cntB += oneVarB;                          // 运行期计数：0→A_
+    }
+
+    // ============ 6(下移). RecordExpectCount —— ★ 所有数据(WriteNb + LocalCopy)发完之后再声明预期字节 ============
+    //   专业人士反馈：record_expect_count 放在所有 writenbwithnotify + localcopynb 之后（本次时序修复核心）。
+    for (uint32_t r = 0; r < epWorldSize_; ++r) {
+        if (r == epRankId_) continue;
+        uint32_t ch = (r < epRankId_) ? r : r - 1;
+        event_.SetMask(1U);
+        CHK_RET(RecordExpectCount(channels_[ch], sendBytesPerPeer_[r], COMBINE_SETUP_CCU_TAG, event_, 1U));
+        CHK_RET(WaitEvent(event_));
     }
 
     // ============ 9. WaitallpeersarriveNotify ============
