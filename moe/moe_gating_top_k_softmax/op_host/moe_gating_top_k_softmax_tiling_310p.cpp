@@ -134,11 +134,9 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
     const int64_t oneCoreRow = Align(std::min(rowTmp, UB_SIZE / (32 * (colTmp + 3 * kAlign))), 16 * blockNum);
     const int64_t activateCore = CeilDiv(rowTmp, oneCoreRow);
     const int64_t tailRow = rowTmp - (activateCore - 1) * oneCoreRow;
-
     tilingData.set_oneCoreRow(oneCoreRow);
     tilingData.set_activateCore(activateCore);
     tilingData.set_tailRow(tailRow);
-
     return ge::GRAPH_SUCCESS;
 }
 
