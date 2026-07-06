@@ -139,12 +139,11 @@ int64_t CeilAlign(int64_t val, int64_t align)
     return (val + align - 1) / align * align;
 }
 
-// A2/A3 single-direction minimum buffer size (Bytes).
-// Matches tiling_arch22.cpp CalcLeastCclBufferSize exactly.
-int64_t CalcLeastCclBufferSizeA2A3(int64_t maxRecvTokenNum, int64_t h,
+// A2 minimum buffer size (MB).
+// Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
+int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h,
     int64_t epWorldSize, int64_t expertPerRank,
-    bool isQuantRouting, bool isA3,
-    int64_t bs, int64_t topK)
+    bool isQuantRouting, int64_t bs, int64_t topK)
 {
     // Data block 1: TokenPerExpert
     // EP × CeilAlign(EP × expertPerRank + 1, 128) × 4B
@@ -154,38 +153,54 @@ int64_t CalcLeastCclBufferSizeA2A3(int64_t maxRecvTokenNum, int64_t h,
 
     // Data block 2: tensors
     // ===== winIn =====
-    int64_t offsetAAfterDispatch;
-    if (isA3) {
-        offsetAAfterDispatch = bs * topK *
-            (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
-    } else {
-        offsetAAfterDispatch = maxRecvTokenNum *
-            (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
-    }
+    int64_t offsetAAfterDispatch = maxRecvTokenNum *
+        (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
     int64_t offsetD = bs * topK * h * static_cast<int64_t>(sizeof(int16_t));
     int64_t winInTensorSize = offsetAAfterDispatch + offsetD;
 
-    // ===== winOut (A2 only) =====
-    int64_t winOutTensorSize = 0;
-    if (!isA3) {
-        int64_t offsetA = bs * topK *
-            (!isQuantRouting ? h * static_cast<int64_t>(sizeof(int16_t)) : (h + ALIGN_512));
-        int64_t offsetC = maxRecvTokenNum * h * static_cast<int64_t>(sizeof(int16_t));
-        winOutTensorSize = offsetA + offsetC;
-    }
+    // ===== winOut =====
+    int64_t offsetA = bs * topK *
+        (!isQuantRouting ? h * static_cast<int64_t>(sizeof(int16_t)) : (h + ALIGN_512));
+    int64_t offsetC = maxRecvTokenNum * h * static_cast<int64_t>(sizeof(int16_t));
+    int64_t winOutTensorSize = offsetA + offsetC;
     int64_t offsetTensor = std::max(winInTensorSize, winOutTensorSize);
     if (isQuantRouting) {
-        offsetTensor += (isA3 ? bs * topK : maxRecvTokenNum) * static_cast<int64_t>(sizeof(float));
+        offsetTensor += maxRecvTokenNum * static_cast<int64_t>(sizeof(float));
     }
 
     // Data block 3: sync flags
-    int64_t offsetFlag = epWorldSize * ALIGN_512;
-    if (!isA3) {
-        offsetFlag += epWorldSize * expertPerRank * 64LL;
-        offsetFlag += epWorldSize * 64LL;
+    int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync
+    offsetFlag += epWorldSize * expertPerRank * 64LL;  // DispatchFlag
+    offsetFlag += epWorldSize * 64LL;  // AllGatherFlag
+
+    return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
+}
+
+// A3 minimum buffer size (MB).
+// Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=true.
+int64_t CalcLeastCclBufferSizeA3(int64_t maxRecvTokenNum, int64_t h,
+    int64_t epWorldSize, int64_t expertPerRank,
+    bool isQuantRouting, int64_t bs, int64_t topK)
+{
+    // Data block 1: TokenPerExpert
+    // EP × CeilAlign(EP × expertPerRank + 1, 128) × 4B
+    int64_t offsetTokenPerExpert = epWorldSize *
+        CeilAlign(epWorldSize * expertPerRank + 1, ALIGN_128) *
+        static_cast<int64_t>(sizeof(int32_t));
+
+    // Data block 2: tensors (winIn only, no winOut)
+    int64_t offsetAAfterDispatch = bs * topK *
+        (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
+    int64_t offsetD = bs * topK * h * static_cast<int64_t>(sizeof(int16_t));
+    int64_t offsetTensor = offsetAAfterDispatch + offsetD;
+    if (isQuantRouting) {
+        offsetTensor += bs * topK * static_cast<int64_t>(sizeof(float));
     }
 
-    return offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE;
+    // Data block 3: sync flags (CrossRankSync only)
+    int64_t offsetFlag = epWorldSize * ALIGN_512;
+
+    return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
 // A5 half-buffer minimum size (MB). Ported 1:1 from the original Python implementation.
@@ -238,19 +253,21 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
-
     if (isA2 || isA3) {
         int64_t expertPerRank = moeExpertNum / epWorldSize;
         bool isQuantRouting = (dispatchQuantMode == 4);
 
-        int64_t leastBytes = CalcLeastCclBufferSizeA2A3(
+        if (isA3) {
+            return CalcLeastCclBufferSizeA3(
+                numMaxTokensPerRank, hidden, epWorldSize, expertPerRank,
+                isQuantRouting, numMaxTokensPerRank, numTopk);
+        }
+        return CalcLeastCclBufferSizeA2(
             numMaxTokensPerRank, hidden, epWorldSize, expertPerRank,
-            isQuantRouting, isA3, numMaxTokensPerRank, numTopk);
-
-        return (leastBytes + MB_SIZE) / MB_SIZE;
+            isQuantRouting, numMaxTokensPerRank, numTopk);
     }
 
-    // A5 (default): use original Python logic
+    // A5
     return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum,
         numMaxTokensPerRank, numTopk, hidden);
 }
