@@ -1064,6 +1064,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
     preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
+    preTilingData_->set_reserved2(0);
+    preTilingData_->set_reserved3(0);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
@@ -1726,6 +1728,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2SplitCoreParams_->set_s2Inner(fBaseParams.s2Inner);
     s1s2BNGS1S2SplitCoreParams_->set_s2Tail(fBaseParams.s2Tail);
     s1s2BNGS1S2SplitCoreParams_->set_bandIdx(fBaseParams.bandIdx);
+    s1s2BNGS1S2SplitCoreParams_->set_reserved(0);
     s1s2BNGS1S2BlockNumList_->set_blockStarts(fBaseParams.blockStarts);
     s1s2BNGS1S2BlockNumList_->set_blockEnds(fBaseParams.blockEnds);
     s1s2BNGS1S2SplitCoreParams_->set_blockOuter(fBaseParams.blockOuter);

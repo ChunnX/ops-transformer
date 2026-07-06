@@ -418,7 +418,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -602,7 +602,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -631,6 +631,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
                 <td>361001</td>
                 <td>API内存调用npu runtime的接口异常。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>输入参数（如layout、maskMode）的取值超出支持范围，或输入Tensor的shape维度不符合约束要求。</td>
             </tr>
         </tbody>
     </table>

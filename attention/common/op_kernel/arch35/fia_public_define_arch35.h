@@ -210,13 +210,7 @@ struct ConstInfo_t;
 template <>
 struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+                                              LseConstInfo {};
 
 template <>
 struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,

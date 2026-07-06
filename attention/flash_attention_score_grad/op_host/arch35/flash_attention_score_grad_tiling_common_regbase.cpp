@@ -20,7 +20,8 @@
 namespace optiling {
 namespace fag {
 
-ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant)
+ge::graphStatus CheckSoftmaxMaxShape(const gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1,
+                                     bool isQuant)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
     if (softmaxMaxShape == nullptr) {
@@ -46,7 +47,8 @@ ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant)
+ge::graphStatus CheckSoftmaxSumShape(const gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1,
+                                     bool isQuant)
 {
     auto softmaxSumShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
     if (softmaxSumShape == nullptr) {
@@ -72,7 +74,7 @@ ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckSoftmaxMaxSumTndShape(gert::TilingContext *context, int64_t t1, int64_t n1)
+ge::graphStatus CheckSoftmaxMaxSumTndShape(const gert::TilingContext *context, int64_t t1, int64_t n1)
 {
     if (context->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN)) {
         // read 13th attr softmax_out_layout
@@ -124,7 +126,7 @@ ge::graphStatus CheckSoftmaxMaxSumTndShape(gert::TilingContext *context, int64_t
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
+ge::graphStatus CheckAttentionInShape(const gert::TilingContext *context)
 {
     auto attentionInShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
     if (attentionInShape == nullptr) {
@@ -142,7 +144,7 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
+ge::graphStatus CheckShapeValid(const gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
 {
     auto isShapeInValid = (b == 0 || n1 == 0 || s1 == 0 || d == 0);
     std::string shapeMsg = std::to_string(b) + ", " + std::to_string(n1) + ", " + std::to_string(s1) + ", " +
@@ -170,7 +172,7 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d)
+ge::graphStatus CheckTndShapeValid(const gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d)
 {
     if (context == nullptr) {
         OP_LOGE(context, "context is nullptr");
@@ -447,7 +449,7 @@ int64_t GetTotalPerBatchNum(FuzzyBaseInfoParamsRegbase& fBaseParams, uint8_t spa
     return totalPerBatchNum;
 }
 
-void PrintShapeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+void PrintShapeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     OP_LOGI(context_,
               "FAG s1s2_bn2gs1s2 with shape b[%ld] n2[%ld] g[%ld] s1[%ld] s2[%ld] d[%ld] preToken[%ld] nextToken[%ld]!",
@@ -829,7 +831,7 @@ void CalcleActualToken(FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t batchIdx
 }
 
 ge::graphStatus ProcessSinkInfo(
-    gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+    const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto sinkShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
     if (sinkShape == nullptr || sinkShape->GetStorageShape().GetDimNum() == 0) {
@@ -861,7 +863,7 @@ ge::graphStatus ProcessSinkInfo(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessOptionalInput(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {    
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
     if (strcmp(inputLayout, "TND") == 0) {
@@ -977,7 +979,7 @@ void ProcessDropoutIsDivisibleBy8(const gert::TilingContext *context_, FuzzyBase
     return;
 }
 
-ge::graphStatus ProcessDropoutInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessDropoutInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     bool hasDrop = fBaseParams.keepProb < 1;
     // dropout mask
@@ -1024,7 +1026,7 @@ ge::graphStatus ProcessDropoutInfo(gert::TilingContext *context_, FuzzyBaseInfoP
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessQuantInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     DetermineMode(fBaseParams);
     if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
@@ -1172,7 +1174,7 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase& fBaseParams)
     return ge::GRAPH_SUCCESS;
 }
 
-void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+void SetQKVStartIdx(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     fBaseParams.qStartIdx = 0;
     fBaseParams.kvStartIdx = 0;
@@ -1206,7 +1208,8 @@ void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& f
     }
 }
 
-ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams, const char *inputLayout)
+ge::graphStatus ProcessPseNormal(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
+                                 const char *inputLayout)
 {
     auto pseShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::PSE_SHIFT));
     auto pseShapeDim = pseShape->GetStorageShape().GetDimNum();
@@ -1296,7 +1299,8 @@ ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoPar
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessPseInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams, const char *inputLayout)
+ge::graphStatus ProcessPseInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
+                               const char *inputLayout)
 {
     if (context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::PSETYPE)) {
         fBaseParams.pseType = *(context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::PSETYPE))); // 8
@@ -1389,7 +1393,7 @@ void SetPseLayout(FuzzyBaseInfoParamsRegbase& fBaseParams)
     }
 }
 
-bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
@@ -1558,7 +1562,8 @@ ge::graphStatus SetAttenMaskShapeType(FuzzyBaseInfoParamsRegbase& fBaseParams, c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessInnerPseInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams, size_t pseShapeDim)
+ge::graphStatus ProcessInnerPseInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
+                                    size_t pseShapeDim)
 {
     auto pseShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::PSE_SHIFT));
     // sparse mode 7 不支持 pse inner
@@ -1568,7 +1573,7 @@ ge::graphStatus ProcessInnerPseInfo(gert::TilingContext *context_, FuzzyBaseInfo
         return ge::GRAPH_FAILED);
     // sparse mode 8 支持pse inner的条件
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND_LEFT_UP_CASUAL)) {
-        auto ret = ProcessPseSparseMode8(context_, fBaseParams);
+        auto ret = ProcessPseSparseMode8(fBaseParams);
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
@@ -1600,7 +1605,7 @@ ge::graphStatus ProcessInnerPseInfo(gert::TilingContext *context_, FuzzyBaseInfo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ProcessPseSparseMode8(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+ge::graphStatus ProcessPseSparseMode8(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     for (int64_t boIdx = 0; boIdx < fBaseParams.b; boIdx++) {
         int64_t actualS1Len = fBaseParams.actualSeqQlen[boIdx];
@@ -1630,7 +1635,7 @@ ge::graphStatus ProcessPseSparseMode8(gert::TilingContext *context_, FuzzyBaseIn
     return ge::GRAPH_SUCCESS;
 }
 
-bool SetPrefixSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+bool SetPrefixSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto prefixNTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::PREFIX_N));
     if (prefixNTensor == nullptr) {

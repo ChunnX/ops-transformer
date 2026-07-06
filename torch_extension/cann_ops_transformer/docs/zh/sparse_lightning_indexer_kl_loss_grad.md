@@ -1,22 +1,20 @@
-# sparse_lightning_indexer_kl_loss_grad / sparse_lightning_indexer_kl_loss_grad_metadata
+# sparse_lightning_indexer_kl_loss_grad
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | × |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
 - API功能：
 
-    * `sparse_lightning_indexer_kl_loss_grad`：计算 Lightning Indexer KL Loss 训练场景下的反向输出。该接口接收 Lightning Indexer 分支的 `q`、`k`、`w`、`sparse_indices`，以及由主 Attention 分支预先计算得到的目标分布 `attn_softmax_l1_norm`，输出 `dq`、`dk`、`dw` 和 Lightning Indexer 分支的 `softmax_out`。
-    * `sparse_lightning_indexer_kl_loss_grad_metadata`：用于在主算子前生成分核 metadata，输出结果需要作为 `sparse_lightning_indexer_kl_loss_grad` 的 `metadata` 输入传入。
+  - `sparse_lightning_indexer_kl_loss_grad`：计算 Lightning Indexer KL Loss 训练场景下的反向输出。该接口接收 Lightning Indexer 分支的 `q`、`k`、`w`、`sparse_indices`，以及由主 Attention 分支预先计算得到的目标分布 `attn_softmax_l1_norm`，输出 `dq`、`dk`、`dw` 和 Lightning Indexer 分支的 `softmax_out`。
+  - `sparse_lightning_indexer_kl_loss_grad_metadata`：用于在主算子前生成分核 metadata，输出结果需要作为 `sparse_lightning_indexer_kl_loss_grad` 的 `metadata` 输入传入。
 
 - 计算公式：
 
@@ -68,9 +66,9 @@
 
 ## 函数原型
 
-```python
-from cann_ops_transformer.ops import sparse_lightning_indexer_kl_loss_grad_metadata
+调用算子sparse_lightning_indexer_kl_loss_grad接口前，先调用sparse_lightning_indexer_kl_loss_grad_metadata接口完成负载均衡计算。
 
+```python
 sparse_lightning_indexer_kl_loss_grad_metadata(
     num_heads_q,
     num_heads_k,
@@ -93,8 +91,6 @@ sparse_lightning_indexer_kl_loss_grad_metadata(
 ```
 
 ```python
-from cann_ops_transformer.ops import sparse_lightning_indexer_kl_loss_grad
-
 sparse_lightning_indexer_kl_loss_grad(
     q,
     k,
@@ -116,26 +112,6 @@ sparse_lightning_indexer_kl_loss_grad(
 ```
 
 ## 参数说明
-
-### sparse_lightning_indexer_kl_loss_grad
-
-| 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
-| :--- | :--- | :--- | :--- | :--- |
-| q | 必选输入 | Lightning Indexer 分支的 query 输入。 | `float16`、`bfloat16` | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]`。 |
-| k | 必选输入 | Lightning Indexer 分支的 key 输入。当前 `N2` 仅支持 1。 | 与 `q` 一致 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]`。 |
-| w | 必选输入 | Indexer logits 的 head 权重。 | `float32` | `layout_q="BSND"` 时为 `[B, S1, N1]`；`layout_q="TND"` 时为 `[T1, N1]`。 |
-| sparse_indices | 必选输入 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。 | `int32` | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]`。 |
-| attn_softmax_l1_norm | 必选输入 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | `float32` | 与 `sparse_indices` 一致。 |
-| cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 预留字段，表示每个 batch 实际使用的 query 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 预留字段，表示每个 batch 实际使用的 key 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
-| cmp_residual_k | 可选输入 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | `int32` | `[B]`。 |
-| metadata | 可选输入 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | `int32` | `[64]`。 |
-| layout_q | 可选属性 | `q` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
-| layout_k | 可选属性 | `k` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
-| mask_mode | 可选属性 | sparse mask 模式。 | `int` | 当前支持 `0` 和 `3`，默认 `3`。 |
-| cmp_ratio | 可选属性 | key 压缩比例。 | `int` | 取值范围 `[1, 128]`，默认 `1`。 |
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
 
@@ -159,7 +135,31 @@ sparse_lightning_indexer_kl_loss_grad(
 | cmp_ratio | 可选属性 | key 压缩比例。未传时默认值为 `1`。 | `int` | 取值范围 `[1, 128]`。 |
 | metadata | 输出 | 任务切分 metadata。 | `int32` | `[64]`。 |
 
+### sparse_lightning_indexer_kl_loss_grad
+
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
+| :--- | :--- | :--- | :--- | :--- |
+| q | 必选输入 | Lightning Indexer 分支的 query 输入。 | `float16`、`bfloat16` | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]`。 |
+| k | 必选输入 | Lightning Indexer 分支的 key 输入。当前 `N2` 仅支持 1。 | 与 `q` 一致 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]`。 |
+| w | 必选输入 | Indexer logits 的 head 权重。 | `float32` | `layout_q="BSND"` 时为 `[B, S1, N1]`；`layout_q="TND"` 时为 `[T1, N1]`。 |
+| sparse_indices | 必选输入 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。 | `int32` | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]`。 |
+| attn_softmax_l1_norm | 必选输入 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | `float32` | 与 `sparse_indices` 一致。 |
+| cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
+| cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
+| seqused_q | 可选输入 | 预留字段，表示每个 batch 实际使用的 query 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
+| seqused_k | 可选输入 | 预留字段，表示每个 batch 实际使用的 key 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
+| cmp_residual_k | 可选输入 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | `int32` | `[B]`。 |
+| metadata | 可选输入 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | `int32` | `[64]`。 |
+| layout_q | 可选属性 | `q` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
+| layout_k | 可选属性 | `k` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
+| mask_mode | 可选属性 | sparse mask 模式。 | `int` | 当前支持 `0` 和 `3`，默认 `3`。 |
+| cmp_ratio | 可选属性 | key 压缩比例。 | `int` | 取值范围 `[1, 128]`，默认 `1`。 |
+
 ## 返回值说明
+
+### sparse_lightning_indexer_kl_loss_grad_metadata
+
+- **metadata**：任务切分 metadata，shape 固定为 `[64]`，数据类型为 `int32`。
 
 ### sparse_lightning_indexer_kl_loss_grad
 
@@ -167,10 +167,6 @@ sparse_lightning_indexer_kl_loss_grad(
 - **dk**：`k` 的梯度，shape 和数据类型与 `k` 一致。
 - **dw**：`w` 的梯度，shape 与 `w` 一致，数据类型为 `float32`。
 - **softmax_out**：Lightning Indexer 分支的 softmax 输出，shape 与 `attn_softmax_l1_norm` 一致，数据类型为 `float32`。
-
-### sparse_lightning_indexer_kl_loss_grad_metadata
-
-- **metadata**：任务切分 metadata，shape 固定为 `[64]`，数据类型为 `int32`。
 
 ## 约束说明
 

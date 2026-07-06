@@ -44,6 +44,12 @@ namespace {
 const gert::Shape defaultShape = gert::Shape();
 gert::StorageShape defaultStorageShape = gert::StorageShape();
 } // namespace
+
+bool QuantMatmulAllReduceTilingA5::IsPerTensorDequantScale(const gert::Shape& dequantShape) const
+{
+    return dequantShape.GetDimNum() > 0 && dequantShape.GetDim(dequantShape.GetDimNum() - 1) == 1;
+}
+
 bool QuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA8W8_ || (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||

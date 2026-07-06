@@ -15,13 +15,17 @@
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_H
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_H
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <type_traits>
 #include <vector>
+#include "log.h"
+#include "status.h"
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
+#include "../../common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
 
@@ -34,48 +38,6 @@ enum class SliLayout {
     BSND = 0,
     TND = 1,
 };
-
-template <typename T>
-inline typename std::enable_if<std::is_integral_v<T>, bool>::type GetAttrValue(CpuKernelContext &ctx,
-                                                                               const std::string &name, T &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr == nullptr) {
-        KERNEL_LOG_ERROR("attr is null: %s", name.c_str());
-        return false;
-    }
-    value = static_cast<T>(attr->GetInt());
-    return true;
-}
-
-inline bool GetAttrValue(CpuKernelContext &ctx, const std::string &name, std::string &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr == nullptr) {
-        KERNEL_LOG_ERROR("attr is null: %s", name.c_str());
-        return false;
-    }
-    value = attr->GetString();
-    return true;
-}
-
-template <typename T>
-inline typename std::enable_if<std::is_integral_v<T>, void>::type GetAttrValueOpt(CpuKernelContext &ctx,
-                                                                                  const std::string &name, T &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr != nullptr) {
-        value = static_cast<T>(attr->GetInt());
-    }
-}
-
-inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, std::string &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr != nullptr) {
-        value = attr->GetString();
-    }
-}
 
 class SparseLightningIndexerKLLossGradMetadataCpuKernel : public CpuKernel {
 public:
