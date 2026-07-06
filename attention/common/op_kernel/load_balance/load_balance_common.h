@@ -38,6 +38,11 @@ enum class SocVersion : uint32_t {
     BUTT
 };
 
+enum class BalanceMode : uint8_t {
+    BN2_S1G = 0,
+    BN1_S1 = 1
+};
+
 struct DeviceInfo {
     uint32_t aicCoreMaxNum { 0U };      // At most amount of aic core would be turned on, this is not final used number
     uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
@@ -53,8 +58,8 @@ struct GeneralBalanceParam {
     bool fdOn { true };                     // Turn on to activate FD
     int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
                                             // full_block_cost is costFunc(mBaseSize, s2BaseSize)
-    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
     CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
+    BalanceMode mode { BalanceMode::BN2_S1G };
 };
 
 enum class SparseMode : uint8_t {

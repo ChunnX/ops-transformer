@@ -60,10 +60,10 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 static void DumpMeta(void* data) {
     int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
     optiling::detail::FaMetaData faMetadata(data, sectionNum);
-    printf("sectionNum:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX));
-    printf("isFd:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_IS_FD_INDEX));
-    printf("mBaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX));
-    printf("s2BaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX));
+    printf("sectionNum:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX));
+    printf("isFd:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_IS_FD_INDEX));
+    printf("mBaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_M_BASE_SIZE_INDEX));
+    printf("s2BaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX));
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // FA Metadata Generate
         printf("sectionIdx:%d\n",sectionId);
@@ -145,12 +145,6 @@ int main() {
 
     int32_t preTokens = -1;
     int32_t nextTokens = -1;
-    string layout_query = "BSND";
-    char layoutQuery[layout_query.length() + 1];
-    strcpy(layoutQuery, layout_query.c_str());
-    string layout_kv = "BSND";
-    char layoutKv[layout_kv.length() + 1];
-    strcpy(layoutKv, layout_kv.c_str());
     int32_t sparseMode = 3;
     int32_t attentionMode = 0;
     bool return_softmax_lse = false;
@@ -204,7 +198,7 @@ int main() {
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
         headDim, quantMode, sparseMode, preTokens, nextTokens, 
-        "BSND", "BSND", "BSND", 
+         "BSND", "PA_BNBD", "BSND",   // layoutQuery, layoutKv, layoutOut
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
@@ -227,7 +221,7 @@ int main() {
 
     ret = aclrtMemcpy(metadataHostData.data(),
                         metadataHostData.size() * sizeof(metadataHostData[0]), metadataDeviceAddr,
-                        metadataShapeSize,
+                        metadataShapeSize * sizeof(metadataHostData[0]),
                         ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         printf("aclrtMemcpy %d\n", ret);

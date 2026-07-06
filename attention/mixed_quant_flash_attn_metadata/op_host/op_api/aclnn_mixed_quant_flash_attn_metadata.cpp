@@ -58,7 +58,8 @@ aclnnStatus aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    const std::string socVersionStr = npuInfo.GetSocLongVersion();
+    const char *socVersion = socVersionStr.c_str();
 
     auto output = l0op::MixedQuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                                           batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode,

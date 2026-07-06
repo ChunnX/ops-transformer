@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <cmath>
 #include "mixed_quant_flash_attn_metadata_aicpu.h"
-#include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
@@ -134,6 +133,28 @@ std::vector<int64_t> MixedQuantFlashAttnMetadataCpuKernel::GetTensorDataAsInt64(
     return result;
 }
 
+inline int64_t MixedQuantFlashAttnMetadataCpuKernel::CalcCost(uint32_t basicM, uint32_t basicS2)
+{
+    uint32_t alignCoefM = 16U;
+    uint32_t alignCoefS2 = 64U;
+    int64_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    int64_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
+}
+
+ValidSocVersion MixedQuantFlashAttnMetadataCpuKernel::ProcessSocVersion()
+{
+    const std::string ascend950 = "Ascend950";
+    const std::string ascend91096 = "Ascend910_96";
+    if (socVersion_.find(ascend950) != std::string::npos) {
+        return ValidSocVersion::ASCEND950;
+    }
+    if (socVersion_.find(ascend91096) != std::string::npos) {
+        return ValidSocVersion::ASCEND910_96;
+    }
+    return ValidSocVersion::ASCEND910;
+}
+
 bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
 {
     // Device info
@@ -225,19 +246,22 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
-    if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
-    } else if (baseInfo.layoutQuery == Layout::TND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
+        s2BaseSize_ = 64U;
+        mBaseSize_ = 256U;
+    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
+        s2BaseSize_ = 32U;
+        mBaseSize_ = 512U;
+    } else {
+        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        return false;
     }
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
-        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
-        mBaseSize_, s2BaseSize_);
-    mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 128U * 1024U * 1024U;     // 128: 128MB, 1024: Mb2Kb, 1024:Kb2Mb
+    param.costFunc = CalcCost;
+    param.mode = load_balance::BalanceMode::BN1_S1;
+    param.l2Byte = 0U;     // Set sectionNum to 1
     param.fdTolerance = 300;                 // 300: least block
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;
@@ -255,23 +279,28 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
         return false;
     }
     uint32_t sectionNum = splitRes.sectionNum;
-    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
-    faMetadata.SetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
+    bool isS1G = (param.mode == load_balance::BalanceMode::BN2_S1G);
+    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum,
+        static_cast<uint32_t>(aicCoreNum_), static_cast<uint32_t>(aivCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_AIC_CORE_NUM_INDEX, static_cast<uint32_t>(aicCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_AIV_CORE_NUM_INDEX, static_cast<uint32_t>(aivCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_IS_S1G_INDEX, isS1G ? 1U : 0U);
+    faMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
 
-    faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 0);
+    faMetadata.SetHeadMetadata(optiling::HEAD_IS_FD_INDEX, 0);
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         if (fdSplitRes.usedVecNum > 0) {
-            faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 1);
+            faMetadata.SetHeadMetadata(optiling::HEAD_IS_FD_INDEX, 1);
         }
     }
 
-    faMetadata.SetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
-    faMetadata.SetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
+    faMetadata.SetHeadMetadata(optiling::HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
+    faMetadata.SetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
 
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // Clear
-        for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); ++i) {
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, 0U);
@@ -280,7 +309,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
         }
-        for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(aivCoreNum_); ++i) {
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);

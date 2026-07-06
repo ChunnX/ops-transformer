@@ -29,8 +29,9 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                const char *layoutQ, const char *layoutKv, const char *layoutOut,
                                const aclTensor *metaData)
 {
+    // TODO: 魔鬼数字
     if (quantMode != 1 && quantMode != 2 && quantMode != 3) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "quantMode only supports 0, 3, 4, but got %ld", quantMode);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "quantMode only supports 1, 2, 3, but got %ld", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -73,10 +74,9 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     }
 
     bool layoutKvValid =
-        (strcmp(layoutKv, "BSND") == 0 || strcmp(layoutKv, "TND") == 0 || strcmp(layoutKv, "BNSD") == 0 ||
-         strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
+        (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0);
     if (!layoutKvValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports BSND, TND, BNSD, PA_BNBD, PA_BBND, PA_NZ, but got %s",
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, but got %s",
                 layoutKv);
         return ACLNN_ERR_PARAM_INVALID;
     }

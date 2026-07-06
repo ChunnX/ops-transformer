@@ -24,8 +24,6 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36U;
 constexpr uint32_t AIV_CORE_NUM = 72U;
-constexpr uint32_t FA_META_SIZE = 1024U;
-using FA_METADATA_T = uint32_t;
 
 constexpr uint32_t HEAD_METADATA_SIZE = 16U;
 constexpr uint32_t FA_METADATA_SIZE = 16U;
@@ -36,6 +34,9 @@ constexpr uint32_t HEAD_SECTION_NUM_INDEX = 0U;
 constexpr uint32_t HEAD_IS_FD_INDEX = 1U;
 constexpr uint32_t HEAD_M_BASE_SIZE_INDEX = 2U;
 constexpr uint32_t HEAD_S2_BASE_SIZE_INDEX = 3U;
+constexpr uint32_t HEAD_AIC_CORE_NUM_INDEX = 4U;
+constexpr uint32_t HEAD_AIV_CORE_NUM_INDEX = 5U;
+constexpr uint32_t HEAD_IS_S1G_INDEX = 6U;
 
 // FA Metadata Index Definitions
 constexpr uint32_t FA_BN2_START_INDEX = 0U;
@@ -57,60 +58,69 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 namespace detail {
 struct FaMetaData {
     uint32_t sectionNum;
-    uint32_t *headMedata; // [HEAD_METADATA_SIZE];
+    uint32_t aicCoreNum_;
+    uint32_t aivCoreNum_;
+    uint32_t *headMetadata; // [HEAD_METADATA_SIZE];
     uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
     uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr, uint32_t sectionNum)
-        :sectionNum(sectionNum),
-        headMedata(static_cast<uint32_t*>(metadataPtr)),
-        faMetadata(headMedata + HEAD_METADATA_SIZE),
-        fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE)
+        : FaMetaData(metadataPtr, sectionNum, AIC_CORE_NUM, AIV_CORE_NUM)
     {
-            headMedata[0] = sectionNum;
     }
 
-    void SetHeadMedata(uint32_t metaIdx, uint32_t val)
+    FaMetaData(void *metadataPtr, uint32_t sectionNum, uint32_t aicCoreNum, uint32_t aivCoreNum)
+        : sectionNum(sectionNum),
+        aicCoreNum_(aicCoreNum),
+        aivCoreNum_(aivCoreNum),
+        headMetadata(static_cast<uint32_t*>(metadataPtr)),
+        faMetadata(headMetadata + HEAD_METADATA_SIZE),
+        fdMetadata(faMetadata + sectionNum * aicCoreNum_ * FA_METADATA_SIZE)
     {
-        assert(metaIdx < HEAD_METADATA_SIZE);
-        headMedata[metaIdx] = val;
+            headMetadata[0] = sectionNum;
     }
 
-    uint32_t GetHeadMedata(uint32_t metaIdx)
+    void SetHeadMetadata(uint32_t metaIdx, uint32_t val)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
-        return headMedata[metaIdx];
+        headMetadata[metaIdx] = val;
+    }
+
+    uint32_t GetHeadMetadata(uint32_t metaIdx)
+    {
+        assert(metaIdx < HEAD_METADATA_SIZE);
+        return headMetadata[metaIdx];
     }
 
     void SetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
         assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
+        assert(aicIdx < aicCoreNum_);
         assert(metaIdx < FA_METADATA_SIZE);
-        faMetadata[sectionIdx * AIC_CORE_NUM * FA_METADATA_SIZE + aicIdx * FA_METADATA_SIZE + metaIdx] = val;
+        faMetadata[sectionIdx * aicCoreNum_ * FA_METADATA_SIZE + aicIdx * FA_METADATA_SIZE + metaIdx] = val;
     }
 
     uint32_t GetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx)
     {
         assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
+        assert(aicIdx < aicCoreNum_);
         assert(metaIdx < FA_METADATA_SIZE);
-        return faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE * sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx];
+        return faMetadata[aicCoreNum_ * FA_METADATA_SIZE * sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx];
     }
 
     void SetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val)
     {
         assert(sectionIdx < sectionNum);
-        assert(aivIdx < AIV_CORE_NUM);
+        assert(aivIdx < aivCoreNum_);
         assert(metaIdx < FD_METADATA_SIZE);
-        fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx] = val;
+        fdMetadata[aivCoreNum_ * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx] = val;
     }
 
     uint32_t GetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx)
     {
         assert(sectionIdx < sectionNum);
-        assert(aivIdx < AIV_CORE_NUM);
+        assert(aivIdx < aivCoreNum_);
         assert(metaIdx < FD_METADATA_SIZE);
-        return fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
+        return fdMetadata[aivCoreNum_ * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
     }
 };
 } // namespace detail

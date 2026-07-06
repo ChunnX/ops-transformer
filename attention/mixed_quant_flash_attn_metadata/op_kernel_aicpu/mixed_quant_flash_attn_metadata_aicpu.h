@@ -43,6 +43,12 @@ static const int64_t NUM_128 = 128L;
 static const int64_t NUM_64 = 64L;
 static const int64_t NUM_32 = 32L;
 
+enum class ValidSocVersion {
+    ASCEND910 = 0,
+    ASCEND910_96,
+    ASCEND950
+};
+
 class MixedQuantFlashAttnMetadataCpuKernel : public CpuKernel {
 public:
     MixedQuantFlashAttnMetadataCpuKernel() = default;
@@ -54,6 +60,8 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    ValidSocVersion ProcessSocVersion();
+    inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
@@ -78,7 +86,7 @@ private:
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "BSND";
+    std::string layoutKv_ = "PA_BNBD";
     std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
