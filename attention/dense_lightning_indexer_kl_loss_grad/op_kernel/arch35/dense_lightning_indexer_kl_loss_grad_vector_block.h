@@ -61,6 +61,7 @@ public:
     // gm addr
     GlobalTensor<INPUT_T> keyIndexGm;
     GlobalTensor<T> weightGm;
+    GlobalTensor<T> softmaxLseGm;
     GlobalTensor<int32_t> topKGm;
     GlobalTensor<T> attnSoftmaxL1Gm;
 
@@ -116,6 +117,7 @@ private:
     TQue<QuePosition::VECOUT, 1> reduceSumOutQue[3];
     TQue<QuePosition::VECOUT, 1> reduceSumOtherOutQue[3];
     TQue<QuePosition::VECOUT, 1> softmaxReduceSumOutQue[3];
+    TQue<QuePosition::VECIN, 1> softmaxLseQue[3];
     TQue<QuePosition::VECIN, 1> weightInQue[3];
     TQue<QuePosition::VECOUT, 1> gatherKeyQue[2];
     TQue<QuePosition::VECOUT, 1> gatherKeyIndexQue[2];
@@ -158,6 +160,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ke
 {
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     weightGm.SetGlobalBuffer((__gm__ T *)weight);
+    softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
     // topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     attnSoftmaxL1Gm.SetGlobalBuffer((__gm__ T *)attnSoftmaxL1);
 
@@ -205,6 +208,9 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->softmaxReduceSumOutQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->softmaxReduceSumOutQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->softmaxReduceSumOutQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
+    pipe->InitBuffer(this->softmaxLseQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
+    pipe->InitBuffer(this->softmaxLseQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
+    pipe->InitBuffer(this->softmaxLseQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
 
     // gatherKeyUb = gatherTbuf.Get<INPUT_T>();
     // gatherKeyIndexUb = gatherKeyUb;
@@ -543,6 +549,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyInWeight(DLIKGradRunInfo &runInfo)
 {
     LocalTensor<float> weightInUb = weightInQue[runInfo.sTaskIdMod3].template AllocTensor<float>();
+    LocalTensor<float> lseInUb = softmaxLseQue[runInfo.sTaskIdMod3].template AllocTensor<float>();
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = runInfo.nIndexSize * sizeof(float);
@@ -550,9 +557,14 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::CopyInWeight(DLIKGradRunInf
     dataCopyParams.dstStride = 0;
     DataCopyPadExtParams<float> padParams;
     DataCopyPad(weightInUb, weightGm[runInfo.weightOffset], dataCopyParams, padParams);
+    dataCopyParams.blockLen = sizeof(float);
+    DataCopyPad(lseInUb, softmaxLseGm[runInfo.t1Index], dataCopyParams, padParams);
     this->weightInQue[runInfo.sTaskIdMod3].template EnQue(weightInUb);
     this->weightInQue[runInfo.sTaskIdMod3].template DeQue<float>();
+    this->softmaxLseQue[runInfo.sTaskIdMod3].template EnQue(lseInUb);
+    this->softmaxLseQue[runInfo.sTaskIdMod3].template DeQue<float>();
     this->weightInQue[runInfo.sTaskIdMod3].template FreeTensor(weightInUb);
+    this->softmaxLseQue[runInfo.sTaskIdMod3].template FreeTensor(lseInUb);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -676,6 +688,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     LocalTensor<T> reluUb = bmm1ResBuf.template GetTensor<T>();
     auto reluGradUb = reluGradQue[runInfo.taskIdMod3].template AllocTensor<INPUT_T>();
     LocalTensor<T> weightInUb = weightInQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
+    LocalTensor<T> lseInUb = softmaxLseQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     auto dwTensor = this->dwQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     auto softmaxReduceSumTensor = softmaxReduceSumOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
     LocalTensor<T> attnSoftmaxL1Tensor = this->attnSoftmaxL1Que.template AllocTensor<T>();
@@ -709,11 +722,11 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     if (runInfo.isAlign64) {
         ProcessVec6Vf<T, INPUT_T, true>(reluGradUb, dwTensor,
             softmaxTensor, softmaxReduceSumTensor, weightInUb, reduceSumTensor, reduceOtherSumTensor,
-            reluUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+            reluUb, lseInUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     } else {
         ProcessVec6Vf<T, INPUT_T, false>(reluGradUb, dwTensor,
             softmaxTensor, softmaxReduceSumTensor, weightInUb, reduceSumTensor, reduceOtherSumTensor,
-            reluUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+            reluUb, lseInUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     }
         
     pipe_barrier(PIPE_ALL);
