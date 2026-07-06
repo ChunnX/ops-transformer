@@ -15,7 +15,7 @@
 #ifndef MUTEX_BUFFER_H
 #define MUTEX_BUFFER_H
 
-#include "buffer.h"
+#include "../../../../common/op_kernel/buffer.h"
 
 namespace fa_base_matmul {
 

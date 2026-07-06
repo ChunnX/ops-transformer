@@ -15,7 +15,7 @@
 #ifndef MUTEX_BUFFERS_POLICY_H
 #define MUTEX_BUFFERS_POLICY_H
 
-#include "buffer_manager.h"
+#include "../../../../common/op_kernel/buffer_manager.h"
 #include "mutex_buffer.h"
 #ifndef NUM_2
 #define NUM_2 2

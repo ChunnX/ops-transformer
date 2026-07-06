@@ -16,10 +16,10 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_BLOCK_CUBE_H
 #define FLASH_ATTENTION_SCORE_GRAD_BLOCK_CUBE_H
  
-#include "../../../common/op_kernel/matmul.h"
+#include "cube_api/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/mutex_buffers_policy.h"
+#include "cube_api/mutex_buffers_policy.h"
 
 namespace FagBaseApi {
 
@@ -86,15 +86,18 @@ template <uint32_t HEAD_DIM_ALIGN>
 struct mm1Mm2Mm3L0CBuffSelector {
     using TYPE = std::conditional_t<
         HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned128),
-        std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned64), BuffersPolicy3buff<BufferType::L0C>,
-        BuffersPolicyDB<BufferType::L0C>>, BuffersPolicySingleBuffer<BufferType::L0C>>;
+        std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned64),
+                           MutexBuffersPolicy3buff<BufferType::L0C, SyncType::INNER_CORE_SYNC>,
+                           MutexBuffersPolicyDB<BufferType::L0C, SyncType::INNER_CORE_SYNC>>,
+        MutexBuffersPolicySingleBuffer<BufferType::L0C, SyncType::INNER_CORE_SYNC>>;
 };
  
 /* ============DKV不驻留L0C场景下开几块L0C buffer============= */
 template <uint32_t HEAD_DIM_ALIGN>
 struct CommonL0CBufSelector {
-    using TYPE = std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned256), BuffersPolicyDB<BufferType::L0C>,
-                                    BuffersPolicySingleBuffer<BufferType::L0C>>;
+    using TYPE = std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned256),
+                                    MutexBuffersPolicyDB<BufferType::L0C, SyncType::INNER_CORE_SYNC>,
+                                    MutexBuffersPolicySingleBuffer<BufferType::L0C, SyncType::INNER_CORE_SYNC>>;
 };
  
 template<typename T, const int64_t CUBE_BASEM, const int64_t HEAD_DIM_ALIGN>
@@ -136,8 +139,7 @@ public:
     static_assert(!IS_L1_PRELOAD || IS_L1_REUSE,
                   "IS_L1_PRELOAD requires IS_L1_REUSE for Mutex L1 buffer policies.");
     constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
-    // Counts only L1 MutexBuffers explicitly allocated by this cube block. L0 buffers are not included; recalculate
-    // the 28 MutexID limit if L0 or other modules move to Mutex.
+    // L1 mutex buffer budget.
     constexpr static uint32_t SINGLE_L1_MUTEX_BUF_NUM = 1;
     constexpr static uint32_t DB_L1_MUTEX_BUF_NUM = 2;
     constexpr static uint32_t THREE_L1_MUTEX_BUF_NUM = 3;
@@ -154,12 +156,22 @@ public:
         (!IS_L1_REUSE && IS_FP32_D_EXCEED_256) ? (SINGLE_L1_MUTEX_BUF_NUM + SINGLE_L1_MUTEX_BUF_NUM) : 0;
     constexpr static uint32_t L1_MUTEX_ID_NUM = DY_L1_MUTEX_BUF_NUM + Q_L1_MUTEX_BUF_NUM + K_L1_MUTEX_BUF_NUM +
         V_L1_MUTEX_BUF_NUM + COMMON_L1_MUTEX_BUF_NUM + FP32_L1_MUTEX_BUF_NUM;
-    constexpr static uint32_t ASCENDC_MUTEX_ID_LIMIT = 28;
-    static_assert(L1_MUTEX_ID_NUM <= ASCENDC_MUTEX_ID_LIMIT, "FAGBlockCube uses too many MutexIDs.");
-    constexpr static SyncType SYNC_TYPE = SyncType::INNER_CORE_SYNC;
-    using L1MutexBufT = MutexBuffer<BufferType::L1, SYNC_TYPE>;
     constexpr static bool IS_DKV_RESIDENT_L0C =
         IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) && !IS_FP32_INPUT;
+    // L0 mutex buffer budget (worst-case for non-resident path uses special 3 buffers).
+    constexpr static uint32_t L0AB_MUTEX_BUF_NUM = 2 + 2; // L0A DB + L0B DB
+    constexpr static uint32_t MM123_L0C_MUTEX_BUF_NUM =
+        HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned64) ? 3 :
+        (HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned128) ? 2 : 1);
+    constexpr static uint32_t L0C_MUTEX_ID_NUM =
+        IS_DKV_RESIDENT_L0C ? (MM123_L0C_MUTEX_BUF_NUM + 1 + 1) : 3;
+    constexpr static uint32_t L0_MUTEX_ID_NUM = L0AB_MUTEX_BUF_NUM + L0C_MUTEX_ID_NUM;
+    constexpr static uint32_t ASCENDC_MUTEX_ID_LIMIT = 28;
+    static_assert(L1_MUTEX_ID_NUM + L0_MUTEX_ID_NUM <= ASCENDC_MUTEX_ID_LIMIT,
+                  "FAGBlockCube uses too many MutexIDs.");
+    constexpr static SyncType SYNC_TYPE = SyncType::INNER_CORE_SYNC;
+    using L1MutexBufT = MutexBuffer<BufferType::L1, SYNC_TYPE>;
+    using L0CMutexBufT = MutexBuffer<BufferType::L0C, SYNC_TYPE>;
  
     constexpr static uint32_t DQ_L0_SPLIT_K = GET_DQ_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEM, HEAD_DIM_ALIGN>();
     constexpr static uint32_t DKV_L0_SPLIT_K = GET_DKV_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEN, HEAD_DIM_ALIGN>();
@@ -194,25 +206,27 @@ public:
     // l0ab buffer manage, double buffer
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
-    BuffersPolicyDB<BufferType::L0A> l0aBuf;
-    BuffersPolicyDB<BufferType::L0B> l0bBuf;
+    MutexBuffersPolicyDB<BufferType::L0A, SYNC_TYPE> l0aBuf;
+    MutexBuffersPolicyDB<BufferType::L0B, SYNC_TYPE> l0bBuf;
  
     // l0c buffer manage
     // l0c reuse, dk dv resident
     BufferManager<BufferType::L0C> l0cBufferManager;
     using L0CType = typename mm1Mm2Mm3L0CBuffSelector<HEAD_DIM_ALIGN>::TYPE;
     typename std::conditional<IS_DKV_RESIDENT_L0C, L0CType, std::nullptr_t>::type mm1Mm2Mm3L0CBuf;
-    typename std::conditional<IS_DKV_RESIDENT_L0C, BuffersPolicySingleBuffer<BufferType::L0C>, std::nullptr_t>::type
+    typename std::conditional<IS_DKV_RESIDENT_L0C, MutexBuffersPolicySingleBuffer<BufferType::L0C, SYNC_TYPE>,
+                              std::nullptr_t>::type
         dkL0CBuf;
-    typename std::conditional<IS_DKV_RESIDENT_L0C, BuffersPolicySingleBuffer<BufferType::L0C>, std::nullptr_t>::type
+    typename std::conditional<IS_DKV_RESIDENT_L0C, MutexBuffersPolicySingleBuffer<BufferType::L0C, SYNC_TYPE>,
+                              std::nullptr_t>::type
         dvL0CBuf;
     // no l0c reuse, all mm res
     typename std::conditional<!IS_DKV_RESIDENT_L0C, typename CommonL0CBufSelector<HEAD_DIM_ALIGN>::TYPE, std::nullptr_t>::type
         commonl0CBuf;
     // special for dSize=192, dSizeV=128
-    BuffersPolicySingleBuffer<BufferType::L0C> mm1Mm2Mm3L0CSpecialBuf;
-    BuffersPolicySingleBuffer<BufferType::L0C> dkL0CSpecialBuf;
-    BuffersPolicySingleBuffer<BufferType::L0C> dvL0CSpecialBuf;
+    MutexBuffersPolicySingleBuffer<BufferType::L0C, SYNC_TYPE> mm1Mm2Mm3L0CSpecialBuf;
+    MutexBuffersPolicySingleBuffer<BufferType::L0C, SYNC_TYPE> dkL0CSpecialBuf;
+    MutexBuffersPolicySingleBuffer<BufferType::L0C, SYNC_TYPE> dvL0CSpecialBuf;
     
     bool isDkvL0CResidentForD192Dv128 = false;
 
@@ -237,7 +251,7 @@ public:
                                         FagConstInfo &constInfo, FagRunInfo &runInfo); // mm3 older dq
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                        Buffer<BufferType::L0C> mm3L0CBuffer,
+                                        L0CMutexBufT mm3L0CBuffer,
                                         FagConstInfo &constInfo, FagRunInfo &runInfo,
                                         uint32_t realN, uint64_t gmNOffset);
     template <typename T, bool IS_WRITE_UB>
@@ -250,7 +264,7 @@ public:
                                         FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter = false); // mm4 older dk
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                        Buffer<BufferType::L0C> dkL0CBuffer,
+                                        L0CMutexBufT dkL0CBuffer,
                                         FagConstInfo &constInfo, FagRunInfo &runInfo, 
                                         uint32_t realN, uint64_t gmNOffset, bool isFixpOut);
     template <typename T, bool IS_WRITE_UB>
@@ -263,7 +277,7 @@ public:
                                         FagConstInfo &constInfo, FagRunInfo &runInfo); // mm5 dv
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmPDyFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                        Buffer<BufferType::L0C> &dvL0CBuffer, FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                        L0CMutexBufT &dvL0CBuffer, FagConstInfo &constInfo, FagRunInfo &runInfo,
                                         uint32_t realN, uint64_t gmNOffset, bool isFixpOut);
 };
  
@@ -280,6 +294,21 @@ __aicore__ inline FAGBlockCube<TEMPLATE_ARGS>::~FAGBlockCube()
         fp32L1Buf2.Uninit(*l1BufferManagerPtr);
     } else {
         commonL1Buf.Uninit(*l1BufferManagerPtr);
+    }
+    l0aBuf.Uninit(l0aBufferManager);
+    l0bBuf.Uninit(l0bBufferManager);
+    if constexpr (IS_DKV_RESIDENT_L0C) {
+        mm1Mm2Mm3L0CBuf.Uninit(l0cBufferManager);
+        dkL0CBuf.Uninit(l0cBufferManager);
+        dvL0CBuf.Uninit(l0cBufferManager);
+    } else {
+        if (isDkvL0CResidentForD192Dv128) {
+            mm1Mm2Mm3L0CSpecialBuf.Uninit(l0cBufferManager);
+            dkL0CSpecialBuf.Uninit(l0cBufferManager);
+            dvL0CSpecialBuf.Uninit(l0cBufferManager);
+        } else {
+            commonl0CBuf.Uninit(l0cBufferManager);
+        }
     }
 }
  
@@ -475,7 +504,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             }
         }
 
-        Buffer<BufferType::L0C> mm1L0CBuffer;
+        L0CMutexBufT mm1L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             mm1L0CBuffer = mm1Mm2Mm3L0CBuf.Get();
         } else {
@@ -487,7 +516,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         }
         // load l1 to l0ab + mmad
         if constexpr (!ENABLE_UNITFLAG) {
-            mm1L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+            mm1L0CBuffer.LockProd(); // 反向同步
         }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
@@ -503,12 +532,12 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
 
         vL1Buffer.LockCons();
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
                 dyL1Buffer.template GetTensor<INPUT_TYPE>(), vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
                 mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
                 dyL1Buffer.template GetTensor<INPUT_TYPE>(), vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
                 mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -517,8 +546,8 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         vL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
-            mm1L0CBuffer.Set<HardEvent::M_FIX>();
-            mm1L0CBuffer.Wait<HardEvent::M_FIX>();
+            mm1L0CBuffer.UnlockProd();
+            mm1L0CBuffer.LockCons();
         }
 
         // fixp2ub
@@ -535,7 +564,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         Fixpipe<CALC_TYPE, CALC_TYPE, PFA_CFG_ROW_MAJOR_UB>(mm1ResTensor[ubOffset], mm1L0CBuffer.GetTensor<CALC_TYPE>(),
                                                             fixpipeParams); // 将matmul结果从L0C搬运到UB
         if constexpr (!ENABLE_UNITFLAG) {
-            mm1L0CBuffer.Set<HardEvent::FIX_M>();                               // 反向同步
+            mm1L0CBuffer.UnlockCons();                               // 反向同步
         }
     }
     dyL1Buffer.UnlockCons();
@@ -697,7 +726,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             }
         }
     
-        Buffer<BufferType::L0C> mm2L0CBuffer;
+        L0CMutexBufT mm2L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             mm2L0CBuffer = mm1Mm2Mm3L0CBuf.Get();
         } else {
@@ -709,7 +738,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         }
         // load l1 to l0ab + mmad
         if constexpr (!ENABLE_UNITFLAG) {
-            mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+            mm2L0CBuffer.LockProd(); // 反向同步
         }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
@@ -723,12 +752,12 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         };
         kL1Buffer.LockCons();
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
                 qL1Buffer.template GetTensor<INPUT_TYPE>(), kL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
                 mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
                 qL1Buffer.template GetTensor<INPUT_TYPE>(), kL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
                 mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -736,8 +765,8 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         kL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
-            mm2L0CBuffer.Set<HardEvent::M_FIX>();
-            mm2L0CBuffer.Wait<HardEvent::M_FIX>();
+            mm2L0CBuffer.UnlockProd();
+            mm2L0CBuffer.LockCons();
         }
     
         // fixp2ub
@@ -760,7 +789,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         Fixpipe<CALC_TYPE, CALC_TYPE, PFA_CFG_ROW_MAJOR_UB>(mm2ResTensor[ubOffset], mm2L0CBuffer.GetTensor<CALC_TYPE>(),
                                                             fixpipeParams); // 将matmul结果从L0C搬运到UB
         if constexpr (!ENABLE_UNITFLAG) {
-            mm2L0CBuffer.Set<HardEvent::FIX_M>();
+            mm2L0CBuffer.UnlockCons();
         }
     }
     qL1Buffer.UnlockCons();
@@ -770,7 +799,7 @@ TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void
 FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                                Buffer<BufferType::L0C> mm3L0CBuffer,
+                                                L0CMutexBufT mm3L0CBuffer,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                 uint32_t realN, uint64_t gmNOffset)
 {
@@ -919,7 +948,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         kL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> mm3L0CBuffer;
+        L0CMutexBufT mm3L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             mm3L0CBuffer = mm1Mm2Mm3L0CBuf.Get();
         } else {
@@ -931,7 +960,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         // load l1 to l0ab + mmad
         if constexpr (!ENABLE_UNITFLAG) {
-            mm3L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+            mm3L0CBuffer.LockProd(); // 反向同步
         }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
@@ -944,17 +973,17 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf,
                 mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -962,12 +991,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
         kL1Buffer.UnlockCons();
         
         if constexpr (!ENABLE_UNITFLAG) {
-            mm3L0CBuffer.Set<HardEvent::M_FIX>();
-            mm3L0CBuffer.Wait<HardEvent::M_FIX>();
+            mm3L0CBuffer.UnlockProd();
+            mm3L0CBuffer.LockCons();
         }
         IterateMmDsKFixpout<T, IS_WRITE_UB>(outTensor, mm3L0CBuffer, constInfo, runInfo, realN, gmNOffset);
         if constexpr (!ENABLE_UNITFLAG) {
-            mm3L0CBuffer.Set<HardEvent::FIX_M>();
+            mm3L0CBuffer.UnlockCons();
         }
     }}
 
@@ -1016,7 +1045,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
         }
         kL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> mm3L0CBuffer;
+        L0CMutexBufT mm3L0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             mm3L0CBuffer = mm1Mm2Mm3L0CBuf.Get();
         } else {
@@ -1027,7 +1056,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             }
         }
         // load l1 to l0ab + mmad
-        mm3L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        mm3L0CBuffer.LockProd(); // 反向同步
         MMParam param = {
             (uint32_t)CUBE_BASEM, // singleM
             realN,  // singleN
@@ -1038,17 +1067,17 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             true
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
                 l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1056,8 +1085,8 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
         
         kL1Buffer.UnlockCons();
  
-        mm3L0CBuffer.Set<HardEvent::M_FIX>();
-        mm3L0CBuffer.Wait<HardEvent::M_FIX>();
+        mm3L0CBuffer.UnlockProd();
+        mm3L0CBuffer.LockCons();
  
         // fixp2GM
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -1078,14 +1107,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
 
         Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-        mm3L0CBuffer.Set<HardEvent::FIX_M>();
+        mm3L0CBuffer.UnlockCons();
     }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void
 FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                                Buffer<BufferType::L0C> dkL0CBuffer,
+                                                L0CMutexBufT dkL0CBuffer,
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo, 
                                                 uint32_t realN, uint64_t gmNOffset, bool isFixpOut)
 {
@@ -1251,7 +1280,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         qL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> dkL0CBuffer;
+        L0CMutexBufT dkL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             dkL0CBuffer = dkL0CBuf.Get();
         } else {
@@ -1263,7 +1292,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         // load l1 to l0ab + mmad
         if constexpr (!ENABLE_UNITFLAG) {
-            dkL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+            dkL0CBuffer.LockProd(); // 反向同步
         }
         bool enPartialSum = false; // control l0c accumulate sum
         bool isFixpOut = true;
@@ -1289,27 +1318,27 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         qL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
-            dkL0CBuffer.Set<HardEvent::M_FIX>();
-            dkL0CBuffer.Wait<HardEvent::M_FIX>();
+            dkL0CBuffer.UnlockProd();
+            dkL0CBuffer.LockCons();
         }
         IterateMmDsQFixpout<T, IS_WRITE_UB>(outTensor, dkL0CBuffer, constInfo, runInfo, realN, gmNOffset, isFixpOut);
         if constexpr (!ENABLE_UNITFLAG) {
-            dkL0CBuffer.Set<HardEvent::FIX_M>();
+            dkL0CBuffer.UnlockCons();
         }
     }}
 
@@ -1361,7 +1390,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
         }
         qL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> dkL0CBuffer;
+        L0CMutexBufT dkL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             dkL0CBuffer = dkL0CBuf.Get();
         } else {
@@ -1372,7 +1401,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             }
         }
         // load l1 to l0ab + mmad
-        dkL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        dkL0CBuffer.LockProd(); // 反向同步
         MMParam param = {
             (uint32_t)CUBE_BASEN, // singleM
             realN,  // singleN
@@ -1383,23 +1412,23 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             true
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         
         qL1Buffer.UnlockCons();
 
-        dkL0CBuffer.Set<HardEvent::M_FIX>();
-        dkL0CBuffer.Wait<HardEvent::M_FIX>();
+        dkL0CBuffer.UnlockProd();
+        dkL0CBuffer.LockCons();
         // fixp2gm
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = realN;
@@ -1413,14 +1442,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
         constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
         Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-        dkL0CBuffer.Set<HardEvent::FIX_M>();
+        dkL0CBuffer.UnlockCons();
     }}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void
 FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyFixpout(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                                Buffer<BufferType::L0C> &dvL0CBuffer, FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                                L0CMutexBufT &dvL0CBuffer, FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                 uint32_t realN, uint64_t gmNOffset, bool isFixpOut)
 {
     if constexpr (!IS_NZ_OUT) {
@@ -1578,7 +1607,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         dYL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> dvL0CBuffer;
+        L0CMutexBufT dvL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             dvL0CBuffer = dvL0CBuf.Get();
         } else {
@@ -1590,7 +1619,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         // load l1 to l0ab + mmad
         if constexpr (!ENABLE_UNITFLAG) {
-            dvL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+            dvL0CBuffer.LockProd(); // 反向同步
         }
         bool enPartialSum = false; // control l0c accumulate sum
         bool isFixpOut = true;
@@ -1616,17 +1645,17 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1634,12 +1663,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
         dYL1Buffer.UnlockCons();
 
         if constexpr (!ENABLE_UNITFLAG) {
-            dvL0CBuffer.Set<HardEvent::M_FIX>();
-            dvL0CBuffer.Wait<HardEvent::M_FIX>();
+            dvL0CBuffer.UnlockProd();
+            dvL0CBuffer.LockCons();
         }
         IterateMmPDyFixpout<T, IS_WRITE_UB>(outTensor, dvL0CBuffer, constInfo, runInfo, realN, gmNOffset, isFixpOut);
         if constexpr (!ENABLE_UNITFLAG) {
-            dvL0CBuffer.Set<HardEvent::FIX_M>();
+            dvL0CBuffer.UnlockCons();
         }
     }}
 
@@ -1688,7 +1717,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
         }
         dYL1Buffer.LockCons();
  
-        Buffer<BufferType::L0C> dvL0CBuffer;
+        L0CMutexBufT dvL0CBuffer;
         if constexpr (IS_DKV_RESIDENT_L0C) {
             dvL0CBuffer = dvL0CBuf.Get();
         } else {
@@ -1699,7 +1728,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             }
         }
         // load l1 to l0ab + mmad
-        dvL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        dvL0CBuffer.LockProd(); // 反向同步
         MMParam param = {
             (uint32_t)CUBE_BASEN, // singleM
             realN,                                      // singleN
@@ -1710,17 +1739,17 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             true
         };
         if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
-            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulFullMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else if constexpr (IS_FP32_INPUT) {
-            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulKMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+            MatmulNMutex<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
                 CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
                 l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1728,8 +1757,8 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
         
         dYL1Buffer.UnlockCons();
 
-        dvL0CBuffer.Set<HardEvent::M_FIX>();
-        dvL0CBuffer.Wait<HardEvent::M_FIX>();
+        dvL0CBuffer.UnlockProd();
+        dvL0CBuffer.LockCons();
  
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.mSize = CUBE_BASEN;
@@ -1743,13 +1772,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
         constexpr static FixpipeConfig DV_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
         Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[gmNOffset],
                                                 dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-        dvL0CBuffer.Set<HardEvent::FIX_M>();
+        dvL0CBuffer.UnlockCons();
     }}
  
 TEMPLATES_DEF
 class FAGBlockCubeDummy {
 public:
     constexpr static uint32_t L1_MUTEX_ID_NUM = 0;
+    constexpr static uint32_t L0_MUTEX_ID_NUM = 0;
     __aicore__ inline FAGBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *pipe, FagTilingType tilingData,
                                               BufferManager<BufferType::L1> *l1BuffMgr){};
