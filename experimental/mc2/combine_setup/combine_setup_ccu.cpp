@@ -84,8 +84,9 @@ HcclResult CcuKernelCombineSetup::Algorithm()
     CcuRep::Variable scaleBytesVar= CreateVariable(); scaleBytesVar= scaleBytes_;
     CcuRep::Variable tokBothVar   = CreateVariable(); tokBothVar   = hBytesVar + scaleBytesVar;
 
-    // ============ 2.5. Clear ============
-    CHK_RET(clearallpeersarriveNotify(COMBINE_SETUP_CCU_TAG));
+    // ============ 2.5. Clear 已下移到段9 Waitall 之后（见下）★专业人士反馈 ============
+    //   与 dispatch_setup 同治：clear 清本卡 totalCntXn（对端 write 累加）。原放开头，快慢卡差异大时慢卡的 clear
+    //   会清掉快卡刚写来的到达计数 → cross 回传丢。移到 Waitall 收齐之后再清。
 
     // ============ 3. PreSync：广播本卡 combine data/scale 接收区 addr+token（4 XN 槽）============
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
@@ -136,14 +137,10 @@ HcclResult CcuKernelCombineSetup::Algorithm()
         cntA += oneVarA;                          // 运行期计数：0→A_
     }
 
-    // ============ 6. RecordExpectCount ============
-    for (uint32_t r = 0; r < epWorldSize_; ++r) {
-        if (r == epRankId_) continue;
-        uint32_t ch = (r < epRankId_) ? r : r - 1;
-        event_.SetMask(1U);
-        CHK_RET(RecordExpectCount(channels_[ch], sendBytesPerPeer_[r], COMBINE_SETUP_CCU_TAG, event_, 1U));
-        CHK_RET(WaitEvent(event_));
-    }
+    // ============ 6. RecordExpectCount 已下移到段 7 之后（见下方，与 dispatch_setup 同治）============
+    //   ★ 专业人士反馈 + 根因坐实：record_expect_count 必须放在【所有数据发完之后】
+    //     （WriteNbWithArriveNotify + LocalCopyNb 全部发射完成）。原实现放在写之前 → 大批量时对端
+    //     totalCntXn 判定时序错、cross 回传部分未交付。sendBytesPerPeer_ 段 5 已算好（Variable 持久）。
 
     // ============ 7. DoMainLoop：逐 expandX 行送回 owner combine 数据区（payload+scale）============
     CcuRep::Variable ownerVarB  = CreateVariable();
@@ -196,10 +193,24 @@ HcclResult CcuKernelCombineSetup::Algorithm()
         cntB += oneVarB;                          // 运行期计数：0→A_
     }
 
+    // ============ 6(下移). RecordExpectCount —— ★ 所有数据(WriteNb + LocalCopy)发完之后再声明预期字节 ============
+    //   专业人士反馈：record_expect_count 放在所有 writenbwithnotify + localcopynb 之后（本次时序修复核心）。
+    for (uint32_t r = 0; r < epWorldSize_; ++r) {
+        if (r == epRankId_) continue;
+        uint32_t ch = (r < epRankId_) ? r : r - 1;
+        event_.SetMask(1U);
+        CHK_RET(RecordExpectCount(channels_[ch], sendBytesPerPeer_[r], COMBINE_SETUP_CCU_TAG, event_, 1U));
+        CHK_RET(WaitEvent(event_));
+    }
+
     // ============ 9. WaitallpeersarriveNotify ============
     CcuRep::Variable arriveTargetVar = CreateVariable();
     arriveTargetVar = static_cast<uint64_t>(epWorldSize_ - 1U);
     CHK_RET(WaitallpeersarriveNotify(arriveTargetVar, COMBINE_SETUP_CCU_TAG));
+
+    // ============ 2.5(下移). Clear 0.5RTT 状态 —— ★ 移到 Waitall 收齐之后（专业人士反馈，与 dispatch_setup 同治）============
+    //   本卡已收齐对端本轮全部到达，此时清 totalCntXn/wishCntXn 不与对端本轮 write 相撞；为下一轮 / 同 tag 复用清干净。
+    CHK_RET(clearallpeersarriveNotify(COMBINE_SETUP_CCU_TAG));
 
     // ============ 10. ready[0..R)=1 ============
     CcuRep::Variable readyAddr = CreateVariable(); readyAddr = commCmdInfoAddrVar_;
