@@ -73,7 +73,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     RegTensor<float> src0, src1, src2, src3;
-    RegTensor<float> max0;
+    RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_zero;
@@ -102,6 +102,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
@@ -171,23 +174,26 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
-            Max(max0, max0, src1, preg_108);
-            Max(max0, max0, src2, preg_108);
-            Max(max0, max0, src3, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            Max(max0, max0, src0, preg_108);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            Max(max0, max0, src1, preg_108);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            Max(max0, max0, src2, preg_108);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
-            Max(max0, max0, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     }
 
+    Max(max0, max0, max2, preg_108);
+    Max(max1, max1, max3, preg_108);
+    Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -385,7 +391,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     RegTensor<float> src0, src1, src2, src3;
-    RegTensor<float> max0;
+    RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_zero;
@@ -414,6 +420,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
@@ -483,24 +492,27 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
-            Max(max0, max0, src1, preg_108);
-            Max(max0, max0, src2, preg_108);
-            Max(max0, max0, src3, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            Max(max0, max0, src0, preg_108);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            Max(max0, max0, src1, preg_108);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            Max(max0, max0, src2, preg_108);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
-            Max(max0, max0, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     }
 
     LoadAlign(vreg_x_max_f32_b, new_global_max);
+    Max(max0, max0, max2, preg_108);
+    Max(max1, max1, max3, preg_108);
+    Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -747,7 +759,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     RegTensor<float> src0, src1, src2, src3;
-    RegTensor<float> max0;
+    RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_zero;
@@ -776,6 +788,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
@@ -834,23 +849,26 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
-            Max(max0, max0, src1, preg_108);
-            Max(max0, max0, src2, preg_108);
-            Max(max0, max0, src3, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            Max(max0, max0, src0, preg_108);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            Max(max0, max0, src1, preg_108);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            Max(max0, max0, src2, preg_108);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
-            Max(max0, max0, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     }
 
+    Max(max0, max0, max2, preg_108);
+    Max(max1, max1, max3, preg_108);
+    Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -1054,7 +1072,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     RegTensor<float> src0, src1, src2, src3;
-    RegTensor<float> max0;
+    RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_zero;
@@ -1083,6 +1101,9 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
+    Duplicate(max1, minValue);
+    Duplicate(max2, minValue);
+    Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
@@ -1141,24 +1162,27 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
-            Max(max0, max0, src1, preg_108);
-            Max(max0, max0, src2, preg_108);
-            Max(max0, max0, src3, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
-            Max(max0, max0, src0, preg_108);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
-            Max(max0, max0, src1, preg_108);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
-            Max(max0, max0, src2, preg_108);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
-            Max(max0, max0, src3, preg_108);
+            Max(max0, max0, src0, preg_108);
+            Max(max1, max1, src1, preg_108);
+            Max(max2, max2, src2, preg_108);
+            Max(max3, max3, src3, preg_108);
         }
     }
 
     LoadAlign(vreg_x_max_f32_b, new_global_max);
+    Max(max0, max0, max2, preg_108);
+    Max(max1, max1, max3, preg_108);
+    Max(max0, max0, max1, preg_108);
     Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
