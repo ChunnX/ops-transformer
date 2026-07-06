@@ -445,13 +445,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize;
     uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts;
     uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
-    roundSendTotalNum_ = (maxRoundSize / 256U) * 256U;
-    if (roundSendTotalNum_ == 0) { roundSendTotalNum_ = 256U; }
-    if (roundSendTotalNum_ > static_cast<uint32_t>(sendTotalNum_)) {
-        uint32_t alignedTotal = static_cast<uint32_t>(Ops::Base::CeilAlign(
+    maxRoundSize = (maxRoundSize / 256U) * 256U;
+    if (maxRoundSize == 0) { maxRoundSize = 256U; }
+    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxRoundSize)) {
+        roundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
             static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
-        roundSendTotalNum_ = (alignedTotal < roundSendTotalNum_) ? alignedTotal : roundSendTotalNum_;
+    } else {
+        uint32_t minRounds = static_cast<uint32_t>(Ops::Base::CeilDiv(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxRoundSize)));
+        uint32_t evenRoundSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minRounds)),
+            static_cast<int64_t>(ALIGN_256)));
+        roundSendTotalNum_ = (evenRoundSize <= maxRoundSize) ? evenRoundSize : maxRoundSize;
     }
+    if (roundSendTotalNum_ == 0) { roundSendTotalNum_ = 256U; }
     roundCompareCount_ = roundSendTotalNum_;
     roundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
         static_cast<int64_t>(roundCompareCount_) / 8, static_cast<int64_t>(ALIGN_32)));
