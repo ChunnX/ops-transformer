@@ -19,6 +19,8 @@ if (BUILD_OPEN_PROJECT)
     add_ops_compile_options(
             OP_NAME KvRmsNormRopeCache
             OPTIONS --cce-auto-sync=on
+                    -mllvm 
+                    -cce-aicore-dcci-before-kernel-end=false
                     -Wno-deprecated-declarations
                     -Werror
     )

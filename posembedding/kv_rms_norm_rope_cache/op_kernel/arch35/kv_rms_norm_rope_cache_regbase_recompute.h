@@ -21,6 +21,7 @@ namespace KvRmsNormRopeCache {
 static constexpr int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
 static constexpr int64_t RECOMPUTE_X_POWER_BUFFER_BTYES = 512;
 static constexpr int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
+static constexpr int64_t RECOMPUTE_INDEX_BUFFER_BYTES = 32;   // GetIndex 用的 index UB(与 tiling 一致)
 static constexpr int64_t A_IN_IN = 1;
 static constexpr float FLOAT_ZERO = 0.0;
 
@@ -42,7 +43,8 @@ public:
     {
         bs = tilingData_->bs;
         blockFactor = tilingData_->blockFactor; // 每个核需要处理的行数
-        if (this->blockIdx == (this->useCoreNum - 1)) {
+        realUsedCoreNum = (bs + tilingData_->blockFactor - 1) / tilingData_->blockFactor; // [FULL-CORE] 真实用核数
+        if (this->blockIdx == (realUsedCoreNum - 1)) {
             blockFactor = bs - this->blockIdx * tilingData_->blockFactor; // 尾核需要处理的行数
         }
         this->reciprocal = tilingData_->reciprocal;
@@ -111,6 +113,30 @@ public:
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
             pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, 2 * this->ubFactor * sizeof(float));
         }
+
+        // [WORKAROUND] 固定 32B UB, 供 GetIndex 逐次搬入单个 index 用
+        pipe_->InitBuffer(indexBuf, RECOMPUTE_INDEX_BUFFER_BYTES);
+        indexLocal = indexBuf.Get<int64_t>();
+    }
+
+    // [WORKAROUND] 等价替换 indexGm(offset): 把 index[offset] 先 DataCopy 到 UB 再从 UB 读,
+    // 避开 GlobalTensor::GetValue 逐行 GM 取数路径(跨进程并发下 aivec 越界触发点)。
+    __aicore__ inline int64_t GetIndex(int64_t offset)
+    {
+        DataCopyParams idxCopyParams;
+        idxCopyParams.blockCount = 1;
+        idxCopyParams.blockLen = static_cast<uint32_t>(sizeof(int64_t));
+        idxCopyParams.srcStride = 0;
+        idxCopyParams.dstStride = 0;
+        MutexID idxMutex = GetTPipePtr()->AllocMutexID();
+        Mutex::Lock<PIPE_MTE2>(idxMutex);
+        AscendC::DataCopyPad(indexLocal, this->indexGm[offset], idxCopyParams, padParams);
+        Mutex::Unlock<PIPE_MTE2>(idxMutex);
+        Mutex::Lock<PIPE_S>(idxMutex);
+        int64_t index = indexLocal.GetValue(0);
+        Mutex::Unlock<PIPE_S>(idxMutex);
+        GetTPipePtr()->ReleaseMutexID(idxMutex);
+        return index;
     }
 
     __aicore__ inline void CastPowVF(__local_mem__ float*& xFp32Ptr, __local_mem__ T_KV*& xPtr, uint32_t ubFactor) 
@@ -945,12 +971,9 @@ public:
     __aicore__ inline void ScatterUpdateV(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
     {
         xDataCopyParams.blockLen = tmpFactor * sizeof(T_V_CACHE);
-        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t batchIdx = rowIdx / tilingData_->seqLength;
         int64_t seqIdx = rowIdx % tilingData_->seqLength;
-        int64_t vCacheIdx = this->indexGm(rowIdx);
-        SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+        int64_t vCacheIdx = this->GetIndex(rowIdx);
         
         int64_t gmOffset; 
 
@@ -1001,15 +1024,12 @@ public:
     __aicore__ inline void ScatterBlkUpdateV(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
     {
         xDataCopyParams.blockLen = tmpFactor * sizeof(T_V_CACHE);
-        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t ceilValue = ops::CeilDiv(tilingData_->seqLength, tilingData_->blockSize);
         int64_t batchIdx = rowIdx / tilingData_->seqLength;
         int64_t seqIdx = rowIdx % tilingData_->seqLength;
         int64_t blkIdx = seqIdx / tilingData_->blockSize;
         int64_t idx = batchIdx * ceilValue + blkIdx;
-        int64_t vCacheIdx = this->indexGm(idx);
-        SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+        int64_t vCacheIdx = this->GetIndex(idx);
         
         int64_t gmOffset;
 
@@ -1808,12 +1828,9 @@ public:
     __aicore__ inline void ScatterUpdateK(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
     {
         xDataCopyParams.blockLen = tmpFactor * sizeof(T_K_CACHE);
-        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t batchIdx = rowIdx / tilingData_->seqLength;
         int64_t seqIdx = rowIdx % tilingData_->seqLength;
-        int64_t kCacheIdx = this->indexGm(rowIdx);
-        SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+        int64_t kCacheIdx = this->GetIndex(rowIdx);
         int64_t gmOffset1, gmOffset2; 
 
         if (kCacheIdx >= 0) {
@@ -1872,15 +1889,12 @@ public:
     __aicore__ inline void ScatterBlkUpdateK(int64_t rowIdx, int64_t ubIdx, int64_t tmpFactor)
     {
         xDataCopyParams.blockLen = tmpFactor * sizeof(T_K_CACHE);
-        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t ceilValue = ops::CeilDiv(tilingData_->seqLength, tilingData_->blockSize);
         int64_t batchIdx = rowIdx / tilingData_->seqLength;
         int64_t seqIdx = rowIdx % tilingData_->seqLength;
         int64_t blkIdx = seqIdx / tilingData_->blockSize;
         int64_t idx = batchIdx * ceilValue + blkIdx;
-        int64_t kCacheIdx = this->indexGm(idx);
-        SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-        WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+        int64_t kCacheIdx = this->GetIndex(idx);
 
         int64_t gmOffset1, gmOffset2;
 
@@ -2367,6 +2381,7 @@ public:
 
     __aicore__ inline void Process()
     {
+        if (this->blockIdx >= realUsedCoreNum) { return; }   // [FULL-CORE] block_dim 拉满, 无活的核直接跳过
         int64_t kvGMOffsetPerCore = tilingData_->blockFactor * this->blockIdx; // rows offset for each core
         int64_t cosSinGmOffsetPerCore = tilingData_->blockFactor * this->blockIdx;
         int64_t cacheGmOffsetPerCore = tilingData_->blockFactor * this->blockIdx;
@@ -2403,6 +2418,8 @@ private:
     TBuf<TPosition::VECCALC> xPowBuffer;
     TBuf<TPosition::VECCALC> cacheBuffer;
     TBuf<TPosition::VECCALC> tmpReduceBuffer;
+    TBuf<TPosition::VECCALC> indexBuf;    // [WORKAROUND] 固定 32B, GetIndex 用
+    LocalTensor<int64_t> indexLocal;
     TPipe* pipe_ = nullptr;
 
     LocalTensor<float> tmpReduceLocal;
@@ -2431,6 +2448,7 @@ private:
     int64_t ubFactorDkLoopCountCeil = 0;
 
     int64_t blockFactor = 0; // rows need to calculate for each core
+    int64_t realUsedCoreNum = 0; // [FULL-CORE] 真实有活核数(block_dim 拉满全核, 多余核跳过)
     int64_t basicBlockLoop = 0;
     int64_t mainFoldCount = 0;
 
