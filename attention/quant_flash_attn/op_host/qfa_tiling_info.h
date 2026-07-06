@@ -35,6 +35,7 @@ const std::string VALUE_NAME = "v";
 const std::string Q_DESCALE_NAME = "q_descale";
 const std::string K_DESCALE_NAME = "k_descale";
 const std::string V_DESCALE_NAME = "v_descale";
+const std::string BLOCK_TABLE_NAME = "block_table";
 const std::string P_SCALE_NAME = "p_scale";
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string CU_SEQLENS_KV_NAME = "cu_seqlens_kv";
@@ -69,14 +70,15 @@ constexpr uint32_t VALUE_INDEX = 2;
 constexpr uint32_t Q_DESCALE_INDEX = 3;
 constexpr uint32_t K_DESCALE_INDEX = 4;
 constexpr uint32_t V_DESCALE_INDEX = 5;
-constexpr uint32_t P_SCALE_INDEX = 6;
-constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
-constexpr uint32_t CU_SEQLENS_KV_INDEX = 8;
-constexpr uint32_t SEQUSED_Q_INDEX = 9;
-constexpr uint32_t SEQUSED_KV_INDEX = 10;
-constexpr uint32_t SINKS_INDEX = 11;
-constexpr uint32_t ATTN_MASK_INDEX = 12;
-constexpr uint32_t METADATA_INDEX = 13;
+constexpr uint32_t BLOCK_TABLE_INDEX = 6;
+constexpr uint32_t P_SCALE_INDEX = 7;
+constexpr uint32_t CU_SEQLENS_Q_INDEX = 8;
+constexpr uint32_t CU_SEQLENS_KV_INDEX = 9;
+constexpr uint32_t SEQUSED_Q_INDEX = 10;
+constexpr uint32_t SEQUSED_KV_INDEX = 11;
+constexpr uint32_t SINKS_INDEX = 12;
+constexpr uint32_t ATTN_MASK_INDEX = 13;
+constexpr uint32_t METADATA_INDEX = 14;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
@@ -182,6 +184,7 @@ struct QfaParaInfo {
     QfaRequiredParaInfo kDescale = {nullptr, nullptr};
     QfaRequiredParaInfo vDescale = {nullptr, nullptr};
 
+    QfaOptionalParaInfo blockTable = {nullptr, nullptr};
     QfaOptionalParaInfo pScale = {nullptr, nullptr};
     QfaOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
     QfaOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
@@ -350,6 +353,7 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
     {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
     {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
+    {BLOCK_TABLE_NAME, {ge::DT_INT32}},
     {P_SCALE_NAME, {ge::DT_FLOAT}},
     {ATTN_MASK_NAME, {ge::DT_INT8}},
     {ATTN_OUT_NAME, {ge::DT_BF16}},

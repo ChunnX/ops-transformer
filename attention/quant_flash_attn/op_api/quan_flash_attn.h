@@ -27,6 +27,7 @@ namespace l0op {
  * @param qDescale            query descale tensor (E8M0 for quant_mode=1)
  * @param kDescale            key descale tensor (E8M0 for quant_mode=1)
  * @param vDescale            value descale tensor (E8M0 for quant_mode=1)
+ * @param blockTableOptional  optional block index table for paged attention (INT32)
  * @param pScaleOptional      optional P scale tensor
  * @param cuSeqlensQOptional  query cumulative sequence lengths (optional, INT32)
  * @param cuSeqlensKvOptional kv cumulative sequence lengths (optional, INT32)
@@ -58,6 +59,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const aclTensor *qDescale,
     const aclTensor *kDescale,
     const aclTensor *vDescale,
+    const aclTensor *blockTableOptional,
     const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,

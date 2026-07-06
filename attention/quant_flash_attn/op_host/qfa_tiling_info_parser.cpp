@@ -158,6 +158,8 @@ ge::graphStatus QfaInfoParser::GetNpuInfo()
 
 void QfaInfoParser::GetOptionalInputParaQuantInfo()
 {
+    opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
+    opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
     opParamInfo_.pScale.tensor = context_->GetOptionalInputTensor(P_SCALE_INDEX);
     opParamInfo_.pScale.desc = context_->GetOptionalInputDesc(P_SCALE_INDEX);
 }
@@ -390,6 +392,10 @@ ge::graphStatus QfaInfoParser::GetBlockNum()
 
 ge::graphStatus QfaInfoParser::GetS2SizeForPageAttention()
 {
+    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+            "When layout_kv is PA, block_table must be provided but got nullptr."),
+                return ge::GRAPH_FAILED);
     if (maxSeqKv_ <= 0) {
         OP_LOGE(opName_, "[GetS2SizeForPageAttention] max_seqlen_kv must be positive, got %ld.", maxSeqKv_);
         return ge::GRAPH_FAILED;
