@@ -642,7 +642,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     // sync flags
     offsetFlag           = EP × 512B
                            + EP × expertPerRank × 64B
-                           + (!quant ? EP × 64B : 0)
+                           + EP × 64B
     ```
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
     ```
