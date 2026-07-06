@@ -179,7 +179,6 @@ class GeneralizedLI:
             # 根据布尔矩阵置-inf
             reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
         to_be_sort_ele = reduce_sum.clone()
-        to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
