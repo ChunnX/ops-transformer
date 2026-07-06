@@ -576,8 +576,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 uint32_t roundLen = static_cast<uint32_t>(roundLen64);
                 uint32_t curRoundCompareCount = (roundLen == roundSendTotalNum_) ? roundCompareCount_ :
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
-                        static_cast<int64_t>(roundLen) * sizeof(int32_t),
-                        static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t));
+                        static_cast<int64_t>(roundLen) * static_cast<int64_t>(sizeof(int32_t)),
+                        static_cast<int64_t>(ALIGN_256)) / static_cast<int64_t>(sizeof(int32_t)));
                 uint32_t curRoundMaskAlignSize = (roundLen == roundSendTotalNum_) ? roundMaskAlignSize_ :
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
                         static_cast<int64_t>(curRoundCompareCount) / 8,
