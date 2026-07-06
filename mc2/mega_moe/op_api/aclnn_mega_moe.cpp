@@ -85,8 +85,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t rankNumPerServer, int64_t topkWeightsType,
+    aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -136,7 +136,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType,
-        rankNumPerServer, yOut, expertTokenNumsOut, workspaceSize, executor);
+        rankNumPerServer, topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
