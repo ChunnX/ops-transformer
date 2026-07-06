@@ -1,0 +1,326 @@
+## 1 需求背景
+
+### 1.1 现状
+
+当前 MXFP8 量化注意力推理通过 `aclnnFusedInferAttentionScoreV5`（简称 FIA V5）实现，采用**单算子两段式调用**模式：tiling 计算与 kernel 计算在同一个算子内完成。该接口存在以下问题：
+
+* **tiling 与计算耦合**：tiling 在主算子 GetWorkspaceSize 阶段完成，每次调用都重复计算 tiling
+
+* **参数冗余**：V5 接口兼容全量化/反量化/非量化等多种模式，MXFP8 仅使用其中一部分参数，大量 optional 参数传入 nullptr
+
+* **KV scale 合并传入**：`deqScale2Optional` 将 K/V 反量化 scale 合并为一个 tensor，无法独立表达 K/V 不同的量化粒度
+
+* **命名不一致**：Python 层 `dequant_scale_key/value` 与 ACLNN 层 `keyAntiquantScale/valueAntiquantScale` 存在命名混淆
+
+### 1.2 目标
+
+将 MXFP8 fullquant 场景从 FIA V5 迁移到 QFA（`aclnnQuantFlashAttnMetadata` + `aclnnQuantFlashAttn`）双算子接口，实现：
+
+* **tiling 前置**：通过独立 metadata 算子预计算 tiling，主算子直接消费 metadata tensor，避免每次调用重复计算 tiling
+
+* **参数精简**：移除 MXFP8 不需要的 antiquant/padding/shared\_prefix 等参数
+
+* **语义清晰**：K/V scale 独立传入，量化模式/数据类型显式表达
+
+## 3 方案介绍
+
+### 3.1 整体架构变化
+
+```scss
+迁移前 (FIA V5):
+  Python → C++ Binding → aclnnFusedInferAttentionScoreV5 (tiling+计算合一)
+
+迁移后 (QFA):
+  Python → C++ Binding → aclnnQuantFlashAttnMetadata (tiling前置)
+                       → aclnnQuantFlashAttn          (计算)
+```
+
+主要变化：**单算子两段式 → 双算子各两段式**，tiling 从主算子中剥离到独立 metadata 算子。QFA 不走 GE，无 tiling 下沉等图模式路径。
+
+### 3.2 老接口参数全量推导
+
+老接口 `torch_npu.npu_fused_infer_attention_score_v2` 在 MXFP8 fullquant 场景下实际传入的全部参数：
+
+```python
+torch_npu.npu_fused_infer_attention_score_v2(
+    q, k, v,                                    # 1-3: 数据
+    query_rope=q_rope,                          # 4: RoPE
+    key_rope=k_rope,                            # 5: RoPE
+    atten_mask=mask,                            # 6: mask
+    actual_seq_qlen=actual_seq_q,               # 7: 序列长度 list[int]
+    actual_seq_kvlen=actual_seq_kv,             # 8: 序列长度 list[int]
+    dequant_scale_query=dequant_scale_q,        # 9: Q scale
+    dequant_scale_key=dequant_scale_k,          # 10: K scale
+    dequant_scale_value=dequant_scale_v,        # 11: V scale
+    block_table=block_table,                    # 12: PA block table
+    block_size=block_size,                      # 13: PA block size
+    num_query_heads=q_n,                        # 14: head 数
+    num_key_value_heads=kv_n,                   # 15: kv head 数
+    softmax_scale=softmax_scale,                # 16: softmax scale
+    input_layout=layout,                        # 17: 统一 layout
+    sparse_mode=sparse_mode,                    # 18: mask 模式
+    quant_scale_p=p_scale,                      # 19: P scale
+    out_dtype=out_dtype,                        # 20: 输出类型
+    # ---- 以下来自 _get_npu_fa_kwargs() ----
+    query_quant_mode=6,                         # 21
+    key_quant_mode=6,                           # 22
+    value_quant_mode=8,                         # 23
+    query_dtype=torch.float8_e4m3fn,            # 24
+    key_dtype=torch.float8_e4m3fn,              # 25
+    value_dtype=torch.float8_e4m3fn,            # 26
+    dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,  # 27
+    dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,    # 28
+    dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,  # 29
+    return_softmax_lse=ENABLE_LSE,              # 30
+)
+```
+
+#### 3.2.1 逐参数推导表
+
+> 以下新接口参数均基于 QFA torch\_extension 层当前实际存在的接口。
+
+| \#   | 老接口参数                 | 老接口值/类型                  | 新接口 metadata 算子                    | 新接口主算子                            | 是否需修改             | 修改说明                                                     |
+| ---- | -------------------------- | ------------------------------ | --------------------------------------- | --------------------------------------- | ---------------------- | ------------------------------------------------------------ |
+| 1    | `q`                        | Tensor, FP8\_E4M3              | —                                       | `q` \(pos \#1\)                         | 否                     | 直接传入，shape/dtype 不变                                   |
+| 2    | `k`                        | Tensor, FP8\_E4M3              | —                                       | `k` \(pos \#2\)                         | 否                     | 直接传入                                                     |
+| 3    | `v`                        | Tensor, FP8\_E4M3              | —                                       | `v` \(pos \#3\)                         | 否                     | 直接传入                                                     |
+| 4    | `query_rope`               | Tensor, bf16                   | —                                       | —                                       | **移除**               | QFA 不支持 RoPE 分离传入，需**外部拼接到 Q 的 D 维度后**再传入 |
+| 5    | `key_rope`                 | Tensor, bf16                   | —                                       | —                                       | **移除**               | 同上，拼接到 K 的 D 维度                                     |
+| 6    | `atten_mask`               | Tensor, bool                   | —                                       | `attn_mask`                             | **改名**               | `atten_mask` → `attn_mask`                                   |
+| 7    | `actual_seq_qlen`          | 累加前缀和 list\[int\]         | `cu_seqlens_q` + `seqused_q`            | `cu_seqlens_q` + `seqused_q`            | **格式重构**           | 详见 3.2.3 序列长度转换规则                                  |
+| 8    | `actual_seq_kvlen`         | 累加前缀和 list\[int\]         | `cu_seqlens_kv` + `seqused_kv`          | `cu_seqlens_kv` + `seqused_kv`          | **格式重构**           | 详见 3.2.3 序列长度转换规则                                  |
+| 9    | `dequant_scale_q`          | Tensor, E8M0                   | —                                       | `q_descale` \(pos \#4\)                 | **改名+位置变化**      | kwarg→位置参数；shape/打包格式不变                           |
+| 10   | `dequant_scale_k`          | Tensor, E8M0                   | —                                       | `k_descale` \(pos \#5\)                 | **改名+位置变化**      | 同上                                                         |
+| 11   | `dequant_scale_v`          | Tensor, E8M0                   | —                                       | `v_descale` \(pos \#6\)                 | **改名+位置变化**      | 同上                                                         |
+| 12   | `num_query_heads`          | int \(N\_q\)                   | `num_heads_q`                           | —                                       | **改名+传入metadata**  | 主算子不再需要，只传 metadata                                |
+| 13   | `num_key_value_heads`      | int \(N\_kv\)                  | `num_heads_kv`                          | —                                       | **改名+传入metadata**  | 同上                                                         |
+| 14   | `softmax_scale`            | float                          | —                                       | `softmax_scale`                         | 否                     | 直接传入                                                     |
+| 15   | `input_layout`             | str, 如 "TND"                  | `layout_q` + `layout_kv` + `layout_out` | `layout_q` + `layout_kv` + `layout_out` | **一拆三+双传**        | 非PA: 三者相同=原值；PA: `layout_kv` 需设为 `"PA_ND"` / `"PA_Nz"` 等 |
+| 16   | `sparse_mode`              | int, 如 3                      | `mask_mode`                             | `mask_mode`                             | **改名+双传**          | `sparse_mode=3` → `mask_mode=3`                              |
+| 17   | `out_dtype`                | torch.float16 / torch.bfloat16 | —                                       | —                                       | **移除**               | QFA 固定输出 BF16，不再需要 `out_dtype` 参数                 |
+| 18   | `query_quant_mode=6`       | int                            | `quant_mode=1或2`                       | `quant_mode=1或2`                       | **合并+改名+双传**     | V5 三个 quant\_mode（6/6/8）合并为 QFA 统一 `quant_mode`；1=MXFP8 softmax FP32，2=MXFP8 softmax FP16 |
+| 19   | `key_quant_mode=6`         | int                            | （同上）                                | （同上）                                | **合并入 quant\_mode** | 不再单独传入                                                 |
+| 20   | `value_quant_mode=8`       | int                            | （同上）                                | （同上）                                | **合并入 quant\_mode** | 不再单独传入                                                 |
+| 21   | `query_dtype=FP8`          | torch.float8\_e4m3fn           | —                                       | —                                       | **移除**               | 由 `quant_mode` 隐含：MXFP8\(1/2\)→FP8\_E4M3                 |
+| 22   | `key_dtype=FP8`            | torch.float8\_e4m3fn           | —                                       | —                                       | **移除**               | 同上                                                         |
+| 23   | `value_dtype=FP8`          | torch.float8\_e4m3fn           | —                                       | —                                       | **移除**               | 同上                                                         |
+| 24   | `return_softmax_lse=False` | bool                           | —                                       | `return_softmax_lse`                    | **类型变化**           | `bool` → `int`                                               |
+| —    | —                          | —                              | `head_dim`                              | —                                       | **新增，仅metadata**   | 从 `q` 的 shape 推断（TND 下 `q.shape[-1]`）                 |
+| —    | —                          | —                              | `batch_size`                            | —                                       | **新增，仅metadata**   | 从 `B` 或 `seqused_q.size(0)` 推断                           |
+| —    | —                          | —                              | `max_seqlen_q`                          | `max_seqlen_q`                          | **新增，双传**         | 默认 \-1（自动推断）                                         |
+| —    | —                          | —                              | `max_seqlen_kv`                         | `max_seqlen_kv`                         | **新增，双传**         | 默认 \-1                                                     |
+| —    | —                          | —                              | `quant_mode`                            | `quant_mode`                            | **新增，双传**         | V5 三合一；1=MXFP8 softmax FP32，2=MXFP8 softmax FP16        |
+| —    | —                          | —                              | —                                       | `metadata`                              | **已有，仅主算子**     | metadata 算子的输出 tensor                                   |
+| —    | —                          | —                              | —                                       | `sinks`                                 | **已有，仅主算子**     | learnable sink，MXFP8 不使用，传 None                        |
+
+> **说明**：V5 的 `block_table`、`block_size`、`quant_scale_p`、`dequant_scale_*_dtype` 等参数在当前 QFA torch\_extension 接口中不存在，需在后续迭代中按需新增。
+
+#### 3.2.2 参数修改分类汇总
+
+**A. 直接传入（无需修改）— 4 个**
+
+`q`, `k`, `v`, `softmax_scale`
+
+**B. 改名直接映射 — 4 个**
+
+| 老接口            | 新接口      | 变化 |
+| ----------------- | ----------- | ---- |
+| `atten_mask`      | `attn_mask` | 改名 |
+| `dequant_scale_q` | `q_descale` | 改名 |
+| `dequant_scale_k` | `k_descale` | 改名 |
+| `dequant_scale_v` | `v_descale` | 改名 |
+
+**C. 合并+双传（metadata + 主算子）— 2 组**
+
+| 老接口                                                       | 新接口                     | 值                                                |
+| ------------------------------------------------------------ | -------------------------- | ------------------------------------------------- |
+| `num_query_heads`                                            | `num_heads_q`（metadata）  | N\_q                                              |
+| `num_key_value_heads`                                        | `num_heads_kv`（metadata） | N\_kv                                             |
+| `query_quant_mode=6` + `key_quant_mode=6` + `value_quant_mode=8` | `quant_mode`（双传）       | 1（MXFP8 softmax FP32）或 2（MXFP8 softmax FP16） |
+| `sparse_mode`                                                | `mask_mode`（双传）        | 3                                                 |
+
+**D. 拆分/转换 — 4 个**
+
+| 老接口                                | 新接口                                  | 转换逻辑                                                     |
+| ------------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| `input_layout`                        | `layout_q` + `layout_kv` + `layout_out` | 非PA: 三者相同=原值；PA: `layout_kv` = `"PA_ND"` / `"PA_Nz"` 等 |
+| `actual_seq_qlen` \(累加前缀和\)      | `cu_seqlens_q` + `seqused_q`            | 详见 3.2.3 序列长度转换规则                                  |
+| `actual_seq_kvlen` \(累加前缀和\)     | `cu_seqlens_kv` + `seqused_kv`          | 详见 3.2.3 序列长度转换规则                                  |
+| ~~`return_softmax_lse`~~~~ \(bool\)~~ | ~~`return_softmax_lse`~~~~ \(int\)~~    | ~~`bool→int`~~                                               |
+
+**E. 移除 — 5 个**
+
+| 老接口                                      | 移除原因                                     |
+| ------------------------------------------- | -------------------------------------------- |
+| `query_rope` / `key_rope`                   | QFA 不支持 RoPE                              |
+| `query_dtype` / `key_dtype` / `value_dtype` | 由 `quant_mode` 隐含：MXFP8\(1/2\)→FP8\_E4M3 |
+| `key_quant_mode` / `value_quant_mode`       | 合并入 `quant_mode`                          |
+| `out_dtype`                                 | QFA 固定输出 BF16                            |
+
+**F. 当前 QFA 接口已有但 V5 无直接对应的参数 — 4 个**
+
+| 新接口参数   | 归属        | 说明                                                    |
+| ------------ | ----------- | ------------------------------------------------------- |
+| `head_dim`   | 仅 metadata | 从 `q.shape[-1]` 推断                                   |
+| `batch_size` | 仅 metadata | 从 `seqused_q.size(0)` 或 `cu_seqlens_q.size(0)-1` 推断 |
+| `metadata`   | 仅主算子    | metadata 算子输出，双算子机制                           |
+| `sinks`      | 仅主算子    | learnable sink，MXFP8 不使用，传 None                   |
+
+**G. V5 有但 QFA 当前接口不存在的参数 — 待后续新增**
+
+| 老接口参数                      | QFA 对应   | 说明                |
+| ------------------------------- | ---------- | ------------------- |
+| `block_table`                   | 待新增     | PA block table      |
+| `block_size`                    | 待新增     | PA block size       |
+| `quant_scale_p`                 | 待新增     | P scale tensor      |
+| ~~`dequant_scale_query_dtype`~~ | ~~待新增~~ | ~~Q descale dtype~~ |
+| ~~`dequant_scale_key_dtype`~~   | ~~待新增~~ | ~~K descale dtype~~ |
+| ~~`dequant_scale_value_dtype`~~ | ~~待新增~~ | ~~V descale dtype~~ |
+
+#### 3.2.3 序列长度转换规则
+
+**FIA 老接口**：
+
+* `actual_seq_qlen/kvlen` 为**累加前缀和** list\[int\]，shape `(B,)`
+
+* `make_accum_seq()` 负责从 per\-batch 长度生成前缀和
+
+* KV layout 规则：
+
+  * 非 PA：`KV_LAYOUT = INPUT_LAYOUT`（Q/KV 同 layout）
+
+  * PA：由 KV cache tensor 的 shape 维度推断：`shape_dim=3` → `BnBsH`，`shape_dim=4` → `BnNBsD`，`shape_dim=5` → `PA_NZ`
+
+**QFA 新接口**：
+
+* `cu_seqlens_q/kv`：累加前缀和 Tensor\(int32\)，shape `(B+1,)`，**前面补 0**
+
+  * 前面补 0 是为了避免 kernel 中做 if 判断，直接用 `cu_seqlens[i+1] - cu_seqlens[i]` 得到第 i 个 batch 的长度
+
+* `seqused_q/kv`：每 batch 实际有效长度 Tensor\(int32\)，shape `(B,)`
+
+  * 可传入小于 padded 长度的值，表示 padded tensor 中只有前 seqused 个 token 有效
+
+  * `seqused` 与 `cu_seqlens` 可同时传入；`cu_seqlens` 提供每个 batch 的 token 起止位置，`seqused` 提供实际有效长度
+
+**转换规则（按 layout + PA 模式决定传哪个）**：
+
+| 场景                         | Q 侧                  | KV 侧                                            |
+| ---------------------------- | --------------------- | ------------------------------------------------ |
+| TND + 非 PA                  | 必须传 `cu_seqlens_q` | 必须传 `cu_seqlens_kv`                           |
+| TND + PA                     | 必须传 `cu_seqlens_q` | 传 `seqused_kv`（PA 不是 TND，不需 cu\_seqlens） |
+| 非 TND \(BNSD/BSND\) + 非 PA | 传 `seqused_q`        | 传 `seqused_kv`                                  |
+| 非 TND \(BNSD/BSND\) + PA    | 传 `seqused_q`        | 传 `seqused_kv`                                  |
+
+> **核心规则**：TND layout 必须用 `cu_seqlens`（因为 TND 没有 batch 维度，需要前缀和定位每个 batch 的 token 起止位置）；非 TND layout 只需 `seqused`（因为有 batch 维度，只需知道每个 batch 的有效长度）。PA 模式下 KV 走 block\_table 索引，不是 TND，所以不需要 `cu_seqlens_kv`。
+
+
+
+### 3.4 Python 层适配
+
+#### 3.4.1 测试 paramset 构造
+
+基于老接口 `fia_fullquant_mxfp8_paramset_func_rdv.py` 的 paramset，按 2.1 节的字段增删改规则构造新接口 paramset。
+
+**老接口 paramset 字段**（参考 `fia_fullquant_mxfp8_paramset_common.py` 的 `PARAM_NAMES`）：
+
+```auto
+B, N_q, N_kv, D, actual_seq_q, actual_seq_kv, enable_pa, kv_cache_layout,
+block_size, sparse_mode, q_scale_layout, p_scale, data_range_q, data_range_k,
+data_range_v, enable_lse, enable_rope, D_rope, graph_path, device_id, is_contiguous
+```
+
+**新接口 paramset 字段**：
+
+```auto
+B, N_q, N_kv, D, actual_seq_q, actual_seq_kv, enable_pa, kv_cache_layout,
+block_size, mask_mode, q_scale_layout, p_scale, data_range_q, data_range_k,
+data_range_v, enable_lse, quant_mode, device_id
+```
+
+**字段变化**：
+
+| 操作 | 老字段        | 新字段       | 说明                             |
+| ---- | ------------- | ------------ | -------------------------------- |
+| 改名 | `sparse_mode` | `mask_mode`  | 值不变                           |
+| 新增 | —             | `quant_mode` | 固定值 `1`（MXFP8 softmax FP32） |
+| 移除 | `graph_path`  | —            | QFA 不走 GE                      |
+
+#### 3.4.2 Golden 测试文件
+
+基于老接口 `fia_fullquant_mxfp8_golden.py` 的 golden 计算逻辑，做以下改造：
+
+**A. Golden 计算逻辑（复用）**
+
+MXFP8 量化/反量化的 CPU golden 计算逻辑（per\-token\-group Q/K descale、per\-channel\-group V descale、e8m0fnu scale 打包等）完全复用，无需修改。核心流程：
+
+1. 生成 FP32 随机数据 → 按 `MXFP_GROUP_SIZE=32` 分组量化为 FP8\_E4M3 + E8M0 scale
+
+2. 分块 Flash Attention（C1V1C1V1C2V2 pipeline，online softmax）
+
+3. BF16 输出
+
+**B. 数据 Layout 转换（修改）**
+
+老接口 `kv_cache_layout` 使用 FIA 命名（`'BnNBsD'`、`'PA_NZ'`、`'TND'`），新接口需映射为 QFA 命名：
+
+| 老接口 `kv_cache_layout` | 新接口 `layout_q` | 新接口 `layout_kv` | 新接口 `layout_out` |
+| ------------------------ | ----------------- | ------------------ | ------------------- |
+| `'TND'` \(非 PA\)        | `'TND'`           | `'TND'`            | `'TND'`             |
+| `'BnNBsD'` \(PA\)        | `'TND'`           | `'PA_ND'`          | `'TND'`             |
+| `'PA_NZ'` \(PA\)         | `'TND'`           | `'PA_Nz'`          | `'TND'`             |
+
+**C. 序列长度转换（修改）**
+
+老接口 `actual_seq_q/kv` 为每 batch 实际长度 list\[int\]，新接口需转换为 `cu_seqlens`/`seqused` Tensor：
+
+```python
+# 老接口：actual_seq_q = [3, 64, 64]  (每batch的token数)
+# 新接口：
+import numpy as np
+cu_seqlens_q = torch.tensor(np.cumsum([0] + actual_seq_q), dtype=torch.int32)  # [0, 3, 67, 131]
+seqused_q = torch.tensor(actual_seq_q, dtype=torch.int32)                       # [3, 64, 64]
+```
+
+按 3.2.3 节规则选择传 `cu_seqlens` 还是 `seqused`：
+
+* TND + 非 PA → `cu_seqlens_q` + `cu_seqlens_kv`
+
+* TND + PA → `cu_seqlens_q` + `seqused_kv`
+
+* 非 TND + 非 PA → `seqused_q` + `seqused_kv`
+
+* 非 TND + PA → `seqused_q` + `seqused_kv`
+
+**D. NPU 调用方式（修改）**
+
+老接口单算子调用：
+
+```python
+output = torch_npu.npu_fused_infer_attention_score_v2(q, k, v, ...)
+```
+
+新接口双算子调用：
+
+```python
+from cann_ops_transformer.ops.quant_flash_attn import quant_flash_attn_metadata, quant_flash_attn
+
+metadata = quant_flash_attn_metadata(
+    num_heads_q=N_q, num_heads_kv=N_kv, head_dim=D, quant_mode=1,
+    cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+    seqused_q=seqused_q, seqused_kv=seqused_kv,
+    batch_size=B, max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+    mask_mode=sparse_mode, layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out)
+
+attn_out, lse = quant_flash_attn(
+    q, k, v, q_descale, k_descale, v_descale, quant_mode=1,
+    cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+    seqused_q=seqused_q, seqused_kv=seqused_kv,
+    attn_mask=mask, metadata=metadata,
+    softmax_scale=softmax_scale, mask_mode=sparse_mode,
+    max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+    layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+    return_softmax_lse=int(enable_lse))
+```
+
+#### 
