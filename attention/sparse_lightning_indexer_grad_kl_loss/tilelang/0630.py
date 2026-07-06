@@ -358,29 +358,25 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     # GlobalSoftmaxI: broadcast rsy_max to vector once, pure vector-vector in loop
                     T.tile.fill(rsy_sum_ub, 0)
-                    # p_reduced_tmp_ub still holds 1.0 from weight_2d construction, reuse as seed
-                    T.tile.mul(rsy_bc_ub[0, :], p_reduced_tmp_ub, rsy_max_ub[0])
+                    # softmax_i_chunk_ub is free during GlobalSoftmaxI, use as rsy_max broadcast
+                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
                     for n_idx_iter in T.serial(n_num):
                         T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.barrier_all()
                         T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
                         # barrier removed: reduce_sum→add, VEC→VEC sequential
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
-                        # note: rsy_bc_ub is now the exp values; rebuild rsy_max broadcast after loop
-
-                    # rebuild rsy_max broadcast for per-core SoftmaxI (p_reduced_tmp_ub still holds 1.0)
-                    T.tile.mul(rsy_bc_ub[0, :], p_reduced_tmp_ub, rsy_max_ub[0])
 
                     T.tile.fill(eps_sum_ub, 1e-8)
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
                     T.barrier_all()
 
-                    # Per-core SoftmaxI: only compute+write MY K block (others don't need it)
+                    # Per-core SoftmaxI: only compute+write MY K block (softmax_i_chunk still has rsy_max)
                     T.copy(ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], rsy_chunk_ub)
-                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
