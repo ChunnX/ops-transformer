@@ -55,13 +55,13 @@
           >
           >注：以上两种不同的分组方式，实际为相同的分组结果。
           >
-          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0] `、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
+          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0]`、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
           >
-          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1] `、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
+          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1]`、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
           >
-          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
+          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2]`、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
           >
-          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3] `、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
+          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3]`、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
           >
           >注：grouplist中未指定的部分将不会参与更新。
           >例如当groupList=[12,14,18]、GroupListType=cumsum，X的shape为[30，:]时。
@@ -268,21 +268,21 @@
         * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$
- 	 
- 	         - 2.根据分组确定的入参进行如下计算：
- 	 
- 	           $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i} \odot wScale_{i}$
- 	 
- 	           $C_{i,act}, gate_{i} = split(C_{i})$
- 	 
- 	           $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
- 	           
- 	           其中，$xScale_{i}$代表的是对应token对应的量化因子
- 	         - 3.量化输出结果
- 	 
- 	           $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
- 	 
- 	           $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
+   
+           - 2.根据分组确定的入参进行如下计算：
+   
+             $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i} \odot wScale_{i}$
+   
+             $C_{i,act}, gate_{i} = split(C_{i})$
+   
+             $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
+             
+             其中，$xScale_{i}$代表的是对应token对应的量化因子
+           - 3.量化输出结果
+   
+             $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
+   
+             $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
 
 ## 函数原型
@@ -557,56 +557,56 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - weight和weightScale支持N为0的空Tensor。
       - weight和weightScale目前仅支持tensorlist长度为1。
 
-- **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  - **返回值**
+    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
-  <col style="width: 167px">
-  <col style="width: 123px">
-  <col style="width: 860px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>参数x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
-    </tr>
-    <tr>
-      <td rowspan="10">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="10">161002</td>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
-    </tr>
-    <tr>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的weight、weightScale的tensor list长度不为1。</td>
-    </tr>
-    <tr>
-      <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
-    </tr>
-    <tr>
-      <td>groupList的元素个数大于weight的首轴长度。</td>
-    </tr>
-    <tr>
-      <td>传入的dequantMode、quantMode、dequantDtype不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不满足约束条件。</td>
-    </tr>
-  </tbody>
-  </table>
+    第一段接口完成入参校验，出现以下场景时报错：
+    <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
+    <col style="width: 167px">
+    <col style="width: 123px">
+    <col style="width: 860px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>参数x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="10">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="10">161002</td>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
+      </tr>
+      <tr>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>传入的weight、weightScale的tensor list长度不为1。</td>
+      </tr>
+      <tr>
+        <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
+      </tr>
+      <tr>
+        <td>groupList的元素个数大于weight的首轴长度。</td>
+      </tr>
+      <tr>
+        <td>传入的dequantMode、quantMode、dequantDtype不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不满足约束条件。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnGroupedMatmulSwigluQuantV2
 
@@ -779,10 +779,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </tbody>
           </table>
 
-      - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
-      - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+        - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
+        - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+        - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+        - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - groupList第1维最大支持1024，即最多支持1024个group。
