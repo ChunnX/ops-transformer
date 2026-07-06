@@ -46,7 +46,7 @@ public:
             // =2*COMPUTES_PER_CYCLE(=8192), 与fp8查表结果一致; calcType_=QUANT 同时让 L2_PARAMETER_MAP
             // 命中 "4_1_1_1_2"(frontUtil也与fp8对齐)。GetMachineParameters 已在基类构造时按FP16跑过, 此处覆盖。
             matmulPerf_.calcType_ = MatmulCalcType::QUANT;
-            matmulPerf_.mmShapeInfo_.computesPerCycle = 2 * MatmulPerformance::COMPUTES_PER_CYCLE;
+            matmulPerf_.mmShapeInfo_.computesPerCycle = 4 * MatmulPerformance::COMPUTES_PER_CYCLE;
             mmInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
         } else {
             commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
