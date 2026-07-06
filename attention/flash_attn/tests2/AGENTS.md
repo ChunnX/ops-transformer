@@ -77,3 +77,14 @@
 全量化FA现有实现: /mnt/workspace/gitCode/cann/OPSDEV/TestframeDev/FIAPytestDev/attention/fused_infer_attention_score/tests/pytest
 MQSMLA现有实现: /mnt/workspace/gitCode/cann/OPSDEV/TestframeDev/FIAPytestDev/attention/mixed_quant_sparse_flash_mla/tests/pytest
 QSFA现有实现: /mnt/workspace/gitCode/cann/OPSDEV/TestframeDev/FIAPytestDev/attention/kv_quant_sparse_flash_attention/tests/pytest
+
+可用skills(仅借鉴方法论, 不可直接复用):
+    环境已安装的skills均为算子开发服务, 非测试框架开发, 只能借鉴内容:
+    - ops-precision-standard: dtype→rtol/atol阈值表, 可直接复用纯数据
+    - ascendc-st-design / ascendc-whitebox-design: 用例分层方法论(L0/L1/L2)
+    - ascendc-precision-debug: 精度调试方法论(DumpTensor/二分定位)
+    - ascendc-crash-debug / ascendc-runtime-debug: 失败诊断(plog解析/错误码速查)
+    - ascendc-env-check / npu-arch: 设备检测与架构知识
+    - triton-op-verifier: verify→benchmark闸门设计(精度通过才跑性能)
+    - tilelang-op-test-design: 阻塞/非阻塞标记约定
+    其余DSL专属算子开发skill(CATLASS/PyPTO/TileLang/Triton)与本框架无关, 排除
