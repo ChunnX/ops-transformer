@@ -73,6 +73,7 @@ private:
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
     int64_t isInputScale_ = 0;
+    int64_t xCopyInQueueBufferNum_ = 2;
 };
 
 template <typename T>
@@ -96,6 +97,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR sortedEx
     perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
     int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
+    xCopyInQueueBufferNum_ = gatherOutTilingData_->xCopyInQueueBufferNum;
 
     // inner core split
     coreRows_ = perCoreRow_;
@@ -115,6 +117,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR sortedEx
     perLoopScaleCols_ = perLoopCols_ / MX_BLOCK_SIZE; // perLoopCols_在tiling侧计算，已经对齐到32的整数倍了
     lastLoopValidScaleCols_ = validScaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
+
 }
 
 template <typename T >
@@ -148,8 +151,8 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR xAddr, GM_ADDR unuse
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
     pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(int8_t)));
-    pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
+    pipe_->InitBuffer(xInQueue_, xCopyInQueueBufferNum_, AlignBytes(perLoopCols_, sizeof(int8_t)));
+    pipe_->InitBuffer(scaleCopyInQueue_, xCopyInQueueBufferNum_, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
 }
 
 template <typename T>
