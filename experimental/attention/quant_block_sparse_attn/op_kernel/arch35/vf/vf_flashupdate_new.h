@@ -377,12 +377,12 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
-    MicroAPI::Duplicate(vreg_zero, 0.0f);
+    MicroAPI::Duplicate<float, float>(vreg_zero, 0.0f);
 
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * REDUCE_SIZE);
-        MicroAPI::Compares<float, CMPMODE::EQ>(preg_zero_sum, vreg_exp_sum, vreg_zero, preg_all);
+        MicroAPI::Compare<float, CMPMODE::EQ>(preg_zero_sum, vreg_exp_sum, vreg_zero, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             MaskReg preg_update = UpdateMask<float>(sreg_init);
 
