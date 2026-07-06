@@ -924,10 +924,10 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwiglu
             AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg maskF32 =
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::MaskReg maskScale =
-            AscendC::MicroAPI::UpdateMask<float>(GROUP_PERF_SCALE_NUM);
-        AscendC::MicroAPI::MaskReg maskInvScratch =
-            AscendC::MicroAPI::UpdateMask<float>(GROUP_PERF_SCALE_NUM * GROUP_PERF_SCALE_NUM);
+        uint32_t scaleMaskNum = GROUP_PERF_SCALE_NUM;
+        uint32_t invScratchMaskNum = GROUP_PERF_SCALE_NUM * GROUP_PERF_SCALE_NUM;
+        AscendC::MicroAPI::MaskReg maskScale = AscendC::MicroAPI::UpdateMask<float>(scaleMaskNum);
+        AscendC::MicroAPI::MaskReg maskInvScratch = AscendC::MicroAPI::UpdateMask<float>(invScratchMaskNum);
         AscendC::MicroAPI::MaskReg manNonZeroMask;
         AscendC::MicroAPI::UnalignRegForStore scaleStoreReg;
 
