@@ -1017,20 +1017,20 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(
             startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
         }
         startPos.dIdx = 0;
-        PAShape shapeNz;
-        shapeNz.blockSize = kvCacheBlockSize;
-        shapeNz.headNum = constInfo.n2Size;
-        shapeNz.headDim = constInfo.dSize;
-        shapeNz.actHeadDim = constInfo.dSize;
-        shapeNz.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shapeNz.copyRowNum = runInfo.s2RealSize;
+        PAShape shapeNd;
+        shapeNd.blockSize = kvCacheBlockSize;
+        shapeNd.headNum = constInfo.n2Size;
+        shapeNd.headDim = constInfo.dSize;
+        shapeNd.actHeadDim = constInfo.dSize;
+        shapeNd.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shapeNd.copyRowNum = runInfo.s2RealSize;
         if constexpr (isFp8) {
-            shapeNz.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
+            shapeNd.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
         } else {
-            shapeNz.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+            shapeNd.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         }
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shapeNz, startPos);
+        GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shapeNd, startPos);
     } else {
         if constexpr (enableKVPrefix) {
             if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
@@ -1295,16 +1295,16 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1Dn(
             startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
         }
         startPos.dIdx = 0;
-        PAShape shapeMxFp8;
-        shapeMxFp8.blockSize = kvCacheBlockSize;
-        shapeMxFp8.headNum = constInfo.n2Size;
-        shapeMxFp8.headDim = constInfo.dSize;
-        shapeMxFp8.actHeadDim = constInfo.dSize;
-        shapeMxFp8.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shapeMxFp8.copyRowNum = runInfo.s2RealSize;
-        shapeMxFp8.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+        PAShape shapeDn;
+        shapeDn.blockSize = kvCacheBlockSize;
+        shapeDn.headNum = constInfo.n2Size;
+        shapeDn.headDim = constInfo.dSize;
+        shapeDn.actHeadDim = constInfo.dSize;
+        shapeDn.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shapeDn.copyRowNum = runInfo.s2RealSize;
+        shapeDn.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shapeMxFp8, startPos);
+        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shapeDn, startPos);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
