@@ -370,42 +370,6 @@ public:
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if ASCEND_IS_AIV {
-            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
-            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
-            //   - AIV0 SetFlag(N)  →  AIC's flagId N
-            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
-            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
-            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
-            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
-            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
-            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
-            if constexpr (BMM2_TOUB) {
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
-            }
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
-            if constexpr (BMM2_TOUB) {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
-            }
-        }
-    }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
         if (constInfo.aicIdx >= constInfo.coreNum) {
@@ -796,7 +760,6 @@ public:
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
-            CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
@@ -820,7 +783,6 @@ public:
             } else {
                 cubeBlock.FreeEventID();
             }
-            CrossCoreBufferUnInit();
         }
     }
 }; // FlashAttentionNoQuantGqaKernelDn

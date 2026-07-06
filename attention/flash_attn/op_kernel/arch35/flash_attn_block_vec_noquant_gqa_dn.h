@@ -215,22 +215,17 @@ public:
                                        uint64_t loop)
     {
         (void)l1PTensor;
+        (void)l1PCcId;
         (void)bmm1UbTensor;
+        (void)bmm1CcId;
         (void)loop;
-        PipeBarrier<PIPE_V>();
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        PipeBarrier<PIPE_MTE3>();
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
     }
 
     template <typename BmmResT>
     __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId)
     {
         (void)bmm2ResTensor;
-        PipeBarrier<PIPE_V>();
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
+        (void)bmm2CcId;
     }
 
     __aicore__ inline void ClearOutput()
@@ -388,7 +383,7 @@ public:
         }
     }
 
-    // FlashDecode 切换前仍需预置 stage2OutBuf 等 HardEvent；FA 主路径 ProcessVec1/2 仅做 CrossCore 同步。
+    // FlashDecode 切换前仍需预置 stage2OutBuf 等 HardEvent；FA 主路径 ProcessVec1/2 为空实现。
     __aicore__ inline void AllocEventID()
     {
         SetFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);

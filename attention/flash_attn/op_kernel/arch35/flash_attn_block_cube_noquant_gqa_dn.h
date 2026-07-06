@@ -220,14 +220,11 @@ public:
     {
     }
 
-    // Cube 侧仅保留核间同步，不执行 GM 搬运 / Matmul / Fixpipe / 核内 HardEvent 同步。
+    // Cube 侧不执行 GM 搬运 / Matmul / Fixpipe / 核内 HardEvent / 核间 CrossCore 同步。
     __aicore__ inline void Bmm1SyncOnly(uint32_t ccId0, uint32_t ccId1)
     {
-        PipeBarrier<PIPE_FIX>();
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
+        (void)ccId0;
+        (void)ccId1;
     }
 
     template<typename OutTensorT>
@@ -239,16 +236,9 @@ public:
 
     __aicore__ inline void Bmm2SyncOnly(uint32_t outCcId0, uint32_t outCcId1, uint32_t l1PCcId)
     {
-        PipeBarrier<PIPE_MTE1>();
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-        if constexpr (bmm2Write2Ub) {
-            PipeBarrier<PIPE_FIX>();
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
-        }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
+        (void)outCcId0;
+        (void)outCcId1;
+        (void)l1PCcId;
     }
 
     template<typename OutTensorT>
