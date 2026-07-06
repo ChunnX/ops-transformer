@@ -233,7 +233,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
         if constexpr (g_coreType == AscendC::AIC) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
-            if (waveIdx != lastWaveWaited) {
+            if (waveIdx != lastWaveWaited && gmmAddrInfo.dispatchToGmm1Flag != nullptr) {
                 uint32_t targetValue = (mLoc + L1_TILE_M_256 > m) ? (m - mLoc) : L1_TILE_M_256;
                 __gm__ int32_t* flagValueAddr =
                     gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
@@ -417,7 +417,7 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIC) {
             // 公共：GMM flag wait
-            if (loopIdx == startLoopIdx) {
+            if (loopIdx == startLoopIdx && gmmAddrInfo.swigluToGmm2Flag != nullptr) {
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
@@ -1024,6 +1024,8 @@ __aicore__ inline void SharedExpertGmm1Kernel(
                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
         }
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
@@ -1139,6 +1141,8 @@ __aicore__ inline void SharedExpertGmm2Kernel(
         typename BlockMmad::BlockShape singleShape{
             Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
