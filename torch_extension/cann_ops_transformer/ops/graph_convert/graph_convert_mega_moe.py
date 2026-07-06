@@ -46,6 +46,7 @@ if _TORCHAIR_AVAILABLE:
                 dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
                 num_max_tokens_per_rank: int = 0, activation: str = "swiglu",
                 activation_clamp: float = 3.4028234663852886e+38,
+                topk_weights_type: int = 0,
                 dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
@@ -103,7 +104,8 @@ if _TORCHAIR_AVAILABLE:
             "comm_alg": attr.Str(comm_alg),
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
-            "activation_clamp": attr.Float(activation_clamp)
+            "activation_clamp": attr.Float(activation_clamp),
+            "topk_weights_type": attr.Int(topk_weights_type)
         }
 
         outputs = [
@@ -143,6 +145,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("num_max_tokens_per_rank", attr.Int(0)) \
             .attr("activation", attr.Str("swiglu")) \
             .attr("activation_clamp", attr.Float(3.4028234663852886e+38)) \
+            .attr("topk_weights_type", attr.Int(0)) \
             .output("y", "DT_BF16, DT_FLOAT16") \
             .output("expert_token_nums", "DT_INT32")
         )
@@ -174,6 +177,7 @@ if _TORCHAIR_AVAILABLE:
         dispatch_quant_out_dtype: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
+        topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None):
 
         return MegaMoe(context=context,
@@ -197,5 +201,6 @@ if _TORCHAIR_AVAILABLE:
                        comm_alg=comm_alg,
                        num_max_tokens_per_rank=num_max_tokens_per_rank,
                        activation=activation,
-                       activation_clamp=activation_clamp)
+                       activation_clamp=activation_clamp,
+                       topk_weights_type=topk_weights_type)
 
