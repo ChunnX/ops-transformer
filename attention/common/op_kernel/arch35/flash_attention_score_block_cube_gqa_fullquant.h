@@ -573,11 +573,11 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(mm2Re
             fixpipeC310Params.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵 N方向的size大小
         }
 
-        fixpipeC310Params.mSize = s1BaseSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
-        fixpipeC310Params.srcStride = ((s1BaseSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+        fixpipeC310Params.mSize = s1BaseSize;
+        fixpipeC310Params.srcStride = ((s1BaseSize + 15) / 16) * 16;  // 15: 对齐16
         if constexpr (!useDn) {
-            fixpipeC310Params.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-            fixpipeC310Params.srcStride = ((fixpipeC310Params.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+            fixpipeC310Params.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;
+            fixpipeC310Params.srcStride = ((fixpipeC310Params.mSize + 15) / 16) * 16;  // 15: 对齐16
             if constexpr (isInfer) {
                 // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
                 bool isS1Odd = (constInfo.s1Size % 2) != 0;
@@ -595,7 +595,8 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(mm2Re
         fixpipeC310Params.params.ndNum = 1;
         fixpipeC310Params.params.dstNdStride = 0;
         fixpipeC310Params.params.srcNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeC310Params); // 将matmul结果从L0C搬运到UB
+        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(),
+            mm2ResL0C.GetTensor<T>(), fixpipeC310Params); // 将matmul结果从L0C搬运到UB
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();
     }

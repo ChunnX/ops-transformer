@@ -383,8 +383,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t nPadding, const uint32_t blockStride,
     const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t tailN1,
     const uint32_t tailN2, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1, uint32_t pltTailN2,
-    float divValue, uint32_t pltN, const uint16_t mSize, const uint32_t pseStride, const float slopes, const float posShift,
-    const T scale, const float dScaleQK, const T minValue, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    float divValue, uint32_t pltN, const uint16_t mSize, const uint32_t pseStride,
+    const float slopes, const float posShift, const T scale, const float dScaleQK,
+    const T minValue, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel_1;

@@ -821,8 +821,6 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_K_SCALE_PA_NZ, ACTLEN_T> 
         return AscendC::Std::get<1>(gmLayout.stride);
     }
 
-
-
     __aicore__ inline uint64_t GetStrideD()
     {
         return AscendC::Std::get<3>(gmLayout.stride); // 3:代表第4个维度，索引从0开始
@@ -1121,8 +1119,6 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
     {
         return AscendC::Std::get<1>(gmLayout.stride);
     }
-
-
     // Get Dim
     __aicore__ inline uint32_t GetDimN()
     {

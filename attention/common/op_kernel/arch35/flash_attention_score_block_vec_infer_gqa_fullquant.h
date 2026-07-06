@@ -450,7 +450,7 @@ __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::Vec1SinkCompu
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::Vec1SinkComputeGSFused(RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb) 
+    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
     CopySinkIn(runInfo, constInfo);
     LocalTensor<INPUT_T> sinkUb = sinkQue.DeQue<INPUT_T>();
