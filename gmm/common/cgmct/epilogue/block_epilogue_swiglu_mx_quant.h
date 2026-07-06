@@ -50,6 +50,8 @@ enum class QuantDtype : uint8_t {
 
 namespace {
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
+constexpr uint64_t MX_QUANT_COMPUTE_ALIGN = 64UL; // MX量化计算的对齐约束: N轴需按64对齐处理
+constexpr uint64_t DATA_BLOCK_SIZE = 32UL; // UB上一个DataBlock的大小，即32字节。
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
@@ -124,6 +126,10 @@ public:
     using DataTypeIn = DataTypeIn_;
     using DataTypeX1Scale = DataTypeX1Scale_;
     using DataTypeX2Scale = DataTypeX2Scale_;
+
+    // 输出为FP4类型(e2m1/e1m2)的编译期标记
+    static constexpr bool IS_FP4_OUT = AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
+                                         AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value;
 
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -268,8 +274,18 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     ub2GmParams.blockCount = blockCount;
     ub2GmParams.blockLen = singleN_ * sizeof(int8_t);
     ub2GmParams.dstStride = (n_ - singleN_) * sizeof(int8_t);
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+
+    if (unlikely(singleN_ % MX_QUANT_COMPUTE_ALIGN != 0)) {
+        uint64_t actualDataBlockNum = CeilDiv(static_cast<uint64_t>(singleN_), DATA_BLOCK_SIZE);
+        uint64_t alignedDataBlockNum = CeilDiv(Align64(static_cast<uint64_t>(singleN_)), DATA_BLOCK_SIZE);
+        // UB中每行按64对齐存放，srcStride用于跳过行尾补齐的DataBlock: 对齐后块数 - 原始singleN块数
+        ub2GmParams.srcStride = (alignedDataBlockNum - actualDataBlockNum);
+        if constexpr (IS_FP4_OUT) {
+            ub2GmParams.srcStride = ub2GmParams.srcStride >> 1;
+        }
+    }
+
+    if constexpr (IS_FP4_OUT) {
         ub2GmParams.blockLen = ub2GmParams.blockLen >> 1;
         ub2GmParams.dstStride = ub2GmParams.dstStride >> 1;
         offset = offset >> 1;
@@ -527,17 +543,23 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     uint16_t OneRowRepeatTimes =
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat)); // 一行需要循环的次数，等于n/64
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
-    uint32_t nDstUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE); // out 1B
+    uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
+    
     const float scalarOne = 1.0;
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
+
+    if (unlikely(nSize % MX_QUANT_COMPUTE_ALIGN != 0)) {
+        AscendC::Duplicate<bfloat16_t>(gluRes_, 0, mSize * nDstUbAligned64);
+    }
 
     // swiglu
     __VEC_SCOPE__
     {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
             uint32_t elementNum = nSize;
-            AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
+            AscendC::MicroAPI::MaskReg mask;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
+                mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::MicroAPI::RegTensor<bfloat16_t> verg7;
                 AscendC::MicroAPI::RegTensor<float> swishInput, gateInput;
                 AscendC::MicroAPI::RegTensor<float> verg1, verg2, verg3, verg4, verg5, verg6, swishOutput;
@@ -557,7 +579,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::MicroAPI::Mul(verg6, swishOutput, gateInput, mask);
 
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, mask);
-                uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
+                uint32_t dstUbOffset = mIdx * nDstUbAligned64 + vfBlockIdx * sizePerRepeat;
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
                     gluResAddr + dstUbOffset, verg7, mask);
             }
@@ -565,7 +587,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     }
 
     // quant
-    uint32_t totalDataInUb = mSize * nDstUbAligned; // nDstUbAligned aligned by 64
+    uint32_t totalDataInUb = mSize * nDstUbAligned64; // nDstUbAligned64 aligned by 64
     uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2);
     uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;
@@ -577,8 +599,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     }
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
+    if constexpr (IS_FP4_OUT) {
         ComputeDataForQuantTargetFp4(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     }
     return;
