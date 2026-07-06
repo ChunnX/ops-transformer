@@ -341,8 +341,8 @@ private:
     __aicore__ inline void ProcessOneBlock(uint32_t task_idx)
     {
         CopyInQBlock();
-        CastBlockToFP32();
         CopyInScalesBulk();
+        CastBlockToFP32();
         AccumulateBlock();
         FlattenAndCast();
         CopyOutBlock();
@@ -393,8 +393,6 @@ private:
 
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
         LocalTensor<float> qBlockFP32Local = qBlockFP32Buf_.Get<float>();
-        Duplicate(qBlockFP32Local, 0.0f, B_ * dim_qk_);
-        PipeBarrier<PIPE_V>();
 
         uint32_t start_row = qb_local_ * B_;
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
