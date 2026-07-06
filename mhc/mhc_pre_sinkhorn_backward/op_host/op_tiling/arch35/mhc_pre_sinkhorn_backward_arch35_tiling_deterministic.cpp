@@ -196,15 +196,14 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 
     // 固定开销 (与 BS/C 无关)
     int64_t fixedCost = kAlignB * NUM_K_BUFS_FIXED        // biasBuf_ + gradCalcBuf1_ + gradCalcBuf2_
-                      + nnAlignB                           // gradAlphaAndBiasQue_
-                      + ubBlockSize_;                      // gradAlphaSumQue_
+                      + nnAlignB + ubBlockSize_;           // gradAlphaAndBiasQue_ (nnAlign + 1 block)
 
     // 每 BS 的 C 无关开销 (K 维, N≤8, 全部按 (2+n_)×nAlign 布局)
     int64_t perBsCostK =
         DOUBLE_BUFFER * nAlignB                             // hPreAndGradHPostQue_ (1 行 × nAlign)
       + DOUBLE_BUFFER * kAlignB                              // hcBeforeNormQue_ ((2+n_) 行 × nAlign)
       + DOUBLE_BUFFER * nnAlignB                             // gradHResQue_ (n_ 行 × nAlign)
-      + DOUBLE_BUFFER * AlignB32(FP32_BYTE_SIZE)            // invRmsQue_
+      + DOUBLE_BUFFER * AlignB32(FP32_BYTE_SIZE)            // invRmsQue_ (每 BS 1 标量, 保守用 1 block)
       + nAlignB                                               // gradHPreBuf_ (1 行 × nAlign)
       + kAlignB * NUM_NN_BUFS_SIGMOID                        // gradZ + normOutFwd + z (各 (2+n_)×nAlign)
       + nnAlignB * NUM_NN_BUFS_SK                            // tmpDiv×4 + tmpMul + zResMax×2 + tmp + isMax (各 n_×nAlign)
