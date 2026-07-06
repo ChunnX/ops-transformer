@@ -21,6 +21,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
+#include "mega_moe_base.h"
 
 #include "tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"

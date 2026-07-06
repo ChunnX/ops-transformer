@@ -23,8 +23,6 @@
 #define GM_ADDR uint8_t*
 #define HOST_DEVICE
 #endif
-#include "mega_moe_tiling.h"
-#include "op_kernel/math_util.h"
 #include "mega_moe_impl_base.h"
 
 namespace {
