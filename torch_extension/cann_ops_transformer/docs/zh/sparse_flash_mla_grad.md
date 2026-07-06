@@ -247,6 +247,7 @@ cann_ops_transformersparse_flash_mla_grad(
 | metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
 
 ## 约束说明
+
 - 该接口支持训练场景下使用。
 - 该接口支持单算子模式和aclgraph模式。
 - 参数q、dout、attn_out、ori_kv、cmp_kv的数据类型必须保持一致。
