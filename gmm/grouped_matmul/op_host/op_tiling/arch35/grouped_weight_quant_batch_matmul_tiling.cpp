@@ -17,6 +17,10 @@
 
 namespace {
 static constexpr const char* OP_NAME = "GroupedMatmul";
+constexpr size_t LAST_DIM = 1;             // 倒数第1维
+constexpr size_t FOURTH_FROM_LAST_DIM = 4; // 倒数第4维
+constexpr uint32_t ND_WEIGHT_DIM_NUM = 2;  // ND weight形如(K, N)
+constexpr uint32_t NZ_WEIGHT_DIM_NUM = 4;  // NZ weight为4维，具体轴顺序由transB_决定
 }  // namespace
 
 enum class GmmTrans {
@@ -424,9 +428,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorShapeSingleXMultiWeightSing
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     uint32_t tensorDimNum = static_cast<uint32_t>(tensorShape.GetDimNum());
 
-    int64_t weightNDimValue = wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2); // MXA8W4 transposed NZ
-    int64_t tensorNDimValue = attrIdx == ANTIQUANT_SCALE_IDX ? tensorShape.GetDim(tensorDimNum - 3) :
-                                                              tensorShape.GetDim(tensorDimNum - 1);
+    // MXA8W4转置NZ排布下，weight的N轴由N1和N0相乘得到
+    int64_t weightNDimValue = wShape.GetDim(wDimNum - ANTEPENULTIMATE_DIM) *
+                              wShape.GetDim(wDimNum - PENULTIMATE_DIM);
+    int64_t tensorNDimValue = attrIdx == ANTIQUANT_SCALE_IDX ?
+        tensorShape.GetDim(tensorDimNum - ANTEPENULTIMATE_DIM) : tensorShape.GetDim(tensorDimNum - LAST_DIM);
     OP_CHECK_IF(weightNDimValue != tensorNDimValue,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
             tensorType + ", weight",
@@ -560,14 +566,14 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckWeightSingleXMultiWeightSingleY(
     OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "xShapePtr is nullptr."), return false);
     auto xShape = xShapePtr->GetStorageShape();
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
-    int64_t xKDimValue = transA_ ? xShape.GetDim(0) : xShape.GetDim(xDimNum - 1);
+    int64_t xKDimValue = transA_ ? xShape.GetDim(0) : xShape.GetDim(xDimNum - LAST_DIM);
 
     auto yShapePtr = context->GetOutputShape(0);
     OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
     const gert::Shape &yShape = yShapePtr->GetOriginShape();
-    int64_t yNDimValue = yShape.GetDim(static_cast<uint32_t>(yShape.GetDimNum()) - 1);
+    int64_t yNDimValue = yShape.GetDim(static_cast<uint32_t>(yShape.GetDimNum()) - LAST_DIM);
 
-    uint32_t targetWeightDim = weightNzFlag_ ? 4 : 2; // NZ (n1, k1, k0, n0) 4维 ND (k, n) 2维
+    uint32_t targetWeightDim = weightNzFlag_ ? NZ_WEIGHT_DIM_NUM : ND_WEIGHT_DIM_NUM;
     for (size_t i = 0; i < numWeight_; ++i) {
         OP_CHECK_IF(!CheckNotNullPtr(context, WEIGHT_IDX, i),
                     OP_LOGE(context->GetNodeName(), "weight's tensor or Desc is nullptr."), return false);
@@ -575,14 +581,22 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckWeightSingleXMultiWeightSingleY(
                     OP_LOGE(context->GetNodeName(), "Invalid weight dimension."), return false);
         auto wShape = context->GetDynamicInputShape(WEIGHT_IDX, i)->GetStorageShape();
         uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
-        int64_t weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 1) : wShape.GetDim(wDimNum - 2);
-        int64_t weightNDimValue = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
+        // ND非转置weight形如(K, N)，转置weight形如(N, K)
+        int64_t weightKDimValue = transB_ ? wShape.GetDim(wDimNum - LAST_DIM) :
+                                            wShape.GetDim(wDimNum - PENULTIMATE_DIM);
+        int64_t weightNDimValue = transB_ ? wShape.GetDim(wDimNum - PENULTIMATE_DIM) :
+                                            wShape.GetDim(wDimNum - LAST_DIM);
         if (weightNzFlag_) {
-            // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-            weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1)
-                                      : wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2);
-            weightNDimValue = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
-                                      : wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+            // 非转置NZ排布(N1, K1, K0, N0)：K=K1*K0，N=N1*N0
+            // 转置NZ排布(K1, N1, N0, K0)：K=K1*K0，N=N1*N0
+            weightKDimValue = transB_ ? wShape.GetDim(wDimNum - FOURTH_FROM_LAST_DIM) *
+                                            wShape.GetDim(wDimNum - LAST_DIM) :
+                                        wShape.GetDim(wDimNum - ANTEPENULTIMATE_DIM) *
+                                            wShape.GetDim(wDimNum - PENULTIMATE_DIM);
+            weightNDimValue = transB_ ? wShape.GetDim(wDimNum - ANTEPENULTIMATE_DIM) *
+                                            wShape.GetDim(wDimNum - PENULTIMATE_DIM) :
+                                        wShape.GetDim(wDimNum - FOURTH_FROM_LAST_DIM) *
+                                            wShape.GetDim(wDimNum - LAST_DIM);
         }
         OP_CHECK_IF(xKDimValue != weightKDimValue,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
