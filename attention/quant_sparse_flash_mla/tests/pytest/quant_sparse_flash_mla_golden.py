@@ -1039,7 +1039,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "has_ori_kv": True,
-            "has_cmp_kv": False if (template_run_mode == "SWA" and cmp_k_in_pa_shape is not None) else True,
+            "has_cmp_kv": False if (template_run_mode == "SWA" or cmp_k_in_pa_shape is None) else True,
         },
         "op_input": {
             "q": q_npu,
