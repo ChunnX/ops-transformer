@@ -60,6 +60,7 @@ static bool CheckDataType(const aclTensor *query,
     return true;
 }
 
+
 static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
                                          const aclTensor *key,
                                          const aclTensor *value)
