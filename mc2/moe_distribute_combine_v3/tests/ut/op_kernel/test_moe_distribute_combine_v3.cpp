@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_combine_v3_tiling_def.h"
-#include "../../../op_kernel/moe_distribute_combine_v2.cpp"
+#include "../../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2.cpp"
 #include "../../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling_key.h"
 
 class MoeDistributeCombineV3Test : public testing::Test {
