@@ -23,11 +23,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "lib/matmul_intf.h"
 
-#if __has_include("../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h")
 #include "../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
-#else
-#include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
-#endif
 #include "batch_mat_mul_reduce_scatter_allto_all_tiling_struct.h"
 
 using namespace AscendC;

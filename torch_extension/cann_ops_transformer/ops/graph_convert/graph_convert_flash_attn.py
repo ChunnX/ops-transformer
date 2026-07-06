@@ -45,7 +45,7 @@ if _TORCHAIR_AVAILABLE:
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
-        return_softmax_lse: int = 0,
+        return_softmax_lse: bool = False,
         deterministic: int = 0):
 
         result = q.new_empty(q.size())
@@ -73,7 +73,7 @@ if _TORCHAIR_AVAILABLE:
         layout_q: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
-        return_softmax_lse: int = 0,
+        return_softmax_lse: bool = False,
         deterministic: int = 0):
 
         raise AssertionError(f"GE not supported!")

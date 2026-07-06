@@ -340,7 +340,6 @@ if(ENABLE_TEST)
     endif()
 endif()
 
-
 if (DEFINED MC2_OPT AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/CMakeLists.txt AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd/CMakeLists.txt)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd)
@@ -1001,9 +1000,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${TENSOR_API}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1011,7 +1010,7 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
     if(IS_DIRECTORY "${_3rd_op_dir}")
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
-            install(DIRECTORY ${_3rd_op_dir}/op_kernel
+            install(DIRECTORY ${_3rd_op_dir}/op_kernel/
                         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
             )
         endif()
@@ -1102,11 +1101,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
         )
-        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
-            list(APPEND COMMON_COPY_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
-            )
-        endif()
+
     endforeach()
 
     if(NOT TARGET common_src_copy)

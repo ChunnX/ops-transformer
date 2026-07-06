@@ -41,6 +41,12 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
     RegTensor<float> vreg_exp_sum_1;  // 前8行的和
     RegTensor<float> vreg_exp_sum_2;  // 接着的后8行，一共一次处理16行
 
+    RegTensor<half> vreg_in_max;
+    RegTensor<half> vreg_input_max;
+    RegTensor<half> vreg_max_new;
+    RegTensor<half> vreg_max;
+    RegTensor<half> vreg_max_2;
+
     RegTensor<float> vreg_exp_0_1;
     RegTensor<float> vreg_exp_1_1;
     RegTensor<float> vreg_exp_2_1;
@@ -49,12 +55,6 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
     RegTensor<float> vreg_exp_1_2;
     RegTensor<float> vreg_exp_2_2;
     RegTensor<float> vreg_exp_3_2;
-
-    RegTensor<half> vreg_in_max;
-    RegTensor<half> vreg_input_max;
-    RegTensor<half> vreg_max_new;
-    RegTensor<half> vreg_max;
-    RegTensor<half> vreg_max_2;
 
     RegTensor<T2> vreg_exp_merge_tmp_f8_1_1;  // 前8行
     RegTensor<T2> vreg_exp_merge_tmp_f8_1_2;
@@ -102,10 +102,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
         Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
         Sub(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_ln_p_scale, preg_all);
-        StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ half *&)tmpMaxUb), vreg_max_tmp, ureg_max, 8);
-        StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ half *&)tmpMaxUb), vreg_max_tmp_unroll, ureg_max, 8);
+        StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb),
+                                                                     vreg_max_tmp, ureg_max, 8);
+        StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb),
+            vreg_max_tmp_unroll, ureg_max, 8);
     }
     StoreUnAlignPost<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb), ureg_max, 0);
 
@@ -150,8 +150,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256GqaFullquantVF(
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
 
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
-               (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);  // or计算
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,
+               (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);  // or计算
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1,
                (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,

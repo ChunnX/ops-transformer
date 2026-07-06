@@ -38,9 +38,7 @@
 struct Args {
     uint32_t rankId;
     uint32_t epRankId;
-    uint32_t tpRankId;
     HcclComm hcclEpComm;
-    HcclComm hcclTpComm;
     aclrtStream dispatchStream;
     aclrtStream combineStream;
     aclrtContext context;
@@ -52,7 +50,6 @@ const char* first_rank_id = std::getenv("FIRST_RANK_ID");
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
 uint32_t EP_WORLD_SIZE = 0;
-uint32_t TP_WORLD_SIZE = 0;
 uint32_t DEV_NUM = 0;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -333,7 +330,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
     }
     if (tpRecvCounts != nullptr) {
         aclDestroyTensor(tpRecvCounts);
-    }   
+    }
     if (expandScales != nullptr) {         
         aclDestroyTensor(expandScales);
     }
@@ -372,7 +369,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     }
 
     HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
     aclrtDestroyStream(args.dispatchStream);
     aclrtDestroyStream(args.combineStream);
     aclrtDestroyContext(args.context);
@@ -408,11 +404,9 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
             << ", hcclComm:" << hcclComm << std::endl;
     uint32_t epRankId = rank_id;
-    uint32_t tpRankId = 0;
 
     args.rankId = rankId;
     args.epRankId = epRankId;
-    args.tpRankId = tpRankId;
     args.hcclEpComm = hcclComm;
     args.dispatchStream = dispatchStream;
     args.combineStream = combineStream;
@@ -458,13 +452,10 @@ int run_example_on_A3A5()
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         uint32_t epRankId = rankId;
-        uint32_t tpRankId = 0;
 
         args[rankId].rankId = rankId;
         args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
         args[rankId].hcclEpComm = commsEp[epRankId];
-        args[rankId].hcclTpComm = nullptr;
         args[rankId].dispatchStream = dispatchStream[rankId];
         args[rankId].combineStream = combineStream[rankId];
         args[rankId].context = context[rankId];
@@ -495,21 +486,18 @@ int main(int argc, char *argv[])
     if (!rank_table_file && !first_rank_id) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 8;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE;
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && !first_rank_id) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 2;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = 2;
         int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && first_rank_id) {
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 16;
-        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE;
         uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
         std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);

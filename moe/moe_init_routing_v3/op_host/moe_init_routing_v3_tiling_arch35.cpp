@@ -1150,7 +1150,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
 
     // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
     if (IsInt4DynamicQuantCase() && (cols_ % NUM_TWO != 0)) {
-        OP_LOGE(context_, "For INT4 dynamic quantization, cols (%ld) must be even.", cols_);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "cols", std::to_string(cols_).c_str(),
+            "For INT4 dynamic quantization, cols must be even.");
         return ge::GRAPH_FAILED;
     }
 
@@ -1264,13 +1266,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateExpandedXDtype()
 
     if (IsInt4DynamicQuantCase()) {
         if (expandedXDtype_ != ge::DataType::DT_INT4) {
-            OP_LOGE(context_,
-                    "The dtype of output expanded_x should be DT_INT4 for INT4 dynamic quantization, current is %d.",
-                    expandedXDtype_);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "expanded_x_dtype", Ops::Base::ToString(expandedXDtype_).c_str(),
+                "For INT4 dynamic quantization, expanded_x dtype should be DT_INT4.");
             return ge::GRAPH_FAILED;
         }
         if (xDtype_ != ge::DataType::DT_FLOAT && xDtype_ != ge::DataType::DT_BF16) {
-            OP_LOGE(context_, "INT4 dynamic quantization requires x dtype DT_FLOAT or DT_BF16, but got %d.", xDtype_);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "x", Ops::Base::ToString(xDtype_).c_str(),
+                "For INT4 dynamic quantization, x dtype should be DT_FLOAT or DT_BF16.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -2011,8 +2015,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
         perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
     }
     if (perLoopMaxIndicesElements <= 0) {
-        OP_LOGE(context_, "UB space insufficient for FP8 PerBlock quantization. availUbSize=%ld, cols=%ld",
-                availUbSize_, tilingDataPtr_->cols);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), "availUbSize and cols",
+            (std::to_string(availUbSize_) + ", " + std::to_string(tilingDataPtr_->cols)).c_str(),
+            "UB space is insufficient for FP8 PerBlock quantization.");
         return;
     }
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);

@@ -92,6 +92,10 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
 {
     CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
@@ -158,7 +162,6 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
                                        groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
     char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
     SafeCopyGroupBuf(groupEpBuf, HCCL_GROUP_NAME_MAX, groupEp, HCCL_GROUP_NAME_MAX - 1);
@@ -166,19 +169,27 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     const char *groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
-    } else if (is950) {
-        performanceInfoOptionalCombineV2Temp = nullptr;
     }
     SafeCopyGroupBuf(groupTpBuf, HCCL_GROUP_NAME_MAX, groupTpCombineV2Temp, HCCL_GROUP_NAME_MAX - 1);
     char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
     SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
+
+    // ccu暂时不支持performanceInfo
+    if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+        if (performanceInfoOptional != nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeDistributeCombineV2", "performanceInfo",
+                "not nullptr", "performanceInfo not supported in ccu");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+    }
+
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
+    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
-            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
+            constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional,
             groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType,
             sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlgBuf,
             zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
