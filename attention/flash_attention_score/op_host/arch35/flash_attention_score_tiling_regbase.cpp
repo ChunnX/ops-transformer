@@ -957,6 +957,27 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
 
 bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
 {
+    if (inputDtype != ge::DT_HIFLOAT8) {
+        auto dScaleQShape = context_->GetOptionalInputShape(D_Q_SCALE_INDEX);
+        auto dScaleKShape = context_->GetOptionalInputShape(D_K_SCALE_INDEX);
+        auto dScaleVShape = context_->GetOptionalInputShape(D_V_SCALE_INDEX);
+        std::string dScaleShapesMsg = "{";
+        dScaleShapesMsg += dScaleQShape != nullptr ?
+            Ops::Base::ToString(dScaleQShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += dScaleKShape != nullptr ?
+            Ops::Base::ToString(dScaleKShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += dScaleVShape != nullptr ?
+            Ops::Base::ToString(dScaleVShape->GetStorageShape()) + "}" : "nullptr}";
+        OP_CHECK_IF((dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) ||
+                    (dScaleKShape != nullptr && dScaleKShape->GetStorageShape().GetDimNum() != 0) ||
+                    (dScaleVShape != nullptr && dScaleVShape->GetStorageShape().GetDimNum() != 0),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName,
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input query, key and value is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional and dScaleVOptional should be nullptr now"),
+                    return false);
+    }
+
     auto dScaleQShape = context_->GetOptionalInputShape(D_Q_SCALE_INDEX);
     auto dScaleQInput = context_->GetOptionalInputDesc(D_Q_SCALE_INDEX);
     if (dScaleQInput != nullptr && dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) {

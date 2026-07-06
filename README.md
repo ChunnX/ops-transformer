@@ -55,6 +55,7 @@ git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
 - [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/ops-transformer)
+- [联系我们]![image.png](https://raw.gitcode.com/user-images/assets/7673863/67272264-2bee-45f2-85db-c09d1bf62c5b/image.png 'image.png')
 
 -----
 PS：本项目功能和文档正在持续更新和完善中，欢迎您关注最新版本。

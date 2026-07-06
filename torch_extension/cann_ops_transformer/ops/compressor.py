@@ -59,7 +59,6 @@ class CompressorOpBuilder(OpBuilder):
 
 
 compressor_op_builder = CompressorOpBuilder()
-op_module = compressor_op_builder.load()
 
 
 @impl(AS_LIBRARY, compressor_op_builder.name, "PrivateUse1")
@@ -81,6 +80,7 @@ def compressor(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = compressor_op_builder.load()
     return op_module.compressor(x, wkv, wgate, state_cache,
                                     ape, cmp_ratio,
                                     state_block_table, cu_seqlens,

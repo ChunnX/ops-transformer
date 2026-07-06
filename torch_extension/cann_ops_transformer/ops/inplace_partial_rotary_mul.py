@@ -55,7 +55,6 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
 
 # Instantiate the builder
 inplace_partial_rotary_mul_op_builder = InplacePartialRotaryMulOpBuilder()
-op_module = inplace_partial_rotary_mul_op_builder.load()
 
 
 @impl(AS_LIBRARY, inplace_partial_rotary_mul_op_builder.name, "PrivateUse1")
@@ -72,6 +71,7 @@ def _inplace_partial_rotary_mul(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     partial_slice = [0, 0] if partial_slice is None else partial_slice
+    op_module = inplace_partial_rotary_mul_op_builder.load()
     op_module.inplace_partial_rotary_mul(x, r1, r2, rotary_mode, partial_slice)
 
 

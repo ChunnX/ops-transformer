@@ -22,7 +22,6 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../common/mc2_kernel_utils.h"

@@ -697,10 +697,11 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
     S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
     if Qri is not None and Krj is not None:
         S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
-    return S_ij / math.sqrt(d_total)
+    inv_sqrt_d = 1.0 / math.sqrt(d_total)
+    return S_ij * inv_sqrt_d
 
 
-def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
+def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     """Online softmax: 计算 m, P, s 更新 (MXFP8: stored max 不含 -ln(p_scale), P 含 p_scale 因子)
     1. mask 位置填 -inf
     2. 求 block 内 max (m_block_j)
@@ -710,10 +711,12 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
     6. 求 s = sum(P)
     7. P 转 FP8 再转回 FP32，模拟 NPU 侧 P 的量化损失
     """
+    LN2 = 0.6931471806
+    INV_LN2 = 1.4426950409
     S_ij = S_ij.masked_fill(mask_j, float('-inf'))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
     m_block_j = torch.max(mi, m_block_j)
 
     P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
@@ -729,7 +732,6 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                      qr_bf16=None, kr_bf16=None):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
     EPSILON = 1e-20
-    LN2 = math.log(2.0)
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 512
@@ -807,7 +809,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total, Qri, Krj)
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
-                S_ij, mask_j, mi, si, oi, ln_p_scale, LN2)
+                S_ij, mask_j, mi, si, oi, ln_p_scale)
 
             if j + 1 < TILES_KV:
                 # --- 第二个 K block (j+1) ---
@@ -820,7 +822,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 S_ij1 = _compute_s_block(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, d_total, Qri, Krj1)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2)
+                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale)
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
                 Vj = V_BLOCKS[j // 2]
