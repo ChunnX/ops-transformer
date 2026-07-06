@@ -496,8 +496,6 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
             OP_LOGE(opName_, "non-continuous keying is not supported."),
             return ge::GRAPH_FAILED);
     }
-    
-    
 
     return ge::GRAPH_SUCCESS;
 }
