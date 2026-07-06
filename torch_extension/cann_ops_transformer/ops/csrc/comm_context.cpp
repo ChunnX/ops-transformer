@@ -214,9 +214,8 @@ public:
 
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
-        if (topoType_ == TopoType::CROSS_SUPER_NODE) {
-            commContextStruct.rankSizePerServer = rankNumPerUbDomain_;
-        }
+        rankNumPerServer_ = rankNumPerUbDomain_;
+        commContextStruct.rankSizePerServer = rankNumPerServer_;
 
         CopyContextToTensor(commContextStruct, contextTensor);
         ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %d", group.c_str(), cclBufferSize);
@@ -254,6 +253,7 @@ public:
         TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", ret);
 
         if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
+            GetRankSizePerServer(commHandle, rankNumPerUbDomain_);
             return;
         }
 
@@ -362,8 +362,8 @@ public:
             TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
                         "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                         rankNumPerUbDomain_, ", rankSize: ", rankSize);
+            CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol, srcRankId);
         }
-        CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol, srcRankId);
     }
 
     static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol &protocol)
@@ -415,14 +415,6 @@ public:
         ASCEND_LOGI("Start to get HCCL communication channel");
         uint32_t channelNum = rankDim - 1;
         std::vector<HcclChannelDesc> channelDesc(channelNum);
-
-        uint32_t *netLayerList = nullptr;
-        uint32_t netLayerNum = 0;
-        GetNetLayers(commHandle, netLayerList, netLayerNum);
-
-        uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
-
-        GetRankSizePerServer(commHandle, netLayers, commContextStruct->rankSizePerServer);
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
 
@@ -521,8 +513,13 @@ public:
         ASCEND_LOGI("Get HCCL layers success, netLayerNum is: %u", netLayerNum);
     }
 
-    static void GetRankSizePerServer(const HcclComm &commHandle, uint32_t netLayers, uint32_t &rankSizePerServer)
+    static void GetRankSizePerServer(const HcclComm &commHandle, uint32_t &rankSizePerServer)
     {
+        uint32_t *netLayerList = nullptr;
+        uint32_t netLayerNum = 0;
+        GetNetLayers(commHandle, netLayerList, netLayerNum);
+
+        uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
         auto hcclRet = HcclRankGraphGetRankSizeByLayerFunc(commHandle, netLayers, &rankSizePerServer);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL rank size per server failed, ret: ", hcclRet);
         ASCEND_LOGI("Get HCCL rank size per server success, rankSizePerServer is: %u", rankSizePerServer);
@@ -553,11 +550,16 @@ public:
     {
         return topoType_;
     }
+    int64_t GetRankNumPerServer() const
+    {
+        return rankNumPerServer_;
+    }
 
     // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     uint32_t rankNumPerUbDomain_ = 0;
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
+    int64_t rankNumPerServer_ = 2;
 };
 
 // ======================== CommContextManager ========================
@@ -567,7 +569,8 @@ public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine")
         : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName), backend_(backend),
-          mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0), topoType_(TopoType::INTRA_SUPER_NODE)
+          mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0), topoType_(TopoType::INTRA_SUPER_NODE),
+          rankNumPerServer_(2)
     {
     }
 
@@ -598,6 +601,10 @@ public:
     {
         return static_cast<int64_t>(topoType_);
     }
+    int64_t GetRankNumPerServer() const
+    {
+        return static_cast<int64_t>(rankNumPerServer_);
+    }
 
 private:
     static int64_t ContextTensorSize()
@@ -626,6 +633,7 @@ private:
                     HcclChannelContextBuilder builder;
                     builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_);
                     topoType_ = builder.GetTopoType();
+                    rankNumPerServer_ = builder.GetRankNumPerServer();
                     return;
                 }
             default:
@@ -641,6 +649,7 @@ private:
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
+    int64_t rankNumPerServer_ = 2;
 };
 
 // Bind the CommContextManager class to Python module
@@ -653,6 +662,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::CclBufferSize)
-        .def_property_readonly("topo_type", &CommContextManager::GetTopoType);
+        .def_property_readonly("topo_type", &CommContextManager::GetTopoType)
+        .def_property_readonly("rank_num_per_server", &CommContextManager::GetRankNumPerServer);
 }
 } // namespace op_api
