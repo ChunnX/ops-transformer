@@ -36,7 +36,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "float? activation_clamp=None, "
             "int? dispatch_quant_out_dtype=None,  "
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
-            "int? rank_num_per_server=None) -> (Tensor, Tensor)"
+            "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -68,6 +68,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             weight2_type=None,
             topo_type=None,
             rank_num_per_server=None,
+            topk_weights_type=0,
         ):
             torch._check(
                 ep_world_size != 0,
@@ -113,6 +114,7 @@ def _npu_mega_moe(
     weight2_type=None,
     topo_type=None,
     rank_num_per_server=None,
+    topk_weights_type=0,
 ):
     return _op_module.npu_mega_moe(
         context,
@@ -141,6 +143,7 @@ def _npu_mega_moe(
         weight2_type,
         topo_type,
         rank_num_per_server,
+        topk_weights_type,
     )
 
 
@@ -284,6 +287,7 @@ def mega_moe(
     x_active_mask: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
+    topk_weights_type: int = 0,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
@@ -314,4 +318,5 @@ def mega_moe(
         weight2_type=weight2_type,
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
+        topk_weights_type=topk_weights_type,
     )

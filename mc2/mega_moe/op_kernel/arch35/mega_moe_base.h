@@ -73,8 +73,13 @@ struct PeermemInfo {
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-            offset += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)),
-                                           (int64_t)ALIGN_512);
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(
+                    static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+                tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         } else {
             dispatchRecivePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
