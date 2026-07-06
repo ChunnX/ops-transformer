@@ -68,49 +68,6 @@ static bool IsSupportedFormat(ge::Format format)
            format == ge::FORMAT_NCDHW;
 }
 
-static aclnnStatus CheckNDFormat(const aclTensor *query,
-                                 const aclTensor *key,
-                                 const aclTensor *value,
-                                 const aclTensor *blockSparseMaskOptional,
-                                 const aclTensor *attenMaskOptional,
-                                 const aclTensor *blockTableOptional,
-                                 const aclTensor *attentionOut,
-                                 const aclTensor *softmaxLseOptional)
-{
-    auto queryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(query->GetStorageFormat()));
-    auto keyFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(key->GetStorageFormat()));
-    auto valueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(value->GetStorageFormat()));
-    auto blockSparseMaskFormat = ge::FORMAT_ND;
-    if (blockSparseMaskOptional != nullptr) {
-        blockSparseMaskFormat =
-            static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
-    }
-    auto attenMaskFormat = ge::FORMAT_ND;
-    if (attenMaskOptional != nullptr) {
-        attenMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attenMaskOptional->GetStorageFormat()));
-    }
-    auto blockTableFormat = ge::FORMAT_ND;
-    if (blockTableOptional != nullptr) {
-        blockTableFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockTableOptional->GetStorageFormat()));
-    }
-    auto attentionOutFormat = ge::FORMAT_ND;
-    if (attentionOut != nullptr) {
-        attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
-    }
-    auto softmaxLseFormat = ge::FORMAT_ND;
-    if (softmaxLseOptional != nullptr) {
-        softmaxLseFormat =
-            static_cast<ge::Format>(ge::GetPrimaryFormat(softmaxLseOptional->GetStorageFormat()));
-    }
-    if (!IsSupportedFormat(queryFormat) || !IsSupportedFormat(keyFormat) || !IsSupportedFormat(valueFormat) ||
-        !IsSupportedFormat(blockSparseMaskFormat) || !IsSupportedFormat(attenMaskFormat) ||
-        !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat) ||
-        !IsSupportedFormat(softmaxLseFormat)) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
-}
-
 static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
                                          const aclTensor *key,
                                          const aclTensor *value)
@@ -287,12 +244,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     }
 
     ret = ValidateAdditionalParams(innerPrecise, attentionOut, workspaceSize, executor);
-    if (ret != ACLNN_SUCCESS) {
-        return ret;
-    }
-
-    ret = CheckNDFormat(query, key, value, blockSparseMask, attenMaskOptional,
-                        blockTableOptional, attentionOut, softmaxLseOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
