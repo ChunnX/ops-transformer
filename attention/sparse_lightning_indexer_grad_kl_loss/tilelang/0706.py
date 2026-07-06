@@ -143,27 +143,12 @@ def check_param_valid(
 
 
 # ==============================================================================
-# Single Kernel: CV-separated architecture (0706: reverted to 0630 structure)
+# Single Kernel: CV-separated architecture (0630: gather moved into kernel)
 # V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices → workspace
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
 # V scope 3: cast dQueryIndex FP32→FP16
-#
-# Performance Analysis (S1=1, K=2048):
-# - 0630: 0.830ms vs Official: 0.320ms (0.39x, ~3x slower)
-# - Main bottleneck: V0 pure scalar gather (128 iterations × 3 tensor accesses)
-#
-# Double Buffer Attempt (FAILED):
-# - Tried workspace[B, S1, 2, K, D] with ping-pong across K-blocks
-# - DEADLOCK: cross_flag is single-core internal sync, cannot sync across cores
-# - Each core processes different K-block (k_start:k_end), no workspace conflict
-#
-# Next Optimization Directions:
-# 1. Optimize V0 gather: batch read SparseIndices, vectorize if idx连续
-# 2. Reduce V1 scalar ops: precompute constants, reduce fill/barrier
-# 3. Tune BLOCK_K/BLOCK_N: increase Cube throughput
-# 4. S1-level pipelining: split s1_block into sub-blocks for V/C overlap (requires S1>1)
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
@@ -217,7 +202,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 19
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 20
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),                  # 22
+        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 22
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -435,19 +420,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     for g_id in range(g_num):
                         g_start = g_id * vector_baseg
-                        g_end = g_start + vector_baseg
 
                         T.tile.fill(weight_ub, 0)
 
                         # 2D vectorized: 6 VEC ops total per g_id (was 96)
-                        # Step 1: copy bmm2 chunk → dw_chunk_ub (single range copy)
-                        T.copy(bmm2_ub[g_start:g_end, :], dw_chunk_ub)
+                        # Step 1: copy bmm2 chunk rows → dw_chunk_ub
+                        for i in range(vector_baseg):
+                            T.copy(bmm2_ub[g_start + i, :], dw_chunk_ub[i, :])
                         # Step 2: mask = 1 - exp(bmm2 * (-10000)) → rsy_tmp_ub
                         T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
                         T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
                         T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
-                        # Step 3: copy w2d chunk → w2d_chunk_ub (single range copy)
-                        T.copy(weight_2d_ub[g_start:g_end, :], w2d_chunk_ub)
+                        # Step 3: copy w2d chunk → w2d_chunk_ub
+                        for i in range(vector_baseg):
+                            T.copy(weight_2d_ub[g_start + i, :], w2d_chunk_ub[i, :])
                         # Step 4: rsy = diff_2d * w2d_chunk, then rsy *= mask
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, diff_2d_ub)
                         T.tile.mul(w2d_chunk_ub, w2d_chunk_ub, rsy_tmp_ub)
@@ -498,7 +484,7 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
             # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum
-            # (Reads from gather workspace directly, not transposed)
+            # (Reads from GatherKeyIndex_ws directly, not transposed)
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
@@ -781,12 +767,10 @@ def sparse_lightning_indexer_grad_kl_loss(
             query, query_rope, key, key_rope,          # 1-4
             query_index, key_index,                    # 5-6
             weights, softmax_max, softmax_sum,         # 7-9
-            d_query_index_accum,                       # 10 (input, host-zeroed)
-            # Workspaces (11-18)
+            d_query_index_accum,                           # 10 (input, host-zeroed)
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 11-13
             bmm1_res_ws, bmm2_res_ws,                  # 14-15
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 16-18
-            # Outputs (19-22)
             d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 19-22
         )
         if _PROFILE:
