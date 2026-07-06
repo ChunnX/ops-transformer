@@ -77,9 +77,7 @@ public:
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
         isFirstGroup_ = sTP_->isFirstGroup;
-        if (!(kIsFp32 && isFirstGroup_)) {
-            InitLocalBuffers();
-        }
+        InitLocalBuffers();
     }
 
     __aicore__ inline void InitLocalBuffers()
@@ -117,17 +115,6 @@ public:
 
     __aicore__ inline void Process()
     {
-        if constexpr (kIsFp32) {
-            if (isFirstGroup_) {
-                if ASCEND_IS_AIV {
-                    pipe_->Reset();
-                    CopyCast<float, bfloat16_t>(sTP_->stateFp32In, sTP_->curState, pipe_,
-                                                Nv_ * Dv_ * Dk_, RoundMode::CAST_NONE);
-                    InitLocalBuffers();
-                }
-                SyncAll<false>();
-            }
-        }
         int64_t coreId = GetBlockIdx();
         if ASCEND_IS_AIV {
             coreId /= AIC_AIV_1_1;
@@ -154,6 +141,13 @@ public:
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDkF32_);
                             inQueue_.FreeTensor(stateIn);
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
+                            if (isFirstGroup_ && cId == 0) {
+                                auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
+                                Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
+                                outQueue_.EnQue(bf16Init);
+                                CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false);
+                                CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
+                            }
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
@@ -193,6 +187,9 @@ public:
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                         auto bf16In = sTP_->curState[nvId * Dv_ * Dk_];
                         auto deltaOut = sTP_->finalState[nvId * Dv_ * Dk_];
+                        if (isFirstGroup_ && cId == 0) {
+                            CrossCoreWaitFlag(0x3);
+                        }
                         CalVPrime(sTP_->kCumdecay[mm_offset0], bf16In, sTP_->vInner[mm_offset1]);
                         CalAttnInter(sTP_->qPrime[mm_offset0], bf16In,
                                      sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
