@@ -38,3 +38,5 @@ from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .sparse_flash_mla_softmax_l1_norm_metadata import sparse_flash_mla_softmax_l1_norm_metadata
+from .sparse_flash_mla_softmax_l1_norm import sparse_flash_mla_softmax_l1_norm
