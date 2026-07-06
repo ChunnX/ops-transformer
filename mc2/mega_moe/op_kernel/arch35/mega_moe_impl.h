@@ -424,7 +424,7 @@ __aicore__ inline void AivGmm1PostGeneric(
             mLoc * config.outputN + nLoc,
             mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                 CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-            0, 0, 0, 0};
+            0, 0, static_cast<int64_t>(mLoc), 0};
         WaitForCube();
         AscendC::SetCtrlSpr<60, 60>(0);
         args.swigluQuantOp(epilogueShape, epilogueOffset);
@@ -756,7 +756,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
             mLoc * config.outputN + nLoc,
             mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                 CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-            0, 0, 0, 0};
+            0, 0, static_cast<int64_t>(mLoc), 0};
 
         AscendC::SetCtrlSpr<60, 60>(0);
         swigluQuantOp(epilogueShape, epilogueOffset);
