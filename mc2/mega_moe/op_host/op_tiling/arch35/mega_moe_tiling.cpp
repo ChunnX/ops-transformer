@@ -81,6 +81,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
     OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
+    OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -90,7 +91,7 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
     OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
     OP_LOGD(nodeName, "expertRevTokenNumsPtr:      %ld\n", info->expertRevTokenNumsPtr);
-    OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
+    OP_LOGD(nodeName, "metaInfoPtr:                %ld\n", info->metaInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
@@ -175,8 +176,10 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
     int64_t topoType = TILINGKEY_TPL_MTE;
+    int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType,
+                              topkWeightsType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, MegaMoeConfig &config,
@@ -282,6 +285,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
     uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
     uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+    if (*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1) {
+        uint32_t weightBytes = ops::CeilAlign(static_cast<uint32_t>(topK * sizeof(float)),
+            static_cast<uint32_t>(ALIGN_32));
+        tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    }
     int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
     // combineSend Size
     int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
@@ -365,6 +373,17 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                       (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
             return ge::GRAPH_FAILED);
     }
+
+    int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
+    OP_TILING_CHECK(topkWeightsType != 0 && topkWeightsType != 1,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", std::to_string(topkWeightsType).c_str(),
+                                              "only support 0(disabled) or 1(enabled)"),
+                    return ge::GRAPH_FAILED);
+    int64_t topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    OP_TILING_CHECK(topkWeightsType == 1 && topoType == TILINGKEY_TPL_URMA,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", "1",
+                                              "topk_weights_type=1 is not supported with URMA topology"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1066,6 +1085,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
     tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    tilingData->topkWeightsPrefetch = static_cast<int32_t>(
+        *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
                                               (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
