@@ -105,6 +105,8 @@ TEST_PARAMS = {
         "cu_seqlens_q": [[0, 1]],
         "cu_seqlens_ori_kv": [[0, 4]],
         "cu_seqlens_cmp_kv": [[0, 1]],
+        # "seqused_ori_kv": [[4]],
+        # "seqused_cmp_kv": [[1]],
         "cmp_residual_kv": [[0]],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4],
@@ -896,5 +898,5 @@ TEST_PARAMS = {
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [TEST_PARAMS["swa_decode"]]
-# ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]
+# ENABLED_PARAMS = [TEST_PARAMS["csa_decode"]]
+ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]

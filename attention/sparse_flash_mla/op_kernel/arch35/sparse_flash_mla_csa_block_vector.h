@@ -571,6 +571,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         }
     } else {
         if (runInfo.s2LoopCount == 0 && isSinks) {
+            if (!runInfo.isS2Split || runInfo.s2SplitIdx == 0) {
             // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
             int64_t sinksOffset = 0;
             if constexpr (!IS_SPLIT_G) {
@@ -595,6 +596,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             }
             LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
             InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
+            } else {
+                // FD非首段split: 初始化maxUb=极小值, sumUb=0（不含sinks），走update模式等价于init
+                Duplicate(maxUb, this->negativeFloatScalar, runInfo.halfMRealSize);
+                Duplicate(sumUb, static_cast<T>(0), runInfo.halfMRealSize);
+            }
         }
         if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(

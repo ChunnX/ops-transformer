@@ -28,6 +28,11 @@ DATA_RANGE_RIGHT = 10
 
 RUN_MODE = 1
 
+# RUN_MODE == 1 时 sinks 的处理方式
+# 1: 单循环方式（全局只初始化一次 row_max=sinks/row_sum=1），sinks 只计入 1 次（正确）
+# 2: FD 分段 + sinks 只计入首段，sinks 只计入 1 次（正确）
+SINKS_HANDLE_MODE = 1
+
 np.random.seed(42)
 torch.manual_seed(42)
 
