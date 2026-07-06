@@ -99,6 +99,17 @@ static const int64_t UB_BASIC_LIMIT_SIZE = static_cast<int64_t>(8) * 1024;
 static const int64_t SLOPE_BN_DIM_NUM = 2L;
 static const int64_t SLOPE_N_DIM_NUM = 1L;
 static const int64_t L1REUSE_D_LIMIT = 128L;
+static const int64_t L1REUSE_D_LIMIT_MIN = 192L;
+static const int64_t L1REUSE_D_REGULAR_MIN = 256L;
+static const int64_t L1REUSE_D_LIMIT_MAX = 512L;
+static const int64_t L1REUSE_D_ALIGN = 128L;
+static const int64_t L1REUSE_LARGE_D_HEAD_NUM = 16L;
+static const int64_t L1REUSE_B_SIZE = 1L;
+static const int64_t L1REUSE_G_SIZE = 1L;
+static const int64_t L1REUSE_S_SIZE_MIN = 4096L;
+static const int64_t L1REUSE_S_SIZE_MAX = 131072L;
+static const int64_t L1REUSE_BMM2_SINGLE_CORE_K = 512L;
+static const float KEEP_PROB_OPTIMIZE_EPS = 1e-6f;
 static const int64_t L1REUSE_BNG_LIMIT = 10L;
 static const int64_t L1REUSE_S2_LIMIT_1024 = 1024;
 static const int64_t L1REUSE_S2_LIMIT_2048 = 2048L;
@@ -379,6 +390,31 @@ protected:
     void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const;
 
     virtual int64_t GetNRatio();
+
+    bool IsKvL1ReuseTilingSupportedShape() const
+    {
+        bool isSupportedLayout = tilingData->inputParams.get_layoutType() == LAYOUT_BNSD;
+        bool isSupportedBatch = bSize == L1REUSE_B_SIZE && gSize == L1REUSE_G_SIZE;
+        bool isSupportedSeqLen = s1Size == s2Size && s1Size >= L1REUSE_S_SIZE_MIN &&
+                                 s1Size <= L1REUSE_S_SIZE_MAX;
+        bool isSupportedD = dSize == L1REUSE_D_LIMIT_MIN ||
+                            (dSize >= L1REUSE_D_REGULAR_MIN && dSize <= L1REUSE_D_LIMIT_MAX &&
+                             dSize % L1REUSE_D_ALIGN == 0L);
+        bool isSupportedHead = n1Size > 0L && n1Size == n2Size &&
+                               (dSize <= L1REUSE_D_REGULAR_MIN || n1Size == L1REUSE_LARGE_D_HEAD_NUM);
+        bool isSupportedDtype = inputDtype == ge::DT_FLOAT16;
+        bool isNoMask = sparseMode == static_cast<int64_t>(NO_MASK) && attenMaskExistFlag == 0U;
+        bool isSupportedCausalMask = attenMaskExistFlag == 1U &&
+                                     (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL) ||
+                                      sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL));
+        bool isSupportedMask = isNoMask || isSupportedCausalMask;
+        bool isKeepProbOne = keepProb > (1.0f - KEEP_PROB_OPTIMIZE_EPS) &&
+                             keepProb < (1.0f + KEEP_PROB_OPTIMIZE_EPS);
+        bool hasNoExtraFeature = pseExistFlag == 0U && dropMaskExistFlag == 0U && !hasRope;
+
+        return isSupportedLayout && isSupportedBatch && isSupportedSeqLen && isSupportedD && isSupportedHead &&
+               isSupportedDtype && isSupportedMask && isKeepProbOne && hasNoExtraFeature;
+    }
 
     virtual int64_t GetMinS1BasicBlock() const
     {
@@ -3280,6 +3316,9 @@ protected:
         if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD) {
             nRatio = 6L;
         }
+        if (IsKvL1ReuseTilingSupportedShape()) {
+            nRatio = 4L;
+        }
     }
 
     void CalcDBasicBlock() override
@@ -3300,6 +3339,10 @@ protected:
         // FP32场景，不开启L1reuse
         if (inputDtypeBytes == DATA_TYPE_FP32) {
             enableL1Reuse = false;
+            return;
+        }
+        if (IsKvL1ReuseTilingSupportedShape()) {
+            enableL1Reuse = true;
             return;
         }
         if (dSize > L1REUSE_D_LIMIT) {
@@ -3438,6 +3481,9 @@ protected:
     void RefreshSplitFactor()
     {
         SetEnableL1Reuse();
+        if (IsKvL1ReuseTilingSupportedShape()) {
+            tilingData->bmm2TilingData.singleCoreK = L1REUSE_BMM2_SINGLE_CORE_K;
+        }
         if (enableL1Reuse) {
             auto &multiCoreParams = tilingData->multiCoreParams;
             int64_t totalSize = multiCoreParams.get_totalSize();
@@ -3573,6 +3619,9 @@ protected:
         }
         if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD) {
             nRatio = 6L;
+        }
+        if (IsKvL1ReuseTilingSupportedShape()) {
+            nRatio = 4L;
         }
     }
 
