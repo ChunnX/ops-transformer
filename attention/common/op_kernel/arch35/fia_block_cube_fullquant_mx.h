@@ -771,7 +771,7 @@ public:
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
-                                        uint32_t s2RealSize)
+                                        uint32_t s2RealSize, float dScale)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -782,12 +782,32 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         fixpipeParams.dstStride = 64;  // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 2;  // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
 
+        // fixpipe随路乘dScale: quantPre=QF322F32_PRE (float→float + 标量dequant)
+        // 约束: quantPre != NoQuant 时 dualDstCtl 必须为0（双目标与随路乘互斥）
+        // 原 dualDstCtl=2(SPLIT_N) 改为两条单目标fixpipe，subBlockId轮询到AIV0/AIV1
+        float dScaleVal = dScale;
+        uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&dScaleVal));
+        fixpipeParams.quantPre = QuantMode_t::QF322F32_PRE;
+        fixpipeParams.deqScalar = deqScalar;
+        fixpipeParams.dualDstCtl = 0;
+
+        uint32_t halfN = fixpipeParams.nSize / 2;
+        fixpipeParams.nSize = halfN;
+
+        // 第一条：前 N/2 → AIV0
+        fixpipeParams.subBlockId = false;
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+
+        // 第二条：后 N/2 → AIV1
+        // NZ分形(N/16,M/16,16,16)中N方向偏移 = (halfN/16) * srcStride * 16 元素
+        uint32_t cburstNumHalf = halfN / 16;
+        uint64_t srcOffsetElem = static_cast<uint64_t>(cburstNumHalf) * fixpipeParams.srcStride * 16;
+        fixpipeParams.subBlockId = true;
+        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C[srcOffsetElem], fixpipeParams);
     }
 
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
@@ -870,7 +890,8 @@ public:
 
         outputBuf.WaitCrossCore();
 
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize,
+                     static_cast<float>(constInfo.scaleValue));
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();

@@ -1185,12 +1185,12 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
     uint32_t repeatStride;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                 IsSameType<T2, hifloat8_t>::value) {
-        dScale = scale * deScaleQK;
+        dScale = 1.0f;  // dScale 已在 C1 fixpipe 随路乘
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
     } else {
-        dScale = scale;
+        dScale = 1.0f;  // dScale 已在 C1 fixpipe 随路乘
         blockStride = ubN >> 1 | 0x1;
         repeatStride = 1;
     }
@@ -1618,12 +1618,12 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     uint32_t repeatStride;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                 IsSameType<T2, hifloat8_t>::value) {
-        dScale = scale * deScaleQK;
+        dScale = 1.0f;  // dScale 已在 C1 fixpipe 随路乘
         blockStride = ubN >> 2 | 0x1;
         repeatStride = 2;
         indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
     } else {
-        dScale = scale;
+        dScale = 1.0f;  // dScale 已在 C1 fixpipe 随路乘
         blockStride = ubN >> 1 | 0x1;
         repeatStride = 1;
     }
