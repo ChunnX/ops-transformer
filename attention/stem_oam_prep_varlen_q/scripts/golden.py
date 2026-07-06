@@ -30,9 +30,9 @@ def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
         qflat: [batch, H_q, max_Qb, S*D] BF16 (as numpy array)
     """
     q_np = context.input_arrays[0]
-    qscale_np = context.input_arrays[1]
-    q_seq_lens_np = context.input_arrays[2]
-    cu_seqlens_q_np = context.input_arrays[3]
+    qscale_np = context.input_arrays[3] if len(context.input_arrays) > 3 else None
+    q_seq_lens_np = context.input_arrays[1]
+    cu_seqlens_q_np = context.input_arrays[2]
 
     B = context.other_runtime_params['stemBlockSize']
     S = context.other_runtime_params['stemStride']
