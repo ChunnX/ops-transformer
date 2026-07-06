@@ -28,10 +28,10 @@ RESULT_PATH = Path("result.xlsx")
 MAX_RESULT_DETAIL_LEN = 2048
 RESULT_COLUMNS = ["case_id", "testcase_name", "expected_result", "result", "detail"]
 
-# 支持通过环境变量 STEM_INDEXER_TESTCASE_NAME 指定只跑特定 testcase_name（逗号分隔多个）
-# 例: STEM_INDEXER_TESTCASE_NAME=q_tail_block python -m pytest test_stem_indexer_batch.py
-_FILTER_NAMES_RAW = os.environ.get("STEM_INDEXER_TESTCASE_NAME", "").strip()
-_FILTER_NAMES = set(x.strip() for x in _FILTER_NAMES_RAW.split(",") if x.strip())
+# 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
+# 例: STEM_INDEXER_CASE_ID=SI_WB_002 python -m pytest test_stem_indexer_batch.py
+_FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
+_FILTER_IDS = set(x.strip() for x in _FILTER_IDS_RAW.split(",") if x.strip())
 
 
 def collect_testcase_files(pt_dir):
@@ -43,16 +43,16 @@ def collect_testcase_files(pt_dir):
         for pt_file in sorted(os.listdir(pt_dir))
         if pt_file.endswith(".pt")
     ]
-    if _FILTER_NAMES:
+    if _FILTER_IDS:
         filtered = []
         for fp in testcase_files:
             try:
                 case = stem_indexer_pt_loadprocess.torch_load_cpu(fp)["case"]
             except Exception:
                 continue
-            if case.get("testcase_name", "") in _FILTER_NAMES:
+            if case.get("case_id", "") in _FILTER_IDS:
                 filtered.append(fp)
-        print(f"Filter by STEM_INDEXER_TESTCASE_NAME={_FILTER_NAMES_RAW}: "
+        print(f"Filter by STEM_INDEXER_CASE_ID={_FILTER_IDS_RAW}: "
               f"{len(filtered)}/{len(testcase_files)} matched.")
         testcase_files = filtered
     print(f"Found {len(testcase_files)} StemIndexer pt testcase files.")

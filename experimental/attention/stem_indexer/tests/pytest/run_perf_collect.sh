@@ -20,7 +20,7 @@ EXCEL_FILE="prof_summary_${TIMESTAMP}.xlsx"
 # 初始化 Excel（写入表头）
 python3 -c "
 import pandas as pd
-df = pd.DataFrame(columns=['testcase_name', 'Duration(us)'])
+df = pd.DataFrame(columns=['case_id', 'Duration(us)'])
 df.to_excel('$EXCEL_FILE', index=False)
 "
 
@@ -28,7 +28,7 @@ df.to_excel('$EXCEL_FILE', index=False)
 CASES=$(python3 -c "
 import pandas as pd
 df = pd.read_excel('excel/stem_indexer_cases.xlsx')
-for n in df['testcase_name']:
+for n in df['case_id']:
     print(n)
 ")
 
@@ -52,7 +52,7 @@ while IFS= read -r name; do
     
     # 运行 msprof（失败时不退出）
     set +e
-    STEM_INDEXER_TESTCASE_NAME="$name" msprof op python3 -m pytest -s "test_stem_indexer_batch.py" -v -m ci  -W ignore::UserWarning -W ignore::DeprecationWarning
+    STEM_INDEXER_CASE_ID="$name" msprof op python3 -m pytest -rA -s "test_stem_indexer_batch.py" -v -m ci  -W ignore::UserWarning -W ignore::DeprecationWarning
     set -e
     
     # 查找标记文件之后创建的新目录
@@ -98,7 +98,7 @@ except Exception as e:
 
 try:
     excel_df = pd.read_excel(excel_path)
-    new_row = pd.DataFrame([{'testcase_name': tc_name, 'Duration(us)': duration}])
+    new_row = pd.DataFrame([{'case_id': tc_name, 'Duration(us)': duration}])
     excel_df = pd.concat([excel_df, new_row], ignore_index=True)
     excel_df.to_excel(excel_path, index=False)
 except Exception as e:
