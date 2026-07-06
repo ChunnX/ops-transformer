@@ -28,7 +28,7 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
         )
 
     def sources(self):
-        return ["ops/csrc/dense_lightning_indexer_softmax_lse_v2_metadata.cpp"]
+        return ["ops/csrc/dense_lightning_indexer_softmax_lse_v2.cpp"]
 
     def schema(self) -> str:
         return [
