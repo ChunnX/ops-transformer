@@ -89,7 +89,6 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
 
 # Instantiate the builder
 quant_lightning_indexer_op_builder = QuantLightningIndexerOpBuilder()
-op_module = quant_lightning_indexer_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, QLI_V2_METADATA_OP_NAME, "PrivateUse1")
@@ -104,6 +103,7 @@ def quant_lightning_indexer_metadata(
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = quant_lightning_indexer_op_builder.load()
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_k = -1 if max_seqlen_k is None else max_seqlen_k
@@ -145,6 +145,7 @@ def quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequan
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = quant_lightning_indexer_op_builder.load()
     return op_module.quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, 
                                                     topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
                                                     cmp_residual_k, block_table, output_idx_offset, metadata,
