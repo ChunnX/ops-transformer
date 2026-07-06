@@ -60,14 +60,6 @@ static bool CheckDataType(const aclTensor *query,
     return true;
 }
 
-static bool IsSupportedFormat(ge::Format format)
-{
-    return format == ge::FORMAT_ND ||
-           format == ge::FORMAT_NCL ||
-           format == ge::FORMAT_NCHW ||
-           format == ge::FORMAT_NCDHW;
-}
-
 static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
                                          const aclTensor *key,
                                          const aclTensor *value)
@@ -249,7 +241,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-
     // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
