@@ -341,12 +341,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     for k in range(Nidx1):
                         T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
                     # barrier removed: mul→fill, different buffers, VEC→VEC sequential
-                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass, zero scalar loads
+                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
+                    # sm_2d_ub freed after P_reduced, reuse to hold all ReduceSumY blocks
                     T.tile.fill(rsy_max_ub, -1e30)
                     for n_rsy in T.serial(n_num):
                         T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
                         T.tile.mul(bmm2_ub, bmm2_ub, weight_2d_ub)
                         T.reduce_sum(bmm2_ub, rsy_reduce_ub, 0)
+                        # Save to UB (for sum) + write to GM (for workspace)
+                        T.copy(rsy_reduce_ub, sm_2d_ub[n_rsy, :])
                         T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
                         # Fused: update global max from rsy_reduce_ub (still in UB, no GM round-trip)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_ub, 1.0)
@@ -355,11 +358,14 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # barrier removed: max→next copy, VEC→DMA different buffers
 
-                    # GlobalSoftmaxI: compute global sum (no per-block SoftmaxI writes)
+                    # Broadcast rsy_max to vector once (softmax_i_chunk_ub free, p_reduced_tmp still has 1.0)
+                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_max_ub[0])
+
+                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
                     T.tile.fill(rsy_sum_ub, 0)
                     for n_idx_iter in T.serial(n_num):
-                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub)
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
+                        T.copy(sm_2d_ub[n_idx_iter, :], rsy_chunk_ub)
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         # barrier removed: mul→reduce_sum, VEC→VEC sequential
@@ -370,9 +376,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
                     # barrier removed: max→T.copy, VEC→DMA different buffers
 
-                    # Per-core SoftmaxI: only compute+write MY K block (others don't need it)
-                    T.copy(ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], rsy_chunk_ub)
-                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
+                    # Per-core SoftmaxI: use UB-held ReduceSumY + broadcast rsy_max (no GM reads)
+                    T.copy(sm_2d_ub[n_idx_k, :], rsy_chunk_ub)
+                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
                     T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
