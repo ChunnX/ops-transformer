@@ -172,6 +172,7 @@ private:
     ge::graphStatus ParseOptionalTensors(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDtype(gert::TilingContext *bsaContext);
     ge::graphStatus CheckAttentionOutDtype(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckNDFormat(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDimVal(gert::TilingContext *bsaContext,
         uint32_t kHeads, uint32_t vHeads, uint32_t kHeadDim, uint32_t vHeadDim);
     ge::graphStatus ParseQKVInTND(gert::TilingContext *bsaContext);
