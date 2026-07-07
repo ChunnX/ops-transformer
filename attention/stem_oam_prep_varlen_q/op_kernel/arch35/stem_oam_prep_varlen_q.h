@@ -297,6 +297,8 @@ public:
                     q_len_ = q_len_b;
                     q_padded_ = q_padded_b;
                     num_Qb_ = num_Qb_b;
+                    AscendC::PRINTF("[D]task=%u b=%u h=%u qb=%u cu=%u qlen=%u\n",
+                        task_idx, b, h, qb_local_, cu_off_, q_len_);
                     return;
                 }
                 total_qb += num_Qb_b;
@@ -369,6 +371,9 @@ private:
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
                               (q_len_ > start_row ? q_len_ - start_row : 0);
 
+        AscendC::PRINTF("[Q]qb=%u sr=%u vr=%u qOff=%u\n",
+            qb_local_, start_row, valid_rows,
+            valid_rows > 0 ? (cu_off_ + start_row) * num_q_heads_ * dim_qk_ + head_idx_ * dim_qk_ : 0);
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
         for (uint32_t i = 0; i < valid_rows; i++) {
             uint32_t globalPos = cu_off_ + start_row + i;
@@ -427,6 +432,8 @@ private:
         uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
                               (q_len_ > start_row ? q_len_ - start_row : 0);
         uint32_t scaleBase = (cu_off_ + start_row) * num_q_heads_;
+        AscendC::PRINTF("[S]qb=%u cu=%u sr=%u vr=%u sBase=%u Hq=%u\n",
+            qb_local_, cu_off_, start_row, valid_rows, scaleBase, num_q_heads_);
         if (valid_rows > 0) {
             qscaleGm_.SetGlobalBuffer(
                 (__gm__ float*)qscaleBase_ + scaleBase,

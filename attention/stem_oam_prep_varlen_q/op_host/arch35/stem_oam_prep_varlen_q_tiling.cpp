@@ -168,11 +168,12 @@ static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
         totalBlocks *= H_q;
     } else {
         uint32_t totalTokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
-        uint32_t max_q_padded = ((totalTokens + B - 1) / B) * B;
+        uint32_t max_q_len = totalTokens / batchU32;
+        uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
         tiling->max_Qb = max_q_padded / B;
         totalBlocks = H_q * tiling->max_Qb * batchU32;
-        OP_LOGD(nodeName, "qSeqLens data not available, using conservative estimate: totalTokens=%u",
-                totalTokens);
+        OP_LOGD(nodeName, "qSeqLens data not available, using conservative estimate: max_q_len=%u",
+                max_q_len);
     }
 
     OP_LOGI(nodeName, "CalcSequenceInfo: max_Qb=%u, totalBlocks=%u",
