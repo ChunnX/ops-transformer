@@ -777,7 +777,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     }
 
     // 根据shape判断是否要开FD
-    if (param.streamK && result.fdRes.fdNum > 0){
+    if (param.streamK && result.fdRes.fdNum > 0) {
         splitContext.splitParam.streamK = false;
         CalcSplitPlan(result.usedCoreNum, INT64_MAX, splitContext, tmpResult);
         uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
