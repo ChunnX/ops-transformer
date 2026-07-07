@@ -407,6 +407,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
+    PRINTF("DispatchBuffInit success!\n");
 }
 
 // ======================================================================================
@@ -661,7 +662,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
         }
     }
-    PRINTF("SendMaskCal success!");
+    PRINTF("SendMaskCal success!\n");
 }
 
 template <TemplateMegaMoeTypeClass>
