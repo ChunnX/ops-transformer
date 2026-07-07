@@ -42,7 +42,10 @@
 
       当前kernel底层实现使用gelu_sigmoid函数对gelu_tanh进行近似计算：
 
-      `GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`
+      $$
+      \operatorname{GeluTanh}(x) =
+      \frac{x}{1 + \exp\left(-1.595769121 \times \left(x + 0.044715 \times x^3\right)\right)}
+      $$
 
     - 对激活结果在N轴按$blocksize=64$分组执行MX动态量化，输出量化结果$Y$和量化因子$YScale$。
 
