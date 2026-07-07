@@ -91,11 +91,11 @@ cann_ops_transformer.lightning_indexer(
 | num_heads_k | int | 必选 | 表示Key的head个数，当前仅支持1。 | int32 | - |
 | head_dim | int | 必选 | 表示注意力头的维度，当前仅支持128。 | int32 | - |
 | topk | int | 必选 | 表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
 | max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
 | max_seqlen_k | int | 可选 | 表示Key的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |

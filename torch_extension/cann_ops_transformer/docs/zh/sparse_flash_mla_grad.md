@@ -197,13 +197,13 @@ cann_ops_transformersparse_flash_mla_grad(
 | num_heads_q | int | 必选 | 表示公式中$Q$的头数（即N1），当前支持[1, 128]。 | int32 | - |
 | num_heads_kv | int | 必选 | 表示公式中$oriKv$或$cmpkv$的头数（即N2），当前仅支持1。 | int32 | - |
 | head_dim | int | 必选 | 表示头的维度（即D），当前仅支持512。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T1保持一致。 | int32 | B+1 |
-| cu_seqlens_ori_kv | Tensor | 可选 | 代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T2保持一致。 | int32 | B+1 |
-| cu_seqlens_cmp_kv | Tensor | 可选 | 代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T3保持一致。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示不同batch中query实际参与运算的token数。 | int32 | B |
-| seqused_ori_kv | Tensor | 可选 | 表示不同batch中ori_kv实际参与运算的token数。 | int32 | B |
-| seqused_cmp_kv | Tensor | 可选 | 表示不同batch中cmp_kv实际参与运算的token数。 | int32 | B |
-| cmp_residual_kv | Tensor | 可选 | 表示每个batch 实际ori_s2 // cmpRatio后的余数，支持非连续，数据格式支持ND，当cmp_kv不为空且cmp_mask_mode=3时必须传入。 | int32 | B |
+| cu_seqlens_q | Tensor | 可选 | 代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T1保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_ori_kv | Tensor | 可选 | 代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T2保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T3保持一致。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同batch中query实际参与运算的token数。 | int32 | (B, ) |
+| seqused_ori_kv | Tensor | 可选 | 表示不同batch中ori_kv实际参与运算的token数。 | int32 | (B, ) |
+| seqused_cmp_kv | Tensor | 可选 | 表示不同batch中cmp_kv实际参与运算的token数。 | int32 | (B, ) |
+| cmp_residual_kv | Tensor | 可选 | 表示每个batch 实际ori_s2 // cmpRatio后的余数，支持非连续，数据格式支持ND，当cmp_kv不为空且cmp_mask_mode=3时必须传入。 | int32 | (B, ) |
 | ori_topk_length | Tensor | 可选 | 表示每行query对应的ori_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
 | cmp_topk_length | Tensor | 可选 | 表示每行query对应的cmp_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
 | batch_size | int | 可选 | 表示输入样本批量大小（即B），默认值为0。 | int32 | - |
@@ -244,7 +244,7 @@ cann_ops_transformersparse_flash_mla_grad(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | 1024 |
+| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | (1024, ) |
 
 ## 约束说明
 

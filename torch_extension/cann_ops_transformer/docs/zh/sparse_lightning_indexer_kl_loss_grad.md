@@ -142,11 +142,11 @@ sparse_lightning_indexer_kl_loss_grad(
 | num_heads_q | int | 必选 | `q` 的 head 数，即主接口 `q` 的 `N1`，当前支持[1, 128]。 | int32 | - |
 | num_heads_k | int | 必选 | `k` 的 head 数，即主接口 `k` 的 `N2`。当前仅支持 1。 | int32 | - |
 | head_dim | int | 必选 | `q`、`k` 的最后一维 `D`，当前仅支持128。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | TND 场景中 query 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| cu_seqlens_k | Tensor | 可选 | TND 场景中 key 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | B+1 |
-| seqused_q | Tensor | 可选 | 表示每个 batch 实际使用的 query 长度。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| seqused_k | Tensor | 可选 | 表示每个 batch 实际使用的 key 长度。数据格式为ND，支持非连续的Tensor。 | int32 | B |
-| cmp_residual_k | Tensor | 可选 | 压缩 key 场景下的残差长度。数据格式为ND，支持非连续的Tensor。 | int32 | B |
+| cu_seqlens_q | Tensor | 可选 | TND 场景中 query 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_k | Tensor | 可选 | TND 场景中 key 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示每个 batch 实际使用的 query 长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_k | Tensor | 可选 | 表示每个 batch 实际使用的 key 长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 压缩 key 场景下的残差长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | batch_size | int | 可选 | batch 大小。BSND 场景建议显式传入，TND 场景也可由 `cu_seqlens_q` 推导，默认值为0。 | int32 | - |
 | max_seqlen_q | int | 可选 | 单个 batch 中最大的 query 序列长度，默认值为0。 | int32 | - |
 | max_seqlen_k | int | 可选 | 单个 batch 中最大的压缩后 key 序列长度，默认值为0。 | int32 | - |
@@ -171,7 +171,7 @@ sparse_lightning_indexer_kl_loss_grad(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| metadata | Tensor | 必选 | 每个AIcore的Attention计算任务的Batch、Head、以及Q和K的分块的索引。数据格式为ND，不支持非连续的Tensor。 | int32 | shape为(64,)  |
+| metadata | Tensor | 必选 | 每个AIcore的Attention计算任务的Batch、Head、以及Q和K的分块的索引。数据格式为ND，不支持非连续的Tensor。 | int32 | shape为(64, )  |
 
 ## 约束说明
 

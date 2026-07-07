@@ -87,7 +87,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>cuSeqLensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中query的累积sequence length。</td>
-      <td><ul><li>支持空Tensor</li><li>TND场景下必传，并可通过该入参shape推导batch。</li><li>第一个值固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传，并可通过该入参shape推导batch。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>cuSeqLensKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key的累积sequence length。</td>
-      <td><ul><li>支持空Tensor</li><li>TND场景下必传。</li><li>第一个值固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>seqUsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中query实际参与运算的sequence length。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -117,7 +117,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>seqUsedKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key实际参与运算的sequence length。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
