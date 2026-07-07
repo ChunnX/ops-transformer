@@ -353,6 +353,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
     LoadAlign(vreg_qgather_idx, qGatherIdxUb);
@@ -904,6 +909,11 @@ ProcessVec1DnUpdateAttenTailVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
     LoadAlign(vreg_qgather_idx, qGatherIdxUb);
@@ -936,7 +946,7 @@ ProcessVec1DnUpdateAttenTailVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
-        
+
         if constexpr (needAtten) {
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
@@ -1488,6 +1498,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
@@ -2024,6 +2039,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
+
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
