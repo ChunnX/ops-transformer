@@ -177,7 +177,6 @@
         <td>sparseBlockSize</td>
         <td>属性</td>
         <td>选择的块的大小。</td>
-        </td>
         <td>INT64</td>
         <td>-</td>
     </tr>

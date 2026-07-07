@@ -340,6 +340,7 @@ __aicore__ inline void MoeRoutingRankMultiCore::BuildSortPosition()
 
 __aicore__ inline void MoeRoutingRankMultiCore::Process()
 {
+    AscendC::SyncAll();
     if (blockIdx < needCoreNum) {
         AccumulatePartialCount();
     }

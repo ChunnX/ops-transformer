@@ -52,6 +52,9 @@ private:
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
+    ge::graphStatus CheckAndProcessTreeMask(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
+    ge::graphStatus CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+                                          MaskInfo &maskInfo) const;
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo) const;
 private:

@@ -54,9 +54,13 @@ CubeOp<T1>::cube2ProcessSparse(const int64_t dyGmOffset, const int64_t valueGmOf
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
             
             currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
-            currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
-            
-            CopyGmToL1(l1_v_tensor, selectedVWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDqk);
+            if (!enableOptimizedScatter) {
+                currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * K_SPLIT_SIZE;
+                CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            } else {
+                currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
+                CopyGmToL1(l1_v_tensor, selectedVWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDqk);
+            }
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_dy_tensor, l1_v_tensor,

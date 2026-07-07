@@ -51,7 +51,6 @@ constexpr size_t DIM_LEN_ONE = 1;
 constexpr size_t DIM_LEN_TWO = 2;
 constexpr char COMM_MODE_AICPU[] = "ai_cpu";
 constexpr char COMM_MODE_CCU[] = "ccu";
-constexpr char COMM_MODE_DEFAULT[] = "";
 
 struct NnopbaseDfxId {
     uint32_t id;
@@ -106,6 +105,7 @@ bool MatmulAllReduceCheckShape(
 bool QuantMatmulAllReduceCheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output);
+bool QuantMatmulAllReduceCheckDequantScale(const aclTensor* dequantScale, const op::Shape& outShape, size_t x1Len);
 bool MatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 

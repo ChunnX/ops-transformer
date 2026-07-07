@@ -1,4 +1,4 @@
-"""NPU 后端 — 按 npu_flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
+"""NPU 后端 — 按 flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
 import torch
@@ -7,7 +7,7 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from cann_ops_transformer.ops import npu_flash_attn, npu_flash_attn_metadata
+    from cann_ops_transformer.ops import flash_attn, flash_attn_metadata
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
@@ -27,8 +27,8 @@ class FlashAttnGraphNetwork(torch.nn.Module):
                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
-                return_softmax_lse, deterministic):
-        out, lse_out = npu_flash_attn(
+                return_softmax_lse):
+        out, lse_out = flash_attn(
             q, k, v,
             block_table=block_table,
             sinks=None,
@@ -48,7 +48,6 @@ class FlashAttnGraphNetwork(torch.nn.Module):
             layout_kv=layout_kv,
             layout_out=layout_out,
             return_softmax_lse=return_softmax_lse,
-            deterministic=deterministic,
         )
         return out, lse_out
 
@@ -171,7 +170,7 @@ class NPUBackend(Backend):
         meta_kwargs, kernel_kwargs, _ = build_flash_attn_params(
             params, self._device, inputs)
 
-        metadata = npu_flash_attn_metadata(**meta_kwargs)
+        metadata = flash_attn_metadata(**meta_kwargs)
 
         if self._meta_only:
             print_metadata(metadata)
@@ -202,11 +201,10 @@ class NPUBackend(Backend):
                 kernel_kwargs.get("layout_q", "BNSD"),
                 kernel_kwargs.get("layout_kv", "BNSD"),
                 kernel_kwargs.get("layout_out", "BNSD"),
-                kernel_kwargs.get("return_softmax_lse", 0),
-                0,
+                kernel_kwargs.get("return_softmax_lse", False),
             )
         else:
-            out, lse = npu_flash_attn(inputs["q"], inputs["k"], inputs["v"],
+            out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
                                       metadata=metadata, **kernel_kwargs)
         torch.npu.synchronize()
         return {"out": out, "lse": lse}

@@ -302,7 +302,7 @@ void SFAMlaTiling::InitParams()
     } else {
         perfMode_ = SFAPerfMode::C_TEMPLATE_MODE;
     }
-   
+
     coreNum_ = aicNum_;
 
     headDimAlign_ = Align(sfaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
@@ -752,18 +752,19 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 128 ||
-        (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
-            std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
-            "sparseBlockSize must be in range [1, 16] and be a power of 2"),
-        return ge::GRAPH_FAILED);
-
     OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
             std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
             "when soc version is Ascend950, sparse_block_size only support 1"),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 128 ||
+        (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
+            std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
+            "sparseBlockSize must be in range [1, 128] and be a power of 2"),
+        return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -797,7 +798,7 @@ ge::graphStatus SFATilingCheck::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() || 
+        ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
@@ -935,7 +936,7 @@ ge::graphStatus SFATilingCheck::CheckParaExistence()
 }
 
 static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const SFALayout &layout, const std::string &name, const char *opName)
+    const std::string &name, const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName, name.c_str());
@@ -984,7 +985,7 @@ ge::graphStatus SFATilingCheck::CheckBlockTable() const
             std::to_string(blockTableBatch).c_str(),
             "The first dim of " + BLOCK_TABLE_NAME + " should be equal to batch size " + std::to_string(bSize_)),
         return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1256,7 +1257,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQShape()
     }
     uint32_t sfaShapeSize = 0;
     if (GetActualSeqLenSize(sfaShapeSize, opParamInfo_.actualSeqLengthsQ.tensor,
-        qLayout_, "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (sfaShapeSize != bSize_) {
@@ -1306,7 +1307,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensShape()
     }
     uint32_t sfaShapeSizeKv = 0;
     if (GetActualSeqLenSize(sfaShapeSizeKv, opParamInfo_.actualSeqLengths.tensor,
-        kvLayout_, "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (sfaShapeSizeKv != bSize_) {
@@ -1342,7 +1343,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(bSize_).c_str(),
             "batch_size should be greater than 0"),
         return ge::GRAPH_FAILED);
-        
+
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == SFALayout::TND),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query", std::to_string(qTSize_).c_str(),
             "T_size of query should be greater than 0"),
@@ -1366,12 +1367,14 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
 
     if (isA5_) {
         OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
-            OP_LOGE(opName_, "n1Size should be in 1 ~ 128, but got %u", gSize_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "n1Size", std::to_string(gSize_).c_str(),
+                "n1Size should be in 1 ~ 128"),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-            OP_LOGE(opName_, "n1Size should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "n1Size", std::to_string(gSize_).c_str(),
+                "n1Size should be in 1, 2, 4, 8, 16, 32, 64, 128"),
             return ge::GRAPH_FAILED);
     }
 
@@ -1390,6 +1393,23 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ropeHeadDim_",
             std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
+
+    if (isA5_) {
+        OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == SFALayout::BSND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "query", std::to_string(s1Size_).c_str(),
+                                                          "BSND case input query dim 1 should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(s2Size_ <= 0 && (kvLayout_ == SFALayout::BSND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key", std::to_string(s2Size_).c_str(),
+                                                          "BSND case input key dim 1 should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(kvTSize_ <= 0 && (kvLayout_ == SFALayout::TND),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of key", std::to_string(kvTSize_).c_str(),
+                                                          "T_size of key should be greater than 0"),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1429,12 +1449,12 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
             "when page attention is enabled, block_size should be in range (0, " +
             std::to_string(MAX_BLOCK_SIZE) + "]"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % 16 > 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
             "when page attention is enabled, block_size should be 16-aligned"),
         return ge::GRAPH_FAILED);
-    
+
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
             "when page attention is enabled, "
@@ -1623,7 +1643,7 @@ ge::graphStatus SFAInfoParser::CheckRequiredParaExistence() const
 
 ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, qLayout_, "actualSeqLengthsQ", opName_);
+    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actualSeqLengthsQ", opName_);
 }
 
 ge::graphStatus SFAInfoParser::GetOpName()
@@ -2078,7 +2098,7 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
         OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "tiling context");
         return ge::GRAPH_FAILED;
     }
-    
+
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
         ge::GRAPH_SUCCESS != GetOpParaInfo() || ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;

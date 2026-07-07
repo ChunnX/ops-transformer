@@ -71,14 +71,15 @@ public:
         int32_t n0;
         int32_t rank;
         HcclShmem<IS_A2> shmem;
-        int32_t offsetD;
+        int64_t offsetD;
+        int64_t offsetWinOutD;
         Layout3D tokenPerExpertLayout;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int32_t offsetD_, Layout3D tokenPerExpertLayout_)
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
             : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
               layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_),
               tokenPerExpertLayout(tokenPerExpertLayout_)
@@ -147,7 +148,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<float> const &gmGMM2, AscendC::GlobalTensor<ElementC> const &gmC,
+    void operator()(AscendC::GlobalTensor<ElementC> const &gmC,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, __gm__ float *gmWeightAux,
                     GemmCoord &blockCoord, GemmCoord &actualBlockShape, int32_t groupIdx, int32_t preSrcExpertSum,
                     AscendC::GlobalTensor<int32_t> preSumBeforeRank, int32_t listLen)
@@ -156,8 +157,9 @@ public:
         auto &ubCL = ubCLList[ubListId];
         auto &ubD = ubDList[ubListId];
         auto &ubweighAux = ubweighAuxList[ubListId];
-        int32_t gmCOffsetH = (preSrcExpertSum * params.n2 + blockCoord.m() * params.n2) + blockCoord.n();
-        int32_t gmCOffsetL = (preSrcExpertSum * params.n2 + blockCoord.m() * params.n2) + blockCoord.n() + params.n2;
+        int64_t gmCOffsetH = (static_cast<int64_t>(preSrcExpertSum) * params.n2 +
+            blockCoord.m() * params.n2) + blockCoord.n();
+        int64_t gmCOffsetL = gmCOffsetH + params.n2;
         auto gmTileCH = gmC[gmCOffsetH];
         auto gmTileCL = gmC[gmCOffsetL];
         AscendC::GlobalTensor<float> weightAux;
@@ -261,7 +263,7 @@ public:
                 if (isCrossServer) {
                     AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
                     gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
-                        params.shmem.windowsOutAddr() + params.offsetD));
+                        params.shmem.windowsOutAddr() + params.offsetWinOutD));
                     MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
                     int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
                     auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];

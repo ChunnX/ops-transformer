@@ -21,7 +21,7 @@
   - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
 
   相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增：**
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - 非量化场景，支持weight转置（转置指若shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景）。
       - 支持m轴和k轴分组，由groupType表示。
       - x、weight、y都为单tensor，非量化场景下，支持x、weight输入都为float32类型。
@@ -36,30 +36,30 @@
   - 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
   - tensor转置：指若tensor shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景，即非连续tensor。
 
-- 计算公式：
-  - **非量化场景：**
+  - 计算公式：
+    - **非量化场景：**
 
-    $$
-     y_i=x_i\times weight_i + bias_i
-    $$
+      $$
+       y_i=x_i\times weight_i + bias_i
+      $$
 
-  - **量化场景：**
+    - **量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
+      $$
 
-  - **反量化场景：**
+    - **反量化场景：**
 
-    $$
-     y_i=(x_i\times weight_i + bias_i) * scale_i
-    $$
+      $$
+       y_i=(x_i\times weight_i + bias_i) * scale_i
+      $$
 
-  - **伪量化场景：**
+    - **伪量化场景：**
 
-    $$
-     y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-    $$
+      $$
+       y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+      $$
 
 ## 函数原型
 
@@ -251,7 +251,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr>
   </tbody></table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - x支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - weight支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - biasOptional支持FLOAT16、FLOAT32、INT32
@@ -361,7 +361,7 @@ aclnnStatus aclnnGroupedMatmulV3(
   - aclnnGroupedMatmulV3默认确定性实现。
 - 如果传入groupListOptional，groupListOptional必须为非负递增数列。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为BFLOAT16；

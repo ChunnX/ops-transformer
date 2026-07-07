@@ -11,3 +11,4 @@
 import torch
 import torch_npu
 from . import ops
+from .ops import *

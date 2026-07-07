@@ -695,9 +695,11 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WeightAnt
                                 l1ConsumeConfig.l1RealExternalLen);
             if (biasL1Ptr != nullptr && ubConsumeConfig.calcMxBias) {
                 auto biasL1 = *biasL1Ptr;
-                DataCopy(biasL1[l1ConsumeConfig.l1MxBiasSplitNOffset],
-                         ubBiasOutTotalBuffer_[((ubMte2LoopIdx_ - 1) & (vecConfig.ubMte2BufferNum - 1)) *
-                         UB_BUFFER_INFO.biasReducedSingleBufferSize], ubConsumeConfig.ubMxBiasNsize);
+                DataCopy(
+                    biasL1[l1ConsumeConfig.l1MxBiasSplitNOffset],
+                    ubBiasOutTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) *
+                                          UB_BUFFER_INFO.biasReducedSingleBufferSize],
+                    ubConsumeConfig.ubMxBiasNsize);
             }
             SetFlag<HardEvent::MTE3_V>(
                 vecEventIdMte3ToV[ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)]);
@@ -800,7 +802,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WeightAnt
     }
     if (ubConsumeConfig.calcMxBias) {
         DataCopy(biasL1[l1ConsumeConfig.l1MxBiasSplitNOffset],
-                 ubBiasOutTotalBuffer_[((ubMte2LoopIdx_ - 1) & (vecConfig.ubMte2BufferNum - 1)) *
+                 ubBiasOutTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) *
                                        UB_BUFFER_INFO.biasReducedSingleBufferSize],
                  ubConsumeConfig.ubMxBiasNsize);
     }
@@ -993,8 +995,10 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
             (__ubuf__ biasType *)ubBiasTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasUbSingleBufferSize]
                 .GetPhyAddr();
         mxA8W4NzParams.biasOutUbAddr =
-            (__ubuf__ biasType *)ubBiasOutTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasReducedSingleBufferSize]
-                .GetPhyAddr();
+            (__ubuf__ biasType *)
+                ubBiasOutTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) *
+                                      UB_BUFFER_INFO.biasReducedSingleBufferSize]
+                    .GetPhyAddr();
         if (ubConsumeConfig.isBiasSingleVector) {
             mxA8W4NzParams.biasLoopNum = CeilDivide(ubConsumeConfig.ubMxBiasNsize, VEC_MAX_ELEM_B16);
             AntiQuantMxA8W4NzNkVf<xType, wType, biasType, true, true>(mxA8W4NzParams);

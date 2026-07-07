@@ -60,11 +60,9 @@ static aclnnStatus InnerMatmulAllReduceV3GetWorkspaceSize(
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGE_WITH_INVALID_ATTR("InnerMatmulAllReduceV3GetWorkspaceSize", "commMode",
-                commMode, "empty string, 'ccu' or 'ai_cpu'");
+                commMode, "'ccu' or 'ai_cpu'");
             return ACLNN_ERR_PARAM_INVALID;
         }
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
@@ -91,7 +89,7 @@ aclnnStatus aclnnMatmulAllReduceV3GetWorkspaceSize(
     const char* reduceOp, const char* commMode, int64_t commTurn, int64_t streamMode, const aclTensor* output,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t timeStampVal = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = MatmulAllReduceCheckParams(x1, x2, x3, bias, reduceOp, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -102,14 +100,14 @@ aclnnStatus aclnnMatmulAllReduceV3GetWorkspaceSize(
         x1, x2, bias, x3, group, reduceOp, commMode, commTurn, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV3, end ret %d", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(timeStampVal, dfxId);
     return ret;
 }
 
 aclnnStatus aclnnMatmulAllReduceV3(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t timeStampVal = NnopbaseMsprofSysTime();
     if (executor == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
         return ACLNN_ERR_INNER;
@@ -119,12 +117,12 @@ aclnnStatus aclnnMatmulAllReduceV3(
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
                 OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
         } else {
             OP_LOGD("A2 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
@@ -137,7 +135,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(timeStampVal, dfxId);
     return ACLNN_SUCCESS;
 }
 

@@ -129,196 +129,211 @@ static bool CheckEmptyTensorList(ContextParamsForPFATiling &contextKeyParams, in
     return true;
 }
 
+static bool GetKeyRopeSeqLenAndCheckBatch(gert::TilingContext *context,
+    ContextParamsForPFATiling &contextKeyParams, int64_t validBatchOfK,
+    int64_t keyRopeSDimIdx, int64_t &keyRopeS)
+{
+    keyRopeS = 0;
+    if (contextKeyParams.keyRopeInputShape != nullptr) {
+        keyRopeS = contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(keyRopeSDimIdx);
+        OP_CHECK_IF(contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0) != validBatchOfK,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "Batch of Key(%ld) do NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
+            contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0)),
+            return false);
+    }
+    return true;
+}
+
+static bool CheckNormalTensorListBSH(gert::TilingContext *context,
+    ContextParamsForPFATiling &contextKeyParams, int64_t validBatchOfK)
+{
+    auto standardKH = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
+    auto standardVH = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
+    int64_t keyRopeS = 0;
+    if (!GetKeyRopeSeqLenAndCheckBatch(context, contextKeyParams, validBatchOfK, 1, keyRopeS)) {
+        return false;
+    }
+
+    for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardKH) {
+            OP_LOGE(context->GetNodeName(),
+                "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardKH);
+            return false;
+        }
+        if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardVH) {
+            OP_LOGE(context->GetNodeName(),
+                "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardVH);
+            return false;
+        }
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
+            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
+            OP_LOGE(context->GetNodeName(), "S for Key(%ld) and Value(%ld) does NOT equal!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1));
+            return false;
+        }
+        if (contextKeyParams.keyRopeInputShape != nullptr) {
+            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) {
+                OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS);
+                return false;
+            }
+        }
+        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
+            uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
+    }
+    return true;
+}
+
+static bool CheckNormalTensorListBNSD(gert::TilingContext *context,
+    ContextParamsForPFATiling &contextKeyParams, int64_t validBatchOfK)
+{
+    auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(1);
+    auto standardKD = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
+    auto standardVD = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
+    int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
+                                                                     *contextKeyParams.headsNumber;
+    int64_t keyRopeS = 0;
+    if (!GetKeyRopeSeqLenAndCheckBatch(context, contextKeyParams, validBatchOfK, SHAPE_INDEX_TWO, keyRopeS)) {
+        return false;
+    }
+
+    if (tmpNKv != standardN) {
+        OP_LOGE(context->GetNodeName(), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
+            standardN, tmpNKv);
+        return false;
+    }
+
+    for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
+        if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN) ||
+            (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN)) {
+            OP_LOGE(context->GetNodeName(),
+                "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under "
+                "tensorlist mode!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1), tmpIdx + 1, standardN);
+            return false;
+        }
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
+            OP_LOGE(context->GetNodeName(),
+                "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD);
+            return false;
+        }
+        if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
+            OP_LOGE(context->GetNodeName(),
+                "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD);
+            return false;
+        }
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
+            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)) {
+            OP_LOGE(context->GetNodeName(), "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2));
+            return false;
+        }
+        if (contextKeyParams.keyRopeInputShape != nullptr) {
+            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
+                keyRopeS) {
+                OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), keyRopeS);
+                return false;
+            }
+        }
+        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
+            uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)));
+    }
+    return true;
+}
+
+static bool CheckNormalTensorListBSND(gert::TilingContext *context,
+    ContextParamsForPFATiling &contextKeyParams, int64_t validBatchOfK)
+{
+    auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
+    auto standardKD = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
+    auto standardVD = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
+    int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
+                                                                     *contextKeyParams.headsNumber;
+    int64_t keyRopeS = 0;
+    if (!GetKeyRopeSeqLenAndCheckBatch(context, contextKeyParams, validBatchOfK, 1, keyRopeS)) {
+        return false;
+    }
+
+    if (tmpNKv != standardN) {
+        OP_LOGE(context->GetNodeName(), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
+            standardN, tmpNKv);
+        return false;
+    }
+
+    for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
+        if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
+            standardN) ||
+            (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
+            standardN)) {
+            OP_LOGE(context->GetNodeName(),
+                "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under "
+                "tensorlist mode!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardN);
+            return false;
+        }
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
+            OP_LOGE(context->GetNodeName(),
+                "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD);
+            return false;
+        }
+        if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
+            OP_LOGE(context->GetNodeName(),
+                "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under "
+                "tensorlist mode!",
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD);
+            return false;
+        }
+        if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
+            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
+            OP_LOGE(context->GetNodeName(), "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
+                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1));
+            return false;
+        }
+        if (contextKeyParams.keyRopeInputShape != nullptr) {
+            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) {
+                OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS);
+                return false;
+            }
+        }
+        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
+            uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
+    }
+    return true;
+}
+
 static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsForPFATiling &contextKeyParams,
     const string layoutStr, int64_t validBatchOfK)
 {
-    if (layoutStr == "BSH") { // check all H across batches and KVs are the same under BSH layout
-        auto standardKH = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
-        auto standardVH = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
-        int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
-                                                                     *contextKeyParams.headsNumber;
-        int64_t keyRopeS = 0;
-
-        if (contextKeyParams.keyRopeInputShape != nullptr) {
-            keyRopeS = contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(1);
-            OP_CHECK_IF(contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0) != validBatchOfK,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "Batch of Key(%ld) do NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
-                contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0)),
-                return false);
-        }
-
-        for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
-            // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist
-            // are the same.
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardKH) {
-                OP_LOGE(context->GetNodeName(),
-                    "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardKH);
-                return false;
-            }
-            if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardVH) {
-                OP_LOGE(context->GetNodeName(),
-                    "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardVH);
-                return false;
-            }
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
-                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) { // k_s != v_s
-                OP_LOGE(context->GetNodeName(), "S for Key(%ld) and Value(%ld) does NOT equal!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1));
-                return false;
-            }
-            if (contextKeyParams.keyRopeInputShape != nullptr) {
-                if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
-                    OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
-                        contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS);
-                    return false;
-                }
-            }
-            contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
-        }
-    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND") { // check N and D, respectively, are the same
-        // across batches and KVs under BNSD/BNSD_BSND
-        auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(1);
-        auto standardKD = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
-        auto standardVD = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
-        int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
-                                                                     *contextKeyParams.headsNumber;
-        int64_t keyRopeS = 0;
-
-        if (contextKeyParams.keyRopeInputShape != nullptr) {
-            keyRopeS = contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(SHAPE_INDEX_TWO);
-            OP_CHECK_IF(contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0) != validBatchOfK,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "Batch of Key(%ld) do NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
-                contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0)),
-                return false);
-        }
-
-        if (tmpNKv != standardN) {
-            OP_LOGE(context->GetNodeName(), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
-                standardN, tmpNKv);
-            return false;
-        }
-
-        for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
-            if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN) ||
-                (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN)) {
-                OP_LOGE(context->GetNodeName(),
-                    "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under "
-                    "tensorlist mode!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1), tmpIdx + 1, standardN);
-                return false;
-            }
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
-                OP_LOGE(context->GetNodeName(),
-                    "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD);
-                return false;
-            }
-            if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
-                OP_LOGE(context->GetNodeName(),
-                    "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD);
-                return false;
-            }
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
-                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)) {
-                OP_LOGE(context->GetNodeName(), "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2));
-                return false;
-            }
-            if (contextKeyParams.keyRopeInputShape != nullptr) {
-                if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
-                    keyRopeS) { // k_s != krope_s
-                    OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
-                        contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), keyRopeS);
-                    return false;
-                }
-            }
-            contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)));
-        }
-    } else { // check N and D, respectively, are the same across batches and KVs under BSND
-        auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
-        auto standardKD = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
-        auto standardVD = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);
-        int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
-                                                                     *contextKeyParams.headsNumber;
-        int64_t keyRopeS = 0;
-
-        if (contextKeyParams.keyRopeInputShape != nullptr) {
-            keyRopeS = contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(1);
-            OP_CHECK_IF(contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0) != validBatchOfK,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "Batch of Key(%ld) do NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
-                contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0)),
-                return false);
-        }
-
-        if (tmpNKv != standardN) {
-            OP_LOGE(context->GetNodeName(), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
-                standardN, tmpNKv);
-            return false;
-        }
-
-        for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
-            if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
-                standardN) || // 2: The second dimension of the tensorlist represents n, in order to check whether all n
-                              // in the tensorlist are the same.
-                (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
-                standardN)) { // 2: The second dimension of the tensorlist represents n, in order to check whether all n
-                              // in the tensorlist are the same.
-                OP_LOGE(context->GetNodeName(),
-                    "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under "
-                    "tensorlist mode!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardN);
-                return false;
-            }
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
-                OP_LOGE(context->GetNodeName(),
-                    "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD);
-                return false;
-            }
-            if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
-                OP_LOGE(context->GetNodeName(),
-                    "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under "
-                    "tensorlist mode!",
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD);
-                return false;
-            }
-            if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
-                contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
-                OP_LOGE(context->GetNodeName(), "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
-                    contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
-                    contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1));
-                return false;
-            }
-            if (contextKeyParams.keyRopeInputShape != nullptr) {
-                if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
-                    OP_LOGE(context->GetNodeName(), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
-                        contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS);
-                    return false;
-                }
-            }
-            contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
-        }
+    bool ret = false;
+    if (layoutStr == "BSH") {
+        ret = CheckNormalTensorListBSH(context, contextKeyParams, validBatchOfK);
+    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND") {
+        ret = CheckNormalTensorListBNSD(context, contextKeyParams, validBatchOfK);
+    } else {
+        ret = CheckNormalTensorListBSND(context, contextKeyParams, validBatchOfK);
     }
-    contextKeyParams.isKvContinuous = 0;
-    return true;
+    if (ret) {
+        contextKeyParams.isKvContinuous = 0;
+    }
+    return ret;
 }
 
 static bool CheckTensorList(gert::TilingContext *context, ContextParamsForPFATiling &contextKeyParams,
