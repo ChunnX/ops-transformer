@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from core import CpuBase
 from core.utils.cpu_golden import tforward
+from core.utils.data_utils import pa_to_bnsd
 
 
 class CpuBackend(CpuBase):
@@ -99,7 +100,7 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     if layout == "BSND":
         return t.permute(0, 2, 1, 3).contiguous().clone().float()
     if layout.startswith("PA_"):
-        bnsd = _pa_to_bnsd(t, layout, params)
+        bnsd = pa_to_bnsd(t, layout, params)
         if params.get("layout_q", "") == "TND":
             # TND+PA: PA→BNSD后按 seqused_kv 紧密拼接，与纯 TND+TND 一致
             # result[0, n, cum_kv[b]+s, :] = bnsd[b, n, s, :]  (s < seqused_kv[b])
@@ -115,74 +116,3 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
             return result
         return bnsd.float()
     return t.clone().float()
-
-
-def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
-    """PA 格式 → BNSD 重建。"""
-    b   = params.get("actual_b", params["B"])  # TND 时 B=1，用 actual_b
-    n2  = params.get("N2", params["N1"])
-    d   = params["D"]
-    s2  = params["S2"]  # 用 S2，不是 max(seqused_kv)
-    seq_kv = params["seqused_kv"]
-    bs  = params.get("block_size", 128)
-    bt  = params.get("block_table")
-    if bt is None:
-        return t.clone()
-
-    if isinstance(bt, torch.Tensor):
-        bt = bt.cpu().numpy()
-    result = torch.zeros(b, n2, s2, d, dtype=t.dtype)
-
-    if layout == "PA_BBND":
-        for bi in range(b):
-            slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
-            nblk = (slen + bs - 1) // bs
-            for bj in range(nblk):
-                blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
-                if blk_id < 0 or blk_id >= t.shape[0]:
-                    continue
-                start = bj * bs
-                end = min(start + bs, slen)
-                cnt = end - start
-                if cnt > 0:
-                    result[bi, :, start:end, :] = t[blk_id, :cnt, :, :].permute(1, 0, 2)
-
-    elif layout == "PA_BNBD":
-        for bi in range(b):
-            slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
-            nblk = (slen + bs - 1) // bs
-            for bj in range(nblk):
-                blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
-                if blk_id < 0 or blk_id >= t.shape[0]:
-                    continue
-                start = bj * bs
-                end = min(start + bs, slen)
-                cnt = end - start
-                if cnt > 0:
-                    result[bi, :, start:end, :] = t[blk_id, :, :cnt, :]
-
-    elif layout == "PA_NZ":
-        dtype_str = params.get("dtype", "fp16")
-        blk_element = 16 if dtype_str in ("fp16", "bf16") else 32
-        d_actual = t.shape[2] * t.shape[4]
-        result = torch.zeros(b, n2, s2, d_actual, dtype=t.dtype)
-        for bi in range(b):
-            slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
-            nblk = (slen + bs - 1) // bs
-            for bj in range(nblk):
-                blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
-                if blk_id < 0 or blk_id >= t.shape[0]:
-                    continue
-                start = bj * bs
-                end = min(start + bs, slen)
-                cnt = end - start
-                if cnt > 0:
-                    block_data = t[blk_id, :, :, :cnt, :]
-                    block_data = block_data.permute(0, 2, 1, 3).reshape(
-                        block_data.shape[0], cnt, -1)
-                    result[bi, :, start:end, :] = block_data
-
-    else:
-        return t.clone()
-
-    return result

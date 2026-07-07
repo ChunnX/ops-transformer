@@ -100,3 +100,106 @@ def trans_bnsd_to_layout(tensor, layout_type, **kwargs):
         elif layout_type == "PA_BBND" or layout_type == "PA_BNBD" or layout_type == "PA_NZ":
             return rearrange_by_block_table(tensor, block_table, block_size, b, seqused_kv, layout_type, dtype)
         return tensor.clone()
+
+
+def _pa_bbnd_to_bnsd(t: torch.Tensor, params: dict) -> torch.Tensor:
+    b = params.get("actual_b", params["B"])
+    n2 = params.get("N2", params["N1"])
+    d = params["D"]
+    s2 = params["S2"]
+    seq_kv = params["seqused_kv"]
+    bs = params.get("block_size", 128)
+    bt = params.get("block_table")
+    if bt is None:
+        return t.clone()
+    if isinstance(bt, torch.Tensor):
+        bt = bt.cpu().numpy()
+    result = torch.zeros(b, n2, s2, d, dtype=t.dtype)
+    for bi in range(b):
+        slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
+        nblk = (slen + bs - 1) // bs
+        for bj in range(nblk):
+            blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
+            if blk_id < 0 or blk_id >= t.shape[0]:
+                continue
+            start = bj * bs
+            end = min(start + bs, slen)
+            cnt = end - start
+            if cnt > 0:
+                result[bi, :, start:end, :] = t[blk_id, :cnt, :, :].permute(1, 0, 2)
+    return result
+
+
+def _pa_bnbd_to_bnsd(t: torch.Tensor, params: dict) -> torch.Tensor:
+    b = params.get("actual_b", params["B"])
+    n2 = params.get("N2", params["N1"])
+    d = params["D"]
+    s2 = params["S2"]
+    seq_kv = params["seqused_kv"]
+    bs = params.get("block_size", 128)
+    bt = params.get("block_table")
+    if bt is None:
+        return t.clone()
+    if isinstance(bt, torch.Tensor):
+        bt = bt.cpu().numpy()
+    result = torch.zeros(b, n2, s2, d, dtype=t.dtype)
+    for bi in range(b):
+        slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
+        nblk = (slen + bs - 1) // bs
+        for bj in range(nblk):
+            blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
+            if blk_id < 0 or blk_id >= t.shape[0]:
+                continue
+            start = bj * bs
+            end = min(start + bs, slen)
+            cnt = end - start
+            if cnt > 0:
+                result[bi, :, start:end, :] = t[blk_id, :, :cnt, :]
+    return result
+
+
+def _pa_nz_to_bnsd(t: torch.Tensor, params: dict) -> torch.Tensor:
+    dtype_str = params.get("dtype", "fp16")
+    blk_element = 16 if dtype_str in ("fp16", "bf16") else 32
+    b = params.get("actual_b", params["B"])
+    n2 = params.get("N2", params["N1"])
+    s2 = params["S2"]
+    seq_kv = params["seqused_kv"]
+    bs = params.get("block_size", 128)
+    bt = params.get("block_table")
+    if bt is None:
+        return t.clone()
+    if isinstance(bt, torch.Tensor):
+        bt = bt.cpu().numpy()
+    d_actual = t.shape[2] * t.shape[4]
+    result = torch.zeros(b, n2, s2, d_actual, dtype=t.dtype)
+    for bi in range(b):
+        slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
+        nblk = (slen + bs - 1) // bs
+        for bj in range(nblk):
+            blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
+            if blk_id < 0 or blk_id >= t.shape[0]:
+                continue
+            start = bj * bs
+            end = min(start + bs, slen)
+            cnt = end - start
+            if cnt > 0:
+                block_data = t[blk_id, :, :, :cnt, :]
+                block_data = block_data.permute(0, 2, 1, 3).reshape(
+                    block_data.shape[0], cnt, -1)
+                result[bi, :, start:end, :] = block_data
+    return result
+
+
+_PA_TO_BNSD_DISPATCH = {
+    "PA_BBND": _pa_bbnd_to_bnsd,
+    "PA_BNBD": _pa_bnbd_to_bnsd,
+    "PA_NZ": _pa_nz_to_bnsd,
+}
+
+
+def pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
+    fn = _PA_TO_BNSD_DISPATCH.get(layout)
+    if fn is None:
+        return t.clone()
+    return fn(t, params)

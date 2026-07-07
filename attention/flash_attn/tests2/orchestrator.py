@@ -140,6 +140,18 @@ def _run_prof_stage(stage_name, func, case_id, result_dir):
         pass
 
 
+def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
+                  case_id: str, keep_pt: bool):
+    """执行阶段(若在stages中)并保存pt, 否则从pt加载, pt不存在则返回None。"""
+    if stage_name in stages:
+        output = compute_fn()
+        if keep_pt:
+            _save_pt(output, _pt_path(case_set, case_id, stage_name))
+        return output
+    pt = _pt_path(case_set, case_id, stage_name)
+    return _load_pt(pt) if pt.exists() else None
+
+
 # ============ Engine ============
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_pt: str = None, graph_path: int = 0,
@@ -165,32 +177,23 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         else:
             inputs = _load_pt(_pt_path(case_set, case_id, "input"))
 
-        if "cpu" in stages:
-            cpu_out = cpu.cpu_compute(inputs)
-            if keep_pt:
-                _save_pt(cpu_out, _pt_path(case_set, case_id, "cpu"))
-        else:
-            cpu_pt = _pt_path(case_set, case_id, "cpu")
-            cpu_out = _load_pt(cpu_pt) if cpu_pt.exists() else None
+        cpu_out = _exec_or_load(stages, "cpu", lambda: cpu.cpu_compute(inputs),
+                                case_set, case_id, keep_pt)
 
-        if "npu" in stages:
+        def _do_npu():
             dev_inputs = _to_device(inputs, "npu")
             with ThreadPoolExecutor(max_workers=1) as executor:
                 for attempt in range(max_retries + 1):
                     try:
                         future = executor.submit(npu.npu_compute, dev_inputs, graph_path)
-                        npu_out = future.result()
-                        break
+                        return future.result()
                     except Exception:
                         if attempt < max_retries:
                             continue
                         raise
-            if keep_pt:
-                _save_pt(npu_out, _pt_path(case_set, case_id, "npu"))
-            del dev_inputs
-        else:
-            npu_pt = _pt_path(case_set, case_id, "npu")
-            npu_out = _load_pt(npu_pt) if npu_pt.exists() else None
+
+        npu_out = _exec_or_load(stages, "npu", _do_npu,
+                                case_set, case_id, keep_pt)
 
         if "gpu" in stages:
             from core.gpu import GpuBackend

@@ -11,13 +11,6 @@ DEFAULT_TOLERANCE = {
 FAIL_RATIO_LIMIT = 0.005
 
 
-def get_tolerance(op_module, dtype) -> dict:
-    fn = getattr(op_module, "get_tolerance", None)
-    if fn is not None:
-        return fn(dtype)
-    return DEFAULT_TOLERANCE.get(dtype, {"atol": 1e-3, "rtol": 1e-3})
-
-
 def _resolve_tolerance(dtype, atol, rtol):
     default = DEFAULT_TOLERANCE.get(dtype, {"atol": 1e-3, "rtol": 1e-3})
     return (

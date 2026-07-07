@@ -1,6 +1,7 @@
 import torch
 
 from core import GpuBase
+from core.utils.data_utils import pa_to_bnsd
 
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func, flash_attn_with_kvcache
@@ -276,11 +277,10 @@ class GpuBackend(GpuBase):
         return q_tnd, cu_q
 
     def _pa_to_bnsd_pair(self, inputs, layout_kv, params):
-        from core.cpu import _pa_to_bnsd
         k_cpu = inputs["k"].cpu() if inputs["k"].device != torch.device("cpu") else inputs["k"]
         v_cpu = inputs["v"].cpu() if inputs["v"].device != torch.device("cpu") else inputs["v"]
-        k_bnsd = _pa_to_bnsd(k_cpu, layout_kv, params)
-        v_bnsd = _pa_to_bnsd(v_cpu, layout_kv, params)
+        k_bnsd = pa_to_bnsd(k_cpu, layout_kv, params)
+        v_bnsd = pa_to_bnsd(v_cpu, layout_kv, params)
         return k_bnsd, v_bnsd
 
     def _bnsd_to_tnd_packed(self, k_bnsd, v_bnsd, params):
