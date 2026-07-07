@@ -905,8 +905,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             template_run_mode,
             layout_kv,
         )
-        if cmp_k_bnsd is None: # 带压缩场景，但是不够一个压缩块
-            cmp_mask_mode = 0 # cmp_mask_mode 设置为0，防止拦截
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_indices = None
@@ -914,6 +912,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_k_bnsd = None
         cmp_kv_descale = None
 
+    if cmp_k_bnsd is None: # 如果cmp_k_bnsd为None
+            cmp_mask_mode = 0 # cmp_mask_mode 设置为0，防止拦截
     if layout_kv == "PA_BBND" and (
         template_run_mode == "HCA" or template_run_mode == "CSA"
     ) and cmp_k_in_pa_shape is not None:
