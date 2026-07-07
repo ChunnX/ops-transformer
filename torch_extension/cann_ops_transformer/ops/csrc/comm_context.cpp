@@ -117,8 +117,9 @@ private:
     void CollectRankBuffers(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, CommContext &mc2Context)
     {
         uint32_t ctxIndex = 0;
-        uint32_t rankId;
-        (void)HcclGetRankIdFunc(comm, &rankId);
+        uint32_t rankId = 0;
+        auto hcclRet = HcclGetRankIdFunc(comm, &rankId);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetRankIdFunc failed, ret: ", hcclRet);
         mc2Context.epRankId = rankId;
         const char *socName = GetSocName();
         void *remoteAddr = nullptr;
@@ -419,6 +420,7 @@ public:
         uint32_t *netLayerList = nullptr;
         uint32_t netLayerNum = 0;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
+        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
 
         uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
 
