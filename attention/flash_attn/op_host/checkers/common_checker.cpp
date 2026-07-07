@@ -425,7 +425,7 @@ ge::graphStatus CommonChecker::CheckNonPAKvContiguous(const FaTilingInfo &faInfo
     if (faInfo.pageAttentionFlag || faInfo.isTensorV1) {
         return ge::GRAPH_SUCCESS;
     }
-    int32_t dimIndex = 0;
+    const int32_t dimIndex = 0;
     const gert::Shape &keyShape = faInfo.opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = faInfo.opParamInfo.value.shape->GetStorageShape();
     OP_CHECK_IF((CheckTensorContiguous(keyShape.GetDimNum(), keyShape, faInfo.keyStrides, dimIndex) !=
