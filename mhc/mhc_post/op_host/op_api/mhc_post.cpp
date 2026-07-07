@@ -37,7 +37,9 @@ const aclTensor* MhcPostAICore(
 {
     L0_DFX(MhcPostAICore, x, hRes, hOut, hPost, output);
 
-    // 使用框架宏 ADD_TO_LAUNCHER_LIST_AICORE，将算子加入任务队列
+    auto ret = INFER_SHAPE(MhcPost, OP_INPUT(x, hRes, hOut, hPost), OP_OUTPUT(output));
+    OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return nullptr, "MhcPost InferShape failed.");
+
     auto retAicore = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPost,
         OP_INPUT(x, hRes, hOut, hPost),
