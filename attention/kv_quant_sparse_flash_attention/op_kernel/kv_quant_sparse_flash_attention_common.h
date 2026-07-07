@@ -176,6 +176,7 @@ struct ConstInfo {
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
     QSFA_LAYOUT outputLayout;          // 输出的Transpose格式
     uint32_t sparseMode = 0;
+    bool returnSoftmaxLse = false;
     bool needInit = false;
 
     // FlashDecoding
