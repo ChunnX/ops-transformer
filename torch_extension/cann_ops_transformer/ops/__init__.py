@@ -226,3 +226,4 @@ from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
 from . import graph_convert as _graph_convert
 from .block_sparse_attention import block_sparse_attention
+from .block_sparse_attention import block_sparse_attention_v3

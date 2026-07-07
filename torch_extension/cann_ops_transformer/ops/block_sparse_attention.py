@@ -152,6 +152,32 @@ def _validate_quant_mode(query, key, value, quant_mode,
 	Pre-condition: quant_mode is already validated by `_check_quant_mode`
 	at the entry point, so only the per-mode descale rules are checked here.
 	"""
+	# Count how many descale tensors are provided (all-or-none contract,
+	# mirrors C++ block_sparse_attention.cpp:176-179).
+	n_dequant = sum(t is not None for t in (q_dequant_scale, k_dequant_scale, v_dequant_scale))
+
+	if quant_mode == 0:
+		# FP16/BF16 path: descale tensors are only valid for the quantized
+		# paths (quant_mode=1 FP8 / quant_mode=2 mxfp4). Reject them here so
+		# eager + meta fail fast in Python instead of deep inside the C++ kernel
+		# (block_sparse_attention.cpp:194-197 surfaces the same rule, but only
+		# at run time). Partial sets are also rejected — mirrors the C++'
+		# all-or-none contract for the quantized paths.
+		if n_dequant != 0:
+			raise ValueError(
+				"q_dequant_scale/k_dequant_scale/v_dequant_scale must be None "
+				"for quant_mode=0 (FP16/BF16, no quantization); descale tensors "
+				"are only valid for quant_mode=1 (FP8) or quant_mode=2 (mxfp4)."
+			)
+		return
+
+	# quant_mode in (1, 2): descale tensors must all be provided (all-or-none).
+	if n_dequant != 3:
+		raise ValueError(
+			f"q_dequant_scale/k_dequant_scale/v_dequant_scale must all be provided "
+			f"for quant_mode={quant_mode} inputs (partial sets are not allowed)."
+		)
+
 	if quant_mode == 1:
 		# FP8: q/k/v must be float8_e4m3fn.
 		if query.dtype not in _FP8_DTYPES:
@@ -170,11 +196,6 @@ def _validate_quant_mode(query, key, value, quant_mode,
 				f"got {value.dtype}."
 			)
 		# descale tensors are mandatory for FP8 and must be float32.
-		if q_dequant_scale is None or k_dequant_scale is None or v_dequant_scale is None:
-			raise ValueError(
-				"q_dequant_scale/k_dequant_scale/v_dequant_scale can not be None "
-				"for quant_mode=1 (FP8) inputs (FP32 reverse-quant factors)."
-			)
 		if q_dequant_scale.dtype not in _FP8_DESCALE_DTYPES:
 			raise ValueError(
 				f"q_dequant_scale.dtype must be torch.float32 for "
@@ -206,11 +227,6 @@ def _validate_quant_mode(query, key, value, quant_mode,
 				f"quant_mode=2 (mxfp4) requires value.dtype to be torch.uint8, got {value.dtype}."
 			)
 		# descale tensors are mandatory for mxfp4 and must be float8_e8m0fnu.
-		if q_dequant_scale is None or k_dequant_scale is None or v_dequant_scale is None:
-			raise ValueError(
-				"q_dequant_scale/k_dequant_scale/v_dequant_scale can not be None "
-				"for quant_mode=2 (mxfp4) inputs (descale tensors)."
-			)
 		if q_dequant_scale.dtype not in _FP4_DESCALE_DTYPES:
 			raise ValueError(
 				f"q_dequant_scale.dtype must be torch.float8_e8m0fnu for "
@@ -318,10 +334,10 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 		def _meta(query, key, value, block_sparse_mask, block_shape,
 				actual_seq_lengths, actual_seq_lengths_kv,
 				num_heads, num_key_value_heads,
-				q_input_layout, kv_input_layout,
-				mask_type, quant_mode=0,
-				scale_value=1.0, inner_precise=0, block_size=0,
+				q_input_layout="BNSD", kv_input_layout="BNSD",
+				mask_type=0, scale_value=1.0, inner_precise=0, block_size=0,
 				pre_tokens=2147483647, next_tokens=2147483647, softmax_lse_flag=False,
+				quant_mode=0, dst_type_max=0,
 				q_dequant_scale=None, k_dequant_scale=None,
 				v_dequant_scale=None, attention_out_dtype=None):
 			# Mirror the C++ wrapper's input constraints (block_sparse_attention.cpp)
@@ -350,6 +366,13 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 					"q_dequant_scale, k_dequant_scale and v_dequant_scale must be "
 					"provided all together (FP8 dequant path) or all omitted "
 					"(FP16/BF16 path)"
+				)
+			# quant_mode=0 (FP16/BF16) must NOT carry descale tensors — mirrors
+			# _validate_quant_mode (eager path) and block_sparse_attention.cpp:194-197.
+			if quant_mode == 0 and n_dequant != 0:
+				raise RuntimeError(
+					"q_dequant_scale/k_dequant_scale/v_dequant_scale must be None "
+					"for quant_mode=0 (FP16/BF16, no quantization)"
 				)
 			if q_input_layout not in _LAYOUTS or kv_input_layout not in _LAYOUTS:
 				raise RuntimeError(
@@ -395,7 +418,7 @@ _op_module = _op_builder.load()      # JIT-compiles + loads block_sparse_attenti
 
 
 @impl(AS_LIBRARY, _op_builder.name, "PrivateUse1")
-def block_sparse_attention(query,
+def block_sparse_attention_v3(query,
 						key,
 						value,
 						block_sparse_mask,
@@ -407,13 +430,14 @@ def block_sparse_attention(query,
 						q_input_layout="BNSD",
 						kv_input_layout="BNSD",
 						mask_type=0,
-						quant_mode=0,
 						scale_value=1.0,
 						inner_precise=0,
 						block_size=0,
 						pre_tokens=2147483647,
 						next_tokens=2147483647,
 						softmax_lse_flag=False,
+						quant_mode=0,
+						dst_type_max=0,
 						q_dequant_scale=None,
 						k_dequant_scale=None,
 						v_dequant_scale=None,
@@ -484,9 +508,9 @@ def block_sparse_attention(query,
 		block_shape, actual_seq_lengths, actual_seq_lengths_kv,
 		num_heads, num_key_value_heads,
 		q_input_layout, kv_input_layout,
-		mask_type, quant_mode,
-		scale_value, inner_precise, block_size,
+		mask_type, scale_value, inner_precise, block_size,
 		pre_tokens, next_tokens, softmax_lse_flag,
+		quant_mode, dst_type_max,
 		q_dequant_scale, k_dequant_scale, v_dequant_scale,
 		resolved_out_dtype,
 	)
