@@ -247,6 +247,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
     }
 
+    // 【新增】dSink 第1步：tail ProcessNotFirst 完成后（dSinkAcc 累加完仍在 UB）、补偿段之前写回
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
+    }
+
     // 分核不均匀时部分核会少一个C核的全核同步
     if (this->processBS1ByCore < this->tilingData->baseParams.formerCoreProcessNNum) {
         if ASCEND_IS_AIC {
@@ -260,6 +265,13 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
                             this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
         }
+    }
+
+    // 【新增】dSink 第2步：补偿段之后、循环外，单 writer 跨核 reduce（仅 IS_DETER，ReduceDSink 内 constexpr 守护）
+    if ASCEND_IS_AIV {
+        LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
+        LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
+        this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
     }
     this->FreeEventID();
 }
@@ -291,6 +303,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+    }
+
+    // 【新增】dSink 第1步：非 deter 走 AtomicAdd 直写 dSinksGm（FinalizeDSinkAcc 内 IS_DETER=false 分支）
+    // 第2步 reduce 仅 deter，非 deter 不调用
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
     }
     this->FreeEventID();
 }

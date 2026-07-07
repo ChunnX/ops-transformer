@@ -27,6 +27,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
     const aclTensor *out,
     const aclTensor *softmaxMax,
     const aclTensor *softmaxSum,
+    const aclTensor *sinks,                    // 【新增】oss-sink 输入 [N1] FP32，OPTIONAL
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional,
@@ -43,6 +44,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
     const aclTensor *dValueOut,
     const aclTensor *dQueryRopeOutOptional,
     const aclTensor *dKeyRopeOutOptional,
+    const aclTensor *dSinksOptional,           // 【新增】sink 梯度 [N1] FP32，OPTIONAL
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

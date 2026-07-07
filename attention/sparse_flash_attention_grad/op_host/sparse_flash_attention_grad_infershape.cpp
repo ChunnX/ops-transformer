@@ -30,6 +30,7 @@ enum class InputIndex : uint32_t {
     ATTENTION_OUT,
     SOFTMAX_MAX,
     SOFTMAX_SUM,
+    SINKS,          // 【新增】oss-sink 输入 [N1] FP32，OPTIONAL
     VALUE,
     ACTUAL_SEQ_Q_LEN,
     ACTUAL_SEQ_KV_LEN,
@@ -42,7 +43,8 @@ enum class OutputIndex : uint32_t {
     DK,
     DV,
     DQ_ROPE,
-    DK_ROPE
+    DK_ROPE,
+    D_SINKS         // 【新增】sink 梯度 [N1] FP32，OPTIONAL
 };
 
 enum class AttrIndex : uint32_t {
@@ -60,6 +62,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     const gert::Shape *queryShape = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
     const gert::Shape *keyShape = context->GetInputShape(static_cast<size_t>(InputIndex::KEY));
     const gert::Shape *valueShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    const gert::Shape *sinksShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINKS)); // 【新增】
     const gert::Shape *queryRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::Q_ROPE));
     const gert::Shape *keyRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::K_ROPE));
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -106,6 +109,16 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
         *dkRopeShape = *keyRopeShape;
     }
 
+    // 【新增】d_sinks shape 随 sinks：sinks 存在时 = sinks shape ([N1])，否则强制返回空 (shape [0])
+    gert::Shape *dSinksShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::D_SINKS));
+    OP_CHECK_NULL_WITH_CONTEXT(context, dSinksShape);
+    if (sinksShape != nullptr && sinksShape->GetDimNum() > 0) {
+        *dSinksShape = *sinksShape;
+    } else {
+        dSinksShape->SetDimNum(1);
+        dSinksShape->SetDim(0, 0);
+    }
+
     return GRAPH_SUCCESS;
 }
 
@@ -121,6 +134,8 @@ ge::graphStatus InferDataType4SparseFlashAttentionGrad(gert::InferDataTypeContex
     context->SetOutputDataType(static_cast<size_t>(OutputIndex::DV), dtype);
     context->SetOutputDataType(static_cast<size_t>(OutputIndex::DQ_ROPE), dtype);
     context->SetOutputDataType(static_cast<size_t>(OutputIndex::DK_ROPE), dtype);
+    // 【新增】d_sinks 全程 FP32（与 sinks 及数学链一致，不随 query dtype）
+    context->SetOutputDataType(static_cast<size_t>(OutputIndex::D_SINKS), ge::DT_FLOAT);
 
     return GRAPH_SUCCESS;
 }

@@ -22,6 +22,10 @@
  namespace optiling {
  namespace sfag {
  constexpr int64_t MAX_CORE_NUM = 36;
+
+ // 【新增】sink 增量：N1 维最大头数，dSink 跨核 reduce 第2步 bulk DataCopy 寻址用
+ // 每 AIC 1 slot = MAX_N1 × FP32(4B) = 512B，单 writer 一次搬 usedCoreNum 个 slot
+ constexpr int64_t MAX_N1 = 128;
  
  class SparseFlashAttentionGradBaseParamsRegbase {
  public:
@@ -137,7 +141,10 @@
      int64_t dqWorkSpaceOffset;
      int64_t dkWorkSpaceOffset;
      int64_t dvWorkSpaceOffset;
- 
+     // 【新增】dSink 跨核累加中间 workspace 在 GM 的起始字节偏移
+     // 仅确定性 + HAS_SINKS 时非 0（非 deter 走 AtomicAdd 直写 dSinksGm，无需中间 workspace）
+     int64_t dSinkWorkSpaceOffset;
+
      int64_t get_postUbBaseSize() const { return postUbBaseSize; }
      int64_t get_qPostBlockFactor() const { return qPostBlockFactor; }
      int64_t get_qPostBlockTotal() const { return qPostBlockTotal; }
@@ -154,6 +161,7 @@
      int64_t get_dqWorkSpaceOffset() const { return dqWorkSpaceOffset; }
      int64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
      int64_t get_dvWorkSpaceOffset() const { return dvWorkSpaceOffset; }
+     int64_t get_dSinkWorkSpaceOffset() const { return dSinkWorkSpaceOffset; }
  
      void set_postUbBaseSize(int64_t value) { this->postUbBaseSize = value; }
      void set_qPostBlockFactor(int64_t value) { this->qPostBlockFactor = value; }
@@ -171,6 +179,7 @@
      void set_dqWorkSpaceOffset(int64_t value) { this->dqWorkSpaceOffset = value; }
      void set_dkWorkSpaceOffset(int64_t value) { this->dkWorkSpaceOffset = value; }
      void set_dvWorkSpaceOffset(int64_t value) { this->dvWorkSpaceOffset = value; }
+     void set_dSinkWorkSpaceOffset(int64_t value) { this->dSinkWorkSpaceOffset = value; }
  };
 
  class SparseFlashAttentionGradTilingDataRegbase {
