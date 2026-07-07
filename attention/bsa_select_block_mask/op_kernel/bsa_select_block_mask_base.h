@@ -57,9 +57,9 @@ private:
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     __aicore__ inline void CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow);
     __aicore__ inline void CalcKPoolingRange(uint32_t &startKBlock, uint32_t &endKBlock);
-    __aicore__ inline void ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx, uint64_t seqPrefixSumKV);
     __aicore__ inline void ProcessPoolingQ(uint32_t batchIdx, uint32_t headIdx,
-                                           uint32_t tokenStart, uint32_t tokenEnd);
+                                           uint32_t tokenStart, uint32_t tokenEnd, uint64_t seqPrefixSumQ);
     __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx,
                                                 uint32_t qChunkStart, uint32_t curQChunkSize);
     __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize,
@@ -244,7 +244,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
         vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm,
-                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm);
+                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm,
+                             actualSeqLensQGm, actualSeqLensKVGm);
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
         radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskOutGmU8);
@@ -271,10 +272,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
     uint32_t startRow, endRow;
     CalcMultiCoreOffset(startRow, endRow);
 
+    // TND 布局下各 batch 的 token 在 GM 中变长拼接，需用前缀和计算 batch 偏移。
+    // 在 batch 循环外初始化为 0，每个 batch 结束后累加该 batch 的实际序列长度，
+    // 避免在每次 PoolingSingleQ/KBlock 调用中重复从 GM 读取 actualSeqLens 做 O(B²) 前缀和。
+    // BNSD 布局下 seqPrefixSum 不被使用（pool 的 BNSD 分支忽略），保持为 0 不影响行为。
+    uint64_t seqPrefixSumQ = 0;
+    uint64_t seqPrefixSumKV = 0;
+
     for (uint32_t batchIdx = 0; batchIdx < constInfo.batchSize; batchIdx++) {
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
 
-            ProcessPoolingK(batchIdx, headIdx);
+            ProcessPoolingK(batchIdx, headIdx, seqPrefixSumKV);
             AscendC::PipeBarrier<PIPE_ALL>();
             SyncAll<false>();
 
@@ -287,7 +295,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                 // q 的行数
                 uint32_t tokenStart = qChunkStart * constInfo.blockShapeX;
                 uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
-                ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
+                ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd, seqPrefixSumQ);
 
                 if ASCEND_IS_AIV {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
@@ -309,6 +317,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
             }
             SyncAll();
         }
+
+        // 当前 batch 处理完毕，累加其序列长度为下一个 batch 准备前缀和。
+        // 仅 TND 布局需要；BNSD 分支由 constexpr 消除，不会访问 actualSeqLens GM（BNSD 下可能为空）。
+        if (batchIdx + 1 < constInfo.batchSize) {
+            if constexpr (LAYOUT_Q == BSALayout::TND) {
+                seqPrefixSumQ += static_cast<uint64_t>(actualSeqLensQGm.GetValue(batchIdx));
+            }
+            if constexpr (LAYOUT_KV == BSALayout::TND) {
+                seqPrefixSumKV += static_cast<uint64_t>(actualSeqLensKVGm.GetValue(batchIdx));
+            }
+        }
     }
 
     if ASCEND_IS_AIV {
@@ -320,7 +339,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx)
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx,
+                                                                     uint64_t seqPrefixSumKV)
 {
     if ASCEND_IS_AIV {
         if (constInfo.aivIdx >= constInfo.activeYVecCoreNum) {
@@ -331,14 +351,14 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t ba
 
         for (uint32_t kBlockIdx = startKBlock; kBlockIdx < endKBlock; kBlockIdx++) {
             vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx,
-                                              keyGm, actualBlockLenKVGm, kCmpGm);
+                                              keyGm, actualBlockLenKVGm, kCmpGm, seqPrefixSumKV);
         }
     }
 }
 
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(
-    uint32_t batchIdx, uint32_t headIdx, uint32_t tokenStart, uint32_t tokenEnd)
+    uint32_t batchIdx, uint32_t headIdx, uint32_t tokenStart, uint32_t tokenEnd, uint64_t seqPrefixSumQ)
 {
     if ASCEND_IS_AIV {
         uint32_t coreIdx = constInfo.aivIdx; // vec idx
@@ -367,7 +387,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(
 
         for (uint32_t qBlockIdx = startQBlockIdx; qBlockIdx < endQBlockIdx; qBlockIdx++) {
             vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx,
-                                                queryGm, actualBlockLenQGm, qCmpGm);
+                                                queryGm, actualBlockLenQGm, qCmpGm, seqPrefixSumQ);
         }
     }
 }

@@ -162,15 +162,23 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
         dSize = queryShape.GetDim(3);
         tilingKeyLayoutQ = LayoutType::LAYOUT_BNSD;
     } else if (qLayoutLen == 3UL && queryLayout[0] == 'T' && queryLayout[1] == 'N') {
+        // TND 排布：[TotalSeq, Heads, Dim]；Batch 从 actualSeqLens 推导
         numHeads = queryShape.GetDim(1);
-        maxQSeqlen = queryShape.GetDim(0);
         dSize = queryShape.GetDim(2);
         batchSize = 1;
+        maxQSeqlen = 0;
         tilingKeyLayoutQ = LayoutType::LAYOUT_TND;
 
         auto actualSeqLensQTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENS_Q_INPUT_INDEX);
         if (actualSeqLensQTensor != nullptr && actualSeqLensQTensor->GetShape().GetStorageShape().GetDimNum() != 0) {
             batchSize = actualSeqLensQTensor->GetShape().GetStorageShape().GetDim(0);
+            auto seqLensQ = actualSeqLensQTensor->GetData<int64_t>();
+            if (batchSize > 0) {
+                maxQSeqlen = static_cast<uint32_t>(seqLensQ[0]);
+                for (uint32_t i = 1; i < batchSize; i++) {
+                    maxQSeqlen = std::max(maxQSeqlen, static_cast<uint32_t>(seqLensQ[i]));
+                }
+            }
         }
     } else {
         OP_LOGE(opName, "Unsupported query layout[%s].", queryLayout);
@@ -181,8 +189,21 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
         maxKvSeqlen = keyShape.GetDim(2);
         tilingKeyLayoutKV = LayoutType::LAYOUT_BNSD;
     } else if (kvLayoutLen == 3UL && kvLayout[0] == 'T' && kvLayout[1] == 'N') {
-        maxKvSeqlen = keyShape.GetDim(0);
         tilingKeyLayoutKV = LayoutType::LAYOUT_TND;
+        maxKvSeqlen = 0;
+        auto actualSeqLensKVTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENS_KV_INPUT_INDEX);
+        if (actualSeqLensKVTensor != nullptr && actualSeqLensKVTensor->GetShape().GetStorageShape().GetDimNum() != 0) {
+            uint32_t kvBatch = actualSeqLensKVTensor->GetShape().GetStorageShape().GetDim(0);
+            auto seqLensKV = actualSeqLensKVTensor->GetData<int64_t>();
+            if (kvBatch > 0) {
+                maxKvSeqlen = static_cast<uint32_t>(seqLensKV[0]);
+                for (uint32_t i = 1; i < kvBatch; i++) {
+                    maxKvSeqlen = std::max(maxKvSeqlen, static_cast<uint32_t>(seqLensKV[i]));
+                }
+            }
+        } else {
+            maxKvSeqlen = keyShape.GetDim(0);
+        }
     } else {
         OP_LOGE(opName, "Unsupported kv layout[%s].", kvLayout);
         return false;
