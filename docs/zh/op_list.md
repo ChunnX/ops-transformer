@@ -533,7 +533,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
-    <td>AI Core</td>
+    <td>AI CPU</td>
     <td>sparse_lightning_indexer_kl_loss_grad算子的前置算子，用于计算sparse_lightning_indexer_kl_loss_grad的负载均衡。</td>
   </tr>
   <tr>
