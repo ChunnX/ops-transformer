@@ -69,7 +69,7 @@ Q_BLOCK_SIZE = 128
 KV_BLOCK_SIZE = 256
 
 # 物理 block 数量，0 表示使用默认值（等于 total_blocks）
-NUM_BLOCKS = 123
+NUM_BLOCKS = 0
 
 SAVE_PT = False
 SAVE_PT_DIR = ''
