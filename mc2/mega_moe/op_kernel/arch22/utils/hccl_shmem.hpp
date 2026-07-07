@@ -100,7 +100,6 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
     return;
 }
 
-#ifdef HCCL_COMM
 FORCE_INLINE_AICORE void AIVRDMAPostSend(
     GM_ADDR srcDmaAddr,
     GM_ADDR destDmaAddr,
@@ -190,12 +189,10 @@ FORCE_INLINE_AICORE void AIVRDMAPostSend(
     AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHead, copyParamsHead);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
-#endif
 
 template <bool IS_A2>
 class HcclShmem {
 public:
-#ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
     std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
                       __gm__ HcclOpResParam *> WinContext_{nullptr};
     AscendC::LocalTensor<int32_t> ub;
@@ -219,26 +216,10 @@ public:
         m_segmentSize = WinContext_->winSize;
         m_tailReservedSize = m_rankSize * STATE_OFFSET;
     }
-#else
-    FORCE_INLINE_AICORE
-    HcclShmem()
-    {
-        m_segmentSize = SHMEM_MEM;
-    }
-    FORCE_INLINE_AICORE
-    void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize)
-    {
-        symmetricPtr = symmetricPtr_;
-        m_rank = rank;
-        m_rankSize = rankSize;
-        m_tailReservedSize = rankSize * STATE_OFFSET;
-    }
-#endif
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()() const
     { // No parameters: return pointer to local peermem
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
@@ -248,15 +229,11 @@ public:
         } else {
             return (GM_ADDR)(WinContext_->localWindowsIn);
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()(int32_t index) const
     { // With index parameter: return pointer to the base address of remote peermem
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsIn[index]);
@@ -272,15 +249,11 @@ public:
                                  WinContext_->localWindowsIn :
                                  ((HcclRankRelationResV2 *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()(int64_t offset, int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if (offset < 0 || offset >= m_segmentSize) {
             return nullptr;
         }
@@ -302,9 +275,6 @@ public:
                                  WinContext_->localWindowsIn :
                                  ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
-#endif
     }
 
     // A2-only helpers: return windowsOut addresses.
@@ -312,7 +282,6 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr() const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
@@ -322,15 +291,11 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[rankId]);
@@ -344,15 +309,11 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int64_t offset, int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
@@ -366,9 +327,6 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
@@ -443,7 +401,6 @@ public:
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
 
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
         AscendC::GlobalTensor<int32_t> gmCrossServerPayload;
@@ -474,7 +431,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         }
-#endif
 
         // Phase 1: post every outbound write. RDMA is async, so we must finish
         // posting all WQEs before any local poll (otherwise an intra-server peer
@@ -483,7 +439,6 @@ public:
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
             __gm__ int64_t* sync_remote =
                 (__gm__ int64_t*)((*this)(i)) + flag_offset_i64 + m_rank * 8;
-#ifdef HCCL_COMM
             if constexpr (IS_A2) {
                 int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
                 int32_t dstServerId   = i / SERVER_RANK_SIZE_A2;
@@ -499,7 +454,6 @@ public:
                     continue;
                 }
             }
-#endif
             gm_store(sync_remote, count);
             gm_dcci((__gm__ uint8_t*)sync_remote);
         }
@@ -563,18 +517,15 @@ public:
         ctrBuffer.SetValue(0, epStateValue_);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
         if constexpr (IS_A2) {
             rdmaUbLocal = ctrBuffer[UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint64_t>();
             rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
         }
-#endif
         for (uint32_t dstEpIdx = vec_id; dstEpIdx < m_rankSize; dstEpIdx += vec_size) {
             AscendC::GlobalTensor<int32_t> gmDstStates;
             gmDstStates.SetGlobalBuffer((__gm__ int32_t*)((*this)(flag_offset, dstEpIdx)));
-#ifdef HCCL_COMM
             if constexpr (IS_A2) {
                 int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
                 int32_t dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
@@ -595,7 +546,6 @@ public:
                     continue;
                 }
             }
-#endif
             AscendC::DataCopy(gmDstStates, ctrBuffer, 8);
         }
         AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
