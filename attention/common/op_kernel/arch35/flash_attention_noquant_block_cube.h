@@ -1592,13 +1592,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
         }
-        // 通知
-        mm1A.Set<HardEvent::MTE2_MTE1>(); 
+        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知MTE2_MTE1
     } else { // 非S2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
         // 左矩阵复用时，sinner循环内不需要MTE2同步等待
-        // 通知
-        mm1A.Set<HardEvent::MTE2_MTE1>(); 
+        mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知mm1A
     }
 
     // 加载当前轮的右矩阵到L1
@@ -1751,8 +1749,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
                 CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset],
                     runInfo.s1RealSize, realK, constInfo.mm1Ka);
             }
-            // 通知
-            mm1A.Set<HardEvent::MTE2_MTE1>(); 
+            mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知HardEvent::MTE2_MTE1
         } else { 
             // 非s2的第一次循环直接复用Q
             mm1A = l1QBuffers.GetPre();
