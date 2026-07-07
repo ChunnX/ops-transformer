@@ -430,10 +430,10 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
             std::to_string(sizeOfSingleM).c_str(), "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
         return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 16UL) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB even after splitting M into 63 parts"),
+            std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB even after splitting M into 16 parts"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

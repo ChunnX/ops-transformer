@@ -23,7 +23,7 @@
 namespace optiling {
 
 constexpr uint64_t HCCL_MEM_LIMIT = 268435456;  // 256MB
-constexpr uint64_t HCCL_MAX_TOTAL_TILES = 63;   // 总通信次数上限
+constexpr uint64_t HCCL_MAX_TOTAL_TILES = 16;   // 总通信次数上限
 constexpr uint64_t ALIGN_LEN = 256;             // tileM对齐长度
 constexpr uint64_t TILE_M_CANDIDATES[] = {16384, 8192, 4096, 2048, 1024, 512, 256};  // 优选候选值
 
