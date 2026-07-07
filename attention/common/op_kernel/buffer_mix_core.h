@@ -192,16 +192,16 @@ public:
     }
 
     template <typename T>
-    __aicore__ inline TargetTensorType<T> GetTensor()
-    {
-        return tensor_.template ReinterpretCast<T>();
-    }
-
-    template <typename T>
     __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex)
     {
         TargetTensorType<T> tmpTensor = tensor_.template ReinterpretCast<T>();
         return tmpTensor[startindex];
+    }
+
+    template <typename T>
+    __aicore__ inline TargetTensorType<T> GetTensor()
+    {
+        return tensor_.template ReinterpretCast<T>();
     }
 
 private:
