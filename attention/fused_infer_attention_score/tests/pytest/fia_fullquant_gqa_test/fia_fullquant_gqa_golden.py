@@ -43,9 +43,9 @@ Q_SCALE_LAYOUT = "NT"
 KV_CACHE_LAYOUT = "BnNBsD"
 
 # Data Range
-Q_DATA_RANGE = (-400, 400)
-K_DATA_RANGE = (-400, 400)
-V_DATA_RANGE = (-400, 400)
+Q_DATA_RANGE = (-1, 1)
+K_DATA_RANGE = (-1, 1)
+V_DATA_RANGE = (-1, 1)
 
 ENABLE_PA = True
 ENABLE_LSE = True
@@ -67,6 +67,9 @@ EPSILON = 1e-20
 
 Q_BLOCK_SIZE = 128
 KV_BLOCK_SIZE = 256
+
+# 物理 block 数量，0 表示使用默认值（等于 total_blocks）
+NUM_BLOCKS = 159
 
 SAVE_PT = False
 SAVE_PT_DIR = ''
@@ -113,12 +116,18 @@ def quant_fp16_to_fp8(tensor, scale):
     result = torch.clamp(result, -448.0, 448.0)
     return result.to(FP8_DTYPE).contiguous()
 
-def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE):
+def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE, num_blocks=0):
     """创建 block table"""
     block_num_per_batch = [math.ceil(int(seq_len) / block_size) for seq_len in actual_seq_kv]
     total_blocks = sum(block_num_per_batch)
     max_blocks = max(block_num_per_batch)
-    block_idx_list = np.random.default_rng(seed).permutation(np.arange(total_blocks, dtype=np.int32))
+
+    if num_blocks != 0:
+        # 使用指定的 num_blocks 个物理 block，有放回地填充 total_blocks 个 slot
+        block_idx_list = np.random.default_rng(seed).integers(0, num_blocks, size=total_blocks, dtype=np.int32)
+    else:
+        block_idx_list = np.random.default_rng(seed).permutation(np.arange(total_blocks, dtype=np.int32))
+
     block_table = np.full((len(actual_seq_kv), max_blocks), -1, dtype=np.int32)
     idx = 0
 
@@ -127,7 +136,7 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE):
         idx += block_num
     return block_table
 
-def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_table):
+def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_table, num_blocks=0):
     """BNSD to PA K cache, with k scale (fp32) stored in the 4 extra rows"""
     k_fp8_bnsd = k_fp8_bnsd.contiguous()
     k_scale_fp32_bnsd = k_scale_fp32_bnsd.contiguous()
@@ -135,8 +144,9 @@ def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_t
     scale_rows = 4
     block_num_per_seq = [math.ceil(s / block_size) for s in seq_lens]
     total_blocks = sum(block_num_per_seq)
+    cache_blocks = num_blocks if num_blocks != 0 else total_blocks
 
-    cache = torch.zeros((total_blocks, N_dim, block_size + scale_rows, D_dim),
+    cache = torch.zeros((cache_blocks, N_dim, block_size + scale_rows, D_dim),
                         dtype=torch.uint8, device=k_fp8_bnsd.device).contiguous()
 
     for b in range(B_dim):
@@ -157,18 +167,19 @@ def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_t
                 flat_scale[:, :valid] = scales_all
             cache[blockid, :, block_size:block_size + scale_rows, :] = scale_buf.view(torch.uint8).reshape(N_dim, scale_rows, D_dim)
 
-    return cache.view(FP8_DTYPE).reshape(total_blocks, N_dim, block_size + scale_rows, D_dim).contiguous()
+    return cache.view(FP8_DTYPE).reshape(cache_blocks, N_dim, block_size + scale_rows, D_dim).contiguous()
 
-def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table):
+def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0):
     """BNSD to V cache - V cache 使用 FP8 类型"""
     tensor_bnsd = tensor_bnsd.contiguous()
     device = tensor_bnsd.device
     batch, heads, S, dim = tensor_bnsd.shape
     block_num_per_batch = [math.ceil(int(s) / block_size) for s in seq_lens]
     total_blocks = sum(block_num_per_batch)
+    cache_blocks = num_blocks if num_blocks != 0 else total_blocks
 
     # V cache 使用 FP8 类型
-    out_cache = torch.zeros((total_blocks, heads, block_size + 4, dim),
+    out_cache = torch.zeros((cache_blocks, heads, block_size + 4, dim),
                             dtype=FP8_DTYPE, device=device).contiguous()
 
     for b in range(batch):
@@ -802,11 +813,11 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
 
     if ENABLE_PA or not GOLDEN_MODE:
         # 在CPU上准备block table和cache
-        block_table = create_block_table(ACTUAL_SEQ_KV, BLOCK_SIZE)
+        block_table = create_block_table(ACTUAL_SEQ_KV, BLOCK_SIZE, num_blocks=NUM_BLOCKS)
         block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
         # 生成k和v的cache
-        k_pa = bnsd_to_k_cache(k_fp8, dequant_scale_k, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
-        v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
+        k_pa = bnsd_to_k_cache(k_fp8, dequant_scale_k, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS)
+        v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS)
 
         # 重要！！！此处取出deq_k其实没用，因为传入NPU时会使用.npu(), 导致stride变成连续的！！！
         # 在这里取出deq_k只是为了保存为pt文件（其实也用不到deq_k的pt文件）
