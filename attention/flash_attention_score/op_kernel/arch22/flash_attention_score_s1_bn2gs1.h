@@ -1179,6 +1179,7 @@ FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_TEMPLATE>::ProcessVec1(S
     event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     event_t eventIdVToMte2A = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     event_t eventIdVToMte2B = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+    event_t eventIdVToMte2C = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     event_t eventIdMte3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
     event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
     event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -1216,6 +1217,8 @@ FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_TEMPLATE>::ProcessVec1(S
                 PseSlopeCopyIn<T, hasPse>(commonTBuf, pseUb, this->pseSlope, this->pseAlibiGm, this->pseInfo, 64);
             } else {
                 LocalTensor<INPUT_T> pseUb = this->pseTBuf.template Get<INPUT_T>();
+                AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2C);
+                AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2C);
                 PseCopyIn<INPUT_T, T, layOutType, hasPse>(commonTBuf, pseUb, this->pseGm, this->pseInfo, 64);
                 if constexpr (IsSameType<INPUT_T, float>::value) {
                     AscendC::SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
@@ -1379,6 +1382,7 @@ FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_TEMPLATE>::ProcessVec1(S
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMte2ToV);
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMte2A);
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMte2B);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMte2C);
     return;
 }
 
@@ -1619,6 +1623,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     uint32_t bmm1ResOriginShape[] = {static_cast<uint32_t>(vecS1TailSize),
                                      static_cast<uint32_t>(extraInfo.s2RealSizeAlign64)};
 
+    AscendC::PipeBarrier<PIPE_V>();
     if constexpr (hasAtten == false) {
         uint64_t mask[2] = {extraInfo.duplicateMask, 0};
         Duplicate<T>(srcTensor[extraInfo.s2RealSizeFloorAlign8], this->negativeFloatScalar, mask, vecS1TailSize,
