@@ -180,6 +180,30 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
     return ge::GRAPH_SUCCESS;
 }
 
+// check pse shape
+ge::graphStatus PagedAttentionChecker::CheckPseShape(const FiaTilingInfo &fiaInfo)
+{
+    if (!fiaInfo.pseShiftFlag) {
+        // 若不使能pse，则放弃后续校验
+        return ge::GRAPH_SUCCESS;
+    }
+    // Page attention使能场景下，传入的PseShift的最后一维需要大于等于maxBlockNumPerSeq * blockSize
+    if (*fiaInfo.opParamInfo.pseType != 0) {
+        uint32_t pseShiftS2 = fiaInfo.pseShiftS2;
+        int32_t blockSize = fiaInfo.blockSize;
+        uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
+        if (pseShiftS2 < maxBlockNumPerBatch * blockSize) {
+            std::string reason = "The last axis of pse_shift must be greater than or equal to maxBlockNumPerBatch(" +
+                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) +
+                ") when page attention is enabled";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift",
+                ToStringRaw(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 // check pa cache shape
 ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &fiaInfo, const gert::Shape &tempShape,
     const std::string &inputName, uint32_t compareD, const std::string &shapeStr) const
@@ -731,6 +755,7 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
         ge::GRAPH_SUCCESS != CheckBlockSizeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckMaskShape(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckPseShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckQDtypeSupport(fiaInfo)) {
             return ge::GRAPH_FAILED;
