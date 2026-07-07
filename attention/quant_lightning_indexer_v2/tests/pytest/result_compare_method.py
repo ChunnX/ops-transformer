@@ -203,15 +203,8 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
         only_in_npu_list = list(only_in_npu)
         only_in_cpu_list = list(only_in_cpu)
         for diff_idx in range(len(only_in_npu_list)):
-            idx_npu = only_in_npu_list[diff_idx]
-            idx_cpu = only_in_cpu_list[diff_idx]
-            # 防止越界崩溃：索引超出打分向量范围时直接输出cpu和npu的value值，不做对比
-            if idx_npu >= element_list.shape[0] or idx_cpu >= element_list.shape[0]:
-                print(f'[skip] bsn={bsn} 越界TopK索引: npu_idx={idx_npu}, cpu_idx={idx_cpu}, '
-                    f'k_seq={element_list.shape[0]}')
-                continue
-            element_npu = element_list[idx_npu]
-            element_cpu = element_list[idx_cpu]
+            element_npu = element_list[only_in_npu_list[diff_idx]]
+            element_cpu = element_list[only_in_cpu_list[diff_idx]]
             npu_ae = abs(element_npu - value_bm)
             cpu_ae = abs(element_cpu - value_bm)
             if value_bm == 0:
