@@ -487,7 +487,7 @@ public:
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         curS2Start = 0U;
-        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
+        curS2End = static_cast<uint32_t>(cachedS2LoopTimes);
         if ((bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
             headS2Split = constInfo.s2OStart != 0U;
             curS2Start = constInfo.s2OStart;
@@ -633,8 +633,8 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = prevBIdx;
+        info.n2Idx = bN2Cur - prevBIdx * constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -648,9 +648,8 @@ public:
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+        if (gS1Cur + 1 == cachedG1S1LoopTimes) {
+            info.actMSize = actSeqLensQ * constInfo.gSize - gS1Cur * mBaseSize;
         }
 
         info.actSingleLoopS2Size = s2BaseSize;
