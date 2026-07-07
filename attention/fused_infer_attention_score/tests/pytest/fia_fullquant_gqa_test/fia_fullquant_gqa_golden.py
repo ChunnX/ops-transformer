@@ -27,12 +27,12 @@ GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
-N_q = 1
-N_kv = 1
+N_q = 16
+N_kv = 2
 D = 128
 
-ACTUAL_SEQ_Q = [128]
-ACTUAL_SEQ_KV = [256]
+ACTUAL_SEQ_Q = [2048]
+ACTUAL_SEQ_KV = [2048]
 
 # Layout 选择
 INPUT_LAYOUT = "NTD_TND"
@@ -43,9 +43,9 @@ Q_SCALE_LAYOUT = "NT"
 KV_CACHE_LAYOUT = "BnNBsD"
 
 # Data Range
-Q_DATA_RANGE = (-400, 400)
-K_DATA_RANGE = (-400, 400)
-V_DATA_RANGE = (-400, 400)
+Q_DATA_RANGE = (-1, 1)
+K_DATA_RANGE = (-1, 1)
+V_DATA_RANGE = (-1, 1)
 
 ENABLE_PA = True
 ENABLE_LSE = True
@@ -67,6 +67,9 @@ EPSILON = 1e-20
 
 Q_BLOCK_SIZE = 128
 KV_BLOCK_SIZE = 256
+
+# 物理 block 数量，0 表示使用默认值（等于 total_blocks）
+NUM_BLOCKS = 0
 
 SAVE_PT = False
 SAVE_PT_DIR = ''
@@ -113,12 +116,20 @@ def quant_fp16_to_fp8(tensor, scale):
     result = torch.clamp(result, -448.0, 448.0)
     return result.to(FP8_DTYPE).contiguous()
 
-def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE):
+def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE, num_blocks=0):
     """创建 block table"""
     block_num_per_batch = [math.ceil(int(seq_len) / block_size) for seq_len in actual_seq_kv]
     total_blocks = sum(block_num_per_batch)
     max_blocks = max(block_num_per_batch)
-    block_idx_list = np.random.default_rng(seed).permutation(np.arange(total_blocks, dtype=np.int32))
+
+    if num_blocks < total_blocks and num_blocks != 0:
+        # 使用指定的 num_blocks 个物理 block，有放回地填充 total_blocks 个 slot
+        block_idx_list = np.random.default_rng(seed).integers(0, num_blocks, size=total_blocks, dtype=np.int32)
+    elif num_blocks > total_blocks and num_blocks != 0:
+        block_idx_list = np.random.default_rng(seed).permutation(np.arange(num_blocks, dtype=np.int32))
+    else:
+        block_idx_list = np.random.default_rng(seed).permutation(np.arange(total_blocks, dtype=np.int32))
+
     block_table = np.full((len(actual_seq_kv), max_blocks), -1, dtype=np.int32)
     idx = 0
 
@@ -127,7 +138,7 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE):
         idx += block_num
     return block_table
 
-def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_table):
+def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_table, num_blocks=0):
     """BNSD to PA K cache, with k scale (fp32) stored in the 4 extra rows"""
     k_fp8_bnsd = k_fp8_bnsd.contiguous()
     k_scale_fp32_bnsd = k_scale_fp32_bnsd.contiguous()
@@ -135,8 +146,9 @@ def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_t
     scale_rows = 4
     block_num_per_seq = [math.ceil(s / block_size) for s in seq_lens]
     total_blocks = sum(block_num_per_seq)
+    cache_blocks = num_blocks if num_blocks != 0 else total_blocks
 
-    cache = torch.zeros((total_blocks, N_dim, block_size + scale_rows, D_dim),
+    cache = torch.zeros((cache_blocks, N_dim, block_size + scale_rows, D_dim),
                         dtype=torch.uint8, device=k_fp8_bnsd.device).contiguous()
 
     for b in range(B_dim):
@@ -157,18 +169,19 @@ def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_t
                 flat_scale[:, :valid] = scales_all
             cache[blockid, :, block_size:block_size + scale_rows, :] = scale_buf.view(torch.uint8).reshape(N_dim, scale_rows, D_dim)
 
-    return cache.view(FP8_DTYPE).reshape(total_blocks, N_dim, block_size + scale_rows, D_dim).contiguous()
+    return cache.view(FP8_DTYPE).reshape(cache_blocks, N_dim, block_size + scale_rows, D_dim).contiguous()
 
-def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table):
+def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0):
     """BNSD to V cache - V cache 使用 FP8 类型"""
     tensor_bnsd = tensor_bnsd.contiguous()
     device = tensor_bnsd.device
     batch, heads, S, dim = tensor_bnsd.shape
     block_num_per_batch = [math.ceil(int(s) / block_size) for s in seq_lens]
     total_blocks = sum(block_num_per_batch)
+    cache_blocks = num_blocks if num_blocks != 0 else total_blocks
 
     # V cache 使用 FP8 类型
-    out_cache = torch.zeros((total_blocks, heads, block_size + 4, dim),
+    out_cache = torch.zeros((cache_blocks, heads, block_size + 4, dim),
                             dtype=FP8_DTYPE, device=device).contiguous()
 
     for b in range(batch):
@@ -335,6 +348,35 @@ def _bnb_to_bns1(k_scale_bnb, block_table, actual_seq_kv, block_size):
             # print(f"##### {start_s=}, {end_s=}, {block_size=}, {seq_len=}")
             k_scale_bns1[b, :, start_s:end_s, 0] = k_scale_bnb[block_id, :, :valid]
     return k_scale_bns1
+
+
+def pa_cache_to_bnsd(k_pa, v_pa, block_table, actual_seq_kv, block_size):
+    """从 PA cache 还原 BNSD 格式的 K/V/deq_k，用于 NUM_BLOCKS 非默认时做 CPU Golden 对比
+
+    当 NUM_BLOCKS 导致 block 复用时，cache 中部分数据会被覆盖，
+    需要从 cache 端还原 NPU 实际看到的 KV 数据来跑 CPU golden。
+
+    返回 (k_bnsd, v_bnsd, deq_k_bns1)
+    """
+    # K cache: 去掉 scale rows，只取数据部分
+    k_data = k_pa[:, :, :block_size, :].contiguous().float()
+    # V cache: 去掉 padding rows，只取数据部分
+    v_data = v_pa[:, :, :block_size, :].contiguous().float()
+
+    # 从 K cache 的 scale rows 中提取 deq_k
+    k_pa_f32 = (
+        k_pa
+        .view(torch.uint8)
+        .view(k_pa.shape[0], k_pa.shape[1], -1)
+        .view(torch.float32)
+    )
+    deq_k_flat = k_pa_f32[:, :, -block_size:].contiguous()  # (cache_blocks, N, block_size)
+
+    k_bnsd = _bnbd_to_bnsd(k_data, block_table, actual_seq_kv, block_size)
+    v_bnsd = _bnbd_to_bnsd(v_data, block_table, actual_seq_kv, block_size)
+    deq_k_bns1 = _bnb_to_bns1(deq_k_flat, block_table, actual_seq_kv, block_size)
+
+    return k_bnsd, v_bnsd, deq_k_bns1
 
 
 def external_to_bnsd(ext):
@@ -802,11 +844,17 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
 
     if ENABLE_PA or not GOLDEN_MODE:
         # 在CPU上准备block table和cache
-        block_table = create_block_table(ACTUAL_SEQ_KV, BLOCK_SIZE)
+        block_table = create_block_table(ACTUAL_SEQ_KV, BLOCK_SIZE, num_blocks=NUM_BLOCKS)
         block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
         # 生成k和v的cache
-        k_pa = bnsd_to_k_cache(k_fp8, dequant_scale_k, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
-        v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
+        k_pa = bnsd_to_k_cache(k_fp8, dequant_scale_k, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS)
+        v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS)
+
+        # 当 NUM_BLOCKS 非默认时，保存 cache 副本供后续 CPU golden 重建用
+        if NUM_BLOCKS != 0:
+            k_pa_for_golden = k_pa.clone()
+            v_pa_for_golden = v_pa.clone()
+            block_table_for_golden = block_table.copy()
 
         # 重要！！！此处取出deq_k其实没用，因为传入NPU时会使用.npu(), 导致stride变成连续的！！！
         # 在这里取出deq_k只是为了保存为pt文件（其实也用不到deq_k的pt文件）
@@ -851,7 +899,11 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     T_actual = sum(actual_seq_q)
     if atten_out.shape[0] > T_actual:
         atten_out = atten_out[:T_actual]
-    return output
+    
+    cache_info = None
+    if NUM_BLOCKS != 0:
+        cache_info = (k_pa_for_golden, v_pa_for_golden, block_table_for_golden)
+    return output, cache_info
 
 def npu_fp8_full_quant_external(ext):
     """使用外部 NPU 排布数据直接调用 NPU 算子"""
@@ -982,7 +1034,7 @@ if __name__ == '__main__':
     (q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale) = bnsd_tup
     
     print("\n[Step 2] CPU Golden")
-    if GOLDEN_MODE:
+    if GOLDEN_MODE and NUM_BLOCKS == 0:
         cpu_out= cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
                                                         dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                                         ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
@@ -990,23 +1042,39 @@ if __name__ == '__main__':
         if ENABLE_LSE:
             print("[INFO] cpu_out[1] shape", cpu_out[1].shape)
     else:
-        print("\n[Step 2] GOLDEN_MODE=False, skip CPU Golden.")
+        if not GOLDEN_MODE:
+            print("\n[Step 2] GOLDEN_MODE=False, skip CPU Golden.")
+        if NUM_BLOCKS != 0:
+            print("\n[Step 2] NUM_BLOCKS != 0, CPU Golden delay.....")
     # print(f"{cpu_out[0]=}")
     # print(f"{cpu_out[1]=}")
 
     print("\n[Step 3] NPU: 执行NPU计算")
+    cache_info = None
     if USE_EXTERNAL_INPUT:
         npu_out = npu_fp8_full_quant_external(external_data)
     else:
-        npu_out = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
-                                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                                     ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    # torch.save(npu_out[0], './wk_out/atten_out_5.pt')
+        npu_out, cache_info = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
+                                                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                                                 ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
     print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
     if ENABLE_LSE:
         print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
     if GOLDEN_MODE:
+        if cache_info is not None:
+            print("\n[Step 3.5] 从 PA cache 还原 BNSD 并重新跑 CPU Golden")
+            k_pa_cache, v_pa_cache, bt_cache = cache_info
+            k_bnsd_recon, v_bnsd_recon, deq_k_bnsd_recon = pa_cache_to_bnsd(
+                k_pa_cache, v_pa_cache, bt_cache, ACTUAL_SEQ_KV, BLOCK_SIZE)
+            cpu_out = cpu_fp8_fullquant_gqa_golden(
+                q_fp8, k_bnsd_recon, v_bnsd_recon,
+                dequant_scale_q, deq_k_bnsd_recon, dequant_scale_v, p_scale,
+                ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+            print("[INFO] Reconstructed cpu_out[0] shape", cpu_out[0].shape)
+            if ENABLE_LSE:
+                print("[INFO] Reconstructed cpu_out[1] shape", cpu_out[1].shape)
+
         print("\n[Step 4] Atten out 精度对比")
         cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, OUTPUT_LAYOUT)
         print(f"cpu_out[0] final shape = {cpu_tnd_torch.shape}")
