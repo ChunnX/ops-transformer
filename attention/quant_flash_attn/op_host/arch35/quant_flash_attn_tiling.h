@@ -17,7 +17,6 @@
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include <vector>
 #include "../qfa_tiling_info.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/arch35/quant_flash_attn_tiling_data.h"
@@ -79,9 +78,7 @@ private:
     void InitImplParam();
     void PrintAllTilingData();
     void CalcScheduleMode();
-    bool IsExistRowInvalid();
-
-    void CalcNumBlocks(uint32_t aicNum);
+void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(QuantFlashAttnTilingData &tilingData);
     bool CheckNeedInitOutput() const;
@@ -97,9 +94,6 @@ private:
     bool seqUsedQFlag_ = false;
     bool seqUsedKvFlag_ = false;
     bool decodeS1GMerge_ = false;
-    bool isExistRowInvalid_ = false;
-    std::vector<int64_t> actualSeqLengthsQ_;
-    std::vector<int64_t> actualSeqLengthsKV_;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

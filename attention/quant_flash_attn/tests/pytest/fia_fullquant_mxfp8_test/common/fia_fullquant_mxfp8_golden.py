@@ -28,6 +28,13 @@ import torch.nn as nn
 import torch_npu
 
 try:
+    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    _HAS_NPU = True
+except ImportError as e:
+    logger.warning("Failed to import cann_ops_transformer.ops: %s", e)
+    _HAS_NPU = False
+
+try:
     from . import result_compare_method
 except ImportError:
     import sys
@@ -221,13 +228,14 @@ def convert_qk_rope_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
 # ==============================================================================
 
 def fp32_to_e8m0fnu(tensor_fp32):
-    """FP32 → e8m0fnu (uint8)，提取 IEEE 754 biased exponent
+    """FP32 → e8m0fnu，提取 IEEE 754 biased exponent
     e8m0fnu 格式: 只有指数位，没有尾数，表示 2^(e-127)
     biased exponent = 0xFF 时表示 NaN
+    返回 torch.float8_e8m0fnu 以匹配 def.cpp 中 DT_FLOAT8_E8M0 的 dtype 定义
     """
     bits = tensor_fp32.float().view(torch.int32)
     biased_exp = ((bits >> 23) & 0xFF).to(torch.uint8)
-    return biased_exp
+    return biased_exp.view(torch.float8_e8m0fnu)
 
 
 def sanitize_e8m0_scale(scale, name="scale"):
@@ -868,7 +876,9 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
                     block_table, q_n, kv_n, softmax_scale,
                     layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
     """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
-    from cann_ops_transformer.ops.quant_flash_attn import quant_flash_attn_metadata, quant_flash_attn
+    if not _HAS_NPU:
+        raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available. "
+                          "Please check that cann_ops_transformer is installed and all .so are compiled.")
 
     # 序列长度转换：累加前缀和 → cu_seqlens (补0前缀和) + seqused
     import numpy as np

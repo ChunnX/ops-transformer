@@ -15,10 +15,7 @@
 
 #include "quant_flash_attn_tiling.h"
 #include "../quant_flash_attn_tiling.h"
-#include <map>
 #include <vector>
-#include <numeric>
-#include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../quant_flash_attn_tiling_utils.h"
@@ -120,46 +117,6 @@ void QuantFlashAttnTilingImpl::InitImplParam()
     decodeS1GMerge_ =
         (qfaInfo_->opParamInfo.qDescale.shape != nullptr) &&
         (qfaInfo_->opParamInfo.qDescale.shape->GetStorageShape().GetDimNum() == 5);
-
-    for (uint32_t bIdx = 0; bIdx < qfaInfo_->bSize; bIdx++) {
-        if (seqUsedQFlag_) {
-            if (seqUsedQDims == 1) {
-                actualSeqLengthsQ_.push_back(seqUsedQ->GetData<int32_t>()[0]);
-            } else {
-                actualSeqLengthsQ_.push_back(seqUsedQ->GetData<int32_t>()[bIdx]);
-            }
-        } else if (cuSeqLenQFlag_) {
-            if (actSeqLenQDims == 1) {
-                actualSeqLengthsQ_.push_back(actSeqLenQ->GetData<int32_t>()[0]);
-            } else if (qfaInfo_->qLayout != QfaLayout::TND) {
-                actualSeqLengthsQ_.push_back(actSeqLenQ->GetData<int32_t>()[bIdx]);
-            } else {
-                actualSeqLengthsQ_.push_back(
-                    actSeqLenQ->GetData<int32_t>()[bIdx + 1] - actSeqLenQ->GetData<int32_t>()[bIdx]);
-            }
-        } else {
-            actualSeqLengthsQ_.push_back(qfaInfo_->s1Size);
-        }
-
-        if (seqUsedKvFlag_) {
-            if (seqUsedKvDims == 1) {
-                actualSeqLengthsKV_.push_back(seqUsedKv->GetData<int32_t>()[0]);
-            } else {
-                actualSeqLengthsKV_.push_back(seqUsedKv->GetData<int32_t>()[bIdx]);
-            }
-        } else if (cuSeqLenKVFlag_) {
-            if (actSeqLenKVDims == 1) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int32_t>()[0]);
-            } else if (qfaInfo_->kvLayout != QfaLayout::TND) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int32_t>()[bIdx]);
-            } else {
-                actualSeqLengthsKV_.push_back(
-                    actSeqLenKV->GetData<int32_t>()[bIdx + 1] - actSeqLenKV->GetData<int32_t>()[bIdx]);
-            }
-        } else {
-            actualSeqLengthsKV_.push_back(qfaInfo_->s2Size);
-        }
-    }
 }
 
 void QuantFlashAttnTilingImpl::SplitPolicy()
@@ -168,8 +125,6 @@ void QuantFlashAttnTilingImpl::SplitPolicy()
     sInnerFactor_ = SINNER_512;
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
-
-    isExistRowInvalid_ = IsExistRowInvalid();
 }
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
@@ -347,42 +302,6 @@ void QuantFlashAttnTilingImpl::ComputeTilingData()
         }
     }
 
-    tilingData_.baseTiling.quantFlashAttnAttenMaskParams.isExistRowInvalid = isExistRowInvalid_ ? 1 : 0;
-}
-
-bool QuantFlashAttnTilingImpl::IsExistRowInvalid()
-{
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
-        return false;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
-        return false;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::ALL_MASK)) {
-        return true;
-    }
-    for (uint32_t bIdx = 0; bIdx < qfaInfo_->bSize; bIdx++) {
-        int64_t actualSeqLenQ = actualSeqLengthsQ_.size() > bIdx ? actualSeqLengthsQ_[bIdx] : qfaInfo_->s1Size;
-        int64_t actualSeqLenKV = actualSeqLengthsKV_.size() > bIdx ? actualSeqLengthsKV_[bIdx] : qfaInfo_->s2Size;
-        if (actualSeqLenQ == 0 || actualSeqLenKV == 0) {
-            continue;
-        }
-        int64_t winLeft = qfaInfo_->winLeft;
-        int64_t winRight = qfaInfo_->winRight;
-        int64_t preTokenLeftUp = 0;
-        int64_t nextTokenLeftUp = 0;
-        if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
-            preTokenLeftUp = winLeft - actualSeqLenKV + actualSeqLenQ;
-            nextTokenLeftUp = winRight + actualSeqLenKV - actualSeqLenQ;
-        } else {
-            preTokenLeftUp = winLeft;
-            nextTokenLeftUp = winRight;
-        }
-        if ((preTokenLeftUp < 0) || (nextTokenLeftUp < 0)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 void QuantFlashAttnTilingImpl::SetQFATilingData()
@@ -500,7 +419,6 @@ void QuantFlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(qfaInfo_->opName, "winRights:%d", maskParams.winRights);
     OP_LOGD(qfaInfo_->opName, "attenMaskS1Size:%d", maskParams.attenMaskS1Size);
     OP_LOGD(qfaInfo_->opName, "attenMaskS2Size:%d", maskParams.attenMaskS2Size);
-    OP_LOGD(qfaInfo_->opName, "isExistRowInvalid:%d", maskParams.isExistRowInvalid);
 
     OP_LOGD(qfaInfo_->opName, "paLayoutType:%d", paParams.paLayoutType);
     OP_LOGD(qfaInfo_->opName, "blockSize:%d", paParams.blockSize);
