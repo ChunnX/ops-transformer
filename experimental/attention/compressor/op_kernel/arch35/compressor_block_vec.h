@@ -252,7 +252,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
                                                          __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
-    isExistXCache_ = (xCache != nullptr);
+    isExistXCache_ = (xCache != nullptr && constInfo_.xCacheReadSize > 0);
     if (isExistXCache_) {
         xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
         xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);

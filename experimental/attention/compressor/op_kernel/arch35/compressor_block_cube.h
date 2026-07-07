@@ -151,7 +151,7 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
         __gm__ uint8_t *cmpKvOut)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
-    isExistXCache_ = (xCache != nullptr);
+    isExistXCache_ = (xCache != nullptr && constInfo_.xCacheReadSize > 0);
     if (isExistXCache_) {
         xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
     }

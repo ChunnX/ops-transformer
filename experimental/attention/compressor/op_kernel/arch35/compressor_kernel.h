@@ -152,7 +152,7 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         constInfo.aiCoreIdx = GetBlockIdx();
     }
     InitTilingData();
-    isExistXCache_ = (xCache != nullptr);
+    isExistXCache_ = (xCache != nullptr && constInfo.xCacheReadSize > 0);
     if (constInfo.aiCoreIdx == 0) {
         COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] Init early batch=%d seqSize=%d hSize=%d cmpRatio=%d "
                         "xCache=%d xCacheSize=%d xCacheReadSize=%d xCacheUpdateBatch=%d usedCore=%d\n",
