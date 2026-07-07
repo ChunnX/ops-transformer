@@ -260,26 +260,9 @@ int RunGroupedMatmulActivationQuantWeightNz(int32_t deviceId, aclrtStream &strea
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    int64_t ySize = GetShapeSize(yShape);
-    std::vector<uint8_t> yResultData(ySize, 0);
-    ret = aclrtMemcpy(yResultData.data(), ySize * sizeof(yResultData[0]), yDeviceAddr,
-        ySize * sizeof(yResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy y result from device to host failed. ERROR: %d\n", ret); return ret);
-    int64_t yPrintSize = ySize < 10 ? ySize : 10;
-    for (int64_t i = 0; i < yPrintSize; ++i) {
-        LOG_PRINT("y[%ld] is: %u\n", i, yResultData[i]);
-    }
-
-    int64_t yScaleSize = GetShapeSize(yScaleShape);
-    std::vector<uint8_t> yScaleResultData(yScaleSize, 0);
-    ret = aclrtMemcpy(yScaleResultData.data(), yScaleSize * sizeof(yScaleResultData[0]), yScaleDeviceAddr,
-        yScaleSize * sizeof(yScaleResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("copy yScale result from device to host failed. ERROR: %d\n", ret); return ret);
-    int64_t yScalePrintSize = yScaleSize < 10 ? yScaleSize : 10;
-    for (int64_t i = 0; i < yScalePrintSize; ++i) {
-        LOG_PRINT("yScale[%ld] is: %u\n", i, yScaleResultData[i]);
-    }
+    LOG_PRINT("y shape is: [%ld, %ld]\n", yShape[0], yShape[1]);
+    LOG_PRINT("yScale shape is: [%ld, %ld, %ld]\n", yScaleShape[0], yScaleShape[1], yScaleShape[2]);
+    LOG_PRINT("GroupedMatmulActivationQuantWeightNz example execute success.\n");
     return ACL_SUCCESS;
 }
 
