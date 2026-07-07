@@ -134,9 +134,9 @@ public:
                     if constexpr (kIsFp32) {
                         if (GetSubBlockIdx() == 0) {
                             if (isFirstGroup_ && cId == 0) {
-                                CopyInFp32State(sTP_->stateFp32In[nvId * Dv_ * Dk_]);
+                                CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
                             } else {
-                                CopyInFp32State(sTP_->stateFp32Out[nvId * Dv_ * Dk_]);
+                                CopyIn<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_);
                             }
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
@@ -306,21 +306,13 @@ public:
                                    static_cast<uint32_t>(col * sizeof(inType)),
                                    static_cast<uint32_t>(0),
                                    0, 0};
-        int padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
+        int padding;
+        if constexpr (kIsFp32 && std::is_same_v<inType, float>) {
+            padding = curDk_ - col;
+        } else {
+            padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
+        }
         DataCopyPadExtParams<inType> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
-        DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
-        inQueue_.EnQue(inLocal);
-    }
-
-    __aicore__ inline void CopyInFp32State(GlobalTensor<float> tmpGM)
-    {
-        LocalTensor<float> inLocal = inQueue_.AllocTensor<float>();
-        DataCopyExtParams inParams{static_cast<uint16_t>(Dv_),
-                                   static_cast<uint32_t>(Dk_ * sizeof(float)),
-                                   static_cast<uint32_t>(0),
-                                   0, 0};
-        int32_t padding = curDk_ - Dk_;
-        DataCopyPadExtParams<float> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);
     }
