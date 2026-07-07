@@ -716,6 +716,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
         static_cast<uint32_t>(realKSizeAlign8),
         static_cast<uint32_t>(runInfo.kRealSize)
     };
+    PipeBarrier<PIPE_V>();
     AscendC::Sum(reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, sumPParams);
     PipeBarrier<PIPE_V>();
 
