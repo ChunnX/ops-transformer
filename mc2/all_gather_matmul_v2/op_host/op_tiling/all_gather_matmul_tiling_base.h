@@ -53,6 +53,7 @@ constexpr size_t COMM_MODE_INDEX = 11;
 
 constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
+constexpr uint64_t HCCL_MAX_COMM_TILES = 62; // 总通信次数上限63, tile+tail最大62, 1个保留给x1Scale通信的情况
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
