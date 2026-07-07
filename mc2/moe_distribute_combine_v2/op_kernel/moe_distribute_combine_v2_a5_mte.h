@@ -995,9 +995,21 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
 
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
-        uint32_t tkIndex = startTokenId_ + ((loop + epRankId_) % sendCntNum_);
-        uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
+    // 置换步长，与 sendCntNum_ 互质，用于打乱 token 访问顺序以分散访存压力
+    uint32_t permStride;
+    if (unlikely(sendCntNum_ <= 2U)) {
+        permStride = 1U;
+    } else {
+        permStride = sendCntNum_ / 2U + 1U;
+        if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
+            permStride++;
+        }
+    }
+    uint32_t rankOffset = (epRankId_ * sendCntNum_) / epWorldSize_;
+    uint32_t permIdx = rankOffset % sendCntNum_;
+    for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
+        uint32_t tkIndex = startTokenId_ + permIdx;
+        uint32_t baseOffset = permIdx * EXPAND_IDX_INFO;
         uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
         uint32_t toRankId = rankIdExpandIdx;
         uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
@@ -1007,6 +1019,10 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
                 epWorldSizeOriginal_ + rankIdExpandIdx);
         }
         ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+        permIdx += permStride;
+        if (permIdx >= sendCntNum_) {
+            permIdx -= sendCntNum_;
+        }
     }
 }
 
