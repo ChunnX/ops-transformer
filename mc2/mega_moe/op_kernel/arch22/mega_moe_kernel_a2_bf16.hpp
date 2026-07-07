@@ -1139,7 +1139,7 @@ private:
 
         // prevGroupSum1:   本 core 所处理的 dstEpIdx 在 peer mem 中已接收的 token 基准偏移
         // prevGroupSum2:   rank 的 peer mem 中已接收 token 的基准偏移（所有 core 共享）
-        uint32_t prevGroupSum1Arr[MAX_RANK_SIZE] = {0};
+        uint32_t prevGroupSum1Arr[MAX_RANK_PER_CORE] = {0};
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
