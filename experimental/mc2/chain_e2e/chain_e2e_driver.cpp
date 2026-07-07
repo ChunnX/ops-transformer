@@ -138,7 +138,9 @@ aclTensor *MakeTensor(void *devAddr, const std::vector<int64_t> &shape, aclDataT
 [[maybe_unused]] float E8m0ToScale(uint8_t E) { return std::ldexp(1.0f, (int)E - 127); }
 
 #ifdef CHAIN_CCU_A6
-// A6 channel 获取（复用旧 driver HcclGetOneChannel，resGroupTag 按算子 TAG 传入）。
+// A6 channel 获取。★ 格式按技术总监确认的 a6-可跑通版：found=true+break，HcclChannelAcquire 在循环【外】。
+//   ★ ccuUbAttr.resGroupTag / resGroupTagNum 保留——a6 CANN 有此成员；a5 CANN 无属正常（本段在
+//   #ifdef CHAIN_CCU_A6 内，a5 shell 不编）。resTag 由调用点传 "moe_dispatch_05rtt" / "moe_combine_05rtt"。
 static HcclResult HcclGetOneChannel(HcclComm comm, CommEngine engine,
     uint32_t srcRank, uint32_t dstRank, const char *resTag, ChannelHandle *channel)
 {
@@ -151,6 +153,7 @@ static HcclResult HcclGetOneChannel(HcclComm comm, CommEngine engine,
     ret = HcclChannelDescInit(&desc, 1);
     if (ret != HCCL_SUCCESS) { printf("[ERR] HcclChannelDescInit ret=%d\n", ret); return ret; }
     const CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+    bool found = false;
     const char *tmpArg[] = { resTag };
     char **resGroupTag = const_cast<char **>(tmpArg);
 
@@ -168,10 +171,17 @@ static HcclResult HcclGetOneChannel(HcclComm comm, CommEngine engine,
             desc.remoteEndpoint.loc      = link.dstEndpointDesc.loc;
             desc.ccuUbAttr.resGroupTag    = resGroupTag;
             desc.ccuUbAttr.resGroupTagNum = 1;
-            return HcclChannelAcquire(comm, engine, &desc, 1, channel);
+            found = true;
+            break;
         }
     }
-    printf("[ERR] no UBC_CTP link %u->%u\n", srcRank, dstRank); return HCCL_E_NOT_FOUND;
+    if (!found) {
+        printf("[ERROR] no UBC_CTP link between rank %u and %u\n", srcRank, dstRank);
+        return HCCL_E_NOT_FOUND;
+    }
+    // ★ 此处不用 HCCLCHECK：本函数返回 HcclResult，而 HCCLCHECK 失败时 return -1(int) →
+    //   a6 报 'invalid conversion from int to HcclResult'。直接返回 acquire 的 HcclResult（调用点已 HCCLCHECK 它）。
+    return HcclChannelAcquire(comm, engine, &desc, 1, channel);
 }
 #endif  // CHAIN_CCU_A6
 
@@ -552,9 +562,17 @@ int main(int argc, char **argv)
 
     ACLCHECK(aclInit(nullptr));
     ACLCHECK(aclrtSetDevice(devId));                  // 隐式默认 context（不 CreateContext，否则 107003）
-    aclrtStream stream = nullptr;
-    ACLCHECK(aclrtCreateStream(&stream));
-    ACLCHECK(aclrtSetStreamFailureMode(stream, 1));
+    // ---- 双流：setup(CCU) 一条、teardown(AIV) 一条（combine 复用 dispatch 的这两条流）----
+    aclrtStream streamSetup = nullptr, streamTeardown = nullptr;
+    ACLCHECK(aclrtCreateStream(&streamSetup));
+    ACLCHECK(aclrtCreateStream(&streamTeardown));
+    ACLCHECK(aclrtSetStreamFailureMode(streamSetup, 1));
+    ACLCHECK(aclrtSetStreamFailureMode(streamTeardown, 1));
+    // 跨流依赖 event（设备侧顺序，免逐段 aclrtSynchronizeStream 主机往返）
+    aclrtEvent evDispSetup = nullptr, evDispTeardown = nullptr, evCombSetup = nullptr;
+    ACLCHECK(aclrtCreateEvent(&evDispSetup));
+    ACLCHECK(aclrtCreateEvent(&evDispTeardown));
+    ACLCHECK(aclrtCreateEvent(&evCombSetup));
 
     // 2-rank CCU 扩展模式 HcclComm（创建 ccuContainer）
     HcclRootInfo rootInfo{};
@@ -576,21 +594,37 @@ int main(int argc, char **argv)
     if (PrepChain(c, rankId, g) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
     printf("[rank %u] PrepChain done（GM 分配 + host 预算 routeTable/wishCnt/assistTable + 灌输入）\n", rankId);
 
-    // ---- 串 4 算子（每段后同步 + 跨 rank barrier 保 CCU 两卡对齐）----
-    if (LaunchDispatchSetupCcu(comm, stream, c, g) != 0)   { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
-    ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
+    // ---- 双流并行下发（★严格线性依赖 ②←① ③←② ④←③：单趟无计算并行，收益＝消主机往返 + 免冗余 barrier）----
+    //   跨流依赖用 event（设备侧排序）替代逐段 aclrtSynchronizeStream 主机阻塞；
+    //   段间 MPI_Barrier 全移除——CCU setup 的 WaitallpeersarriveNotify 自带设备侧跨卡 rendezvous
+    //   （rank r 的算子不收齐对端就不完成），两卡对齐无需主机 barrier。仅收尾 barrier 一次。
+    //   双流拓扑的真正并行收益在流水/多迭代集成时兑现（iter k teardown 叠 iter k+1 setup）。
+    // ① dispatch_setup (CCU) → streamSetup
+    if (LaunchDispatchSetupCcu(comm, streamSetup, c, g) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    ACLCHECK(aclrtRecordEvent(evDispSetup, streamSetup));
 #if defined(CHAIN_DUMP) && defined(CHAIN_CCU_A6)
+    ACLCHECK(aclrtSynchronizeStream(streamSetup));
     DumpDispatchRegion(c, rankId, g);   // ★ 分段自检①：dispatch cross 的 payload/scale 到没到
 #endif
-    if (LaunchDispatchTeardownAclnn(stream, c, g) != 0)    { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
-    ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
-    if (LaunchCombineSetupCcu(comm, stream, c, g) != 0)    { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
-    ACLCHECK(aclrtSynchronizeStream(stream)); MPI_Barrier(MPI_COMM_WORLD);
+    // ② dispatch_teardown (AIV) → streamTeardown（跨流等 ①）
+    ACLCHECK(aclrtStreamWaitEvent(streamTeardown, evDispSetup));
+    if (LaunchDispatchTeardownAclnn(streamTeardown, c, g) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    ACLCHECK(aclrtRecordEvent(evDispTeardown, streamTeardown));
+    // ③ combine_setup (CCU) → streamSetup（跨流等 ②；复用 dispatch 的 setup 流）
+    ACLCHECK(aclrtStreamWaitEvent(streamSetup, evDispTeardown));
+    if (LaunchCombineSetupCcu(comm, streamSetup, c, g) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    ACLCHECK(aclrtRecordEvent(evCombSetup, streamSetup));
 #if defined(CHAIN_DUMP) && defined(CHAIN_CCU_A6)
+    ACLCHECK(aclrtSynchronizeStream(streamSetup));
     DumpCombineRegion(c, rankId, g);    // ★ 分段自检③：combine cross 回传的 payload/scale 到没到
 #endif
-    if (LaunchCombineTeardownAclnn(stream, c, g) != 0)     { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
-    ACLCHECK(aclrtSynchronizeStream(stream));
+    // ④ combine_teardown (AIV) → streamTeardown（跨流等 ③）
+    ACLCHECK(aclrtStreamWaitEvent(streamTeardown, evCombSetup));
+    if (LaunchCombineTeardownAclnn(streamTeardown, c, g) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    // ---- 收尾：两流排空 + 一次跨卡 barrier（clean exit / golden 前保设备完成）----
+    ACLCHECK(aclrtSynchronizeStream(streamSetup));
+    ACLCHECK(aclrtSynchronizeStream(streamTeardown));
+    MPI_Barrier(MPI_COMM_WORLD);
 
     // ---- golden：one-hot scale → x_out[i] = dequant(本卡 token i 的副本) = Fp8E4m3ToFloat(payload_i)*scale_i ----
     std::vector<uint16_t> xOutHost((size_t)c.bs * c.h, 0);
@@ -626,7 +660,11 @@ int main(int argc, char **argv)
                      g.assistTable, g.commCmdInfoC, g.combineData, g.combineScale, g.expertScales, g.expertIds, g.xOut })
         if (p) aclrtFree(p);
     HcclCommDestroy(comm);
-    aclrtDestroyStream(stream);
+    aclrtDestroyEvent(evDispSetup);
+    aclrtDestroyEvent(evDispTeardown);
+    aclrtDestroyEvent(evCombSetup);
+    aclrtDestroyStream(streamSetup);
+    aclrtDestroyStream(streamTeardown);
     aclrtResetDevice(devId);
     aclFinalize();
     MPI_Finalize();
