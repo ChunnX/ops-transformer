@@ -266,7 +266,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         std::to_string(EVEN_ALIGN) + "]")
                                                   .c_str()),
         return ge::GRAPH_FAILED);
-    
+
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
     if (isTransB) {
         OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
