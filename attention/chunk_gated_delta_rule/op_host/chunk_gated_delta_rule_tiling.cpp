@@ -125,22 +125,21 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    int64_t b = tilingData_.b;
     tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp (FP32)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // vInner (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // qPrime (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter (BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter (BF16, arch22 compat)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                     // highState (FP32 only)
+        tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                         // highState (FP32 only)
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
     // stage1 临时变量空间
     tilingData_.stageWorkspaceSz =
-        sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();

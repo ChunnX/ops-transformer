@@ -143,7 +143,7 @@ public:
 
         if constexpr (kStateIsFp32) {
             highStateAddr_ = user + offset;
-            offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
+            offset += sizeof(highType) * tiling_->nv * tiling_->dv * tiling_->dk;
 
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
             stateBf16Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(highStateAddr_), stateWkElemCnt);
