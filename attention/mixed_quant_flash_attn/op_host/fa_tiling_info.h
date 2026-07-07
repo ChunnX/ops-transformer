@@ -192,7 +192,6 @@ struct FAParaInfo {
 
     FAOptionalParaInfo blockTable = {nullptr, nullptr};
     FAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
-    FAOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
     FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
     FAOptionalParaInfo sequsedKv = {nullptr, nullptr};
     FAOptionalParaInfo sinks = {nullptr, nullptr};

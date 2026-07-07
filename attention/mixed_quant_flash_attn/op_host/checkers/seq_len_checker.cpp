@@ -122,37 +122,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingInfo &faInfo)
-{
-    auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
-    if (cuSeqlensKvTensor == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    const gert::CompileTimeTensorDesc *cuSeqlensKvDesc = faInfo.opParamInfo.cuSeqlensKv.desc;
-    OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv dtype must be INT32, but got %s",
-                        DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
-
-    if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensKvDesc, CU_SEQLENS_KV_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
-    uint32_t cuSeqlensKvDimNum = cuSeqlensKvTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(cuSeqlensKvDimNum != 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv dim num must be 1, but got %u.", cuSeqlensKvDimNum),
-                return ge::GRAPH_FAILED);
-
-    uint32_t cuSeqlensKvShapeSize = cuSeqlensKvTensor->GetShapeSize();
-    OP_CHECK_IF(cuSeqlensKvShapeSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv shape(%u) should be equal to batch + 1(%d).",
-                        cuSeqlensKvShapeSize, faInfo.bSize + 1),
-                return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
     if (faInfo.qLayout != FaLayout::TND) {
@@ -179,7 +148,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     if (CheckSingleParaSequsedQ(faInfo) != ge::GRAPH_SUCCESS || CheckSingleParaSequsedKv(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaCuSeqlensQ(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckSingleParaCuSeqlensKv(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaMaxSeqlenQ(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaMaxSeqlenKv(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -224,9 +192,6 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (cuSeqlensQTensor != nullptr && faInfo.qLayout == FaLayout::TND) {
     }
 
-    auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
-    if (cuSeqlensKvTensor != nullptr && faInfo.kvLayout == FaLayout::TND) {
-    }
     return ge::GRAPH_SUCCESS;
 }
 

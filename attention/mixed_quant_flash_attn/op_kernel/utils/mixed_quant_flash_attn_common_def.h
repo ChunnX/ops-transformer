@@ -140,7 +140,6 @@ struct MixedQuantCommonConstInfo {
     uint64_t s1Size;
     uint64_t s2Size;
     uint64_t cuSeqLensQSize;
-    uint64_t cuSeqLensKVSize;
     uint64_t seqUsedQSize;
     uint64_t seqUsedKvSize;
 

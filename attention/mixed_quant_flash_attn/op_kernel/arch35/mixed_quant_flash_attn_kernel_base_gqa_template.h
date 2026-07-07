@@ -116,7 +116,6 @@ public:
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
-    GlobalTensor<int32_t> cuSeqLensGmKv;
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
@@ -177,9 +176,9 @@ public:
 
     __aicore__ inline void
     Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *kDescale,
-         __gm__ uint8_t *vDescale, __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink,
-         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metaData,
+         __gm__ uint8_t *vDescale, __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, 
+         __gm__ uint8_t *sequsedKv, __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse, 
+         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metaData,
          const __gm__ optiling::MixedQuantFlashAttnTilingArch35 *__restrict tilingData, TPipe *tPipe)
     {
         this->pipe = tPipe;
@@ -196,12 +195,8 @@ public:
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)sequsedQ, constInfo.seqUsedQSize);
         }
-        if constexpr (LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo.seqUsedKvSize);
-        } else {
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo.seqUsedKvSize);
-        }
+
+        seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo.seqUsedKvSize);
 
         sectionNum_ = ((__gm__ uint32_t *)metaData)[0];
         isFd = static_cast<bool>(((__gm__ uint32_t *)metaData)[1]);
@@ -221,11 +216,11 @@ public:
                                          MQFA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
+                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
-                vecFaBlock.InitVecBlock(tPipe, sequsedQ, sequsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
+                vecFaBlock.InitVecBlock(tPipe, sequsedQ, attenMask, learnableSink, softmaxLse, attentionOut,
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
@@ -291,7 +286,6 @@ public:
         constInfo.dSize = this->tilingData->mixedQuantFlashAttnBaseParams.dSize;
         constInfo.dSizeV = this->tilingData->mixedQuantFlashAttnBaseParams.dSizeV;
         constInfo.cuSeqLensQSize = this->tilingData->mixedQuantFlashAttnBaseParams.cuSeqLensQSize;
-        constInfo.cuSeqLensKVSize = this->tilingData->mixedQuantFlashAttnBaseParams.cuSeqLensKVSize;
         constInfo.seqUsedQSize = this->tilingData->mixedQuantFlashAttnBaseParams.seqUsedQSize;
         constInfo.seqUsedKvSize = this->tilingData->mixedQuantFlashAttnBaseParams.seqUsedKvSize;
         constInfo.scaleValue = this->tilingData->mixedQuantFlashAttnBaseParams.scaleValue;
@@ -331,11 +325,7 @@ public:
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
-        if constexpr (LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
-        } else {
-            kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
-        }
+        kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -464,15 +454,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorListMQ(keyPtr, bIdx);
-            } else {
-                if constexpr (LAYOUT_KV == inferFaLayOutTypeEnum::LAYOUT_TND) {
-                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
-                } else {
-                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
-                }
-            }
+            actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
             if constexpr (LAYOUT_Q == inferFaLayOutTypeEnum::LAYOUT_TND) {
                 actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
             } else {

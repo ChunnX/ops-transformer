@@ -34,10 +34,10 @@ template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvL
 inline __aicore__ void
 mixed_quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                   __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale, __gm__ uint8_t *attenMask,
-                                  __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
-                                  __gm__ uint8_t *sequsedKv, __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink,
-                                  __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                  __gm__ uint8_t *tiling, __gm__ uint8_t *metaData)
+                                  __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, 
+                                  __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *attentionOut, 
+                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling, 
+                                  __gm__ uint8_t *metaData)
 {
     constexpr inferFaLayOutTypeEnum inputLayoutType =
         static_cast<inferFaLayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
@@ -74,7 +74,7 @@ mixed_quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __
 
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, kDescale, vDescale, attenMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blocktable,
+    op.Init(query, key, value, kDescale, vDescale, attenMask, cuSeqLensQ, sequsedQ, sequsedKv, blocktable,
             learnableSink, softmaxLse, attentionOut, workspace, metaData, tilingData, &tPipe);
     op.Process();
 }

@@ -24,10 +24,9 @@ template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint
 __global__ __aicore__ void
 mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *kDescale,
                        __gm__ uint8_t *vDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
-                       __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                       __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                       __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                       __gm__ uint8_t *tiling)
+                       __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, 
+                       __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, 
+                       __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::MixedQuantFlashAttnTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
@@ -36,11 +35,11 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
 #if (ORIG_DTYPE_QUERY == DT_BF16)
     mixed_quant_flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config,
                                       QuantMode>(query, key, value, kDescale, vDescale, attnMask, cuSeqLensQ,
-                                                 cuSeqLensKv, sequsedQ, sequsedKv, blockTable, sinks, attnOut,
+                                                 sequsedQ, sequsedKv, blockTable, sinks, attnOut,
                                                  softmaxLse, user, tiling, metadata);
 #elif (ORIG_DTYPE_QUERY == DT_FLOAT16)
     mixed_quant_flash_attn_kernel_run<half, half, inOutLayoutType, KvLayoutType, hasAttenMask, config, QuantMode>(
-        query, key, value, kDescale, vDescale, attnMask, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, blockTable,
+        query, key, value, kDescale, vDescale, attnMask, cuSeqLensQ, sequsedQ, sequsedKv, blockTable,
         sinks, attnOut, softmaxLse, user, tiling, metadata);
 #endif
 }

@@ -51,12 +51,10 @@ struct MixedQuantFlashAttnBaseParams {
     uint32_t dSizeV;
     uint32_t dSizeRope;
     uint32_t cuSeqLensQSize;
-    uint32_t cuSeqLensKVSize;
     uint32_t seqUsedQSize;
     uint32_t seqUsedKvSize;
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
-    uint8_t iscuSeqLengthsKVNull;
     uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;

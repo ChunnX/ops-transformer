@@ -97,14 +97,9 @@ ge::graphStatus MixedQuantFlashAttnTilingImpl::SetPlatMemoryInfo()
 void MixedQuantFlashAttnTilingImpl::InitImplParam()
 {
     const gert::Tensor *actSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
-    const gert::Tensor *actSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
     uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
     actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
     cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-    cuSeqLenKVFlag_ =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
 
     const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
     const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
@@ -289,13 +284,11 @@ void MixedQuantFlashAttnTilingImpl::SetFATilingData()
     }
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.scaleValue = scaleValue;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensKVSize = 0;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
-    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.coreNum = numBlocks_;
 
     tilingData_.baseTiling.mixedQuantFlashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
@@ -352,12 +345,10 @@ void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "dSizeV:%d", mixedQuantFlashAttnBaseParams.dSizeV);
     OP_LOGD(faInfo_->opName, "dSizeRope:%d", mixedQuantFlashAttnBaseParams.dSizeRope);
     OP_LOGD(faInfo_->opName, "cuSeqLensQSize:%d", mixedQuantFlashAttnBaseParams.cuSeqLensQSize);
-    OP_LOGD(faInfo_->opName, "cuSeqLensKVSize:%d", mixedQuantFlashAttnBaseParams.cuSeqLensKVSize);
     OP_LOGD(faInfo_->opName, "seqUsedQSize:%d", mixedQuantFlashAttnBaseParams.seqUsedQSize);
     OP_LOGD(faInfo_->opName, "seqUsedKvSize:%d", mixedQuantFlashAttnBaseParams.seqUsedKvSize);
     OP_LOGD(faInfo_->opName, "scaleValue:%f", mixedQuantFlashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", mixedQuantFlashAttnBaseParams.iscuSeqLengthsNull);
-    OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", mixedQuantFlashAttnBaseParams.iscuSeqLengthsKVNull);
     OP_LOGD(faInfo_->opName, "isKvContinuous:%d", mixedQuantFlashAttnBaseParams.isKvContinuous);
     OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", mixedQuantFlashAttnBaseParams.isSoftMaxLseEnable);
     OP_LOGD(faInfo_->opName, "coreNum:%d", mixedQuantFlashAttnBaseParams.coreNum);
