@@ -116,9 +116,9 @@ public:
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_BF16;
-    ge::DataType qDescaleType_ = ge::DT_FP8_E8M0FN;
-    ge::DataType kDescaleType_ = ge::DT_FP8_E8M0FN;
-    ge::DataType vDescaleType_ = ge::DT_FP8_E8M0FN;
+    ge::DataType qDescaleType_ = ge::DT_FLOAT8_E8M0;
+    ge::DataType kDescaleType_ = ge::DT_FLOAT8_E8M0;
+    ge::DataType vDescaleType_ = ge::DT_FLOAT8_E8M0;
 
     // Mask
     int64_t winLeft_ = 0;

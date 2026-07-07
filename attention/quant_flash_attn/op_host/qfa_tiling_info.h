@@ -263,12 +263,12 @@ public:
     bool emptyTensorFlag = false;
 
     // DType
-    ge::DataType inputQType = ge::DT_FP8_E4M3FN;
-    ge::DataType inputKvType = ge::DT_FP8_E4M3FN;
+    ge::DataType inputQType = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType inputKvType = ge::DT_FLOAT8_E4M3FN;
     ge::DataType outputType = ge::DT_BF16;
-    ge::DataType qDescaleType = ge::DT_FP8_E8M0FN;
-    ge::DataType kDescaleType = ge::DT_FP8_E8M0FN;
-    ge::DataType vDescaleType = ge::DT_FP8_E8M0FN;
+    ge::DataType qDescaleType = ge::DT_FLOAT8_E8M0;
+    ge::DataType kDescaleType = ge::DT_FLOAT8_E8M0;
+    ge::DataType vDescaleType = ge::DT_FLOAT8_E8M0;
 
     // Layout
     QfaLayout qLayout = QfaLayout::BSND;
@@ -342,17 +342,17 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_DOUBLE, "DT_DOUBLE"},           {ge::DT_BF16, "DT_BFLOAT16"},
     {ge::DT_INT4, "DT_INT4"},               {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT8_E8M0FN, "DT_FLOAT8_E8M0FN"},
+    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0FN"},
     {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
 };
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FP8_E4M3FN}},
-    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FP8_E4M3FN}},
-    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FP8_E4M3FN}},
-    {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
-    {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
-    {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FP8_E8M0FN}},
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
+    {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
+    {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
     {BLOCK_TABLE_NAME, {ge::DT_INT32}},
     {P_SCALE_NAME, {ge::DT_FLOAT}},
     {ATTN_MASK_NAME, {ge::DT_INT8}},

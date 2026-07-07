@@ -118,8 +118,8 @@ void QuantFlashAttnTilingImpl::InitImplParam()
     seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
 
     decodeS1GMerge_ =
-        (qfaInfo_->opParamInfo.qDescale.tensor != nullptr) &&
-        (qfaInfo_->opParamInfo.qDescale.tensor->GetStorageShape().GetDimNum() == 5);
+        (qfaInfo_->opParamInfo.qDescale.shape != nullptr) &&
+        (qfaInfo_->opParamInfo.qDescale.shape->GetStorageShape().GetDimNum() == 5);
 
     for (uint32_t bIdx = 0; bIdx < qfaInfo_->bSize; bIdx++) {
         if (seqUsedQFlag_) {

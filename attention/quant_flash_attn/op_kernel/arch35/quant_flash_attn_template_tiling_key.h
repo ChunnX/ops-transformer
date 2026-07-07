@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+  * CANN Open Software License Agreement Version 2.0 (the "License").
+  * Please refer to the License for details. You may not use this file except in compliance with the License.
+  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+  * See LICENSE in the software repository for the full text of the License.
+  */
 
 /*!
  * \file quant_flash_attn_template_tiling_key.h
@@ -17,30 +17,26 @@
 #define TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
 
 #include "ascendc/host_api/tiling/template_argument.h"
-
-#if __has_include("../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h")
-#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
-#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
-#include "../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
-#else
-#include "../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
-#include "../prompt_flash_attention/arch35/prompt_flash_attention_tiling_regbase.h"
-#include "../incre_flash_attention/arch35/incre_flash_attention_tiling_regbase.h"
-#endif
-
+#include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "quant_flash_attn_tiling_data.h"
 
-#ifndef ORIG_DTYPE_QUERY
-#define ORIG_DTYPE_QUERY (DT_FP8_E4M3FN)
-#endif
+#define ASCENDC_TPL_5_BW 5
+#define ASCENDC_TPL_10_BW 10
 
-#ifndef ORIG_DTYPE_KEY
-#define ORIG_DTYPE_KEY (DT_FP8_E4M3FN)
-#endif
+#define InOutLayoutType_BNSD_BNSD 1
+#define InOutLayoutType_BSH_BSH 0
+#define InOutLayoutType_TND_TND 2
 
-#ifndef ORIG_DTYPE_ATTENTION_OUT
-#define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
-#endif
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
+
+#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
+#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
+
+#define false 0
+#define true 1
 
 ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
     //    bit 8-1 InOutLayoutType(InputLayoutType-OutputLayoutType)
@@ -80,34 +76,18 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
 );
 
 ASCENDC_TPL_SEL(
-#if (ORIG_DTYPE_QUERY == DT_FP8_E4M3FN && ORIG_DTYPE_KEY == DT_FP8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    // mxfp8 softmax fp32
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
                              Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
         ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 1),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
                              KvLayoutType_PA_NZ),
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, false),
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
-        ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
-    ),
-#endif
-
-    // empty tensor placeholder
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, 0),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 0),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 1),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
     ),
 );
