@@ -613,7 +613,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
                     static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
                 totalSendCnt += roundSendCnt;
-                DumpTensor(topkIdsTensor_, 1, roundCompareCount_);
+                DumpTensor(sendGatherOutTensor_, 1, roundSendCnt);
                 PRINTF("========totalSendCnt=========:%u\n", totalSendCnt);
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
