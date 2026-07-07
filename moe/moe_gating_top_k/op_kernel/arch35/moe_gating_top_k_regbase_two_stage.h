@@ -62,6 +62,9 @@ private:
     __aicore__ inline void SortBatch(uint32_t validRows);
     __aicore__ inline void CopyOutBatch(uint32_t rowStart, uint32_t validRows);
     __aicore__ inline void CopyOutOneRow(uint32_t rowStart, uint32_t rowInBatch);
+    __aicore__ inline bool IsSmallTop1Path() const;
+    __aicore__ inline void CopyOutSmallTop1Batch(uint32_t rowStart, uint32_t validRows);
+    __aicore__ inline void CopyOutSmallTop1OneRow(uint32_t rowStart, uint32_t rowInBatch);
 
 private:
     TPipe *pipe_ = nullptr;
@@ -327,6 +330,57 @@ __aicore__ inline void MoeGatingTopKRegbaseTwoStage<T>::CopyOutBatch(uint32_t ro
 }
 
 template <typename T>
+__aicore__ inline bool MoeGatingTopKRegbaseTwoStage<T>::IsSmallTop1Path() const
+{
+    return k_ == 1 && expertCount_ <= 2 && normType_ == 0 && renorm_ == 0;
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbaseTwoStage<T>::CopyOutSmallTop1OneRow(
+    uint32_t rowStart, uint32_t rowInBatch)
+{
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
+    LocalTensor<float> yFloat = yFloatBuf_.Get<float>();
+    LocalTensor<T> yCast = yCastBuf_.Get<T>();
+    LocalTensor<int32_t> expertOut = expertOutBuf_.Get<int32_t>();
+    uint32_t rowOffset = rowInBatch * expertStride_;
+    int32_t selectedIdx = 0;
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+    if (expertCount_ == 2) {
+        float firstValue = xBiasTensor.GetValue(rowOffset);
+        float secondValue = xBiasTensor.GetValue(rowOffset + 1);
+        selectedIdx = secondValue > firstValue ? 1 : 0;
+    }
+
+    float yValue = xNormTensor.GetValue(rowOffset + static_cast<uint32_t>(selectedIdx)) * routedScalingFactor_;
+    SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
+    Duplicate(yFloat, yValue, k_);
+    Duplicate(expertOut, selectedIdx, k_);
+    PipeBarrier<PIPE_V>();
+
+    DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(k_ * sizeof(T)), 0, 0, 0};
+    if constexpr (IsSameType<T, float>::value) {
+        DataCopyPad(yGm_[(rowStart + rowInBatch) * k_], yFloat, yCopyParams);
+    } else {
+        Cast(yCast, yFloat, RoundMode::CAST_RINT, k_);
+        PipeBarrier<PIPE_V>();
+        DataCopyPad(yGm_[(rowStart + rowInBatch) * k_], yCast, yCopyParams);
+    }
+    DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(k_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyPad(expertIdxGm_[(rowStart + rowInBatch) * k_], expertOut, idxCopyParams);
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbaseTwoStage<T>::CopyOutSmallTop1Batch(uint32_t rowStart, uint32_t validRows)
+{
+    for (uint32_t row = 0; row < validRows; ++row) {
+        CopyOutSmallTop1OneRow(rowStart, row);
+    }
+}
+
+template <typename T>
 __aicore__ inline void MoeGatingTopKRegbaseTwoStage<T>::Process()
 {
     if (batchSize_ == 0 || curCoreRows_ == 0 || expertCount_ == 0 || k_ == 0) {
@@ -336,8 +390,12 @@ __aicore__ inline void MoeGatingTopKRegbaseTwoStage<T>::Process()
     for (uint32_t rowStart = 0; rowStart < curCoreRows_; rowStart += batchSize_) {
         uint32_t validRows = GetValidRows(rowStart);
         ComputeBatch(rowStart, validRows);
-        SortBatch(validRows);
-        CopyOutBatch(rowStart, validRows);
+        if (IsSmallTop1Path()) {
+            CopyOutSmallTop1Batch(rowStart, validRows);
+        } else {
+            SortBatch(validRows);
+            CopyOutBatch(rowStart, validRows);
+        }
     }
 }
 
