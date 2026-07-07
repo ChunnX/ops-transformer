@@ -63,6 +63,7 @@ class _MegaMoeOpBuilder(OpBuilder):
 
 
 _mega_moe_op_builder = _MegaMoeOpBuilder()
+_op_module = _mega_moe_op_builder.load()
 
 
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
@@ -74,7 +75,6 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
                    weight1_type=None, weight2_type=None, topo_type=None):
-    _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
@@ -123,6 +123,25 @@ class SymmBuffer:
         self.topo_type = self._ctx_manager.topo_type
 
 
+_TORCH_DTYPE_TO_INT = {  # torch枚举
+    torch.float8_e5m2: 23,
+    torch.float8_e4m3fn: 24,
+    torch.int8: 1,
+}
+
+
+def _dtype_to_int(dtype):
+    if dtype is None:
+        return None
+    if isinstance(dtype, int):
+        return dtype
+    if isinstance(dtype, torch.dtype):
+        if dtype not in _TORCH_DTYPE_TO_INT:
+            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+        return _TORCH_DTYPE_TO_INT[dtype]
+    raise TypeError(f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}.")
+
+
 def get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
@@ -130,10 +149,11 @@ def get_mega_moe_ccl_buffer_size(
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0, comm_alg: str = ""
 ) -> int:
+    quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
     return _op_module.get_mega_moe_ccl_buffer_size(
         ep_world_size, moe_expert_num, num_max_tokens_per_rank,
         num_topk, hidden, max_recv_token_num,
-        dispatch_quant_mode, dispatch_quant_out_dtype,
+        dispatch_quant_mode, quant_dtype_int,
         combine_quant_mode, comm_alg)
 
 
@@ -185,7 +205,6 @@ def mega_moe(
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
-
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
