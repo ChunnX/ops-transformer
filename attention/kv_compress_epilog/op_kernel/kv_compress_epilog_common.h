@@ -165,9 +165,8 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
         RegTensor<uint32_t> one;
         RegTensor<float> dupScale;
         RegTensor<T0> ropeReg;
-        RegTensor<uint32_t> scaleTmp0;
         RegTensor<uint8_t> scaleTmp1;
-        RegTensor<uint16_t> scaleTmp1Bf16;
+        RegTensor<bfloat16_t> scaleTmp1Bf16;
         UnalignRegForStore ureg0;
         UnalignRegForLoad ureg1;
         UnalignRegForStore ureg2;
@@ -187,7 +186,7 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
             LoadUnAlignPre(ureg0, rowRopeXLocalAddr);
             LoadUnAlign(ropeReg, ureg0, rowRopeXLocalAddr, 64);
             StoreAlign(ropeYLocalAddr + i * dstCurColNumAlign / 2, ropeReg, pregRope);
-            LocalMemBar<MemType::VEC_STORE, MemType::VEC_STORE>();
+            LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
             uint32_t sreg = sregNum;
             for (uint16_t j = 0; j < loopCount; j++) {
                 pregLoop = UpdateMask<float>(sreg);
@@ -216,20 +215,22 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
                     yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
 
                 // cat scale
-                ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
-                    Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
+                    Cast<bfloat16_t, float, castTraitB322B16Even>(scaleTmp1Bf16, max2, preg1);
                     StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B16>(
                         scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j),
                         (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
+                    RegTensor<uint32_t> scaleTmp0;
+                    ShiftRights(
+						scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
                     StoreAlign<T1, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B8>(
                         scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign,
                         (RegTensor<T1>&)scaleTmp1, preg1);
                 }
             }
-            LocalMemBar<MemType::VEC_STORE, MemType::VEC_STORE>();
+            LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
             // pad zero
             __ubuf__ T1* rowPadLocalAddr = yLocalAddr + i * dstCurColNumAlign + concatColNum;
