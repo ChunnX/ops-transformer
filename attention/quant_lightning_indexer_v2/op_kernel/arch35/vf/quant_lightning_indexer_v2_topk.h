@@ -21,18 +21,13 @@
 
 namespace topk {
 
-// ======================== TopK 算法常量 ========================
-// 基于四级基数排序(Histogram-based)的 TopK 选择算法
-// 将 key 按 8-bit 分段统计直方图，从高到低逐段确定 topK 的阈值 bin，
-// 最后 gather 出所有 >= 阈值的元素。
-
-static constexpr uint32_t RADIX_BINS = 256;       // 基数排序每轮的 bin 数量 (2^8 = 256，每轮处理 8 bit)
-static constexpr uint32_t RADIX_BITS_PER_PASS = 8; // 每轮处理 8 bit
-static constexpr uint32_t RADIX_PASSES_U32 = 4;    // uint32_t 需要 4 轮 (4 × 8 = 32 bit)
-static constexpr uint32_t RADIX_PASSES_U16 = 2;    // uint16_t 需要 2 轮 (2 × 8 = 16 bit)
-static constexpr uint32_t NK_VALUE_SIZE = 64;      // next_k 候选 buffer 大小，gather 粒度
-static constexpr uint32_t ALIGN_256 = 256;          // UB 对齐基线，histogram 相关 buffer 按 256 元素对齐
-static constexpr uint32_t DEFAULT_TOPK = 512;       // topK 默认值
+static constexpr uint32_t RADIX_BINS = 256;          // 基数排序每轮的 bin 数量 (2^8 = 256，每轮处理 8 bit)
+static constexpr uint32_t RADIX_BITS_PER_PASS = 8;   // 每轮处理 8 bit
+static constexpr uint32_t RADIX_PASSES_U32 = 4;      // uint32_t 需要 4 轮 (4 × 8 = 32 bit)
+static constexpr uint32_t RADIX_PASSES_U16 = 2;      // uint16_t 需要 2 轮 (2 × 8 = 16 bit)
+static constexpr uint32_t NK_VALUE_SIZE = 64;        // next_k 候选 buffer 大小，gather 粒度
+static constexpr uint32_t ALIGN_256 = 256;           // UB 对齐基线，histogram 相关 buffer 按 256 元素对齐
+static constexpr uint32_t DEFAULT_TOPK = 512;        // topK 默认值
 static constexpr uint32_t DEFAULT_TRUNK_LEN = 16384; // 默认 trunk 长度 (16K)，每次处理的 S2 元素数
 
 template<typename T>
@@ -51,9 +46,7 @@ public:
     static __aicore__ inline uint32_t GetSharedTmpBufferSize(uint32_t topK)
     {
         // 2 * topK:              tmpIdxLocal + tmpValueLocal (filter 阶段暂存)
-        // 5 * 256:               histogramsLocal + idx0~idx3 (直方图 + 4 轮基数排序索引)
-        // 64:                    nkValueLocal (next_k 候选)
-        // (topK + 64):           outputValueLocal (输出 value，+64 为 Duplicate 刷 -1 的额外空间)
+        // 5 * RADIX_BINS:               histogramsLocal + idx0~idx3 (直方图 + 4 轮基数排序索引)
         return 2 * topK * sizeof(uint32_t) + 5 * RADIX_BINS * sizeof(uint32_t) + NK_VALUE_SIZE * sizeof(uint32_t) +
                (topK + NK_VALUE_SIZE) * sizeof(uint32_t);
     }
@@ -73,11 +66,11 @@ public:
         tmpIdxLocal = sharedTmpBuffer[0];
         tmpValueLocal = tmpIdxLocal[topK];
         histogramsLocal = tmpValueLocal[topK];
-        idx0Local = histogramsLocal[RADIX_BINS];     // 偏移 256: 直方图 bin 数
-        idx1Local = idx0Local[RADIX_BINS];           // 偏移 256: 第 1 轮排序索引
-        idx2Local = idx1Local[RADIX_BINS];           // 偏移 256: 第 2 轮排序索引
-        idx3Local = idx2Local[RADIX_BINS];           // 偏移 256: 第 3 轮排序索引
-        nkValueLocal = idx3Local[RADIX_BINS];        // 偏移 256: 第 4 轮排序索引
+        idx0Local = histogramsLocal[RADIX_BINS];        // 偏移 256: 直方图 bin 数
+        idx1Local = idx0Local[RADIX_BINS];              // 偏移 256: 第 1 轮排序索引
+        idx2Local = idx1Local[RADIX_BINS];              // 偏移 256: 第 2 轮排序索引
+        idx3Local = idx2Local[RADIX_BINS];              // 偏移 256: 第 3 轮排序索引
+        nkValueLocal = idx3Local[RADIX_BINS];           // 偏移 256: 第 4 轮排序索引
         outputValueLocal = nkValueLocal[NK_VALUE_SIZE]; // 偏移 64: next_k 候选数
     }
 

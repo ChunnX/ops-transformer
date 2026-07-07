@@ -71,10 +71,8 @@ public:
         true};
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
-    // MXFP8: qScale 使用独立的 L1 buffer，每个 ping-pong 需要 M_BASIC_BLOCK * D_BASIC_BLOCK / 32 个元素
-    static constexpr uint64_t QSCALE_L1_PINGPONG_SIZE = M_BASIC_BLOCK * D_BASIC_BLOCK / 32; // = 1024
-    // MXFP8: kScale 使用独立的 L1 buffer，每个 buffer 需要 s2BasicBlock * D_BASIC_BLOCK / 32 个元素
-    static constexpr uint64_t KSCALE_L1_SIZE = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK / 32; // = 512
+    static constexpr uint64_t QSCALE_L1_PINGPONG_SIZE = M_BASIC_BLOCK * D_BASIC_BLOCK / 32;
+    static constexpr uint64_t KSCALE_L1_SIZE = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK / 32;
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
 
@@ -92,7 +90,6 @@ protected:
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
         const QLIV2Common::RunInfo &runInfo);
-    // MXFP8: 加载 qScale/kScale 到 L1
     __aicore__ inline void LoadQScaleToL1(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                           const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
@@ -210,13 +207,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 s2GmOffset + s2BasicBlock_ > s2ProcessSize ? s2ProcessSize - s2GmOffset : s2BasicBlock_;
             if (PAGE_ATTENTION) {
                 KeyNd2NzForPA(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
-                // MXFP8: PA 路径需要绝对偏移
                 if constexpr (IS_MXFP8) {
                     LoadKScaleToL1(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
                 }
             } else {
                 KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
-                // MXFP8: 非 PA 路径只传循环内相对偏移（tensorKeyScaleOffset 已含 s2GmBaseOffset）
                 if constexpr (IS_MXFP8) {
                     LoadKScaleToL1(s2L1RealSize, s2GmOffset, runInfo);
                 }
@@ -234,7 +229,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                    // MXFP8: 加载 qScale 到 L1（与 Query 数据一起）
                     if constexpr (IS_MXFP8) {
                         LoadQScaleToL1(s1gL1RealSize, s1gGmOffset, runInfo);
                     }

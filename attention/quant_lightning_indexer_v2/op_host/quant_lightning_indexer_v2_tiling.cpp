@@ -316,13 +316,11 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
                return ge::GRAPH_FAILED);
         if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
-            // MXFP8: scale 类型必须是 fp8_e8m0
             OP_CHECK_IF(
                 inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(opName_, "MXFP8 (quant_mode=3): The data types of the input query_dequant_scale and key_dequant_scale must be float8_e8m0."),
                 return ge::GRAPH_FAILED);
         } else {
-            // 非 MXFP8: scale 类型必须是 float
             OP_CHECK_IF(
                 inputQueryScaleType_ != ge::DT_FLOAT,
                 OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),
@@ -849,11 +847,10 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     uint32_t qDequantScaleShapeDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDimNum();
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDimNum();
 
-    // MXFP8: scale 比 data 多一维，最后两维为 [D/64, 2]
+    // MXFP8: scale 比 qk 多一维，最后两维为 [D/64, 2]
     bool isMxFp8Scale = (*opParamInfo_.quantMode == 3); // 3:mxfp8
 
     if (isMxFp8Scale) {
-        // MXFP8: qScale shape [B, S1, N1, D/64, 2]，比 query 多一维
         OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim + 1),
                    OP_LOGE(opName_, "MXFP8: the dim num of query_dequant_scale's shape should be %u, but now is %u",
                              qShapeDim + 1, qDequantScaleShapeDim),
@@ -862,7 +859,6 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                    OP_LOGE(opName_, "MXFP8: the dim num of key_dequant_scale's shape should be %u, but now is %u",
                              kShapeDim + 1, kDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
-        // 检查前 N-1 维与 data 相同（data 的前 N-1 维 = scale 的前 N-1 维）
         for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
             uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
@@ -871,7 +867,6 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                                  i, dimValueQueryScale, i, dimValueQuery),
                        return ge::GRAPH_FAILED);
         }
-        // 检查 qScale 倒数第二维 = headDim / 64，最后一维 = 2
         uint32_t qScaleSecondLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1);
         uint32_t qScaleLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim);
         uint32_t expectedQSecondLastDim = headDim_ / 64;
@@ -879,7 +874,6 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                    OP_LOGE(opName_, "MXFP8: query_dequant_scale's last two dims should be [%u, 2] (headDim/64, 2), but now is [%u, %u]",
                              expectedQSecondLastDim, qScaleSecondLastDim, qScaleLastDim),
                    return ge::GRAPH_FAILED);
-        // 检查 kScale
         for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
             uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueKey = opParamInfo_.key.shape->GetStorageShape().GetDim(i);
@@ -896,7 +890,6 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                              expectedKSecondLastDim, kScaleSecondLastDim, kScaleLastDim),
                    return ge::GRAPH_FAILED);
     } else {
-        // 非 MXFP8: scale 维度数比 data 少 1
         OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim - 1),
                    OP_LOGE(opName_, "the dim num of query_dequant_scale's shape should be %u, but now is %u",
                              qShapeDim - 1, qDequantScaleShapeDim),
@@ -965,7 +958,6 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     if (opParamInfo_.keyDequantScaleStride0 != -1) {
         QLIV2Info.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
-        // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/64, 2]，stride = BlockSize * (D/64) * 2 = BlockSize * D/32
         if (*opParamInfo_.quantMode == 3) { // 3:mxfp8
             QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32); // 32:32个key对应1个scale
         } else {

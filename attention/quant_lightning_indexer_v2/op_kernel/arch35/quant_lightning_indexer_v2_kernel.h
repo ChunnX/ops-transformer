@@ -107,7 +107,7 @@ protected:
     uint64_t queryCoreOffset = 0ULL;
     uint64_t keyCoreOffset = 0ULL;
     uint64_t keyScaleCoreOffset = 0ULL;
-    uint64_t qScaleCoreOffset_ = 0ULL;   // MXFP8: qScale 偏移
+    uint64_t qScaleCoreOffset_ = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t valueOutCoreOffset = 0ULL;

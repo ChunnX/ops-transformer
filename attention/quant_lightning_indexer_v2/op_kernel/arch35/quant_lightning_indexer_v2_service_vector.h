@@ -124,7 +124,7 @@ private:
     TBuf<TPosition::VECCALC> indicesOutBuf_;
     LocalTensor<uint32_t> indicesOutLocal_;
 
-    // scoreOutLocal_ 和 topkSharedTmpLocal_ 复用 resMm1UB_（ProcessVec1 结束后空闲）
+    // scoreOutLocal_ 和 topkSharedTmpLocal_ 复用 resMm1UB_
     LocalTensor<SCORE_T> scoreOutLocal_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
@@ -177,7 +177,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
     vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
-    // Topk: mrgValueLocal_ 和 indicesOutLocal_ 独立分配（跨迭代使用，不可复用）
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
 
@@ -186,18 +185,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    // 桶排序相关 buffer 全部复用 resMm1UB_（ProcessVec1 结束后 resMm1UB_ 空闲）
-    // 布局：resMm1UB_ 前部用于 outInvalidLocal_，后部用于 topk 临时 buffer
-    // outInvalidLocal_: CleanInvalidOutput 路径使用（与 ProcessTopK 互斥）
     outInvalidLocal_ = resMm1UB_.template ReinterpretCast<int32_t>();
 
-    // topkSharedTmpLocal_ 布局在 resMm1UB_ 中：
-    //   hisIndexLocal[1](topK) | histograms(256) | idxHigh(256) | idxLow(256) | nkValue(64) | tmpIndex(topK+trunkLen)
-    //   其中 tmpIndexLocal 与 hisIndexLocal[1] 空间复用（topk 内部保证时序安全）
     topkSharedTmpLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
 
-    // scoreOutLocal_ 布局在 topkSharedTmpLocal_ 之后
-    //   偏移 = topK + 3*256 + 64 = 2048 + 832 = 2880 uint32
     uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
     scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<uint16_t>();
 
@@ -206,7 +197,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 
     topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
-    // 刷-1（MXFP8 场景不需要 kScale buffer）
     if constexpr (!IS_MXFP8) {
         Duplicate(kScaleUB_, SCALE_T(0), 2 * s2BaseSize_ * 16);
     }
@@ -436,7 +426,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);
     int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
-    // AIV1 使用带偏移的 Event ID，与 AIC 核的等待/设置逻辑匹配
     uint32_t aivOffset = (blockId_ % CVRATIO) * QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET;
 
     if (curAivS1ProcNum == 0) {
@@ -497,14 +486,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    // qkVLstride = 第一个ND块的总占用 = mSize_aligned × dstStride（与Fixpipe的dstNdStride一致）
-    // mSize_aligned = Align(actMBaseSize, 2*G)，匹配Cube侧Fixpipe的实际输出行数
-    // 当QS不满分块时(如qs=1,actMBaseSize=64), Align(64,128)=128, 而非mBaseSize=256
     auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
         * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
-        // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
                                                     (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
