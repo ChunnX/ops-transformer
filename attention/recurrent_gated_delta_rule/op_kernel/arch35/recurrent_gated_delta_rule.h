@@ -154,6 +154,34 @@ public:
         usedblk = 0;
     }
 
+    __aicore__ inline void Init(const RGDRInitParams &initParams, TPipe *pipe)
+    {
+        uint64_t blockDim = GetBlockNum();
+        blockIdx = GetBlockIdx();
+        if (blockIdx >= blockDim) {
+            return;
+        }
+        pipe_ = pipe;
+        SetGlobalTensors(initParams);
+        InitLocalBuffers();
+    }
+
+    __aicore__ inline void SetGlobalTensors(const RGDRInitParams &initParams)
+    {
+        queryGm_.SetGlobalBuffer((__gm__ inType *)initParams.query);
+        keyGm_.SetGlobalBuffer((__gm__ inType *)initParams.key);
+        valueGm_.SetGlobalBuffer((__gm__ inType *)initParams.value);
+        gamaGm_.SetGlobalBuffer((__gm__ float *)initParams.gama);
+        gamaKGm_.SetGlobalBuffer((__gm__ float *)initParams.gamaK);
+        betaGm_.SetGlobalBuffer((__gm__ inType *)initParams.beta);
+        initStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.initState);
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.cuSeqlens);
+        ssmStateIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.ssmStateIndices);
+        numAcceptedTokensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.numAcceptedTokens);
+        finalStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.finalState);
+        attnOutGm_.SetGlobalBuffer((__gm__ outType *)initParams.attnOut);
+    }
+
     __aicore__ inline void InitLocalBuffers()
     {
         constexpr uint32_t stateQueueSize =
@@ -174,34 +202,6 @@ public:
         queryUb_ = queryBuff_.Get<float>();
         keyUb_ = keyBuff_.Get<float>();
         valueUb_ = valueBuff_.Get<float>();
-    }
-
-    __aicore__ inline void SetGlobalTensors(const RGDRInitParams &initParams)
-    {
-        finalStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.finalState);
-        attnOutGm_.SetGlobalBuffer((__gm__ outType *)initParams.attnOut);
-        queryGm_.SetGlobalBuffer((__gm__ inType *)initParams.query);
-        keyGm_.SetGlobalBuffer((__gm__ inType *)initParams.key);
-        valueGm_.SetGlobalBuffer((__gm__ inType *)initParams.value);
-        gamaKGm_.SetGlobalBuffer((__gm__ float *)initParams.gamaK);
-        gamaGm_.SetGlobalBuffer((__gm__ float *)initParams.gama);
-        betaGm_.SetGlobalBuffer((__gm__ inType *)initParams.beta);
-        initStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.initState);
-        numAcceptedTokensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.numAcceptedTokens);
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.cuSeqlens);
-        ssmStateIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.ssmStateIndices);
-    }
-
-    __aicore__ inline void Init(const RGDRInitParams &initParams, TPipe *pipe)
-    {
-        uint64_t blockDim = GetBlockNum();
-        blockIdx = GetBlockIdx();
-        if (blockIdx >= blockDim) {
-            return;
-        }
-        pipe_ = pipe;
-        SetGlobalTensors(initParams);
-        InitLocalBuffers();
     }
 
     __aicore__ inline void ComputeAvgload()
