@@ -18,7 +18,7 @@ import math, copy
 import torch
 import torch_npu
 import torchair
-import custom_ops
+import cann_ops_transformer
 import numpy as np
 import torch.nn as nn
 
