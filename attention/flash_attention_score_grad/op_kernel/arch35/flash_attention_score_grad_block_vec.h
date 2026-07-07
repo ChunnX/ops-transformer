@@ -58,7 +58,6 @@ public:
                                             GM_ADDR workspace);
     __aicore__ inline void SetOldDeterFp32Param(FagConstInfo &constInfo);
     __aicore__ inline void InitUbBuffer();
-    __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs);
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo);
@@ -937,25 +936,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessPostDeter(FagConstInfo
         dkvGmOffset += loopSize * dSize * constInfo.commonConstInfo.n2G;
     }
 }
- 
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs)
-{
-    sharedParams.qScaleDs = qScaleDs;
-    /* ssbuf send message */
-    if ASCEND_IS_AIV {  
-        if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);  // 
-            #pragma unroll
-            for (int i = 0; i < sizeof(FagCVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTilingSSbuf = *tempTiling;
-            }
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-        }
-    }
-}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterCompute(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor, 
@@ -1439,7 +1419,6 @@ public:
     __aicore__ inline void ProcessMulsAndCast(typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor,
                                               FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId){};
-    __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs){};
     template <const bool IS_DK>
     __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor, GlobalTensor<INPUT_TYPE> &dkvGmTensor,
         int64_t specialHalfS2RealSize, int64_t specialFirstHalfS2RealSize, uint64_t dAlign16, uint64_t dvAlign16, int64_t specialDkGmOffset, int64_t specialDvGmOffset){};
