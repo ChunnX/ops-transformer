@@ -10,7 +10,6 @@
 
 /*!
  * \file mega_moe_infershape.cpp
- * \brief
  */
 
 #include "register/op_impl_registry.h"
