@@ -28,6 +28,7 @@ constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
 constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
 constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8;
 constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1};
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
