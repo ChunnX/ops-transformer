@@ -75,13 +75,14 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	c10::string_view q_input_layout,
 	c10::string_view kv_input_layout,
 	int64_t mask_type,
-	int64_t quant_mode,
 	double scale_value,
 	int64_t inner_precise,
 	int64_t block_size,
 	int64_t pre_tokens,
 	int64_t next_tokens,
 	bool softmax_lse_flag,
+	int64_t quant_mode,
+	int64_t dst_type_max,
 	const c10::optional<at::Tensor> &q_dequant_scale,
 	const c10::optional<at::Tensor> &k_dequant_scale,
 	const c10::optional<at::Tensor> &v_dequant_scale,
@@ -280,8 +281,8 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// (ConvertType has overloads for both at::Tensor and TensorWrapper, but
 	// the two types cannot share one reference variable, so the call is
 	// split into two branches).
-	// Arg order must match aclnnBlockSparseAttentionV2GetWorkspaceSize() in
-	// attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v2.h.
+	// Arg order must match aclnnBlockSparseAttentionV3GetWorkspaceSize() in
+	// attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v3.h.
 	// On the MXFP4 path the descale tensors are also wrapped with FLOAT8_E8M0
 	// (inferred from quant_mode=2) and passed to the same
 	// qDequantScaleOptional slot; on the FP8/FP16/BF16 path the raw
@@ -302,7 +303,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 		TensorWrapper q_descale_wrapper = make_wrapper(*q_dequant_scale, FLOAT8_E8M0);
 		TensorWrapper k_descale_wrapper = make_wrapper(*k_dequant_scale, FLOAT8_E8M0);
 		TensorWrapper v_descale_wrapper = make_wrapper(*v_dequant_scale, FLOAT8_E8M0);
-		ACLNN_CMD(aclnnBlockSparseAttentionV2,
+		ACLNN_CMD(aclnnBlockSparseAttentionV3,
 				q_wrapper, k_wrapper, v_wrapper,
 				block_sparse_mask,
 				null_tensor,                    // attenMaskOptional — always nullptr
@@ -323,11 +324,13 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				pre_tokens,
 				next_tokens,
 				softmax_lse_flag_i64,
+				quant_mode,
+				dst_type_max,
 				attention_out,
 				softmax_lse);
 	} else {
 		// FP8 / FP16 / BF16: original path, unchanged.
-		ACLNN_CMD(aclnnBlockSparseAttentionV2,
+		ACLNN_CMD(aclnnBlockSparseAttentionV3,
 				query, key, value,
 				block_sparse_mask,
 				null_tensor,                    // attenMaskOptional — always nullptr
@@ -348,6 +351,8 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				pre_tokens,
 				next_tokens,
 				softmax_lse_flag_i64,
+				quant_mode,
+				dst_type_max,
 				attention_out,
 				softmax_lse);
 	}
