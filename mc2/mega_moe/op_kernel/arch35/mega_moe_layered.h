@@ -661,6 +661,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
         }
     }
+    PRINTF("SendMaskCal success!\n");
 }
 
 template <TemplateMegaMoeTypeClass>
