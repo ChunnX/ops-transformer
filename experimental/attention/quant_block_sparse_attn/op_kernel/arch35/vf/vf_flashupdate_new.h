@@ -470,7 +470,9 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::RegTensor<T> vregResFinal;
     MicroAPI::RegTensor<float> vregMinValue;
     MicroAPI::RegTensor<float> vregInfValue;
+    MicroAPI::RegTensor<float> vregZero;
     MicroAPI::MaskReg pregCompare;
+    MicroAPI::MaskReg pregZeroSum;
     constexpr uint32_t dealRows = 8;
     constexpr uint32_t floatRepSize = 64; // 64: 一个寄存器存64个float
     constexpr float infValue = 3e+99;     // 3e+99 for float inf
@@ -484,6 +486,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
     MicroAPI::Duplicate<float, float>(vregInfValue, infValue);
+    MicroAPI::Duplicate<float, float>(vregZero, 0.0f);
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_E2B_B32>(vregSum, srcSumUb + (i * dealRows));
@@ -494,6 +497,10 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
         MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+
+        // sum == 0 保护：ln(0) + max = -inf, 需替换为 vregMinValue
+        MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregSum, vregZero, pregAll);
+        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + (i * floatRepSize), vregResFinal, pregAll);
     }
@@ -507,6 +514,10 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregTail);
         MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+
+        // sum == 0 保护：ln(0) + max = -inf, 需替换为 vregMinValue
+        MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregSum, vregZero, pregTail);
+        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal,
                                                                     pregTail);
@@ -547,6 +558,7 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
     uint32_t tmpTailD = pltTailD;
     MicroAPI::MaskReg pregTailD = MicroAPI::UpdateMask<T>(tmpTailD);
     MicroAPI::MaskReg pregCompare;
+    MicroAPI::MaskReg pregZeroSum;
 
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
     MicroAPI::Duplicate<T, T>(vregZeroValue, zeroValue);
