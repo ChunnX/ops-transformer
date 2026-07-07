@@ -178,7 +178,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, oriKV, cmpKV, qDescale, oriKVDescale, cmpKVDescale, cmpSparseIndices, oriBlockTable,
-        cmpBlockTable, cuSeqlensQ,cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv,
+        cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv,
         sinks, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }

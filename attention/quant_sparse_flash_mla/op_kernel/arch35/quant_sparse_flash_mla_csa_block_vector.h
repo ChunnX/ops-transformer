@@ -806,7 +806,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
                     expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale, 1.0);
             }
-            
         }
     }
 
