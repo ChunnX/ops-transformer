@@ -41,7 +41,7 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .AutoContiguous();
         this->Input("ape")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
@@ -99,8 +99,7 @@ public:
         this->Output("state_cache")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .FormatList({ge::FORMAT_ND});
         this->Attr("rope_head_dim").AttrType(REQUIRED).Int(ROPE_HEAD_DIM_VALUE);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
