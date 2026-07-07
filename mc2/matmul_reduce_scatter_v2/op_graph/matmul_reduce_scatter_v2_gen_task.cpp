@@ -33,14 +33,6 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get comm_mode");
             return ge::GRAPH_FAILED;
         }
-        if (comm_mode == ge::AscendString("")) {
-            int64_t rank_size = 0;
-            if (!context->GetIntAttrVal("rank_size", rank_size)) {
-                OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get rank_size");
-                return ge::GRAPH_FAILED;
-            }
-            comm_mode = (rank_size <= MAX_CCU_RANKSIZE) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
-        }
         if (comm_mode == ge::AscendString("ai_cpu")) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
@@ -48,7 +40,8 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", comm_mode.GetString());
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.", \
+                  comm_mode.GetString());
         return ge::GRAPH_FAILED;
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5");
@@ -65,14 +58,6 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
             OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get comm_mode");
             return ge::GRAPH_FAILED;
         }
-        if (comm_mode == ge::AscendString("")) {
-            int64_t rank_size = 0;
-            if (!context->GetIntAttrVal("rank_size", rank_size)) {
-                OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get rank_size");
-                return ge::GRAPH_FAILED;
-            }
-            comm_mode = (rank_size <= MAX_CCU_RANKSIZE) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
-        }
         if (comm_mode == ge::AscendString("ai_cpu")) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AiCPU GenTaskFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
@@ -80,7 +65,9 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
         }
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", comm_mode.GetString());
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.", \
+                  comm_mode.GetString());
+        return ge::GRAPH_FAILED;
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5 AICPU or CCU");
     return ge::GRAPH_FAILED;

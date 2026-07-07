@@ -158,9 +158,9 @@ public:
         } else {
             if constexpr (std::is_same_v<LayoutB, layout::zN>) {
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
-                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
             } else {
-                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + blockStartOffset * strideKV;
             }
         }
     }

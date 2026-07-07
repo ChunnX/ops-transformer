@@ -45,15 +45,14 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
     RegTensor<half> vreg_max_2;
     RegTensor<float> vreg_exp_sum_1;  // 前8行的 和
     RegTensor<float> vreg_exp_sum_2;  // 接着的后8行
-
-    RegTensor<float> vreg_exp_0_1;
-    RegTensor<float> vreg_exp_1_1;
-    RegTensor<float> vreg_exp_2_1;
-    RegTensor<float> vreg_exp_3_1;
     RegTensor<float> vreg_exp_0_2;
     RegTensor<float> vreg_exp_1_2;
     RegTensor<float> vreg_exp_2_2;
     RegTensor<float> vreg_exp_3_2;
+    RegTensor<float> vreg_exp_0_1;
+    RegTensor<float> vreg_exp_1_1;
+    RegTensor<float> vreg_exp_2_1;
+    RegTensor<float> vreg_exp_3_1;
     // f8
     RegTensor<T2> vreg_exp_0_f8_1;
     RegTensor<T2> vreg_exp_2_f8_1;
@@ -101,7 +100,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all); // 只剩8行的8个max值
-        ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
+        ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll,
+                                                            vreg_max_tmp_unroll, preg_all);
         Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
         Sub(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_ln_p_scale, preg_all);
         StoreUnAlign<half, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -148,25 +148,23 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_input_x_2, vreg_max_2, preg_all);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_input_x_2, vreg_max_2, preg_all);
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-            // Add
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2,
+                                                vreg_max_2, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_3_1, preg_all);
-
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_0_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-            // Cast
             Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
             Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
             // Or
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1,
-                (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,
+                (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1,
                 (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1,
@@ -246,10 +244,10 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
 
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_2,
                 (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
-            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_2,
-                (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2,
+               (RegTensor<uint8_t>&)vreg_exp_1_f8_2, (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1,
-                (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
+               (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
 
             Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_idxs);
             StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32 + 256, vreg_exp_merge_f8_2, preg_all_b8);

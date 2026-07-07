@@ -20,7 +20,7 @@
 - 输入输出支持以下场景：
   - 场景一：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, head_size]
     value:[batch * seq_len, num_head, head_size]
     key_cache:[num_blocks, num_head, block_size, head_size]
@@ -37,7 +37,7 @@
 
     对于每个token（i ∈ [0, num_tokens)）和每个头（j ∈ [0, num_head)）：
 
-    ```
+    ```python
     block_idx = slot_mapping[i] // block_size
     block_offset = slot_mapping[i] % block_size
 
@@ -109,7 +109,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">key（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的key值，当前step多个token的key。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></ul></td>
       <td class="tg-0pky">FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">3</td>
@@ -119,7 +119,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">value（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的value值，当前step多个token的value。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></ul></td>
       <td class="tg-0pky">FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">3</td>
@@ -129,7 +129,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">keyCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key cache，当前layer的key cache。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></ul></td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">valueCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的value cache，当前layer的value cache。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></ul></td>
       <td class="tg-0pky">与value保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">slotMapping（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每个token key或value在cache中的存储偏移。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li></ul></td>
       <td class="tg-0pky">INT32、INT64</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">keyScale（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的key scale值，当前step多个token的key scale。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li><li>两维tensor，尾轴可以不连续。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li><li>两维tensor，尾轴可以不连续。</li></ul></td>
       <td class="tg-0pky">FLOAT</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0pky">keyScaleCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key scale cache，当前layer的key scale cache。</td>
-      <td class="tg-0pky"><ul><li>不支持空Tensor。</li><li>四维tensor，最后一维为1。</li></td>
+      <td class="tg-0pky"><ul><li>不支持空Tensor。</li><li>四维tensor，最后一维为1。</li></ul></td>
       <td class="tg-0pky">FLOAT</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0lax">cacheLayoutOptional（char*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">表示keyCacheRef和valueCacheRef的内存排布格式。</td>
-      <td class="tg-0lax"><ul><li>当传空指针或"BNBD"时，表示keyCacheRef和valueCacheRef的格式为[num_blocks, num_head, block_size, head_size]。</li></td>
+      <td class="tg-0lax"><ul><li>当传空指针或"BNBD"时，表示keyCacheRef和valueCacheRef的格式为[num_blocks, num_head, block_size, head_size]。</li></ul></td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -206,7 +206,6 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td class="tg-0lax">-</td>
     </tr>
   </tbody></table>
-
 
 - **返回值：**
 

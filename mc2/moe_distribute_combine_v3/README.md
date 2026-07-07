@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 算子功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 
     相较于MoeDistributeCombineV2算子，该算子变更如下：
     - 新增`context`入参，存入通信域相关信息；
@@ -22,18 +22,8 @@
     详细说明请参考以下参数说明。
 - 计算公式：
 
-    - 不存在TP域通信时：
-
     $$
     ataOut = AllToAllV(expand_x)\\
-    x_out = Sum(expert_scales * ataOut + expert_scales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expand_x)\\
-    ataOut = AllToAllV(rsOut)\\
     x_out = Sum(expert_scales * ataOut + expert_scales * sharedExpertX)
     $$
 
@@ -103,7 +93,7 @@
   <tr>
    <td>tp_send_counts_optional</td>
    <td>可选输入</td>
-   <td>从TP通信域各卡接收的token数，对应MoeDistributeDispatchV3中的tp_recv_counts输出，有TP域通信需传参，无TP域通信传空指针。</td>
+   <td>预留参数，TP域通信不再支持，传空指针即可。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -222,14 +212,14 @@
   <tr>
    <td>tp_world_size</td>
    <td>可选属性</td>
-   <td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+   <td><li>TP通信域大小（预留参数，当前版本不支持，仅允许0或1）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tp_rank_id</td>
    <td>可选属性</td>
-   <td><li>TP域本卡Id，无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡Id（预留参数，当前版本不支持，传0即可）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -328,9 +318,9 @@
 
 - `MoeDistributeDispatchV3`与`CombineV3`系列算子必须配套使用，具体参考调用示例。
 
-- 在不同产品型号、不同通信算法或不同版本中，`MoeDistributeDispatchV3`的Tensor输出`assist_info_for_combine_out`、`ep_recv_counts_out`、`tp_recv_counts_out`、`expand_scales_out`中的元素值可能不同，使用时直接将上述Tensor传给`CombineV3`系列算子对应参数即可，模型其他业务逻辑不应对其存在依赖。
+- 在不同产品型号、不同通信算法或不同版本中，`MoeDistributeDispatchV3`的Tensor输出`assist_info_for_combine_out`、`ep_recv_counts_out`、`expand_scales_out`中的元素值可能不同，使用时直接将上述Tensor传给`CombineV3`系列算子对应参数即可，模型其他业务逻辑不应对其存在依赖。`tp_recv_counts_out`为预留输出，当前版本不支持，传空指针即可。
 
-- 调用算子过程中使用的`ep_world_size`、`moe_expert_num`、`ccl_buffer_size`、`tp_world_size`、`expert_shard_type`、`shared_expert_num`、`shared_expert_num`、`global_bs`、`comm_alg`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`MoeDistributeDispatchV3`算子对应参数也保持一致。
+- 调用算子过程中使用的`ep_world_size`、`moe_expert_num`、`ccl_buffer_size`、`expert_shard_type`、`shared_expert_num`、`shared_expert_num`、`global_bs`、`comm_alg`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`MoeDistributeDispatchV3`算子对应参数也保持一致。`tp_world_size`为预留参数，当前版本不支持。
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
@@ -339,7 +329,7 @@
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`。
     - `local_expert_num`：表示本卡专家数量。
         - 对于共享专家卡，`local_expert_num` = 1
-        - 对于MoE专家卡，`local_expert_num` = `moe_expert_num` / (`ep_world_size` - `shared_expert_num`)，`local_expert_num` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`local_expert_num` = `moe_expert_num` / (`ep_world_size` - `shared_expert_num`)。当前版本不支持TP域通信。
 
 - 参数约束：
     - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
@@ -353,7 +343,7 @@
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
     - 一个模型中的`MoeDistributeCombineV3`和`MoeDistributeDispatchV3`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`MoeDistributeCombineV3`和`MoeDistributeDispatchV3`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
@@ -363,10 +353,10 @@
     - 参数约束：
         - `ep_world_size`：取值支持8、16、32、64、128、144、256、288。
         - `moe_expert_num`：取值范围(0, 1024]。
-        - `tp_world_size`：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tp_rank_id`：取值范围[0, 1]，同一个TP通信域中各卡的`tp_rank_id`不重复。无TP域通信时，传0即可。
+        - `tp_world_size`：预留参数，当前版本不支持，仅允许0或1。
+        - `tp_rank_id`：预留参数，当前版本不支持，传0即可。
         - `shared_expert_num`：当前取值范围[0, 4]。
-        - `comm_quant_mode`：int8量化当且仅当`tp_world_size` < 2时可开启。
+        - `comm_quant_mode`：int8量化支持。
         - `performance_info_optional`：预留参数，当前版本不支持，传空指针即可。
         - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
 

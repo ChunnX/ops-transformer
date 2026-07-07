@@ -18,97 +18,96 @@
 using namespace ge;
 using namespace AscendC;
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 namespace optiling {
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
 {
-    OP_CHECK_IF(oriWinLeft_ != 127, // 127:当前不泛化
-        OP_LOGE(opName_, "oriWinLeft_ only support 127, but got %u", oriWinLeft_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
+                OP_LOGE(opName_, "oriWinLeft_ only support -1 or >=0, but got %ld", oriWinLeft_),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(oriWinRight_ != 0, // 0:当前不泛化
-        OP_LOGE(opName_, "oriWinRight_ only support 0, but got %u", oriWinRight_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(oriWinRight_ != -1 && oriWinRight_ < 0,
+                OP_LOGE(opName_, "oriWinRight_ only support -1 or >=0, but got %ld", oriWinRight_),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
 {
-    OP_CHECK_IF(bSize_ <= 0,
-        OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(bSize_ <= 0, OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSMLALayout::TND),
-            OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n2Size_ != 1,
-        OP_LOGE(opName_, "kv_head_num only support 1, but got %u", n2Size_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(n2Size_ != 1, OP_LOGE(opName_, "kv_head_num only support 1, but got %u", n2Size_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
-        OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSize_ != 512, // 512:当前不泛化
-        OP_LOGE(opName_, "Head dim of input q only support 512, but got %u", dSize_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Head dim of input q only support 512, but got %u", dSize_), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSizeV_ != 512, // 512:当前不泛化
-        OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE &&
-                dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
-        OP_LOGE(opName_, "dSizeVInput only support %u and %u, but got %u", KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
-                KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO, dSizeVInput_),
-        return ge::GRAPH_FAILED);
+    if (quant_mode_ == 1) {
+        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
+                    OP_LOGE(opName_, "When quant_mode is 1, dSizeVInput only support %u, but got %u",
+                            KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE, dSizeVInput_),
+                    return ge::GRAPH_FAILED);
+    } else if (quant_mode_ == 2) {
+        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
+                    OP_LOGE(opName_, "When quant_mode is 2, dSizeVInput only support %u, but got %u",
+                            KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO, dSizeVInput_),
+                    return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantLayout() const
 {
-    const std::vector<std::string> layoutSupportList = {
-        "BSND",
-        "TND"
-    };
+    const std::vector<std::string> layoutSupportList = {"BSND", "TND"};
     std::string layoutQuery = opParamInfo_.layoutQ;
     OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutQuery) == layoutSupportList.end(),
-        OP_LOGE(opName_, "layoutQuery only support BSND/TND, but got %s", layoutQuery.c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "layoutQuery only support BSND/TND, but got %s", layoutQuery.c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
     OP_CHECK_IF(qType_ != ge::DT_BF16,
-        OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            QSMLADataTypeToSerialString(ge::DT_BF16).c_str(), QSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            QSMLADataTypeToSerialString(qType_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
+                        QSMLADataTypeToSerialString(ge::DT_BF16).c_str(),
+                        QSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
+                        QSMLADataTypeToSerialString(qType_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
-        OP_LOGE(opName_, "quant_mode only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "quant_mode only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
+                return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
-            OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
+                    return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
-        OP_LOGE(opName_, "rope_head_dim only support 64, but got %ld",
-        *opParamInfo_.ropeHeadDim),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "rope_head_dim only support 64, but got %ld", *opParamInfo_.ropeHeadDim),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -119,25 +118,24 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-        OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%u) should be in range (0, %u].",
-        oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%u) should be in range (0, %u].",
+                        oriBlockSize_, MAX_BLOCK_SIZE),
+                return ge::GRAPH_FAILED);
 
     if (cmpBlockSize_ != 0) {
         OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-            OP_LOGE(opName_, "when page attention is enabled, cmpBlockSize_(%u) should be in range (0, %u].",
-            cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "when page attention is enabled, cmpBlockSize_(%u) should be in range (0, %u].",
+                            cmpBlockSize_, MAX_BLOCK_SIZE),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquant() const
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureAntiquantAttr() ||
-        ge::GRAPH_SUCCESS != CheckFeatureAntiquantShape() ||
-        ge::GRAPH_SUCCESS != CheckFeatureAntiquantLayout() ||
-        ge::GRAPH_SUCCESS != CheckFeatureAntiquantDtype() ||
-        ge::GRAPH_SUCCESS != CheckFeatureWinKV() ||
-        ge::GRAPH_SUCCESS != CheckFeatureAntiquantPa()) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureAntiquantAttr() || ge::GRAPH_SUCCESS != CheckFeatureAntiquantShape() ||
+        ge::GRAPH_SUCCESS != CheckFeatureAntiquantLayout() || ge::GRAPH_SUCCESS != CheckFeatureAntiquantDtype() ||
+        ge::GRAPH_SUCCESS != CheckFeatureWinKV() || ge::GRAPH_SUCCESS != CheckFeatureAntiquantPa()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -148,4 +146,4 @@ ge::graphStatus QSMLATilingCheck::CheckFeature() const
     return CheckFeatureAntiquant();
 }
 
-}
+} // namespace optiling

@@ -48,6 +48,7 @@
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
+|[aclnnBSASelectBlockMask](../../attention/bsa_select_block_mask/docs/aclnnBSASelectBlockMask.md)|BSASelectBlockMask是BSA（BlockSparseAttention）的前置算子，根据Query和Key的内容动态生成blockSparseMask，使BSA的调用链从"手动提供掩码"变为"根据Q/K内容自适应选择稀疏模式"。|默认确定性实现| - |
 |[aclnnCausalConv1dFn](../../mamba/causal_conv1d/docs/aclnnCausalConv1dFn.md)|完成因果一维卷积（Causal Conv1d）的前向计算（prefill / chunk-prefill）。算子内部支持SiLU激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）等特性。| - | 默认确定性实现 |
 |[aclnnCausalConv1dUpdate](../../mamba/causal_conv1d/docs/aclnnCausalConv1dUpdate.md)|完成因果一维卷积（Causal Conv1d）的状态更新（decode / update）计算。算子内部支持SiLU激活、缓存索引（cacheIndices）、投机解码（numAcceptedTokens）等特性。| - | 默认确定性实现 |
 |[aclnnFusedCausalConv1d](../../attention/fused_causal_conv1d/docs/aclnnFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。| - | 默认确定性实现 |
@@ -107,6 +108,7 @@
 |[aclnnInplaceAttentionWorkerScheduler](../../attention/attention_worker_scheduler/docs/aclnnInplaceAttentionWorkerScheduler.md)|Attention和FFN分离部署场景下，Attention侧数据扫描算子。该算子接收来自FFNToAttention算子的输出数据，并对数据进行逐步扫描，确保数据准备就绪。|默认确定性实现| 默认确定性实现 |
 |[aclnnInplaceFfnWorkerScheduler](../../ffn/ffn_worker_scheduler/docs/aclnnInplaceFfnWorkerScheduler.md)|Attention和FFN分离场景下，FFN侧数据扫描算子。该算子接收AttentionToFFN算子发送的数据，进行扫描并完成数据整理。|默认确定性实现| 默认确定性实现 |
 |[aclnnInplacePartialRotaryMul](../../posembedding/inplace_partial_rotary_mul/docs/aclnnInplacePartialRotaryMul.md)|执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。|默认确定性实现| 默认确定性实现 |
+|[aclnnInplacePartialRotaryMulGrad](../../posembedding/inplace_partial_rotary_mul_grad/docs/aclnnInplacePartialRotaryMulGrad.md)|执行局部旋转位置编码InplacePartialRotaryMul的反向计算，对输入dy的D维度上切片[start, end)区域执行旋转位置编码梯度计算，结果inplace写回dy。|- | 默认确定性实现 |
 |[aclnnInterleaveRope](../../posembedding/interleave_rope/docs/aclnnInterleaveRope.md)|针对单输入x进行旋转位置编码。|- | 默认确定性实现 |
 |[aclnnKvCompressEpilog](../../attention/kv_compress_epilog/docs/aclnnKvCompressEpilog.md)|在KV Cache的Epilog阶段，对缓存进行原地逐组动态量化压缩更新，将bfloat16激活值压缩为FP8格式并按slotMapping散写。|- | 默认确定性实现 |
 |[aclnnLightningIndexer](../../attention/lightning_indexer/docs/aclnnLightningIndexer.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。|默认确定性实现| 默认确定性实现 |
@@ -148,7 +150,8 @@
 |[aclnnMoeFinalizeRoutingV2Grad](../../moe/moe_finalize_routing_v2_grad/docs/aclnnMoeFinalizeRoutingV2Grad.md)|aclnnMoeFinalizeRoutingV2的反向传播。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeFinalizeRoutingV3](../../moe/moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV3.md)| MoE计算中，最后处理合并MoE FFN的输出结果。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeFusedTopk](../../moe/moe_fused_topk/docs/aclnnMoeFusedTopk.md)|MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。|默认确定性实现| - |
-|[aclnnMoeGatingTopK](../../moe/moe_gating_top_k/docs/aclnnMoeGatingTopK.md)|MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。|默认确定性实现| 默认确定性实现 |
+| [aclnnMoeGatingTopK](../../moe/moe_gating_top_k/docs/aclnnMoeGatingTopK.md)|MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。|默认确定性实现| 默认确定性实现 |
+| [aclnnMoeGatingTopKV2](../../moe/moe_gating_top_k/docs/aclnnMoeGatingTopKV2.md)|MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家，支持两种模式。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeGatingTopKBackward](../../moe/moe_gating_top_k_backward/docs/aclnnMoeGatingTopKBackward.md)|aclnnMoeGatingTopK的反向算子。|默认确定性实现| - |
 |[aclnnMoeGatingTopKSoftmax](../../moe/moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)|MoE计算中，对x的输出做Softmax计算，取TopK操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)|MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取TopK操作；如果renorm=1，先对x的输出做TopK操作，再进行Softmax操作。|默认确定性实现| 默认确定性实现 |
@@ -191,9 +194,9 @@
 |[aclnnNsaSelectedAttentionInfer](../../attention/nsa_selected_attention_infer/docs/aclnnNsaSelectedAttentionInfer.md)|Native Sparse Attention推理过程中，Selected Attention的计算。|默认确定性实现| - |
 |[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)|全量推理场景的FlashAttention算子。|默认确定性实现| - |
 |[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现| - |
+|[aclnnQkvRmsNormRopeCacheWithKScale](../../posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/aclnnQkvRmsNormRopeCacheWithKScale.md)|输入Q/K/V融合张量，拆分Q、K、V后对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出qOut和qScale；K/V分支按slotMapping更新kCacheRef、kScaleCacheRef和vCacheRef。|-|默认确定性实现|
 |[aclnnQuantAllReduce](../../mc2/quant_all_reduce/docs/aclnnQuantAllReduce.md)|实现quant + allReduce融合计算。|- | 默认非确定性说明，支持配置开启 |
 |[aclnnQuantFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnQuantFlashAttentionScore.md)| 量化的训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|- | 默认确定性说明 |
-|[aclnnQuantFlashAttentionScoreGrad](../../attention/flash_attention_score_grad/docs/aclnnQuantFlashAttentionScoreGrad.md)| 实现“Transformer Attention Score”的融合量化的反向计算。 |- | 默认确定性说明 |
 |[aclnnQuantGroupedMatmulDequantWeightNZ](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequantWeightNZ.md)|对输入x进行量化，分组矩阵乘以及反量化，输入权重Weight会被强制视为NZ格式。| - | - |
 |[aclnnQuantLightningIndexer](../../attention/quant_lightning_indexer/docs/aclnnQuantLightningIndexer.md)|QuantLightningIndexer在LightningIndexer的基础上支持了Per-Token-Head量化输入。| - | 默认确定性实现 |
 |[aclnnQuantGroupedMatmulInplaceAdd](../../gmm/quant_grouped_matmul_inplace_add/docs/aclnnQuantGroupedMatmulInplaceAdd.md)|实现分组矩阵乘计算和加法计算，基本功能为矩阵乘和加法的组合。| - | 默认确定性实现 |

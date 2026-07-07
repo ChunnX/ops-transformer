@@ -166,12 +166,16 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     ```python
     import torchair
 
-    def fn(cache, cache_scale, x, slot_mapping):
-        torch.ops.cann_ops_transformer.indexer_quant_cache(
-            cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
+    class IndexerQuantCacheModel(torch.nn.Module):
+        def forward(self, cache, cache_scale, x, slot_mapping):
+            indexer_quant_cache(
+                cache, cache_scale, x, slot_mapping,
+                quant_mode="fp8", round_scale=True, x_scale=1.0)
+            return cache, cache_scale
 
-    npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
-    compiled = torch.compile(fn, backend=npu_backend, dynamic=False)
-    compiled(cache, cache_scale, x, slot_mapping)
+    model = IndexerQuantCacheModel().npu()
+    npu_backend = torchair.get_npu_backend()
+    model = torch.compile(model, backend=npu_backend, dynamic=False)
+    model(cache, cache_scale, x, slot_mapping)
     print(cache.shape, cache.dtype, cache_scale.shape, cache_scale.dtype)
     ```

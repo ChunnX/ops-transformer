@@ -639,15 +639,15 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
-                                      .rowCount = dealRowCount,
-                                      .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.n2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                        .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
                         .dIdx = 0,
                         .gS1DealSize = dealRowCount,
                         .dDealSize = (uint32_t)constInfo.dSizeV};
+        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
+                                      .rowCount = dealRowCount,
+                                      .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 

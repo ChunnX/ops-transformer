@@ -319,28 +319,27 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
-    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= RANK_DIM_BOUNDARY) {
+    const size_t maxLength = 7UL;
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
-            "'', 'ai_cpu', 'ccu'");
-        return ge::GRAPH_FAILED;
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGD(context->GetNodeName(),
+                "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -348,12 +347,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::Tiling
 uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;
-    if (npuArch_ == NpuArch::DAV_3510) {
-        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
