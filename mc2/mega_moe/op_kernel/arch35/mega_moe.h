@@ -1119,43 +1119,43 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
         LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
-        // for (int32_t expId = 0; expId < topK_; ++expId) {
-        //     float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
-        //     auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-        //     auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
-        //     auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
-        //     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        //         WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-        //         DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        //         SetFlag<AscendC::HardEvent::S_V>(event);
-        //         WaitFlag<AscendC::HardEvent::S_V>(event);
-        //         Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-        //     } else {
-        //         uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-        //         uint32_t quantTokenSize = k_ + nScale;
-        //         uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
-        //         WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-        //         DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        //         using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
-        //             fp8_e4m3fn_t, fp8_e5m2_t>::type;
-        //         MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32,
-        //             bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
-        //     }
-        //     PipeBarrier<PIPE_V>();
-        //     if (expId == 0) {
-        //         Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
-        //     } else {
-        //         Muls(dataInFp32, dataInFp32, expScale, k_);
-        //         PipeBarrier<PIPE_V>();
-        //         Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-        //         PipeBarrier<PIPE_V>();
-        //     }
-        //     SetFlag<AscendC::HardEvent::V_MTE2>(event);
-        // }
+        for (int32_t expId = 0; expId < topK_; ++expId) {
+            float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
+            auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
+            auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
+            auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                SetFlag<AscendC::HardEvent::S_V>(event);
+                WaitFlag<AscendC::HardEvent::S_V>(event);
+                Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+            } else {
+                uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+                uint32_t quantTokenSize = k_ + nScale;
+                uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
+                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
+                    fp8_e4m3fn_t, fp8_e5m2_t>::type;
+                MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32,
+                    bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
+            }
+            PipeBarrier<PIPE_V>();
+            if (expId == 0) {
+                Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+            } else {
+                Muls(dataInFp32, dataInFp32, expScale, k_);
+                PipeBarrier<PIPE_V>();
+                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                PipeBarrier<PIPE_V>();
+            }
+            SetFlag<AscendC::HardEvent::V_MTE2>(event);
+        }
         // 共享专家结果累加（直接加，不乘 topk_weight）
         if (sharedExpertNum_ > 0) {
             // Wait for all AIC blocks to complete shared expert GMM2
@@ -1167,8 +1167,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
                     AscendC::Nop<200>();
                 }
             }
-            Duplicate<float>(dataResFp32Tensor_, 0.0f, k_);
-            PipeBarrier<PIPE_V>();
             GlobalTensor<bfloat16_t> sharedResult;
             sharedResult.SetGlobalBuffer((__gm__ bfloat16_t*)params_.workspaceInfo.sharedExpertResultPtr);
             for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
@@ -1329,6 +1327,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertSwiglu()
 {
     if constexpr (g_coreType != AIV) { return; }
+    if (subBlockIdx_ != 0) { return; }
 
     uint32_t outputN = hiddenDim_ / SWIGLU_N_HALF;
     uint32_t scaleN = Ops::Base::CeilDiv(outputN, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
@@ -1596,121 +1595,54 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     uint64_t curSendCnt = 0;
     uint64_t nextSendCnt = 0;
 
-    // if constexpr(g_coreType == AIV) {
-    //     if (subBlockIdx_ == 1) {
-    //         SendCntCal(0, nextSendCnt);
-    //         if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
-    //             UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-    //             TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
-    //         }
-    //     }
-    // }
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            SendCntCal(0, nextSendCnt);
+            if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, 0, nextSendCnt)) {
+                UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                TripleInfoCalAndDispatch(dispatchAddrInfo, 0);
+            }
+        }
+    }
 
-    // for (int localExpertId = 0; localExpertId < static_cast<int>(moeExpertPerRank_); localExpertId++) {
-    //     curSendCnt = nextSendCnt;
+    for (int localExpertId = 0; localExpertId < static_cast<int>(moeExpertPerRank_); localExpertId++) {
+        curSendCnt = nextSendCnt;
 
-    //     if constexpr(g_coreType == AIV) {
-    //         if (subBlockIdx_ == 1 && localExpertId + 1 < static_cast<int>(moeExpertPerRank_)) {
-    //             SendCntCal(localExpertId + 1, nextSendCnt);
-    //             if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
-    //                 UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
-    //                 TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
-    //             }
-    //         }
-    //     }
+        if constexpr(g_coreType == AIV) {
+            if (subBlockIdx_ == 1 && localExpertId + 1 < static_cast<int>(moeExpertPerRank_)) {
+                SendCntCal(localExpertId + 1, nextSendCnt);
+                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                }
+            }
+        }
 
-    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
-    //         continue;
-    //     }
-    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
-    //     GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
-    // }
-    // EndSync(vecSetSyncCom_);
-    // if constexpr(g_coreType == AIV) {
-    //     if (subBlockIdx_ == 1) {
-    //         ExpertTokenNumCopyOut();
-    //     }
-    // }
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId, curSendCnt)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+    }
+    EndSync(vecSetSyncCom_);
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            ExpertTokenNumCopyOut();
+        }
+    }
 
-    // // Shared expert SwiGLU: AIV 处理共享专家 GMM1 输出（GMM1 在 Phase 1 已完成，数据就绪）
     if (sharedExpertNum_ > 0) {
-        // AIV 等待 AIC 完成 GMM1
         if constexpr (g_coreType == AIV) {
             PipeBarrier<PIPE_ALL>();
             while (AscendC::ReadGmByPassDCache(
                 (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm1DoneFlagPtr) != int32_t(aicNum_)) {
                 AscendC::Nop<200>();
             }
-            if (aivCoreIdx_ == 0) {
-                GlobalTensor<bfloat16_t> gmm1DbgGm;
-                gmm1DbgGm.SetGlobalBuffer((__gm__ bfloat16_t*)params_.workspaceInfo.sharedExpertGmm1OutPtr);
-                LocalTensor<bfloat16_t> gmm1DbgUb(TPosition::VECCALC, 0, 64);
-                uint32_t halfDim = hiddenDim_ / SWIGLU_N_HALF;
-                DataCopy(gmm1DbgUb, gmm1DbgGm, 64);
-                PipeBarrier<PIPE_MTE2>();
-                PRINTF("[KERNEL][GMM1] rank=%u bs=%u hiddenDim=%lld gate[0:32]:\n", rankId_, m_, (long long)hiddenDim_);
-                for (uint32_t _di = 0; _di < 32; _di++) {
-                    PRINTF("[KERNEL][GMM1] gate[%u]=%f \n", _di, gmm1DbgUb.GetValue(_di));
-                }
-                PRINTF("\n");
-                DataCopy(gmm1DbgUb, gmm1DbgGm[halfDim], 64);
-                PipeBarrier<PIPE_MTE2>();
-                PRINTF("[KERNEL][GMM1] up[0:32]:\n");
-                for (uint32_t _di = 0; _di < 32; _di++) {
-                    PRINTF("[KERNEL][GMM1] up[%u]=%f \n", _di, gmm1DbgUb.GetValue(_di));
-                }
-                PRINTF("\n");
-                if (m_ > 1) {
-                    DataCopy(gmm1DbgUb, gmm1DbgGm[(m_ - 1) * hiddenDim_], 64);
-                    PipeBarrier<PIPE_MTE2>();
-                    PRINTF("[KERNEL][GMM1] last_token gate[0:32]:\n");
-                    for (uint32_t _di = 0; _di < 32; _di++) {
-                        PRINTF("[KERNEL][GMM1] gate[%u]=%f \n", _di, gmm1DbgUb.GetValue(_di));
-                    }
-                    PRINTF("\n");
-                    DataCopy(gmm1DbgUb, gmm1DbgGm[(m_ - 1) * hiddenDim_ + halfDim], 64);
-                    PipeBarrier<PIPE_MTE2>();
-                    PRINTF("[KERNEL][GMM1] last_token up[0:32]:\n");
-                    for (uint32_t _di = 0; _di < 32; _di++) {
-                        PRINTF("[KERNEL][GMM1] up[%u]=%f \n", _di, gmm1DbgUb.GetValue(_di));
-                    }
-                    PRINTF("\n");
-                }
-            }
             SharedExpertSwiglu();
             PipeBarrier<PIPE_ALL>();
-            if (aivCoreIdx_ == 0) {
-                uint32_t outputN = hiddenDim_ / SWIGLU_N_HALF;
-                GlobalTensor<QuantOutType> swiDbgGm;
-                swiDbgGm.SetGlobalBuffer((__gm__ QuantOutType*)params_.workspaceInfo.sharedExpertSwigluDataPtr);
-                LocalTensor<QuantOutType> swiDbgUb(TPosition::VECCALC, 0, 64);
-                uint32_t dbgCnt = (outputN < 64) ? outputN : 64;
-                DataCopy(swiDbgUb, swiDbgGm, dbgCnt);
-                PipeBarrier<PIPE_MTE2>();
-                PRINTF("[KERNEL][SWIGLU] rank=%u bs=%u outputN=%u\n", rankId_, m_, outputN);
-                {
-                    __ubuf__ uint8_t* _rawPtr = (__ubuf__ uint8_t*)swiDbgUb.GetPhyAddr();
-                    for (uint32_t _di = 0; _di < 32 && _di < dbgCnt; _di++) {
-                        PRINTF("[KERNEL][SWIGLU] [%u]=%u \n", _di, (uint32_t)_rawPtr[_di]);
-                    }
-                }
-                PRINTF("\n");
-                if (m_ > 1) {
-                    DataCopy(swiDbgUb, swiDbgGm[(m_ - 1) * outputN], dbgCnt);
-                    PipeBarrier<PIPE_MTE2>();
-                    PRINTF("[KERNEL][SWIGLU] last_token: \n");
-                    __ubuf__ uint8_t* _rawPtr = (__ubuf__ uint8_t*)swiDbgUb.GetPhyAddr();
-                    for (uint32_t _di = 0; _di < 32 && _di < dbgCnt; _di++) {
-                        PRINTF("[%u]=%u \n", _di, (uint32_t)_rawPtr[_di]);
-                    }
-                    PRINTF("\n");
-                }
-            }
-            // 通知 AIC SwiGLU 完成
             AscendC::AtomicAdd(
                 (__gm__ int32_t*)params_.workspaceInfo.sharedExpertSwigluDoneFlagPtr, int32_t(1));
         } else {
-            // AIC 等待 AIV 完成 SwiGLU
             PipeBarrier<PIPE_ALL>();
             while (AscendC::ReadGmByPassDCache(
                 (__gm__ int32_t*)params_.workspaceInfo.sharedExpertSwigluDoneFlagPtr) != int32_t(blockAivNum_)) {
@@ -1720,57 +1652,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    // vecSetSyncCom_ = 0;
-    // GMMAddrInfo gmm2AddrInfo;
-    // ExpertLoopState gmm2State{initShape, initOffset, 0};
-    // InitCombineBuffers();
+    vecSetSyncCom_ = 0;
+    GMMAddrInfo gmm2AddrInfo;
+    ExpertLoopState gmm2State{initShape, initOffset, 0};
+    InitCombineBuffers();
 
-    // for (uint32_t expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {
-    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
-    //         continue;
-    //     }
-    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
-    //     GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
-    // }
-    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-    //     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
-    // }
+    for (uint32_t expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
+        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
+    }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
+    }
 
-    // // Shared expert GMM2: AIC processes after MoE GMM2
     if (sharedExpertNum_ > 0) {
         if constexpr (g_coreType == AIC) {
             SharedExpertGmm2();
             PipeBarrier<PIPE_ALL>();
-            // 通知 AIV GMM2 完成
             AscendC::AtomicAdd(
                 (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr, int32_t(1));
-        }
-        if constexpr (g_coreType == AIV) {
-            while (AscendC::ReadGmByPassDCache(
-                (__gm__ int32_t*)params_.workspaceInfo.sharedExpertGmm2DoneFlagPtr) != int32_t(aicNum_)) {
-                AscendC::Nop<200>();
-            }
-            if (aivCoreIdx_ == 0) {
-                GlobalTensor<bfloat16_t> gmm2DbgGm;
-                gmm2DbgGm.SetGlobalBuffer((__gm__ bfloat16_t*)params_.workspaceInfo.sharedExpertResultPtr);
-                LocalTensor<bfloat16_t> gmm2DbgUb(TPosition::VECCALC, 0, 64);
-                DataCopy(gmm2DbgUb, gmm2DbgGm, 64);
-                PipeBarrier<PIPE_MTE2>();
-                PRINTF("[KERNEL][GMM2] rank=%u bs=%u k_=%u\n", rankId_, m_, k_);
-                for (uint32_t _di = 0; _di < 32; _di++) {
-                    PRINTF("[KERNEL][GMM2] [%u]=%f \n", _di, gmm2DbgUb.GetValue(_di));
-                }
-                PRINTF("\n");
-                if (m_ > 1) {
-                    DataCopy(gmm2DbgUb, gmm2DbgGm[(m_ - 1) * k_], 64);
-                    PipeBarrier<PIPE_MTE2>();
-                    PRINTF("[KERNEL][GMM2] last_token: \n");
-                    for (uint32_t _di = 0; _di < 32; _di++) {
-                        PRINTF("[%u]=%f \n", _di, gmm2DbgUb.GetValue(_di));
-                    }
-                    PRINTF("\n");
-                }
-            }
+        } else {
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();  // V-only sync: 确保 all AIV combine 写入完成后再 CrossRankSync
         }
     } else {
         if constexpr(g_coreType == AIV) {
