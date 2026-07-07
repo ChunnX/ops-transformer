@@ -138,6 +138,7 @@ void QSMLATilingCheck::Init()
 
     oriMaskMode_ = qsmlaInfo_.oriMaskMode;
     cmpMaskMode_ = qsmlaInfo_.cmpMaskMode;
+    topkValueMode_ = qsmlaInfo_.topkValueMode;
 
     qType_ = qsmlaInfo_.qType;
     oriKvType_ = qsmlaInfo_.oriKvType;
@@ -147,9 +148,9 @@ void QSMLATilingCheck::Init()
     if (opParamInfo_.cmpKv.tensor == nullptr) {
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
     } else {
-        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
 }
 
@@ -207,7 +208,7 @@ ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
 ge::graphStatus QSMLATilingCheck::Process()
 {
     Init();
-    if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
+    if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckConsistency() != ge::GRAPH_SUCCESS ||
         CheckParaExistence() != ge::GRAPH_SUCCESS ||
         CheckKvContiguous() != ge::GRAPH_SUCCESS ||
         CheckFeature() != ge::GRAPH_SUCCESS) {
