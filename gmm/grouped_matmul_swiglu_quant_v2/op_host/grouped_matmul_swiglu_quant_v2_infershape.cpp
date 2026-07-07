@@ -77,7 +77,9 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
     int64_t m = xShape->GetDim(M_DIM_INDEX);
     int64_t weightScaleDimNum = weightScaleShape->GetDimNum();
     int64_t nDimIndex = weightScaleDimNum - 1;
-    if (*quantModePtr == QUANT_MODE_MX_TYPE) {
+    bool isMxShape = *quantModePtr == QUANT_MODE_MX_TYPE || weightScaleDimNum == MX_SINGLE_WEIGHT_SCALE_DIM ||
+                     weightScaleDimNum == MX_MULTI_WEIGHT_SCALE_DIM;
+    if (isMxShape) {
         if (weightScaleDimNum == MX_SINGLE_WEIGHT_SCALE_DIM) {
             nDimIndex = transposeWeight ? weightScaleDimNum - OUT_DIM_LEN : weightScaleDimNum - DIM_LEN;
         } else if (weightScaleDimNum == MX_MULTI_WEIGHT_SCALE_DIM) {
@@ -87,7 +89,7 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
 
     auto outScaleShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
-    if (*quantModePtr == QUANT_MODE_MX_TYPE) {
+    if (isMxShape) {
         int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
         int64_t n = 0;
         if (dimValue == DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE) {

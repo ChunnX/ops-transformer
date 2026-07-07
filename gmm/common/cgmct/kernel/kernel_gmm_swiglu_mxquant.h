@@ -149,9 +149,9 @@ public:
         const TCubeTiling* __restrict matmulTiling;
         __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_,
-                             int32_t baseK_, uint8_t isMxWeightNzMultiTensor_ = 0) :
-            groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
-            isMxWeightNzMultiTensor(isMxWeightNzMultiTensor_)
+                             int32_t baseK_, uint8_t isMxWeightNzMultiTensor_ = 0)
+            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+              isMxWeightNzMultiTensor(isMxWeightNzMultiTensor_)
         {}
     };
 
@@ -252,7 +252,8 @@ public:
             bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(isMxWeightNzMultiTensor ? groupIdx : 0,
                                                           params.mmadParams.bGmAddr) +
                                      Get<IDX_B_OFFSET>(baseOffset_));
-            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr +
+                                           Get<IDX_X1SCALE_OFFSET>(baseOffset_));
             x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(
                                                isMxWeightNzMultiTensor ? groupIdx : 0,
                                                params.mmadParams.x2ScaleGmAddr) +
