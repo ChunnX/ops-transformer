@@ -318,7 +318,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop0(__ubuf_
             RegTensor<int8_t> vreg_exp_merge_tmp_int8;
             RegTensor<int8_t> vreg_exp_merge_int8;
             MaskReg preg_all_f16 = CreateMask<half, MaskPattern::ALL>();
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128：maskLen
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             // float → half → Or → half → int8 → Gather
             static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -340,7 +341,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128Mxfp8FullquantVFSubloop0(__ubuf_
             RegTensor<hifloat8_t> vreg_exp_even_hif8;
             RegTensor<hifloat8_t> vreg_exp_odd_hif8;
             MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             RegTensor<hifloat8_t> vreg_exp_merge_tmp_hif8;
             RegTensor<hifloat8_t> vreg_exp_merge_hif8;
             RegTensor<uint8_t> vreg_exp_merge_hif8_indexes;
