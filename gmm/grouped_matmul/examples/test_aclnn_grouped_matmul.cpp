@@ -149,14 +149,11 @@ int main() {
     aclTensorList* out = nullptr;
     aclTensorList* activationFeatureOut = nullptr;
     aclTensorList* dynQuantScaleOut = nullptr;
+    aclIntArray *tuningConfig = nullptr;
     int64_t splitItem = 3;
     int64_t groupType = 0;
     int64_t groupListType = 0;
     int64_t actType = 0;
-
-    // 创建tuningconfig aclIntArray
-    std::vector<int64_t> tuningConfigData = {512};
-    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
 
     // 创建x aclTensorList
     ret = CreateAclTensorList(xShape, xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
