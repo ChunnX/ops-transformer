@@ -33,10 +33,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
+    RegTensor<float> vreg_sel_unroll_new;
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
     RegTensor<float> vreg_sel_unroll;
-    RegTensor<float> vreg_sel_unroll_new;
     RegTensor<float> vreg_src_x;
     RegTensor<float> vreg_src_x_unroll;
     RegTensor<float> vreg_src_x_unroll_new;
@@ -97,13 +97,13 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_all_float);
     Duplicate(vreg_min, minValue);
-    if constexpr (hasSink) {
-        Duplicate(vreg_sink_input, sinkValue);
-    }
     if constexpr (hasAtten == 1 && isMlaSgd) {
         MicroAPI::LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare, ((__ubuf__ uint32_t *)(maskUb)));
         MicroAPI::LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare_unroll,
                                                                    ((__ubuf__ uint32_t *)(maskUbUnroll)));
+    }
+    if constexpr (hasSink) {
+        Duplicate(vreg_sink_input, sinkValue);
     }
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                   pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
@@ -339,12 +339,12 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
     Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
-    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                              vreg_p_scale_f8e8m0, preg_all_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+        ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
 }
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
-          bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool hasSink = false>
+          bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0,
+          bool isMlaSgd = false, bool isMlaFullQuant = false, bool hasSink = false>
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     __ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb, __ubuf__ T *maxUbStart,
     __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb, __ubuf__ T *inExpSumUb,
@@ -352,7 +352,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll,
     __ubuf__ uint32_t *dropMaskUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t nPadding,
     const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN, const uint32_t tailN,
-    const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, const uint16_t m,
+    const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, const uint16_t mSize,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
@@ -398,13 +398,12 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<half> vreg_pse_0_fp16;
     RegTensor<half> vreg_pse_0_fp16_unroll;
     // MXFP8
-    RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
-    RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
-    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_pad;
     RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
-
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
 
@@ -438,15 +437,15 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     }
     if constexpr (hasAtten == 1 && isMlaSgd) {
         MicroAPI::LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare, ((__ubuf__ uint32_t *)(maskUb)));
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare_unroll,
-                                                                   ((__ubuf__ uint32_t *)(maskUbUnroll)));
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(
+            preg_compare_unroll, ((__ubuf__ uint32_t *)(maskUbUnroll)));
     }
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                   pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
         Arange(vreg_alibi_0, posShift);
         Arange(vreg_alibi_1, posShift + 64);
     }
-    for (uint16_t i = 0; i < m; ++i) {
+    for (uint16_t i = 0; i < mSize; ++i) {
         LoadAlign(vreg_src_x, srcUb + i * s2BaseSize);
         LoadAlign(vreg_src_x_unroll, srcUb + floatRepSize + i * s2BaseSize);
 
@@ -474,14 +473,14 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
                 Adds(vreg_alibi_0, vreg_alibi_0, -1.0f, preg_all);
                 Adds(vreg_alibi_1, vreg_alibi_1, -1.0f, preg_all);
             } else {  // OUTER 模式
-                if constexpr (IsSameType<pseShiftType, float>::value) {
-                    LoadAlign(vreg_pse_0, pseUb + i * pseStride);
-                    LoadAlign(vreg_pse_1, pseUb + i * pseStride + (s2BaseSize >> 1));
-                } else if constexpr (IsSameType<pseShiftType, bfloat16_t>::value) {
+                if constexpr (IsSameType<pseShiftType, bfloat16_t>::value) {
                     LoadAlign(vreg_pse_0_bf16_src, pseUb + i * pseStride);
                     Interleave(vreg_pse_0_bf16, vreg_pse_0_bf16_unroll, vreg_pse_0_bf16_src, vreg_pse_0_bf16_src);
                     Cast<T, pseShiftType, castTraitZero>(vreg_pse_0, vreg_pse_0_bf16, preg_all_b16);
                     Cast<T, pseShiftType, castTraitZero>(vreg_pse_1, vreg_pse_0_bf16_unroll, preg_all_b16);
+                } else if constexpr (IsSameType<pseShiftType, float>::value) {
+                    LoadAlign(vreg_pse_0, pseUb + i * pseStride);
+                    LoadAlign(vreg_pse_1, pseUb + i * pseStride + (s2BaseSize >> 1));
                 } else {
                     LoadAlign(vreg_pse_0_fp16_src, pseUb + i * pseStride);
                     Interleave(vreg_pse_0_fp16, vreg_pse_0_fp16_unroll, vreg_pse_0_fp16_src, vreg_pse_0_fp16_src);
@@ -501,9 +500,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             // atten mask
             if constexpr (!isMlaSgd) {
                 LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                    preg_compare, (__ubuf__ uint32_t *&)maskUb, nPadding);
-                LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
                     preg_compare_unroll, (__ubuf__ uint32_t *&)maskUbUnroll, nPadding);
+                LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
+                    preg_compare, (__ubuf__ uint32_t *&)maskUb, nPadding);
             }
             Select(vreg_sel, vreg_min, vreg_src_x, preg_compare);
             Select(vreg_sel_unroll, vreg_min, vreg_src_x_unroll, preg_compare_unroll);
@@ -532,17 +531,17 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
         Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
-        StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max,
-                                                                 1);
+        StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
-    RegTensor<float> vreg_in_max;
-    LoadAlign(vreg_in_max, inMaxUb);
+    RegTensor<float> vreg_max_in;
+    LoadAlign(vreg_max_in, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_input_max, tmpMaxUb2);
-    Max(vreg_input_max, vreg_in_max, vreg_input_max,
+    Max(vreg_input_max, vreg_max_in, vreg_input_max,
         preg_all); // loop1的max需要和loop0的max取一个max
-    ExpSub(vreg_exp_max, vreg_in_max, vreg_input_max, preg_all);
+    ExpSub(vreg_exp_max, vreg_max_in, vreg_input_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_input_max, preg_all);
 
@@ -551,7 +550,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
-    for (uint16_t i = 0; i < m; ++i) {
+    for (uint16_t i = 0; i < mSize; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
         Sub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all);
         if constexpr (IsSameType<T2, float>::value) {
@@ -568,8 +567,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Add(vreg_exp_sum, vreg_exp_even, vreg_exp_odd, preg_all);
         Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp_sum,
                                                                                           preg_all);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum,
-                                                                     ureg_exp_sum, 1);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb),
+            vreg_exp_sum, ureg_exp_sum, 1);
 
         // dropmask compute
         if constexpr (hasDrop == 1) {
@@ -587,18 +586,18 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             Muls(vreg_exp_odd, vreg_sel_drop2, divValue, preg_all);
         }
 
-        if constexpr (IsSameType<T2, float>::value) {
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb), vreg_exp_even, blockStride, repeatStride, preg_all);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_expUb), vreg_exp_odd, blockStride, repeatStride, preg_all);
-        } else if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_exp_even_bf16, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitOne>(vreg_exp_odd_bf16, vreg_exp_odd, preg_all);
             Or((RegTensor<uint16_t> &)vreg_exp_bf16, (RegTensor<uint16_t> &)vreg_exp_even_bf16,
                (RegTensor<uint16_t> &)vreg_exp_odd_bf16, preg_all_b16);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_bf16, blockStride, repeatStride, preg_all_b16);
+        } else if constexpr (IsSameType<T2, float>::value) {
+            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                ((__ubuf__ T2 *&)expUb), vreg_exp_even, blockStride, repeatStride, preg_all);
+            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                ((__ubuf__ T2 *&)x_expUb), vreg_exp_odd, blockStride, repeatStride, preg_all);
         } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value) {
             RegTensor<fp8_e5m2_t> vreg_exp_even_f8e5m2;
             RegTensor<fp8_e5m2_t> vreg_exp_odd_f8e5m2;
@@ -622,8 +621,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3;
             MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitRintTwo>(vreg_exp_odd_f8e4m3, vreg_exp_odd, preg_all);
             Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3,
@@ -631,7 +629,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             LoadAlign(vreg_exp_merge_f8e4m3_indexes, indexesUb);
             Gather(vreg_exp_merge_f8e4m3, vreg_exp_merge_tmp_f8e4m3, vreg_exp_merge_f8e4m3_indexes);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb), vreg_exp_merge_f8e4m3, blockStride, repeatStride, preg_all_b8_128);
+                ((__ubuf__ T2 *&)expUb), vreg_exp_merge_f8e4m3,
+                blockStride, repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, int8_t>::value) {
             RegTensor<int8_t> vreg_exp_merge_tmp_int8;
             RegTensor<int8_t> vreg_exp_merge_int8;
@@ -652,16 +651,17 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
                 (MicroAPI::RegTensor<uint8_t> &)vreg_exp_merge_int8,
                 (MicroAPI::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ int8_t *&)expUb), vreg_exp_merge_int8, blockStride, repeatStride, preg_all_b8_128);
+                ((__ubuf__ int8_t *&)expUb), vreg_exp_merge_int8, blockStride,
+                repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
+            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
             RegTensor<hifloat8_t> vreg_exp_even_hif8;
             RegTensor<hifloat8_t> vreg_exp_odd_hif8;
             RegTensor<hifloat8_t> vreg_exp_merge_tmp_hif8;
             RegTensor<hifloat8_t> vreg_exp_merge_hif8;
             RegTensor<uint8_t> vreg_exp_merge_hif8_indexes;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+
             Cast<T2, T, castTraitZero>(vreg_exp_even_hif8, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitTwo>(vreg_exp_odd_hif8, vreg_exp_odd, preg_all);
             Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_hif8, (RegTensor<uint8_t> &)vreg_exp_even_hif8,
@@ -681,15 +681,13 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    RegTensor<float> first_loop_sum;
-    LoadAlign(first_loop_sum, inExpSumUb);
+    RegTensor<float> sum_first_loop;
+    LoadAlign(sum_first_loop, inExpSumUb);
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb2);
-    Mul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all);
-    Add(vreg_exp_sum, first_loop_sum, vreg_exp_sum_brc, preg_all);
+    Mul(sum_first_loop, vreg_exp_max, sum_first_loop, preg_all);
+    Add(vreg_exp_sum, sum_first_loop, vreg_exp_sum_brc, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum, preg_all);
     // pScale update
-    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst0;
-    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst1;
     Duplicate(vreg_p_scale, static_cast<float>(1.0f));
     Mul(vreg_p_scale, vreg_exp_max, vreg_p_scale, preg_all);
     Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
@@ -699,6 +697,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
        (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
     Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst1;
     DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
     StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
                                                               vreg_p_scale_f8e8m0_dst0, preg_all_b8);
@@ -706,16 +706,16 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
 
 // no update, 64 < originN <= 128
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
-          bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool hasSink = false>
-__aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
+          bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0,
+          bool isMlaSgd = false, bool isMlaFullQuant = false, bool hasSink = false>
+__aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(const LocalTensor<T2> &dstTensor,
+const LocalTensor<uint8_t> &indexesTensor, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop,
-    const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
-    const T scale, const float dScaleQK, const T minValue, float keepProb,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
+    uint32_t subLoop, const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes,
+    const float posShift, const T scale, const float dScaleQK, const T minValue, float keepProb,
     const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
     const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
@@ -734,18 +734,18 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
     __ubuf__ T *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
     __ubuf__ T *tmpExpSumUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
     __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ T *maxUbStart = (__ubuf__ T *)maxTensor.GetPhyAddr();
     __ubuf__ T *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
     __ubuf__ T *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+    __ubuf__ T *maxUbStart = (__ubuf__ T *)maxTensor.GetPhyAddr();
     __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
     __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
-
+    __ubuf__ uint32_t *dropMaskUb = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUbUnroll = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize);
-    __ubuf__ uint32_t *dropMaskUb = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
+
 
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     const uint32_t oriTailN = originN - floatRepSize;

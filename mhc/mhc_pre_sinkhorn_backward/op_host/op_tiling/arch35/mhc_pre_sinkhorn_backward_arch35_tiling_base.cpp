@@ -171,18 +171,31 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes shape is nullptr"),
                 return ge::GRAPH_FAILED);
     auto gradHResShape = gradHResShapePtr->GetStorageShape();
-    OP_CHECK_IF(gradHResShape.GetDimNum() != 4,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes must be 4D, but got %lu dims",
-                                            gradHResShape.GetDimNum()),
+    auto gradHResDimNum = gradHResShape.GetDimNum();
+    OP_CHECK_IF((gradHResDimNum != 3 && gradHResDimNum != 4),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes must be 3D or 4D, but got %lu dims",
+                                            gradHResDimNum),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                    gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
-                OPS_REPORT_VECTOR_INNER_ERR(
-                    opName,
-                    "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), but got (%ld, %ld, %ld, %ld)",
-                    batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                    gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
-                return ge::GRAPH_FAILED);
+    if (gradHResDimNum == 3) {
+        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                        gradHResShape.GetDim(2) != n * n,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
+                        batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
+                        gradHResShape.GetDim(2)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                        gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName,
+                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
+                        "but got (%ld, %ld, %ld, %ld)",
+                        batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
+                        gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
+                    return ge::GRAPH_FAILED);
+    }
 
     auto phiShapePtr = context_->GetInputShape(PHI_IDX);
     OP_CHECK_IF(phiShapePtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi shape is nullptr"),

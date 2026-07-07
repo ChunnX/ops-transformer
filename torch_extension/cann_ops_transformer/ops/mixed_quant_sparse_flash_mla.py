@@ -118,7 +118,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
 
 # Instantiate the builder
 mixed_quant_sparse_flash_mla_op_builder = MixedQuantSparseFlashMlaOpBuilder()
-op_module = mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, MQSMLA_METADATA_OP_NAME, "PrivateUse1")
@@ -155,6 +154,7 @@ def mixed_quant_sparse_flash_mla_metadata(
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
 
+    op_module = mixed_quant_sparse_flash_mla_op_builder.load()
     return op_module.mixed_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
@@ -208,6 +208,7 @@ def mixed_quant_sparse_flash_mla(q,
     dispatcher implementation for NPU
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = mixed_quant_sparse_flash_mla_op_builder.load()
     return op_module.mixed_quant_sparse_flash_mla(q,
                                 ori_kv, cmp_kv,
                                 ori_sparse_indices, cmp_sparse_indices,

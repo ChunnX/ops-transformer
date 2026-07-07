@@ -1362,9 +1362,9 @@ int main()
 }
 ```
 
-MxA8W4伪量化（单多单场景）调用示例
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
-单多单场景下x为单tensor，weight/antiquantScale/bias为多tensor，y为单tensor。以下示例中x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1（NZ转置），antiquantScale和perTokenScale为FLOAT8_E8M0，bias和y为BFLOAT16，groupSize为32。
+  MxA8W4伪量化（单多单场景）调用示例
 
 ```c++
 #include <algorithm>
