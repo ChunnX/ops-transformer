@@ -1,8 +1,8 @@
 # ops-transformer
 
-## 🔥Latest News
+### 🔥Latest News
 
-- [2026/02] 新支持算子[mhc_post](experimental/mhc/mhc_post)、[mhc_pre](experimental/mhc/mhc_pre)、[mhc_res](experimental/mhc/mhc_res)。
+- [2026/02] 新支持算子[mhc_post](experimental/mhcs/mhc_post)、[mhc_pre](experimental/mhc/mhc_pre)、[mhc_res](experimental/mhc/mhc_res)。
 - [2026/01] 新支持算子[grouped_matmul<<<>>>调用示例](examples/fast_kernel_launch_example/csrc/grouped_matmul)，方便用户自定义使用。
 - [2026/01] 新支持算子[fused_floyd_attention](attention/fused_floyd_attention)、[fused_floyd_attention_grad](attention/fused_floyd_attention_grad)、[matmul_allto_all](mc2/matmul_allto_all)。
 - [2025/12] 新增[QuickStart](docs/QUICKSTART.md)，指导新手零基础入门算子项目部署（支持Docker环境）、算子开发和贡献流程。
@@ -21,11 +21,11 @@
 
 ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architecture for Neural Networks）算子库中提供transformer类大模型计算的进阶算子库，包括attention类、moe类、mc2类等，覆盖各类attention、MoE计算、通算融合等场景，算子库在架构图中的位置如下。
 
-<img src="docs/zh/figures/architecture.png" alt="架构图"  width="700px" height="320px">
+<img src="docs/zh/figures/sarchitecture.png" alt="架构图"  width="700px" height="320px">
 
 ## 📌版本配套
 
-本项目源码会跟随CANN软件版本发布，关于CANN软件版本与本项目标签的对应关系请参阅[release仓库](https://gitcode.com/cann/release-management)中的相应版本说明。
+本项目源码会跟随CANN软件版本发布，关于CANN软件版本与本项目标签的对应关系请参阅[release仓库](https://gitcode.cosm/cann/release-management)中的相应版本说明。
 请注意，为确保您的源码定制开发顺利进行，请选择配套的CANN版本与Gitcode标签源码，使用master分支可能存在版本不匹配的风险。
 
 ## 🛠️环境准备
@@ -40,7 +40,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architect
 # 通用命令：git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
 git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ```
-
+<a>aaa<a>
 > 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码。
 
 ## 📖学习教程
@@ -63,6 +63,3 @@ PS：本项目功能和文档正在持续更新和完善中，欢迎您关注最
 - **问题反馈**：通过GitCode[【Issues】](https://gitcode.com/cann/ops-transformer/issues)提交问题。
 - **社区互动**：通过GitCode[【讨论】](https://gitcode.com/cann/ops-transformer/discussions)参与交流。
 - **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等。
-
-
-​    
