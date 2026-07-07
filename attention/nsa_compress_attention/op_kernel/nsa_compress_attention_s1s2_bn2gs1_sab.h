@@ -813,7 +813,8 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     uint32_t k_pad = (k + 8 - 1) / 8 * 8; //float数据类型对齐，暂时不考虑其他
     uint32_t S2sizeAlign32 = (S2sizeTopK + blockLength - 1) / blockLength * blockLength;
     uint32_t S2sizeAlign8 = (S2sizeTopK + 8 - 1) / 8 * 8;
-    uint32_t maxTopkBase = (190 * 1024 - 20 * S2sizeAlign32) / (4 * S2sizeAlign32 + 8 * k_pad);
+    uint32_t tmpUbSize = this->tilingData->importanceScoreParams.tmpUbSize;
+    uint32_t maxTopkBase = (190 * 1024 - tmpUbSize) / (4 * S2sizeAlign32 + 8 * k_pad);
     maxTopkBase = maxTopkBase > 0 ? maxTopkBase : 1;
     uint32_t topkBase = maxTopkBase > S1Base ? S1Base : maxTopkBase;
     AscendC::DataCopyExtParams copyInParamsV1, copyInParamsPad;
@@ -832,7 +833,7 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     addrOffset = addrOffset + topkBase * k_pad * sizeof(int32_t);
     topKValueLocal = allUbBuffer.GetWithOffset<T>(topkBase * k_pad, addrOffset);
     addrOffset = addrOffset + topkBase * k_pad * sizeof(float);
-    topKTmpLocal = allUbBuffer.GetWithOffset<uint8_t>(20 * S2sizeTopK, addrOffset);
+    topKTmpLocal = allUbBuffer.GetWithOffset<uint8_t>(tmpUbSize, addrOffset);
 
     int64_t bOffset = 0;
     int64_t n2Offset = 0;
