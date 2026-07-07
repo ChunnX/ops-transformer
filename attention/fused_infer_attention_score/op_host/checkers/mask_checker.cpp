@@ -313,7 +313,7 @@ ge::graphStatus MaskChecker::CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, c
 {
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
         (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        if (fiaInfo.ropeMode == RopeMode::NO_ROPE ) {
+        if (fiaInfo.ropeMode == RopeMode::NO_ROPE) {
             const std::vector<std::string> layoutSupportList = {
                 "BSH", "BSND", "BNSD", "BNSD_BSND",
             };
@@ -326,7 +326,8 @@ ge::graphStatus MaskChecker::CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, c
             }
         } else {
             OP_LOGE(fiaInfo.opName,
-                    "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                    "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, "
+                    "when sparseMode = 0 or 1, two dim mask is not supported.");
             return ge::GRAPH_FAILED;
         }
     } else {
