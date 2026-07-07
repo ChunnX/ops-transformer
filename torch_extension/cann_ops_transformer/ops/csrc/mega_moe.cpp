@@ -237,7 +237,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum,
 int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
     int64_t numMaxTokensPerRank, int64_t numTopk, int64_t hidden,
     int64_t maxRecvTokenNum,
-    int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype,
+    int64_t dispatchQuantMode, c10::optional<int64_t> dispatchQuantOutDtype,
     int64_t combineQuantMode, std::string commAlg)
 {
     TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024,
