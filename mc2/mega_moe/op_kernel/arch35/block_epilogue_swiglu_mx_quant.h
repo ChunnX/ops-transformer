@@ -609,6 +609,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, clampLimit_, mask);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, clampLimit_, mask);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -clampLimit_, mask);
+
                 // swish
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -x
                 AscendC::MicroAPI::Exp(expReg, negReg, mask); // exp(-x)
@@ -634,6 +638,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                     vregX2, secondTailAddr, srcIdxOffset1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
+
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, clampLimit_, mask1);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, clampLimit_, mask1);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -clampLimit_, mask1);
 
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
                 AscendC::MicroAPI::Exp(expReg, negReg, mask1);
