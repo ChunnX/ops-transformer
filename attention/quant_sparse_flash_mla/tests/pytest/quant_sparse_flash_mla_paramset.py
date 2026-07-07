@@ -88,7 +88,7 @@ TEST_PARAMS = {
         "S1EQS2":[False],
         "isSink":[True],
     },
-    "scfa_small_prefill":{
+    "csa_small_prefill":{
         "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
