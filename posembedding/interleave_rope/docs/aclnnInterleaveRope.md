@@ -32,7 +32,7 @@
   \text{RotateHalf}(q)_{\text{i}} =
   \begin{cases}
   -q_{i+D//2} & \text{if } i < D//2 \\
-  q_{i+D//2} & \text{otherwise}
+  q_{i-D//2} & \text{otherwise}
   \end{cases}
   $$
 
