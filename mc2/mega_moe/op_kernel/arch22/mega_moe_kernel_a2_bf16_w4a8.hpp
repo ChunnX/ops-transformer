@@ -1336,14 +1336,12 @@ private:
         uint32_t preSrcExpertSum = 0;
         uint32_t n2 = params.problemShape.k();
         uint32_t k2 = params.problemShape.n() / 2;
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(128 * 1024);
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead =
             resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(
             shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
-#endif
         int64_t gmGroupOffsetC = 0;
         uint32_t aivCoreNum = coreNum;
         uint32_t aivCoreIdx = coreIdx;
@@ -1397,8 +1395,7 @@ private:
                     m_offset += m0;
                 }
             }
-            
-#ifdef HCCL_COMM
+
             AscendC::SyncAll<true>();
             int32_t preSumRankInExpert = 0;
             for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
@@ -1441,7 +1438,6 @@ private:
                     rdmaUbLocal,
                     rdmaUbLocalHead);
             }
-#endif
             preSrcExpertSum += currentExpertM / 2;
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
