@@ -293,7 +293,8 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaI
 
 ge::graphStatus MaskChecker::CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, const std::string &layoutStr) const
 {
-    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
+        (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
         if (fiaInfo.ropeMode == RopeMode::NO_ROPE ) {
             const std::vector<std::string> layoutSupportList = {
                 "BSH", "BSND", "BNSD", "BNSD_BSND",
