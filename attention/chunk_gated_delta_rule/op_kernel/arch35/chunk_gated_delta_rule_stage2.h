@@ -124,8 +124,6 @@ public:
         for (int64_t nvId = nvStart; nvId < nvEnd; nvId++) {
             curChunkSize_ = chunkSize_;
             for (int64_t cId = 0; cId < chunkNum_; cId++) {
-                auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
-                auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
                 int64_t length = cId * chunkSize_;
                 if (cId == chunkNum_ - 1) {
                     curChunkSize_ = lastChunkSize;
@@ -172,6 +170,8 @@ public:
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
                     } else {
+                        auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
+                        auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
                         if (GetSubBlockIdx() == 0) {
                             CopyIn(curState, Dv_, Dk_);
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
@@ -199,10 +199,10 @@ public:
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
                         CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut);
-                        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     } else {
+                        auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
+                        auto finalState = sTP_->finalState[nvId * Dv_ * Dk_];
                         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                         CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
