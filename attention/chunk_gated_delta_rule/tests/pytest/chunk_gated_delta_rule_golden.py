@@ -332,7 +332,7 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
 
 
 def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
-                                     data_type=torch.bfloat16):
+                                     data_type=torch.bfloat16, state_dtype=torch.bfloat16):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
     T = B * seqlen
@@ -344,7 +344,7 @@ def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
     q = torch.nn.functional.normalize(q, p=2, dim=-1)
     k = torch.nn.functional.normalize(k, p=2, dim=-1)
     scale = 1 / (dk ** 0.5)
-    initial_state = torch.rand((B, nv, dv, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
+    initial_state = torch.rand((B, nv, dv, dk), dtype=state_dtype, device="npu:%s" % DEVICE_ID)
     actual_seq_lengths = torch.tensor([seqlen] * B, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
     # ======================== gen input data finish =============================
 
@@ -376,5 +376,6 @@ def run_precision_test(inputs):
     run_chunk_gated_delta_rule_eager(
         inputs['B'], inputs['seqlen'], inputs['nk'],
         inputs['nv'], inputs['dk'], inputs['dv'], inputs['chunk_size'],
-        data_type=inputs['data_type']
+        data_type=inputs['data_type'],
+        state_dtype=inputs.get('state_dtype', inputs['data_type'])
     )

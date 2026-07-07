@@ -3,8 +3,8 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
@@ -23,6 +23,7 @@ TEST_PARAMS = {
         "dv": [128],
         "chunk_size": [64],
         "data_type": [torch.bfloat16],
+        "state_dtype": [torch.bfloat16],
     },
     "Testcase1": {
         "B": [1],
@@ -33,9 +34,33 @@ TEST_PARAMS = {
         "dv": [128],
         "chunk_size": [64],
         "data_type": [torch.bfloat16],
+        "state_dtype": [torch.bfloat16],
+    },
+    "Testcase2_Fp32State": {
+        "B": [1],
+        "seqlen": [64],
+        "nk": [4],
+        "nv": [4],
+        "dk": [128],
+        "dv": [128],
+        "chunk_size": [64],
+        "data_type": [torch.bfloat16],
+        "state_dtype": [torch.float32],
+    },
+    "Testcase3_Fp32State": {
+        "B": [1],
+        "seqlen": [16384],
+        "nk": [4],
+        "nv": [4],
+        "dk": [128],
+        "dv": [128],
+        "chunk_size": [64],
+        "data_type": [torch.bfloat16],
+        "state_dtype": [torch.float32],
     }
 }
 #注意单个用例组内的用例尽量不要超过32
-FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"]]
+FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"],
+              TEST_PARAMS["Testcase2_Fp32State"], TEST_PARAMS["Testcase3_Fp32State"]]
 # 按需选择要启用的测试参数（例如默认启用所有), 按需增加需要的case即可
 ENABLED_PARAMS = FIRST_CASE
