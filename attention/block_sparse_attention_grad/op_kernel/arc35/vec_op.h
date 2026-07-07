@@ -90,9 +90,9 @@ private:
     int32_t half_s1_process_align_;
     int32_t data_size;
     int32_t half_s1_process_real_;
-    uint64_t lse_gm_offset_;
-    uint64_t sftg_gm_offset_;
-    uint64_t l1_offset_;
+    int64_t lse_gm_offset_;
+    int64_t sftg_gm_offset_;
+    int64_t l1_offset_;
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
     TEventID event_id;
@@ -217,7 +217,7 @@ public:
                 last_seq_total_len = 0;
             }
             for (uint32_t n1_idx = 0; n1_idx < q_head_num_; n1_idx++) {
-                uint64_t in_gm_offset, out_gm_offset;
+                int64_t in_gm_offset, out_gm_offset;
 
                 if constexpr (INPUT_LAYOUT == BSND) {
                     in_gm_offset = b_idx * current_q_seqlen * q_head_num_ * head_dim_ + n1_idx * head_dim_;
@@ -343,8 +343,8 @@ public:
                                        const GlobalTensor<float> &dv_workspace, const TILING_CLASS *tilingData,
                                        TBuf<TPosition::VECCALC> &ub_buffer)
     {
-        uint64_t dq_size = tilingData->dqSize;
-        uint64_t dkv_size = tilingData->dkSize;
+        int64_t dq_size = tilingData->dqSize;
+        int64_t dkv_size = tilingData->dkSize;
         uint32_t ub_offset = 0;
         uint32_t post_ping_pong_idx = 0;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
@@ -385,12 +385,12 @@ private:
                 }
             }
 
-            uint64_t gm_offset = info.start_idx + i * info.max_process_size;
+            int64_t gm_offset = (int64_t)info.start_idx + i * info.max_process_size;
             DataCopy(dst_tensor[gm_offset], src_tensor, process_size);
         }
 
         if (info.pad_tail > 0) {
-            uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
+            int64_t gm_offset = (int64_t)info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
             DataCopyParams copyParam;
             copyParam.blockCount = 1;
             copyParam.blockLen = info.pad_tail * sizeof(float);
@@ -430,7 +430,7 @@ private:
                     break;
                 }
             }
-            uint64_t in_gm_offset = (info.start_idx + i * info.max_process_size) * src_stride;
+            int64_t in_gm_offset = (int64_t)(info.start_idx + i * info.max_process_size) * src_stride;
 
             DataCopyParams copyParam;
             copyParam.blockCount = process_size;
@@ -464,7 +464,7 @@ private:
 
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
-            uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
+            int64_t out_gm_offset = (int64_t)(info.start_idx + i * info.max_process_size) * 8;
             DataCopy(dst_gm[out_gm_offset], sftg_front_tensor, process_size * 8);
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
@@ -494,7 +494,7 @@ private:
             vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
             vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
             event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
-            uint64_t gm_offset = info.start_idx + i * info.max_process_size;
+            int64_t gm_offset = (int64_t)info.start_idx + i * info.max_process_size;
 
             WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopy(vecIn, src_tensor[gm_offset], process_size);
@@ -519,7 +519,7 @@ private:
             vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
             vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
             event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
-            uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
+            int64_t gm_offset = (int64_t)info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
             uint32_t pad_tail_align = RoundUp<uint32_t>(info.pad_tail, 16);
             DataCopyParams copyParam;
             copyParam.blockCount = 1;
@@ -549,7 +549,7 @@ private:
     }
 
     __simd_vf__ inline void SimpleSoftmax(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
-                                          __ubuf__ float *src1Tensor, const uint64_t row, const uint64_t col)
+                                          __ubuf__ float *src1Tensor, const uint32_t row, const uint32_t col)
     {
         AscendC::Reg::RegTensor<float> src_reg;
         AscendC::Reg::RegTensor<float> lse_reg;
@@ -580,7 +580,7 @@ private:
 
     __simd_vf__ inline void ComputeSoftmaxGrad(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
                                                __ubuf__ float *src1Tensor, __ubuf__ float *sftFrontTensor,
-                                               const uint64_t row, const uint64_t col)
+                                               const uint32_t row, const uint32_t col)
     {
         AscendC::Reg::RegTensor<float> src_reg;
         AscendC::Reg::RegTensor<float> sft_front_reg;
