@@ -157,26 +157,27 @@ protected:
 
     uint64_t GetTilingKey() const override
     {
-        uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
-        OP_LOGD(opName, "TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
-            "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, outDtype:%d, regbase:%d,"
-            "optionalDn:%d", static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
-            static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType),
-            static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask, hasDropOut, hasRope,
-            static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
+        return GET_TPL_TILING_KEY(hasAttenMask);
+        // uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
+        // OP_LOGD(opName, "TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
+        //     "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, outDtype:%d, regbase:%d,"
+        //     "optionalDn:%d", static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
+        //     static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType),
+        //     static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask, hasDropOut, hasRope,
+        //     static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
 
-        // Const 128
-        if (dTemplateType == dVTemplateType) {
-            return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-                static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-                static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
-                pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
-                static_cast<uint8_t>(regbase), optionalDn);
-        }
-        return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-            static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
+        // // Const 128
+        // if (dTemplateType == dVTemplateType) {
+        //     return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
+        //         static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+        //         static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
+        //         pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
+        //         static_cast<uint8_t>(regbase), optionalDn);
+        // }
+        // return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
+        //     static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+        //     static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
+        //     hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
     }
 
     void AnalyzeOptionalDn() override

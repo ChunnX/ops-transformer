@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 
-
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
 public:
@@ -72,14 +71,18 @@ public:
 class InputParamsRegbase {
 public:
     int64_t bSize;
+    int64_t s1Size;
+    int64_t n2Size;
+    int64_t s2Size;
+    int64_t dSize;
     int64_t t1Size;
     int64_t t2Size;
-    int64_t n2Size;
+    // int64_t n2Size;
     int64_t gSize;
-    int64_t s1Size;
-    int64_t s2Size;
+    // int64_t s1Size;
+    // int64_t s2Size;
     int64_t alignedS2;
-    int64_t dSize;
+    // int64_t dSize;
     int64_t dSizeV;
     int64_t dSizeRope;
     float keepProb;
@@ -407,10 +410,11 @@ public:
 
 class FlashAttentionScoreSimplifiedTilingData {
 public:
-    InputParamsRegbase inputParamsRegbase;
-    MultiCoreParamsRegbase multiCoreParamsRegbase;
-    DropmaskParamsRegbase dropmaskParamsRegbase;
-    InitOutputParams initOutputParams;
+    int64_t bSize;
+    int64_t s1Size;
+    int64_t n2Size;
+    int64_t s2Size;
+    int64_t dSize;
 };
 
 }  // namespace optiling
