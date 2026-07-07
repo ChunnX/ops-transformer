@@ -287,8 +287,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     // 更新new max
-    uint32_t maxShape[] = { actualQExcuteRow, kChunkSize };
-    bool isSrcInnerPad = (kChunkSize % FLOAT_DATA_BLOCK_NUM == 0);
+    uint32_t maxShape[] = { actualQExcuteRow, kChunkSizeAlign };
+    bool isSrcInnerPad = true;
 
     AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(
         tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
@@ -337,7 +337,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    uint32_t sumShape[] = { actualQExcuteRow, kChunkSize};
+    uint32_t sumShape[] = { actualQExcuteRow, kChunkSizeAlign};
     AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
         tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
@@ -436,7 +436,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
         sftOutQRowOffset = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
     }
 
-    DataCopyPad(attnScoreFp16GmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart],
+    uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRowOffset) * constInfo.yBlocks + kChunkStart;
+    GlobalTensor<OUT_T> attnScoreChunkGm;
+    attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
+    DataCopyPad(attnScoreChunkGm[0],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)),

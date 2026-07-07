@@ -436,7 +436,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
         sftOutQRowOffset = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
     }
 
-    DataCopyPad(attnScoreFp16GmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart],
+    uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRowOffset) * constInfo.yBlocks + kChunkStart;
+    GlobalTensor<OUT_T> attnScoreChunkGm;
+    attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
+    DataCopyPad(attnScoreChunkGm[0],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)),
