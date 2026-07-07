@@ -7,8 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.case_loader import load_cases, resolve_case_ids
-from core.orchestrator import run_case
-from core.reporter import Reporter, make_failure_result
+from orchestrator import run_case, Reporter, make_failure_result
 
 _VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare",
                  "npuprof", "npuprofop", "gpuprof", "l2_flush"}
@@ -24,8 +23,8 @@ def _parse_stages(raw):
     return parts
 
 
-def _collect_cases(op_name, case_set, case_id_opt):
-    cases, case_ids = load_cases(op_name, case_set)
+def _collect_cases(case_set, case_id_opt):
+    cases, case_ids = load_cases(case_set)
     if case_id_opt != "all":
         filtered = resolve_case_ids(case_id_opt, case_ids)
         idx_map = {cid: i for i, cid in enumerate(case_ids)}
@@ -78,8 +77,8 @@ def _setup_hookwrapper(_pytest_terminal):
     _pytest_terminal._get_line_with_reprcrash_message = _custom_get_line
 
 
-def test_op(params, stages, reporter, op_name, request):
-    result = run_case(stages, op_name, params, reporter,
+def test_op(params, stages, reporter, request):
+    result = run_case(stages, params, reporter,
                       max_retries=request.config.getoption("--max-retries"),
                       load_pt=request.config.getoption("--load-pt"),
                       graph_path=request.config.getoption("--graph-path"),
@@ -94,7 +93,6 @@ def test_op(params, stages, reporter, op_name, request):
 
 def main():
     parser = argparse.ArgumentParser(description="精度测试 CLI 入口")
-    parser.add_argument("--op", default="flash_attn", help="算子名称")
     parser.add_argument("--stages", default="all",
                         help="执行阶段: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
     parser.add_argument("--case-id", default="all", help="用例ID过滤")
@@ -111,7 +109,7 @@ def main():
     args = parser.parse_args()
 
     stages = _parse_stages(args.stages)
-    cases, case_ids = _collect_cases(args.op, args.case_set, args.case_id)
+    cases, case_ids = _collect_cases(args.case_set, args.case_id)
 
     if not cases:
         print("[ERROR] 没有可运行的 case")
@@ -124,7 +122,7 @@ def main():
         print(f"  Case: {case_id}")
         print(f"{'='*66}")
         try:
-            run_case(stages, args.op, params, reporter,
+            run_case(stages, params, reporter,
                      max_retries=args.max_retries,
                      load_pt=args.load_pt,
                      graph_path=args.graph_path,

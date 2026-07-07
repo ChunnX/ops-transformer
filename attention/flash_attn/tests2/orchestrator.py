@@ -1,3 +1,4 @@
+import csv
 import gc
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -5,15 +6,115 @@ from pathlib import Path
 
 import torch
 
-from core.gen_data import load as load_gen
-from core.cpu import load as load_cpu
-from core.npu import load as load_npu
-from core.gpu import load as load_gpu
-from core.compare import compare_outputs
-from core.reporter import Reporter, make_failure_result
+from compare import compare_outputs
+from core.gen_data import GenDataBackend
+from core.cpu import CpuBackend
+from core.npu import NpuBackend
+from csv_parser import CSV_HEADERS
 from precision_analyze import analyze_failure
 
 
+# ============ Reporter ============
+class Reporter:
+    def __init__(self):
+        self._results = {}
+        self._dtypes = {}
+        self._csv_file = None
+        self._csv_writer = None
+
+    def set_csv(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        exists = path.exists()
+        self._csv_file = open(path, "a", newline="")
+        self._csv_writer = csv.DictWriter(self._csv_file, CSV_HEADERS)
+        if not exists:
+            self._csv_writer.writeheader()
+            self._csv_file.flush()
+
+    def record(self, name: str, result: dict, error: str = None, dtype: str = ""):
+        if error:
+            result["error"] = error
+        self._results[name] = result
+        self._dtypes[name] = dtype
+        if self._csv_writer:
+            for key, m in result.items():
+                if not isinstance(m, dict):
+                    continue
+                self._csv_writer.writerow({
+                    "case": name,
+                    "dtype": dtype,
+                    "key": key,
+                    "pass": m.get("passed"),
+                    "max_abs": m.get("max_abs", ""),
+                    "mean_abs": m.get("mean_abs", ""),
+                    "fail_ratio": m.get("fail_ratio", ""),
+                    "error": error or "",
+                })
+            self._csv_file.flush()
+
+    def print_interim(self, total: int):
+        self._print_table(self._results, self._dtypes, total, is_final=False)
+
+    def print_final(self) -> int:
+        if self._csv_file:
+            self._csv_file.close()
+            self._csv_file = None
+        return self._print_table(self._results, self._dtypes, len(self._results), is_final=True)
+
+    @staticmethod
+    def _print_table(results: dict, dtypes: dict, total: int, is_final: bool) -> int:
+        max_len = max((len(n) for n in results), default=8)
+        width = max_len + 52
+        SEP = "─" * width
+        title = "  汇总结果" if is_final else f"  中间统计  ({len(results)}/{total})"
+        print(f"\n┌{SEP}┐")
+        print(f"│{title}")
+        print(f"├{SEP}┤")
+        print(f"│  {'Case':<{max_len}}  {'Dtype':>6}  {'Keys':<28}  {'Status':>6}")
+        print(f"├{SEP}┤")
+        pass_cnt = fail_cnt = 0
+        for name, res in results.items():
+            tags = []
+            all_pass = True
+            for k, v in res.items():
+                if not isinstance(v, dict):
+                    continue
+                p = v.get("passed")
+                tags.append(f"{k}:{'P' if p else 'F'}")
+                if not p:
+                    all_pass = False
+            status = "PASS" if all_pass else "FAIL"
+            print(f"│  {name:<{max_len}}  {dtypes.get(name, ''):>6}  {' '.join(tags):<28}  {status:>6}")
+            if all_pass:
+                pass_cnt += 1
+            else:
+                fail_cnt += 1
+        print(f"├{SEP}┤")
+        print(f"│  通过: {pass_cnt}   失败: {fail_cnt}   共: {len(results)}")
+        print(f"└{SEP}┘")
+        return fail_cnt
+
+    @staticmethod
+    def check_results(result: dict) -> None:
+        import pytest
+        for key, m in result.items():
+            if not isinstance(m, dict):
+                continue
+            if not m.get("passed"):
+                total = m.get("total", 0)
+                fail_cnt = m.get("fail_cnt", 0)
+                ratio = m.get("fail_ratio", float("nan"))
+                pass_rate = (total - fail_cnt) / total * 100 if total > 0 else 0.0
+                pytest.fail(
+                    f"精度校验失败 key={key}, pass率={pass_rate:.2f}%, fail_ratio={ratio}")
+
+
+def make_failure_result(error: str) -> dict:
+    return {"out": {"passed": False, "max_abs": float("nan"), "mean_abs": float("nan"),
+                    "fail_cnt": 0, "total": 0, "fail_ratio": float("nan")}, "error": error}
+
+
+# ============ Helpers ============
 def _pt_path(case_set: str, case_id: str, stage: str) -> Path:
     return Path("data") / case_set / case_id / f"{stage}.pt"
 
@@ -39,19 +140,20 @@ def _run_prof_stage(stage_name, func, case_id, result_dir):
         pass
 
 
-def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
+# ============ Engine ============
+def run_case(stages: set, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_pt: str = None, graph_path: int = 0,
              chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False,
              fail_analysis: bool = True, keep_pt: bool = True) -> dict:
-    case_set = params.get("case_set", op_name)
-    case_id = params.get("case_id", params.get("name", op_name))
+    case_set = params.get("case_set", "")
+    case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
     dtype = params.get("dtype", "")
     result = {"passed": True, "fail_msg": ""}
     try:
-        gen = load_gen(op_name)
-        cpu = load_cpu(op_name)
-        npu = load_npu(op_name)
+        gen = GenDataBackend()
+        cpu = CpuBackend()
+        npu = NpuBackend()
 
         if "gen" in stages:
             if load_pt:
@@ -91,7 +193,8 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
             npu_out = _load_pt(npu_pt) if npu_pt.exists() else None
 
         if "gpu" in stages:
-            gpu = load_gpu(op_name)
+            from core.gpu import GpuBackend
+            gpu = GpuBackend()
             dev_inputs = _to_device(inputs, "cuda")
             gpu_out = gpu.gpu_compute(dev_inputs)
             if keep_pt:
@@ -100,7 +203,6 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
 
         if "compare" in stages and cpu_out is not None and npu_out is not None:
             result = compare_outputs(cpu_out, npu_out,
-                                     op_name=op_name,
                                      chunk_size=chunk_size, num_workers=num_workers)
             result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
             if not result.get("passed", False) and fail_analysis:

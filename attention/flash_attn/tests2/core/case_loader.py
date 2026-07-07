@@ -1,6 +1,12 @@
 import itertools
 import importlib
 
+_CASE_SET_TO_PREFIX = {
+    "ci": "stc",
+    "debug": "stc",
+    "func_rdv": "rdv",
+}
+
 
 def _val_str(v):
     if isinstance(v, (list, tuple)):
@@ -13,19 +19,23 @@ def _param_segment(name, value):
     return f"{name}_{s}" if name[-1].isdigit() else f"{name}{s}"
 
 
-def load_cases(op_name: str, marker: str = "ci") -> tuple[list[dict], list[str]]:
-    mod = importlib.import_module(f"ops.{op_name}.paramset")
+def load_cases(case_set: str = "ci") -> tuple[list[dict], list[str]]:
+    prefix = _CASE_SET_TO_PREFIX.get(case_set, case_set.lower())
+    try:
+        mod = importlib.import_module(f"test_case.{prefix}_paramset")
+    except ModuleNotFoundError:
+        return [], []
     param_names = mod.PARAM_NAMES
     defaults = mod.DEFAULTS
     case_sets = mod.CASE_SETS
     skip_cases = mod.SKIP_CASES
 
-    case_set = case_sets.get(marker, {})
-    skip_set = skip_cases.get(marker, set())
+    case_dict = case_sets.get(case_set, {})
+    skip_set = skip_cases.get(case_set, set())
 
     cases = []
     case_ids = []
-    for case_name, case_dict in case_set.items():
+    for case_name, case_dict in case_dict.items():
         expanded = dict(case_dict)
         for key, default_vals in defaults.items():
             if key not in expanded:
@@ -46,7 +56,7 @@ def load_cases(op_name: str, marker: str = "ci") -> tuple[list[dict], list[str]]
             )
             case_id = f"{case_name}_{param_str}"
             case["case_id"] = case_id
-            case["case_set"] = marker
+            case["case_set"] = case_set
             if case_id in skip_set or case_name in skip_set:
                 continue
             cases.append(case)

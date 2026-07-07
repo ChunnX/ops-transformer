@@ -7,7 +7,6 @@ _setup_hookwrapper(_pytest.terminal)
 
 
 def pytest_addoption(parser):
-    parser.addoption("--op", default="flash_attn", help="算子名称")
     parser.addoption("--stages", default="all",
                      help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
     parser.addoption("--case-id", default="all", help="用例ID过滤, 逗号组合")
@@ -27,16 +26,10 @@ def pytest_addoption(parser):
 def pytest_generate_tests(metafunc):
     if "params" not in metafunc.fixturenames:
         return
-    op_name = metafunc.config.getoption("--op")
     case_set = metafunc.config.getoption("--case-set")
     case_id_opt = metafunc.config.getoption("--case-id")
-    cases, case_ids = _collect_cases(op_name, case_set, case_id_opt)
+    cases, case_ids = _collect_cases(case_set, case_id_opt)
     metafunc.parametrize("params", cases, ids=case_ids)
-
-
-@pytest.fixture(scope="session")
-def op_name(request):
-    return request.config.getoption("--op")
 
 
 @pytest.fixture(scope="session")

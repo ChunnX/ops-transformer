@@ -51,24 +51,22 @@ def compare_outputs(
     cpu_out: dict,
     npu_out: dict,
     *,
-    op_name: str = None,
     chunk_size: int = 0,
     num_workers: int = 0,
     dtype_handler: Callable[[torch.Tensor], torch.Tensor] = None,
     atol: float = None,
     rtol: float = None,
 ) -> dict:
-    if op_name and atol is None and rtol is None:
+    if atol is None and rtol is None:
         try:
-            import importlib
-            op_mod = importlib.import_module(f"ops.{op_name}")
+            from core import get_tolerance
             for key in cpu_out:
                 cpu_t = cpu_out[key]
-                tol = get_tolerance(op_mod, cpu_t.dtype)
+                tol = get_tolerance(cpu_t.dtype)
                 atol = tol["atol"]
                 rtol = tol["rtol"]
                 break
-        except (ImportError, AttributeError, StopIteration):
+        except (ImportError, AttributeError):
             pass
     result = {}
     all_passed = True
