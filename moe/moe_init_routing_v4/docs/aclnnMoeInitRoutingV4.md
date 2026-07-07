@@ -1,14 +1,14 @@
 # aclnnMoeInitRoutingV4
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v3)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v4)
 
 ## 产品支持情况	
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     ×    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |  <term>Atlas 推理系列产品</term>    |     ×    |
 |  <term>Atlas 训练系列产品</term>    |     ×    |
@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V3接口[aclnnMoeInitRoutingV3](../../moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
-  <ol><li>新增可选输入topkWeight和可选输出expandedTopkWeightOut，支持对topkWeight按排序后的索引进行重排，使得expandedTopkWeightOut与expandedXOut一一对应。topkWeight与expandedTopkWeightOut必须同时传入或同时不传入。</li></ol>
+  <ol><li>active_num从属性改为可选输入，支持图模式下动态传入active_num值。</li><li>新增可选输入topkWeight和可选输出expandedTopkWeightOut，支持对topkWeight按排序后的索引进行重排，使得expandedTopkWeightOut与expandedXOut一一对应。topkWeight与expandedTopkWeightOut必须同时传入或同时不传入。</li></ol>
 
 - 计算公式：  
 
@@ -131,7 +131,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeInitRoutingV4GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 "aclnnMoeInitRoutingV4GetWorkspaceSize"接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeInitRoutingV4"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
@@ -139,8 +139,8 @@ aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
   const aclTensor   *expertIdx, 
   const aclTensor   *scaleOptional, 
   const aclTensor   *offsetOptional, 
+  const aclTensor   *activeNumOptional, 
   const aclTensor   *topkWeightOptional,
-  int64_t            activeNum, 
   int64_t            expertCapacity, 
   int64_t            expertNum, 
   int64_t            dropPadMode, 
@@ -247,6 +247,19 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>-</td>
     </tr>
     <tr>
+      <td>activeNumOptional（aclTensor）</td>
+      <td>输入</td>
+      <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
+      <td><ul>
+        <li>可选输入，不输入时activeNum默认为NUM_ROWS*K；</li>
+        <li>输入时为标量Tensor（shape为()或(1,)），数据类型为INT64，值大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</li>
+      </ul></td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>0-1</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>topkWeightOptional（aclTensor）</td>
       <td>输入</td>
       <td>topk专家的路由权重，用于按排序索引重排以与expandedXOut一一对应</td>
@@ -257,16 +270,6 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>FLOAT32</td>
       <td>ND</td>
       <td>2</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>activeNum（int64_t）</td>
-      <td>输入</td>
-      <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
-      <td>入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
     </tr>
     <tr>
@@ -330,7 +333,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示不同量化场景</td>
-      <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13（不同产品支持情况有差异，见表后描述）
+      <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13
         <br>0：表示静态 quant 场景;
         <br>1：表示动态 quant 场景，expandedXOut量化到INT8;
         <br>-1：表示不量化场景;
@@ -513,10 +516,9 @@ aclnnStatus aclnnMoeInitRoutingV4(
 
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9、11、12、13。
   - topkWeight/expandedTopkWeightOut支持情况差异：
-    - 仅<term>Ascend 950PR/Ascend 950DT</term>支持topkWeightOptional输入和expandedTopkWeightOut输出，其他产品不支持。
+    - <term>Ascend 950PR/Ascend 950DT</term>支持topkWeightOptional输入和expandedTopkWeightOut输出。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
@@ -578,10 +580,9 @@ aclnnStatus aclnnMoeInitRoutingV4(
 - 确定性计算：
   - aclnnMoeInitRoutingV4默认确定性实现。
 
-- 该算子在以下产品型号上支持三种性能模板，需要分别额外满足准入条件，否则进入通用模板：
+- 该算子在以下产品型号上支持性能模板，需要额外满足准入条件，否则进入通用模板：
   - 支持性能模板的产品：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
+    - <term>Ascend 950PR/Ascend 950DT</term>
   - 性能模板的准入条件：
     <table>
       <tr align="center">
@@ -589,16 +590,8 @@ aclnnStatus aclnnMoeInitRoutingV4(
         <th style="text-align: center;">准入条件</th>
       </tr>
       <tr>
-        <td align="center">低时延性能模板</td>
-        <td>需要同时满足以下条件：<ul><li>x、expertIdx、scaleOptional 输入 Shape 要求分别为：(1, 7168)、(1, 8)、(256, 7168)。</li><li>x 数据类型要求：BFLOAT16.</li><li>属性要求：activeExpertRangeOptional=[0, 256]、 quantMode=1、expertTokensNumType=2、expertNum=256</li></ul></td>
-      </tr>
-      <tr>
-        <td align="center">大 batch 性能模板</td>
-        <td>需要同时满足以下条件：<ul><li>NUM_ROWS范围为[384, 8192]，K=8。</li><li>属性要求：expertNum=256，expertEnd-expertStart<=32，quantMode=-1，rowIdxType=1，expertTokensNumType=1</li></ul></td>
-      </tr>
-      <tr>
-        <td align="center"><br>全载性能模板</td>
-        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"><li>属性要求：dropPadMode=0；Ascend 950PR/Ascend 950DT非量化场景还支持dropPadMode=1，此时quantMode=-1、rowIdxType=0、activeExpertRange=[0, expertNum]</li></ul></td>
+        <td align="center">全载性能模板</td>
+        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"><li>属性要求：dropPadMode=0；非量化场景还支持dropPadMode=1，此时quantMode=-1、rowIdxType=0、activeExpertRange=[0, expertNum]</li></ul></td>
       </tr>
     </table>
 
@@ -686,12 +679,13 @@ int main()
     std::vector<int64_t> expertIdxShape = {3, 4};
     std::vector<int64_t> scaleShape = {3};
     std::vector<int64_t> offsetShape = {1};
+    std::vector<int64_t> activeNumShape = {};
+    std::vector<int64_t> topkWeightShape = {3, 4};
 
     std::vector<int64_t> expandedXOutShape = {12, 2};
     std::vector<int64_t> expandedRowIdxOutShape = {12};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalShape = {4};
     std::vector<int64_t> expandedScaleOutOptionalShape = {12};
-    std::vector<int64_t> topkWeightShape = {3, 4};
     std::vector<int64_t> expandedTopkWeightOutShape = {12, 1};
 
     std::vector<int64_t> activeExpertRangeArray = {0, 4};
@@ -700,20 +694,22 @@ int main()
     void *expertIdxDeviceAddr = nullptr;
     void *scaleDeviceAddr = nullptr;
     void *offsetDeviceAddr = nullptr;
+    void *activeNumDeviceAddr = nullptr;
+    void *topkWeightDeviceAddr = nullptr;
 
     void *expandedXOutDeviceAddr = nullptr;
     void *expandedRowIdxOutDeviceAddr = nullptr;
     void *expertTokensCountOrCumsumOutOptionalDeviceAddr = nullptr;
     void *expandedScaleOutOptionalDeviceAddr = nullptr;
-    void *topkWeightDeviceAddr = nullptr;
     void *expandedTopkWeightOutDeviceAddr = nullptr;
 
     aclTensor *x = nullptr;
     aclTensor *expertIdx = nullptr;
     aclTensor *scale = nullptr;
     aclTensor *offset = nullptr;
+    aclTensor *activeNumOptional = nullptr;
+    aclTensor *topkWeightOptional = nullptr;
 
-    int64_t activeNum = 12;
     int64_t expertCapacity = 4;
     int64_t expertNum = 256;
     int64_t dropPadMode = 0;
@@ -727,19 +723,19 @@ int main()
     aclTensor *expandedRowIdxOut = nullptr;
     aclTensor *expertTokensCountOrCumsumOutOptional = nullptr;
     aclTensor *expandedScaleOutOptional = nullptr;
-    aclTensor *topkWeightOptional = nullptr;
     aclTensor *expandedTopkWeightOut = nullptr;
 
     std::vector<float> xHostData = {0.1, 0.1, 0.2, 0.2, 0.3, 0.3};
     std::vector<int> expertIdxHostData = {1, 2, 0, 3, 0, 2, 1, 3, 0, 1, 3, 2};
     std::vector<float> scaleHostData = {0.3423, 0.1652, 0.2652};
     std::vector<float> offsetHostData = {1.8369};
+    std::vector<int64_t> activeNumHostData = {12};
+    std::vector<float> topkWeightHostData = {0.5, 0.3, 0.2, 0.1, 0.4, 0.6, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65};
 
     std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalHostData = {0, 0, 0, 0};
     std::vector<float> expandedScaleOutOptionalHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    std::vector<float> topkWeightHostData = {0.5, 0.3, 0.2, 0.1, 0.4, 0.6, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65};
     std::vector<float> expandedTopkWeightOutHostData(expandedTopkWeightOutShape[0] * expandedTopkWeightOutShape[1], 0.0f);
 
     // 创建self aclTensor
@@ -750,6 +746,10 @@ int main()
     ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(offsetHostData, offsetShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(activeNumHostData, activeNumShape, &activeNumDeviceAddr, aclDataType::ACL_INT64, &activeNumOptional);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(topkWeightHostData, topkWeightShape, &topkWeightDeviceAddr, aclDataType::ACL_FLOAT, &topkWeightOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
     ret = CreateAclTensor(
@@ -773,8 +773,6 @@ int main()
         aclDataType::ACL_FLOAT,
         &expandedScaleOutOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(topkWeightHostData, topkWeightShape, &topkWeightDeviceAddr, aclDataType::ACL_FLOAT, &topkWeightOptional);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandedTopkWeightOutHostData, expandedTopkWeightOutShape, &expandedTopkWeightOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedTopkWeightOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
@@ -785,8 +783,8 @@ int main()
         expertIdx,
         scale,
         offset,
+        activeNumOptional,
         topkWeightOptional,
-        activeNum,
         expertCapacity,
         expertNum,
         dropPadMode,
@@ -878,6 +876,7 @@ int main()
     aclDestroyTensor(expertIdx);
     aclDestroyTensor(scale);
     aclDestroyTensor(offset);
+    aclDestroyTensor(activeNumOptional);
     aclDestroyTensor(topkWeightOptional);
     aclDestroyTensor(expandedXOut);
     aclDestroyTensor(expandedRowIdxOut);
@@ -890,6 +889,7 @@ int main()
     aclrtFree(expertIdxDeviceAddr);
     aclrtFree(scaleDeviceAddr);
     aclrtFree(offsetDeviceAddr);
+    aclrtFree(activeNumDeviceAddr);
     aclrtFree(topkWeightDeviceAddr);
     aclrtFree(expandedXOutDeviceAddr);
     aclrtFree(expandedRowIdxOutDeviceAddr);

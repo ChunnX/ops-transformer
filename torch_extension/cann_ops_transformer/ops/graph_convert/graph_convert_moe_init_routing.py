@@ -4,7 +4,7 @@
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
@@ -26,28 +26,29 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @auto_convert_to_tensor([False, False, False, False, False],
-        [False, False, True, True, True])
-    def MoeInitRoutingV3(x: Tensor, expert_idx: Tensor, scale: Optional[Tensor],
-                          offset: Optional[Tensor], topk_weight: Optional[Tensor], *,
-                          active_num: int, expert_capacity: int, expert_num: int,
-                          drop_pad_mode: int, expert_tokens_num_type: int, expert_tokens_num_flag: bool,
+    @auto_convert_to_tensor([False, False, False, False, False, False],
+        [False, False, True, True, True, True])
+    def MoeInitRoutingV4(x: Tensor, expert_idx: Tensor, scale: Optional[Tensor],
+                          offset: Optional[Tensor], active_num: Optional[Tensor],
+                          topk_weight: Optional[Tensor], *,
+                          expert_capacity: int, expert_num: int, drop_pad_mode: int,
+                          expert_tokens_num_type: int, expert_tokens_num_flag: bool,
                           quant_mode: int, active_expert_range: Optional[list], row_idx_type: int,
                           dependencies=[], node_name=None):
-        """REG_OP(MoeInitRoutingV3)\n
+        """REG_OP(MoeInitRoutingV4)\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_INT8}))\n
         .INPUT(expert_idx, TensorType({DT_INT32}))\n
         .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))\n
         .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))\n
+        .OPTIONAL_INPUT(active_num, TensorType({DT_INT64}))\n
         .OPTIONAL_INPUT(topk_weight, TensorType({DT_FLOAT}))\n
         .OUTPUT(expanded_x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_INT8}))\n
         .OUTPUT(expanded_row_idx, TensorType({DT_INT32}))\n
         .OUTPUT(expert_tokens_count_or_cumsum, TensorType({DT_INT64}))\n
         .OUTPUT(expanded_scale, TensorType({DT_FLOAT}))\n
         .OUTPUT(expanded_topk_weight, TensorType({DT_FLOAT}))\n
-        .REQUIRED_ATTR(active_num, Int)\n
-        .REQUIRED_ATTR(expert_capacity, Int)\n
-        .REQUIRED_ATTR(expert_num, Int)\n
+        .ATTR(expert_capacity, Int, -1)\n
+        .ATTR(expert_num, Int, -1)\n
         .ATTR(drop_pad_mode, Int, 0)\n
         .ATTR(expert_tokens_num_type, Int, 0)\n
         .ATTR(expert_tokens_num_flag, Bool, False)\n
@@ -60,11 +61,11 @@ if _TORCHAIR_AVAILABLE:
             "expert_idx": expert_idx,
             "scale": scale,
             "offset": offset,
+            "active_num": active_num,
             "topk_weight": topk_weight,
         }
 
         attrs = {
-            "active_num": attr.Int(active_num),
             "expert_capacity": attr.Int(expert_capacity),
             "expert_num": attr.Int(expert_num),
             "drop_pad_mode": attr.Int(drop_pad_mode),
@@ -87,20 +88,20 @@ if _TORCHAIR_AVAILABLE:
         ]
 
         return ge_op(
-            op_type="MoeInitRoutingV3",
+            op_type="MoeInitRoutingV4",
             inputs=inputs,
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MoeInitRoutingV3") \
+            ir=IrDef("MoeInitRoutingV4") \
             .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT, DT_INT8") \
             .input("expert_idx", "DT_INT32") \
             .optional_input("scale", "DT_FLOAT") \
             .optional_input("offset", "DT_FLOAT") \
+            .optional_input("active_num", "DT_INT64") \
             .optional_input("topk_weight", "DT_FLOAT") \
-            .required_attr("active_num", attr.Int) \
-            .required_attr("expert_capacity", attr.Int) \
-            .required_attr("expert_num", attr.Int) \
+            .attr("expert_capacity", attr.Int(-1)) \
+            .attr("expert_num", attr.Int(-1)) \
             .attr("drop_pad_mode", attr.Int(0)) \
             .attr("expert_tokens_num_type", attr.Int(0)) \
             .attr("expert_tokens_num_flag", attr.Bool(False)) \
@@ -111,8 +112,7 @@ if _TORCHAIR_AVAILABLE:
             .output("expanded_row_idx", "DT_INT32") \
             .output("expert_tokens_count_or_cumsum", "DT_INT64") \
             .output("expanded_scale", "DT_FLOAT") \
-            .output("expanded_topk_weight", "DT_FLOAT")
-        )
+            .output("expanded_topk_weight", "DT_FLOAT"))
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.moe_init_routing.default)
     def convert_moe_init_routing(
@@ -133,13 +133,18 @@ if _TORCHAIR_AVAILABLE:
         row_idx_type: int = 0,
         x_dtype: int = None,
         meta_outputs: TensorSpec = None):
-        return MoeInitRoutingV3(
+
+        active_num_tensor = None
+        if active_num > 0:
+            active_num_tensor = ge.Const(active_num, dtype=torch.int64)
+
+        return MoeInitRoutingV4(
             x=x,
             expert_idx=expert_idx,
             scale=scale,
             offset=offset,
+            active_num=active_num_tensor,
             topk_weight=topk_weight,
-            active_num=active_num,
             expert_capacity=expert_capacity,
             expert_num=expert_num,
             drop_pad_mode=drop_pad_mode,

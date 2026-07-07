@@ -43,16 +43,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -92,16 +82,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -200,16 +180,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -249,16 +219,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -357,16 +317,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -406,16 +356,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -514,16 +454,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -563,16 +493,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -671,16 +591,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -720,16 +630,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -828,16 +728,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -877,16 +767,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -985,16 +865,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1034,16 +904,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1142,16 +1002,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1191,16 +1041,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1299,16 +1139,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1348,16 +1178,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1456,16 +1276,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1505,16 +1315,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1613,16 +1413,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1662,16 +1452,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1770,16 +1550,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1819,16 +1589,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -1927,16 +1687,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -1976,16 +1726,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2084,16 +1824,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2133,16 +1863,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2241,16 +1961,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2290,16 +2000,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2398,16 +2098,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2447,16 +2137,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2555,16 +2235,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2604,16 +2274,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2712,16 +2372,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2761,16 +2411,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -2869,16 +2509,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -2918,16 +2548,6 @@
           "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3026,16 +2646,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3075,16 +2685,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3183,16 +2783,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3232,16 +2822,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3340,16 +2920,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3389,16 +2959,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3497,16 +3057,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3546,16 +3096,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3654,16 +3194,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3703,16 +3233,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -3811,16 +3331,6 @@
           "shape": [
             -2
           ]
-        },
-        {
-          "name": "topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ]
         }
       ],
       "outputs": [
@@ -3860,16 +3370,6 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "expanded_topk_weight",
-          "index": 4,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "optional",
           "shape": [
             -2
           ]
