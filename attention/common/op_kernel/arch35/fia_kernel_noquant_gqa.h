@@ -98,6 +98,8 @@ public:
     int64_t validTaskNum = 0;
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    uint64_t cachedS2LoopTimes = 0;
+    uint64_t cachedG1S1LoopTimes = 0;
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
     uint32_t prevBIdx = 0;
@@ -417,16 +419,16 @@ public:
             prevBIdx = bIdx;
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+            cachedG1S1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         }
 
         if (constInfo.enableS1OutSplit && accGS1Loops != CalcS1OutTaskIdx()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (cachedS2LoopTimes == 0 || cachedG1S1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -485,7 +487,7 @@ public:
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         curS2Start = 0U;
-        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
+        curS2End = static_cast<uint32_t>(cachedS2LoopTimes);
         if ((bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
             headS2Split = constInfo.s2OStart != 0U;
             curS2Start = constInfo.s2OStart;
@@ -631,8 +633,8 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = prevBIdx;
+        info.n2Idx = bN2Cur - prevBIdx * constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -646,9 +648,8 @@ public:
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+        if (gS1Cur + 1 == cachedG1S1LoopTimes) {
+            info.actMSize = actSeqLensQ * constInfo.gSize - gS1Cur * mBaseSize;
         }
 
         info.actSingleLoopS2Size = s2BaseSize;
@@ -795,8 +796,7 @@ public:
             return;
         }
 
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1LoopTimes = cachedG1S1LoopTimes;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;
