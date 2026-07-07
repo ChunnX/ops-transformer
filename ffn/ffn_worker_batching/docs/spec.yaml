@@ -1,0 +1,320 @@
+# ============================================================
+# ffn_worker_batching — L0 数学契约 spec (新增 Ascend950/A5 支持，范围对齐 A2)
+# 非计算类算子：sort(生成 gather 索引) -> 多核 gather(原样字节搬运) -> 单核扫描 group_listing
+# 无浮点算术；精度口径 = 二进制一致 (Bitwise Match, np.array_equal)
+# 输出 shape 由属性 max_out_shape / expert_num 静态推导 (非 data_dependent)
+# ============================================================
+schema_version: 1
+
+op:
+  name: ffn_worker_batching
+  version: "1.0"
+  description: "FFN worker token batching：按专家排序 token 生成 gather 索引，多核 gather 重排 token hidden states 与 id/scale，单核扫描生成 per-expert group_list；非计算类 (整数索引 + 原样字节搬运)，输出与 CPU golden 二进制一致；A5(arch35) 支持范围对齐 A2"
+  category: index_gather
+  paradigms: [IndexGather, SortSelect, Histogram]
+  lifecycle: experimental
+  error_codes:
+    - null_input
+    - shape_mismatch
+    - dtype_not_supported
+    - attribute_value_out_of_range
+  platform_constraints:
+    supported_chips: [Ascend910B, Ascend950PR, Ascend950DT]
+    requires_hccl: false
+
+inputs:
+  - name: schedule_context
+    role: tensor
+    description: "1024 字节调度上下文结构体 (CommonArea/ControlArea/AttentionArea/FfnArea)；算子从 FfnArea 逐字节解析 token_info/token_data 及 layer_id/session_id/micro_batch_id/expert_ids 路由信息"
+    dtype_set: [int8]
+    rank_range: [1, 1]
+    layout: ND
+    shape:
+      symbolic: [1024]
+
+attributes:
+  - name: expert_num
+    type: int64
+    default: 256
+    semantics: "本卡专家总数 (= 每层本卡专家数 × layer_num)；决定 group_list 行数；取值范围 (0, 8192]"
+    machine_constraint:
+      kind: int_in_range
+      lower_inclusive: 1
+      upper_inclusive: 8192
+  - name: max_out_shape
+    type: list[int64]
+    default: [8, 4, 8, 128]
+    semantics: "输出 shape 上限，格式 {A, BS, topK+1, H}，长度必须为 4；推导 Y=A*BS*(topK+1)、H=max_out_shape[3]。约束：A∈(0,1024]、BS>0、topK+1∈(0,64]、H>0"
+    machine_constraint:
+      kind: list_of_int_in_range
+      length: 4
+  - name: token_dtype
+    type: int64
+    default: 0
+    semantics: "token 数据类型选择：0=FP16 / 1=BF16 / 2=dynamic_quant_int8 (INT8 数据与 FP32 dynamic scale 连续排布)；决定 y 的 dtype 与 dynamic_scale 是否有效；取值范围 [0,2]"
+    machine_constraint:
+      kind: int_in_range
+      lower_inclusive: 0
+      upper_inclusive: 2
+  - name: need_schedule
+    type: int64
+    default: 0
+    semantics: "功能路径选择：0=仅 batching (TilingKey 100 NORM)；1=先扫描接收 token_info 再 batching (TilingKey 101 RECV)；取值范围 [0,1]"
+    machine_constraint:
+      kind: int_in_range
+      lower_inclusive: 0
+      upper_inclusive: 1
+  - name: layer_num
+    type: int64
+    default: 0
+    semantics: "层数，每层专家独立索引；取值范围 [0, expert_num]"
+    machine_constraint:
+      kind: int_in_range
+      lower_inclusive: 0
+      upper_inclusive: 8192
+
+outputs:
+  - name: y
+    description: "按专家排序重排后的 token hidden states；shape=[Y,H]，Y=A*BS*(topK+1)、H=max_out_shape[3]；dtype 随 token_dtype (0->fp16/1->bf16/2->int8)，随 token_payload 元素类型走原样字节搬运"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      y.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2], max_out_shape[3])
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      y.dtype = token_payload.dtype
+    layout: ND
+    aliasing: none
+  - name: group_list
+    description: "每专家 [expert_id, expert_token_num]，未用专家填 [0,0]；shape=[expert_num,2]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      group_list.shape = (expert_num, 2)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      group_list.dtype = np.int64
+    layout: ND
+    aliasing: none
+  - name: session_ids
+    description: "每个输出 token 对应的 Attention session ID；shape=[Y]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      session_ids.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2],)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      session_ids.dtype = np.int32
+    layout: ND
+    aliasing: none
+  - name: micro_batch_ids
+    description: "每个输出 token 对应的 micro batch ID；shape=[Y]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      micro_batch_ids.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2],)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      micro_batch_ids.dtype = np.int32
+    layout: ND
+    aliasing: none
+  - name: token_ids
+    description: "每个输出 token 在原始输入中的位置索引；shape=[Y]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      token_ids.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2],)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      token_ids.dtype = np.int32
+    layout: ND
+    aliasing: none
+  - name: expert_offsets
+    description: "每个输出 token 在其所属专家分组内的偏移；shape=[Y]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      expert_offsets.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2],)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      expert_offsets.dtype = np.int32
+    layout: ND
+    aliasing: none
+  - name: dynamic_scale
+    description: "动态量化 scale，仅 token_dtype=2 有效 (原样字节 gather，非重算)；token_dtype=0/1 时为空 tensor；shape=[Y]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      dynamic_scale.shape = (max_out_shape[0] * max_out_shape[1] * max_out_shape[2],)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      dynamic_scale.dtype = np.float32
+    layout: ND
+    aliasing: none
+  - name: actual_token_num
+    description: "所有专家有效 token 数之和 (标量)；shape=[1]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      actual_token_num.shape = (1,)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      actual_token_num.dtype = np.int64
+    layout: ND
+    aliasing: none
+
+shape_constraints:
+  symbols: {}
+  global_constraints:
+    - "max_out_shape 长度必须为 4：{A, BS, topK+1, H}"
+    - "A = max_out_shape[0] ∈ (0, 1024]  (tiling MAX_SESSION_NUM=1024)"
+    - "BS = max_out_shape[1] > 0"
+    - "topK+1 = max_out_shape[2] ∈ (0, 64]  (tiling MAX_K_NUM=64)"
+    - "H = max_out_shape[3] > 0"
+    - "M (micro batch 数) ≤ 64  (README 约束，运行时取自 ScheduleContext.common.micro_batch_num)"
+    - "expert_num ∈ (0, 8192]  (tiling EXPERT_IDX_MAX=8192)"
+    - "核心关系式 Y = A × BS × (topK+1)"
+  notes:
+    - "输出 shape 完全由属性 max_out_shape / expert_num 静态推导 (infershape)，与代次无关；A5 与 A2 全对齐"
+    - "token_payload 是 supported_combinations 中用于表达 y dtype 随属性 token_dtype 变化的建模键 (逻辑载荷元素类型 fp16/bf16/int8)，非独立 IR 张量输入；物理输入只有 schedule_context(INT8)，token 数据从其内 FfnArea 指针间接读取"
+    - "y dtype 由 token_dtype 决定 (0->fp16,1->bf16,2->int8)；dynamic_scale 仅 token_dtype=2 有效"
+
+dtype_policy:
+  promotion: fixed
+  # 3 个 profile 显式枚举，与 REQUIREMENTS §4.4 dtype 矩阵一致；A5 全量对齐 A2
+  # token_payload = y 承载的 token 元素 dtype (由属性 token_dtype 选择)，schedule_context 恒为 INT8
+  supported_combinations:
+    # P0 (token_dtype=0, fp16)
+    - inputs: {schedule_context: int8, token_payload: float16}
+      outputs: {y: float16, group_list: int64, session_ids: int32, micro_batch_ids: int32, token_ids: int32, expert_offsets: int32, dynamic_scale: float32, actual_token_num: int64}
+    # P1 (token_dtype=1, bf16)
+    - inputs: {schedule_context: int8, token_payload: bfloat16}
+      outputs: {y: bfloat16, group_list: int64, session_ids: int32, micro_batch_ids: int32, token_ids: int32, expert_offsets: int32, dynamic_scale: float32, actual_token_num: int64}
+    # P2 (token_dtype=2, dynamic_quant_int8)
+    - inputs: {schedule_context: int8, token_payload: int8}
+      outputs: {y: int8, group_list: int64, session_ids: int32, micro_batch_ids: int32, token_ids: int32, expert_offsets: int32, dynamic_scale: float32, actual_token_num: int64}
+
+broadcast:
+  kind: none
+
+math_semantics:
+  # 非计算类算子：无浮点算术，语义为整数索引 + 原样字节 gather。
+  # formula 用 textual_only（stage 8 SKIP）—— 单 INT8 结构体入参无法在 numpy 沙箱上
+  # 忠实重建 (token 数据经 FfnArea 指针间接读取，非 declared tensor)。语义由下方
+  # 三步描述 + invariants + boundary/extreme 覆盖。
+  formula_kind: textual_only
+  formula: |
+    # 三步语义 (无浮点算术；全部整数索引与原样字节搬运)：
+    # 1) sort: 对所有 token 的 expert_id 稳定排序，被 mask 的无效 token 置极大值排到末尾，
+    #    生成按专家聚合的 gather 索引序列 gather_idx。
+    # 2) gather: 多核并行按 gather_idx 从 token_data 提取 hidden states ->
+    #    y[out_i, :] = token_data[gather_idx[out_i], :]  (逐字节搬运，dtype 随 token_dtype)；
+    #    token_dtype=2 时每 token 尾部 32B 的 FP32 scale 一并搬运 -> dynamic_scale[out_i]；
+    #    同步查表得到 session_ids / micro_batch_ids / token_ids / expert_offsets。
+    # 3) group_listing: 单核扫描排序后的 expert_id 序列查找专家跳变点，生成
+    #    group_list[e] = [expert_id_e, token_num_e] (未用专家 [0,0])，并统计
+    #    actual_token_num = sum_e token_num_e (有效 token 总数)。
+    # 精度口径：所有输出为整数索引或原样字节 gather，与 CPU golden 二进制一致 (np.array_equal)。
+
+  reference_oracle:
+    # 非计算类：无单一 torch/numpy callable 能表达 "解析 1024B 调度上下文结构体 + 多字段
+    # gather + group_listing"。语义由 invariants (permutation / group_list 计数守恒 /
+    # 输出 shape 契约) + boundary/extreme case 机器断言覆盖，测试阶段以 CPU golden 二进制对拍。
+    framework: numpy
+    absent: true
+    available_for_dtype: [int8, float16, bfloat16, float32, int32, int64]
+
+  invariants:
+    # structural 组：输出 shape 必须等于属性静态推导 (Y=A*BS*(topK+1) / [expert_num,2] / [Y] / [1])
+    - name: output_shape_static_contract
+      kind: shape_equals_macro
+      macro: ffn_worker_batching_static_shape
+      tolerance_inherit: false
+    # structural 组：中间量 (gather_idx / 排序 key / 专家跳变点扫描缓冲) 不外漏到 outputs
+    - name: no_leak_intermediate_indices
+      kind: no_leak_intermediates
+      tolerance_inherit: false
+
+numerical_stability:
+  required: false
+  techniques: []
+  affects_invariants: false
+
+numerical_tolerance:
+  source: "ops-precision-standard 非计算类标准 (搬移/重排，无数值计算) → 二进制一致 (Bitwise Match)"
+  # 全部输出为整数索引或原样字节 gather，无浮点算术误差；容差表达为精确相等 (rtol=atol=0, bitwise_equal)。
+  # y 的 fp16/bf16、dynamic_scale 的 fp32 也按二进制一致校验 (原样字节搬运，非重算)。
+  per_dtype:
+    float16:  {rtol: 0, atol: 0, metric: bitwise_equal}
+    bfloat16: {rtol: 0, atol: 0, metric: bitwise_equal}
+    int8:     {rtol: 0, atol: 0, metric: bitwise_equal}
+    int32:    {rtol: 0, atol: 0, metric: bitwise_equal}
+    int64:    {rtol: 0, atol: 0, metric: bitwise_equal}
+    float32:  {rtol: 0, atol: 0, metric: bitwise_equal}
+
+boundary_conditions:
+  # --- SortSelect 最低集 (k=0 / k=N) ---
+  - case: "全部 token 被 mask → 无有效 token (k=0)：actual_token_num=0，group_list 全 [0,0]，y 全为无效占位"
+    tags: [k_zero]
+    synthesize: {token_dtype: 0, need_schedule: 0, note: "所有 expert_id 置极大值排到末尾，有效 token 数=0"}
+    machine_check: {kind: equals, value: 0}
+  - case: "无 mask，全部 token 有效 (k=N)，同时取 A 上界=1024 与 topK+1 上界=64"
+    tags: [k_eq_n]
+    synthesize: {max_out_shape: "[1024, 4, 64, 128]", token_dtype: 0, need_schedule: 0}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+  # --- Histogram 最低集 (所有值落同一 bin) + expert_num 上界 ---
+  - case: "所有有效 token 路由到同一专家 (全落同一 bin)：group_list 仅该专家非零；同时 expert_num 取上界=8192"
+    tags: [same_bin_collision]
+    synthesize: {expert_num: 8192, token_dtype: 0}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+  # --- IndexGather 最低集 (索引越界) ---
+  - case: "expert_num 越界 (>8192) → 报错 (专家索引域越界)"
+    tags: [index_out_of_bounds]
+    synthesize: {expert_num: 8193}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  # --- 属性/shape/dtype 硬校验 (tiling CheckInputParam / GetAttrsInfo) ---
+  - case: "topK+1 = max_out_shape[2] 越界 (>64) → 报错 (tiling MAX_K_NUM=64)"
+    synthesize: {max_out_shape: "[8, 4, 65, 128]"}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "A = max_out_shape[0] 越界 (>1024) → 报错 (tiling MAX_SESSION_NUM=1024)"
+    synthesize: {max_out_shape: "[1025, 4, 8, 128]"}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "max_out_shape 长度 != 4 → 报错"
+    synthesize: {max_out_shape: "[8, 4, 8]"}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "schedule_context dtype 非 INT8 → 报错 (tiling 强制 INT8)"
+    synthesize: {schedule_context.dtype: float16}
+    machine_check: {kind: raises_error, error_type: dtype_not_supported}
+  - case: "schedule_context 非 1 维 → 报错 (tiling 强制 shape 1 维)"
+    synthesize: {schedule_context.shape: "[2, 512]"}
+    machine_check: {kind: raises_error, error_type: shape_mismatch}
+  # --- 功能路径：need_schedule 0/1 两路 (TilingKey 100/101) ---
+  - case: "need_schedule=0 仅 batching 路径 (TilingKey 100 NORM)：排序->gather->group_listing"
+    synthesize: {need_schedule: 0, token_dtype: 0}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+  - case: "need_schedule=1 接收+batching 路径 (TilingKey 101 RECV)：扫描 token_info->排序->gather->group_listing"
+    synthesize: {need_schedule: 1, token_dtype: 0}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+
+extreme_inputs:
+  # --- IndexGather 最低集 (全相同索引) ---
+  - case: "全相同 gather 索引 / 全部有效 token 路由同一专家：极端访存模式 (缓存命中、写聚集)，验证 gather 与 group_listing 仍二进制一致"
+    tags: [all_same_index]
+    synthesize: {expert_num: 8192, token_dtype: 0, note: "所有有效 token expert_id 相同 → 同一 bin 连续排布"}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+  # --- token_dtype=2：INT8 数据 + FP32 scale 连续排布 gather (P2 profile) ---
+  - case: "token_dtype=2 (dynamic_quant_int8)：每 token 尾部 32B FP32 scale 与 INT8 数据连续排布，gather 一并搬运；y=INT8 且 dynamic_scale 有效"
+    synthesize: {token_dtype: 2, note: "ffn_wb_gather_out_all 按 BLOCK_BYTES=32 连续搬运 scale"}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+  # --- 被 mask token 排末尾 (稀疏有效 token) ---
+  - case: "部分 token 被 mask：无效 token 初始化为极大值稳定排到序列末尾，有效 token 按专家 ID 升序聚合；actual_token_num < Y"
+    tags: [normal_sparse]
+    synthesize: {token_dtype: 0, need_schedule: 1, note: "约 50% token 被 mask"}
+    machine_check: {kind: matches_invariant, name: output_shape_static_contract}
+
+determinism:
+  required: true
+  accumulation_order: sequential
+  partition_constraint: "排序 key 使用专家 ID + 稳定序；group_list 计数为整数精确累加，多核 gather 切分后按固定专家聚合顺序合并，保证相同 schedule_context 产出完全相同 y/group_list/ids (二进制一致)；A5 沿用同一确定性策略"
+  bitwise_reproducible: true
+
+
+
+
+
+
+
+
+
