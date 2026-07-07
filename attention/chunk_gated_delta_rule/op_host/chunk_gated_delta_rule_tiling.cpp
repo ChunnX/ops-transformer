@@ -549,6 +549,7 @@ void ChunkGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "stageWorkspaceSz: [%ld]", tilingData_.stageWorkspaceSz);
     OP_LOGD(context_->GetNodeName(), "stageOneParaNum: [%ld]", tilingData_.stageOneParaNum);
     OP_LOGD(context_->GetNodeName(), "scale: [%f]", tilingData_.scale);
+    OP_LOGD(context_->GetNodeName(), "stateIsFp32: [%ld]", tilingData_.stateIsFp32);
 }
 
 // tiling 调度入口
