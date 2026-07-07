@@ -2446,19 +2446,19 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPreTiling()
 
     int64_t dropBeginAddr = SYNC_GLOBAL_WORKSPACE_SIZE;
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.qSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.qSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     if (fBaseParams.rope_d != 0) {
-        dropBeginAddr = (dropBeginAddr + (fBaseParams.qRopeSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
+        dropBeginAddr = (dropBeginAddr + (fBaseParams.qRopeSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
                         ADDR_ALIGN_SIZE;
     }
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.kvSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.kvSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     if (fBaseParams.rope_d != 0) {
-        dropBeginAddr = (dropBeginAddr + (fBaseParams.kRopeSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
+        dropBeginAddr = (dropBeginAddr + (fBaseParams.kRopeSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE *
                         ADDR_ALIGN_SIZE;
     }
     dropBeginAddr =
-        (dropBeginAddr + (fBaseParams.vSize) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+        (dropBeginAddr + (fBaseParams.vSizeAlign) * sizeof(float) + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     tilingData->preTilingData.set_dropBeginAddr(dropBeginAddr);
     return ge::GRAPH_SUCCESS;
 }
