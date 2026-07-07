@@ -747,6 +747,7 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
         dataCopyParams.blockLen = this->s2Size * dtypeSize;
         dataCopyPadParams.rightPadding = extraInfo.s2AlignSize - this->s2Size;
         dataCopyPadParams.paddingValue = 0;
+        AscendC::PipeBarrier<PIPE_V>();
         if (dataCopyPadParams.rightPadding > blockSize) {
             // 8对齐场景，内部vector需要16对齐，我们在data copy的时候需要手动补0
             dataCopyPadParams.rightPadding -= blockSize;

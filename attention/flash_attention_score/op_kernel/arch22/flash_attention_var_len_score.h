@@ -243,6 +243,9 @@ __aicore__ inline void FlashAttentionVarLenScore<implMode, layOutType, hasPse, h
     }
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
+    event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
+    AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
         LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
