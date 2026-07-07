@@ -314,9 +314,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(
     }
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams_);
+    PipeBarrier<PIPE_MTE3>();
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     if (dstRankId != rankId_) {
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, XTypeAlign32Size_);
@@ -368,12 +368,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) +
                 slotOffset;
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
-            PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
             GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
-
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
         }
     }
