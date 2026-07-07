@@ -10,4 +10,4 @@ class GpuBase(ABC):
 
 def load(op_name: str) -> GpuBase:
     mod = importlib.import_module(f"ops.{op_name}.gpu")
-    return mod.Gpu()
+    return mod.GpuBackend()

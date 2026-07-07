@@ -32,6 +32,13 @@ def _to_device(data: dict, device: str) -> dict:
     return {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
 
+def _run_prof_stage(stage_name, func, case_id, result_dir):
+    try:
+        func(case_id, [], str(Path(result_dir) / stage_name))
+    except NotImplementedError:
+        pass
+
+
 def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
              max_retries: int = 0, load_pt: str = None, graph_path: int = 0,
              chunk_size: int = 0, num_workers: int = 0, verbose_diff: bool = False,
@@ -40,6 +47,7 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
     case_id = params.get("case_id", params.get("name", op_name))
     result_dir = str(Path("result") / case_id)
     dtype = params.get("dtype", "")
+    result = {"passed": True, "fail_msg": ""}
     try:
         gen = load_gen(op_name)
         cpu = load_cpu(op_name)
@@ -88,9 +96,9 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
                 _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
             del dev_inputs
 
-        result = {"passed": True, "fail_msg": ""}
         if "compare" in stages:
             result = compare_outputs(cpu_out, npu_out,
+                                     op_name=op_name,
                                      chunk_size=chunk_size, num_workers=num_workers)
             result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
             if not result.get("passed", False) and fail_analysis:
@@ -100,14 +108,24 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
 
         if "npuprof" in stages:
             from prof.npuprof import run_msprof
-            run_msprof(case_id, [], str(Path(result_dir) / "npuprof"))
+            _run_prof_stage("npuprof", run_msprof, case_id, result_dir)
         if "npuprofop" in stages:
             from prof.npuprofop import run_msprof_op
-            run_msprof_op(case_id, [], str(Path(result_dir) / "npuprofop"))
+            _run_prof_stage("npuprofop", run_msprof_op, case_id, result_dir)
         if "gpuprof" in stages:
             from prof.gpuprof import run_gpuprof
-            run_gpuprof(case_id, [], str(Path(result_dir) / "gpuprof"))
+            _run_prof_stage("gpuprof", run_gpuprof, case_id, result_dir)
+        if "l2_flush" in stages:
+            from prof.l2_flush import flush_l2_cache
+            try:
+                flush_l2_cache()
+            except NotImplementedError:
+                pass
 
+        if "npu" in stages:
+            torch.npu.empty_cache()
+        if "gpu" in stages:
+            torch.cuda.empty_cache()
         del inputs, cpu_out, npu_out
         gc.collect()
         return result

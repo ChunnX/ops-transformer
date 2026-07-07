@@ -10,7 +10,8 @@ from core.case_loader import load_cases, resolve_case_ids
 from core.orchestrator import run_case
 from core.reporter import Reporter, make_failure_result
 
-_VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare", "npuprof", "npuprofop", "gpuprof"}
+_VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare",
+                 "npuprof", "npuprofop", "gpuprof", "l2_flush"}
 
 
 def _parse_stages(raw):
@@ -37,10 +38,44 @@ def _collect_cases(op_name, case_set, case_id_opt):
 def _make_reporter():
     rep = Reporter()
     result_dir = Path("result")
-    result_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     rep.set_csv(result_dir / f"result_{ts}.csv")
     return rep
+
+
+def _setup_hookwrapper(_pytest_terminal):
+    _original_get_line = _pytest_terminal._get_line_with_reprcrash_message
+    _fail_msgs = {}
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(item, call):
+        outcome = yield
+        rep = outcome.get_result()
+        if rep.when == "call" and rep.failed:
+            msg = None
+            try:
+                if isinstance(rep.longrepr, str):
+                    msg = rep.longrepr
+                else:
+                    msg = rep.longrepr.reprcrash.message
+            except AttributeError:
+                pass
+            if msg and msg.startswith("Failed: "):
+                msg = msg[len("Failed: "):]
+            _fail_msgs[rep.nodeid] = msg
+
+    def _custom_get_line(config, rep, tw, word_markup):
+        if hasattr(rep, 'when') and rep.when == "call" and rep.failed:
+            fail_msg = _fail_msgs.get(rep.nodeid)
+            if fail_msg:
+                verbose_word, verbose_markup = rep._get_verbose_word_with_markup(
+                    config, word_markup
+                )
+                word = tw.markup(verbose_word, **verbose_markup)
+                return f"{word} {fail_msg}"
+        return _original_get_line(config, rep, tw, word_markup)
+
+    _pytest_terminal._get_line_with_reprcrash_message = _custom_get_line
 
 
 def test_op(params, stages, reporter, op_name, request):

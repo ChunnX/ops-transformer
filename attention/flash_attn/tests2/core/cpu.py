@@ -10,4 +10,4 @@ class CpuBase(ABC):
 
 def load(op_name: str) -> CpuBase:
     mod = importlib.import_module(f"ops.{op_name}.cpu")
-    return mod.Cpu()
+    return mod.CpuBackend()

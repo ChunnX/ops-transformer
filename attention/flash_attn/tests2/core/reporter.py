@@ -12,6 +12,7 @@ class Reporter:
         self._csv_writer = None
 
     def set_csv(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
         exists = path.exists()
         self._csv_file = open(path, "a", newline="")
         self._csv_writer = csv.DictWriter(self._csv_file, CSV_HEADERS)

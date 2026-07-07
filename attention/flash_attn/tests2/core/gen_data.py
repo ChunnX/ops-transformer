@@ -14,9 +14,9 @@ class GenDataBase(ABC):
         ...
 
     def load_inputs(self, pt_path: str) -> dict:
-        return torch.load(pt_path)
+        return torch.load(pt_path, map_location="cpu", weights_only=False)
 
 
 def load(op_name: str) -> GenDataBase:
     mod = importlib.import_module(f"ops.{op_name}.gen_data")
-    return mod.GenData()
+    return mod.GenDataBackend()

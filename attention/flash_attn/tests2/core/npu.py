@@ -10,4 +10,4 @@ class NpuBase(ABC):
 
 def load(op_name: str) -> NpuBase:
     mod = importlib.import_module(f"ops.{op_name}.npu")
-    return mod.Npu()
+    return mod.NpuBackend()
