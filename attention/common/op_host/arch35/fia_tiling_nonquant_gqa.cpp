@@ -483,6 +483,8 @@ void FiaTilingNonQuantArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo
     splitParam.s2BaseSize = sInnerFactor_;
     splitParam.gS1BaseSizeOfFd = 8;
     splitParam.streamK = true;
+    splitParam.fdTolerance = 9; // 实验经验值
+    splitParam.fdLeastBlock = 0; // 实验经验值
 }
 
 void FiaTilingNonQuantArch35::SetSplitOutput(const split_core_v2::FAMetaData &splitRes)
