@@ -112,8 +112,8 @@ struct Params {
 };
 
 enum class AddrUpdateMode : int32_t {
-    kGmm1,
-    kGmm2
+    GMM1,
+    GMM2
 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)

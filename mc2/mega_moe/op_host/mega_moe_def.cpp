@@ -10,7 +10,6 @@
 
 /*!
  * \file mega_moe_def.cpp
- * \brief
  */
 
 #if __has_include("version/asc_devkit_version.h")
