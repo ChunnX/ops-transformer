@@ -169,7 +169,7 @@ private:
     DataCopyParams xCopyParams_;
     DataCopyParams hCommuCopyOutParams_;
     DataCopyParams weightCommuOutParams_;
-    
+
     LocalTensor<half> maskGenerateTensor_;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<half> tokenTargetTensor_;
