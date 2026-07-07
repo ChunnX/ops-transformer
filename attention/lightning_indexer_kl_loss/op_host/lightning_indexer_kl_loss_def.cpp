@@ -36,6 +36,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Attr("eps").AttrType(REQUIRED).Float(1e-9);
+        this->Attr("deterministic").AttrType(OPTIONAL).Bool(false);
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag((true))

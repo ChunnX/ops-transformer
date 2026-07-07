@@ -24,11 +24,11 @@ class LightningIndexerKLLossOpBuilder(OpBuilder):
         return ["ops/csrc/lightning_indexer_kl_loss.cpp"]
 
     def schema(self) -> str:
-        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps=1e-9) -> Tensor"
+        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps=1e-9, bool deterministic=False) -> Tensor"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def lightning_indexer_kl_loss_meta(target_score, index_probs, eps=1e-9):
+        def lightning_indexer_kl_loss_meta(target_score, index_probs, eps=1e-9, deterministic=False):
             return torch.empty((), dtype=target_score.dtype, device="meta")
 
 
@@ -37,7 +37,7 @@ op_module = lightning_indexer_kl_loss_op_builder.load()
 
 
 @impl(AS_LIBRARY, lightning_indexer_kl_loss_op_builder.name, "PrivateUse1")
-def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
+def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9, deterministic=False):
     """Lightning Indexer KL 散度损失函数。
 
     计算 teacher 侧原始未归一化主注意力分数（target_score）与 student 侧 indexer softmax
@@ -72,4 +72,4 @@ def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9):
         >>> index_probs = torch.softmax(torch.randn(4, 10, 128), dim=-1).npu()
         >>> loss = lightning_indexer_kl_loss(target_score, index_probs)
     """
-    return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps)
+    return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps, deterministic)

@@ -18,18 +18,22 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-/* Mode场景定义 */
-#define ELEMENTWISE_TPL_SCH_MODE_0 0
-#define ELEMENTWISE_TPL_SCH_MODE_1 1
-/* 继续定义其他Mode场景... */
- 
+
 /* 模板参数 */
 ASCENDC_TPL_ARGS_DECL(LightningIndexerKlLoss,
-    ASCENDC_TPL_UINT_DECL(schMode, 1, ASCENDC_TPL_UI_LIST, ELEMENTWISE_TPL_SCH_MODE_0, ELEMENTWISE_TPL_SCH_MODE_1)
+    // bit: 1   DeterSparseType
+    //          0：NO_DETER
+    //          1：DETER
+    ASCENDC_TPL_BOOL_DECL(DeterType, 0, 1),
+    // bit: 1   DataType
+    //          0：FLOAT16/BFLOAT16
+    //          1：FLOAT32
+    ASCENDC_TPL_BOOL_DECL(DataType, 0, 1),
 );
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(schMode, ASCENDC_TPL_UI_LIST, ELEMENTWISE_TPL_SCH_MODE_0, ELEMENTWISE_TPL_SCH_MODE_1)));
+        ASCENDC_TPL_BOOL_SEL(DeterType, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(DataType, 0, 1)));
 
 #endif

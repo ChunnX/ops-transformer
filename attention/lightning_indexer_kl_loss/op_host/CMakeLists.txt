@@ -12,6 +12,8 @@ add_op_to_compiled_list()
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         lightning_indexer_kl_loss_def.cpp
+        op_api/aclnn_lightning_indexer_kl_loss.cpp
+        op_api/lightning_indexer_kl_loss.cpp
     )
 endif()
 

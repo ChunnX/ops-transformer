@@ -139,6 +139,7 @@ int main() {
 
   // eps 参数
   double eps = 1e-9;
+  bool deterministic = false;
 
   // 3. 调用 CUANN 算子库 API
   uint64_t workspaceSize = 0;
@@ -146,7 +147,7 @@ int main() {
 
   // 4. 调用 aclnnLightningIndexerKlLoss 第一段接口
   ret = aclnnLightningIndexerKlLossGetWorkspaceSize(
-      targetScore, indexProbs, eps, loss, &workspaceSize, &executor);
+      targetScore, indexProbs, eps, deterministic, loss, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnLightningIndexerKlLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
