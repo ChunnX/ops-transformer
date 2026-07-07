@@ -4,6 +4,8 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from core.case_loader import load_cases, resolve_case_ids
 from core.orchestrator import run_case
 from core.reporter import Reporter, make_failure_result
@@ -15,11 +17,44 @@ def _parse_stages(raw):
     parts = {s.strip() for s in raw.split(",") if s.strip()}
     invalid = parts - _VALID_STAGES
     if invalid:
-        print(f"[ERROR] Invalid stages: {invalid}. Valid: {_VALID_STAGES}")
-        sys.exit(1)
+        raise ValueError(f"Invalid stages: {invalid}. Valid: {_VALID_STAGES}")
     if "all" in parts:
         return {"gen", "cpu", "npu", "compare"}
     return parts
+
+
+def _collect_cases(op_name, case_set, case_id_opt):
+    cases, case_ids = load_cases(op_name, case_set)
+    if case_id_opt != "all":
+        filtered = resolve_case_ids(case_id_opt, case_ids)
+        idx_map = {cid: i for i, cid in enumerate(case_ids)}
+        selected = [idx_map[cid] for cid in filtered if cid in idx_map]
+        cases = [cases[i] for i in selected]
+        case_ids = [cid for cid in filtered if cid in idx_map]
+    return cases, case_ids
+
+
+def _make_reporter():
+    rep = Reporter()
+    result_dir = Path("result")
+    result_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    rep.set_csv(result_dir / f"result_{ts}.csv")
+    return rep
+
+
+def test_op(params, stages, reporter, op_name, request):
+    result = run_case(stages, op_name, params, reporter,
+                      max_retries=request.config.getoption("--max-retries"),
+                      load_pt=request.config.getoption("--load-pt"),
+                      graph_path=request.config.getoption("--graph-path"),
+                      chunk_size=request.config.getoption("--chunk-size"),
+                      num_workers=request.config.getoption("--num-workers"),
+                      verbose_diff=request.config.getoption("--verbose-diff"),
+                      fail_analysis=request.config.getoption("--fail-analysis"),
+                      keep_pt=request.config.getoption("--keep-pt"))
+    if not result.get("passed", False):
+        pytest.fail(result.get("fail_msg", "精度校验失败"))
 
 
 def main():
@@ -41,24 +76,13 @@ def main():
     args = parser.parse_args()
 
     stages = _parse_stages(args.stages)
-    cases, case_ids = load_cases(args.op, args.case_set)
-
-    if args.case_id != "all":
-        filtered = resolve_case_ids(args.case_id, case_ids)
-        idx_map = {cid: i for i, cid in enumerate(case_ids)}
-        selected = [idx_map[cid] for cid in filtered if cid in idx_map]
-        cases = [cases[i] for i in selected]
-        case_ids = filtered
+    cases, case_ids = _collect_cases(args.op, args.case_set, args.case_id)
 
     if not cases:
         print("[ERROR] 没有可运行的 case")
         sys.exit(1)
 
-    reporter = Reporter()
-    csv_dir = Path("reports")
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    reporter.set_csv(csv_dir / f"result_{ts}.csv")
+    reporter = _make_reporter()
 
     for i, (params, case_id) in enumerate(zip(cases, case_ids)):
         print(f"\n{'='*66}")

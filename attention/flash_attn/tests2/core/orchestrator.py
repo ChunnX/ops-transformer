@@ -38,7 +38,7 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
              fail_analysis: bool = True, keep_pt: bool = True) -> dict:
     case_set = params.get("case_set", op_name)
     case_id = params.get("case_id", params.get("name", op_name))
-    case_dir = str(Path("data") / case_set / case_id)
+    result_dir = str(Path("result") / case_id)
     dtype = params.get("dtype", "")
     try:
         gen = load_gen(op_name)
@@ -95,18 +95,18 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
             result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
             if not result.get("passed", False) and fail_analysis:
                 print(analyze_failure(cpu_out, npu_out, result,
-                                      case_dir=case_dir, verbose=verbose_diff))
+                                      case_dir=result_dir, verbose=verbose_diff))
             reporter.record(case_id, result, dtype=dtype)
 
         if "npuprof" in stages:
             from prof.npuprof import run_msprof
-            run_msprof(case_id, [], str(Path(case_dir) / "npuprof"))
+            run_msprof(case_id, [], str(Path(result_dir) / "npuprof"))
         if "npuprofop" in stages:
             from prof.npuprofop import run_msprof_op
-            run_msprof_op(case_id, [], str(Path(case_dir) / "npuprofop"))
+            run_msprof_op(case_id, [], str(Path(result_dir) / "npuprofop"))
         if "gpuprof" in stages:
             from prof.gpuprof import run_gpuprof
-            run_gpuprof(case_id, [], str(Path(case_dir) / "gpuprof"))
+            run_gpuprof(case_id, [], str(Path(result_dir) / "gpuprof"))
 
         del inputs, cpu_out, npu_out
         gc.collect()

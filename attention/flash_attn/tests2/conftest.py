@@ -1,22 +1,8 @@
 import pytest
 import _pytest.terminal
-from datetime import datetime
 from pathlib import Path
 
-from core.case_loader import load_cases, resolve_case_ids
-from core.reporter import Reporter
-
-_VALID_STAGES = {"all", "gen", "cpu", "npu", "gpu", "compare", "npuprof", "npuprofop", "gpuprof"}
-
-
-def _parse_stages(raw):
-    parts = {s.strip() for s in raw.split(",") if s.strip()}
-    invalid = parts - _VALID_STAGES
-    if invalid:
-        raise pytest.UsageError(f"Invalid stages: {invalid}. Valid: {_VALID_STAGES}")
-    if "all" in parts:
-        return {"gen", "cpu", "npu", "compare"}
-    return parts
+from test import _parse_stages, _collect_cases, _make_reporter
 
 
 def pytest_addoption(parser):
@@ -42,14 +28,8 @@ def pytest_generate_tests(metafunc):
         return
     op_name = metafunc.config.getoption("--op")
     case_set = metafunc.config.getoption("--case-set")
-    cases, case_ids = load_cases(op_name, case_set)
     case_id_opt = metafunc.config.getoption("--case-id")
-    if case_id_opt != "all":
-        filtered = resolve_case_ids(case_id_opt, case_ids)
-        idx_map = {cid: i for i, cid in enumerate(case_ids)}
-        selected = [idx_map[cid] for cid in filtered if cid in idx_map]
-        cases = [cases[i] for i in selected]
-        case_ids = filtered
+    cases, case_ids = _collect_cases(op_name, case_set, case_id_opt)
     metafunc.parametrize("params", cases, ids=case_ids)
 
 
@@ -65,11 +45,7 @@ def stages(request):
 
 @pytest.fixture(scope="session")
 def reporter(request):
-    rep = Reporter()
-    csv_dir = Path("reports")
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rep.set_csv(csv_dir / f"result_{ts}.csv")
+    rep = _make_reporter()
     yield rep
     rep.print_final()
 
