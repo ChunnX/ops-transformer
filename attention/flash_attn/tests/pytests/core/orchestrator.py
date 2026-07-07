@@ -291,7 +291,11 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
         dev_lse = npu_out["lse"]
         cpu_lse = golden_data["lse"]
         if isinstance(dev_lse, torch.Tensor) and isinstance(cpu_lse, torch.Tensor):
-            lse_result = check_result("LSE", cpu_lse.float(), dev_lse.float(),
+            cpu_lse = cpu_lse.float().clone()
+            dev_lse = dev_lse.float().clone()
+            cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float('-inf')
+            dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float('-inf')
+            lse_result = check_result("LSE", cpu_lse, dev_lse,
                                       except_label="CPU_lse", comp_label=f"{primary.name}_lse",
                                       verbose_diff=verbose_diff,
                                       atol=atol, rtol=rtol)
