@@ -22,16 +22,14 @@ namespace fa_base_matmul {
 
 // Mutex override of MatmulFull for L0A/L0B ping-pong buffers.
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
-          typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulFullMutex(const LocalTensor<A> &aL1Tensor,
-                                  const LocalTensor<B> &bL1Tensor,
-                                  MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
-                                  MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
-                                  const LocalTensor<C> &cL0Tensor,
-                                  struct MMParam &param,
-                                  const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                  const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
+          typename L0BDType = B>
+__aicore__ inline void MatmulFullMutex(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                       MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
+                                       MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
+                                       const LocalTensor<C> &cL0Tensor, struct MMParam &param,
+                                       const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                       const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     auto &l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.LockProd();
@@ -84,16 +82,14 @@ __aicore__ inline void MatmulFullMutex(const LocalTensor<A> &aL1Tensor,
 
 // Mutex override of MatmulK for L0A/L0B ping-pong buffers.
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
-          typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor,
-                               const LocalTensor<B> &bL1Tensor,
-                               MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
-                               MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
-                               const LocalTensor<C> &cL0Tensor,
-                               const MMParam &param,
-                               const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
+          typename L0BDType = B>
+__aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                    MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
+                                    MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
+                                    const LocalTensor<C> &cL0Tensor, const MMParam &param,
+                                    const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
@@ -119,7 +115,8 @@ __aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor,
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM);
+            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
+                                         param.singleM);
         } else
 #endif
         {
@@ -133,7 +130,8 @@ __aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor,
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
+            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK,
+                                         param.singleN, loopNum);
         } else
 #endif
         {
@@ -158,7 +156,8 @@ __aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor,
         mmadParams.cmatrixSource = false;
         if (param.unitFlag != 0) {
             mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
-                                  UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+                                      UNITFLAG_EN_OUTER_LAST :
+                                      UNITFLAG_ENABLE;
         }
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
@@ -169,16 +168,14 @@ __aicore__ inline void MatmulKMutex(const LocalTensor<A> &aL1Tensor,
 
 // Mutex override of MatmulN for L0A/L0B ping-pong buffers.
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
-          typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulNMutex(const LocalTensor<A> &aL1Tensor,
-                               const LocalTensor<B> &bL1Tensor,
-                               MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
-                               MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
-                               const LocalTensor<C> &cL0Tensor,
-                               const MMParam &param,
-                               const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
+          typename L0BDType = B>
+__aicore__ inline void MatmulNMutex(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                    MutexBuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC> &aL0BuffsDb,
+                                    MutexBuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC> &bL0BuffsDb,
+                                    const LocalTensor<C> &cL0Tensor, const MMParam &param,
+                                    const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN;
     uint32_t tailSize = param.singleN % baseN;
@@ -222,7 +219,8 @@ __aicore__ inline void MatmulNMutex(const LocalTensor<A> &aL1Tensor,
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
+            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK,
+                                         tileN, loopNum);
         } else
 #endif
         {
