@@ -98,7 +98,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -118,7 +118,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -128,7 +128,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -138,7 +138,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -148,7 +148,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
-      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B，)。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维</td>
