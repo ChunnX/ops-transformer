@@ -466,7 +466,6 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendCntCa
     uint64_t& sendCnt)
 {
     sendCnt = 0;
-    cumsumRevCntInRank_ = 0;
 
     // Phase 1: stride 读本 localExpert 的 ws 个 count
     GlobalTensor<int32_t> cntSrcGlobal;
@@ -474,7 +473,7 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendCntCa
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ + maskAlignSize_));
     DataCopyExtParams cntCopyParams{static_cast<uint16_t>(worldSize_), static_cast<uint32_t>(sizeof(int32_t)),
         static_cast<uint32_t>(maskSlotSize_ - sizeof(int32_t)), 0U, 0U};
-    DataCopyPadExtParams<int32_t> cntPad{false, 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> cntPad{true, 0U, 0U, 0U};
     DataCopyPad(sendCntTensor_, cntSrcGlobal, cntCopyParams, cntPad);
 
     if constexpr (ENABLE_A8W4) {
@@ -554,7 +553,7 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendMaskC
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);  // topkIds GM
     GlobalTensor<uint8_t> dstGlobalTensor;  // peer window 写目标（按 rank 切换）
     int32_t maskSliceBytesFull = sendRouteBatchLen_ / 8;          // 每 batch bitmask 字节数（1bit/item）
-    DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};   // 加载 topk 时不 pad
+    DataCopyPadExtParams<int32_t> loadPad{true, 0U, 0U, -1};   // 加载 topk 时不 pad
 
     // ── per-expert 跨 batch 累加器清零 ──
     Duplicate<int32_t>(sendCntAccTensor_, 0, ownedExpertNum);
@@ -832,8 +831,8 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::Unpermute
                 copyParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
             Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, curTokens * topK_);
-            SetFlag<AscendC::HardEvent::V_S>(event);
-            WaitFlag<AscendC::HardEvent::V_S>(event);
+            SetFlag<AscendC::HardEvent::V_S>(0);
+            WaitFlag<AscendC::HardEvent::V_S>(0);
         }
 
         // ── 内层：token 循环 ──
