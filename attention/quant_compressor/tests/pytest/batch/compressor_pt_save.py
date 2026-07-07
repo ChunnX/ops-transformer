@@ -22,7 +22,7 @@ import random
 import math
 import ast
 import argparse
-import custom_ops
+import cann_ops_transformer
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
