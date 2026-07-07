@@ -310,14 +310,11 @@ private:
         bool find_vaild_block = false;
 
         if (likely(is_mask_align_)) {
-            for(int32_t i=0; i < loop_num;i++) {
-                int32_t block_x_idx = start_block_x_idx + i * UINT64_CNT;
-                if (IsValidBlockUint64(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_, start_one_pos_, hit_core_block, i == loop_num - 1, mask64_arr_)){
-                    vaild_s1_idx = (block_x_idx + start_one_pos_) * block_x_;
-                    vaild_s1_len = s1_end_idx - vaild_s1_idx;
-                    find_vaild_block = true;
-                    break;
-                }
+            int32_t block_x_idx = start_block_x_idx;
+            if (IsValidBlockUint64(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_, start_one_pos_, hit_core_block, mask64_arr_)){
+                vaild_s1_idx = (block_x_idx + start_one_pos_) * block_x_;
+                vaild_s1_len = s1_end_idx - vaild_s1_idx;
+                find_vaild_block = true;
             }
         } else {
             for (int32_t s1_idx = s1Idx_; s1_idx < s1_end_idx; s1_idx += block_x_) {

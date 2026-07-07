@@ -166,8 +166,7 @@ __aicore__ inline bool IsValidBlock(const uint64_t (&mask_uint64)[2], const uint
 __aicore__ inline bool IsValidBlockUint64(const ConstInfo &const_info, const int32_t batch_idx, const int32_t n1_idx,
                                           const int32_t q_block_idx, const int32_t kv_block_idx,
                                           __gm__ uint8_t *block_sparse_mask, uint32_t &first_one_pos, 
-                                          bool hit_core_block, bool last_loop,
-                                          uint64_t (&mask_uint64)[2])
+                                          bool hit_core_block, uint64_t (&mask_uint64)[2], uint64_t (&mask_uint64_total)[56], uint32_t process_num)
 
 {
     bool is_valid = false;
@@ -176,8 +175,10 @@ __aicore__ inline bool IsValidBlockUint64(const ConstInfo &const_info, const int
                       kv_block_idx * const_info.q_block_num + q_block_idx;
     offset = offset / 8;
     uint64_t mask_list = ((__gm__ uint64_t *)block_sparse_mask)[offset];
+    uint64_t mask_list_next = ((__gm__ uint64_t *)block_sparse_mask)[offset + 1];
 
-    if (mask_list == 0){
+
+    if (mask_list + mask_list_next == 0){
         return false;
     }
 
@@ -185,19 +186,28 @@ __aicore__ inline bool IsValidBlockUint64(const ConstInfo &const_info, const int
         return true;
     }
 
+    mask_uint64[0] = mask_list;
+    mask_uint64[1] = mask_list_next;
+
     for (int i = 0; i < 8; ++i) {
         uint8_t byte = (uint8_t)(mask_list >> (i * 8)); 
         if (byte == 1) {
             is_valid = true;
             first_one_pos = i;
-            mask_uint64[0] = mask_list;
-            if (!last_loop) {
-                mask_uint64[1] = ((__gm__ uint64_t *)block_sparse_mask)[offset + 1];
-            } else {
-                mask_uint64[1] = 0;
-            }
             break;
         }
+    }
+
+
+    if (!is_valid) {
+        for (int i = 0; i < 8; ++i) {
+            uint8_t byte = (uint8_t)(mask_list_next >> (i * 8)); 
+            if (byte == 1) {
+                is_valid = true;
+                first_one_pos = i + 8;
+                break;
+            }
+        }  
     }
 
     return is_valid;
