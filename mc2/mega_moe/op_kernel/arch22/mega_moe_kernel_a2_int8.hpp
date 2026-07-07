@@ -1175,7 +1175,7 @@ private:
                 MatrixCoord offsetC{rowStartThisCore, 0};
                 uint32_t dequantLen = dequantSum2;
                 MatrixCoord shapeC{dequantLen, params.problemShape.n()};
-                LayoutC layoutC{dequantSum1, params.gmmOutPreRowStride};
+                LayoutC layoutC{dequantLen, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],

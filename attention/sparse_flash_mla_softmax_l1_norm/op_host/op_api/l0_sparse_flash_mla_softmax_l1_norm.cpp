@@ -44,6 +44,8 @@ const aclTensor* SparseFlashMlaSoftmaxL1Norm(
     const aclTensor *softmaxL1Norm,
     aclOpExecutor *executor)
 {
+    OP_LOGI("SparseFlashMlaSoftmaxL1Norm", "l0 function entered.");
+
     L0_DFX(SparseFlashMlaSoftmaxL1Norm, query, key, lse, sparseIndicesOptional, cuSeqlensQOptional,
            cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional, topkLengthOptional,
            metadataOptional, scaleValue, cmpRatio, maskMode, layoutQ, layoutK, softmaxL1Norm);

@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
+aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *lse,
