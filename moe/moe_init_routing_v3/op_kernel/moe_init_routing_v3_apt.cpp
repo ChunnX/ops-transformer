@@ -163,11 +163,9 @@
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
 extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
-                                                           GM_ADDR topkWeight,
-                                                           GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                                           GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                                           GM_ADDR expandedTopkWeight,
-                                                           GM_ADDR workspace, GM_ADDR tiling)
+                                                          GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                                          GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
+                                                          GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -258,7 +256,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadUnquantized<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            topkWeight, expandedTopkWeight, userWS, t, &fullLoadPipe);
+                            nullptr, nullptr, userWS, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
@@ -274,7 +272,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
-                                topkWeight, expandedTopkWeight,
+                                nullptr, nullptr,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
@@ -286,7 +284,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
-                                topkWeight, expandedTopkWeight,
+                                nullptr, nullptr,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
@@ -303,7 +301,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            topkWeight, expandedTopkWeight, userWS, offset, t, &fullLoadPipe);
+                            nullptr, nullptr, userWS, offset, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
@@ -439,8 +437,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (t->isInputTopkWeight == 1) {
         TPipe topkWeightPipe;
         MoeV3TopkWeightOut topkWeightOp;
-        topkWeightOp.Init(topkWeight, expandedRowIdx, expandedTopkWeight,
-                          userWS, t, &topkWeightPipe);
+        topkWeightOp.Init(nullptr, expandedRowIdx, nullptr, userWS, t, &topkWeightPipe);
         topkWeightOp.Process();
         topkWeightPipe.Destroy();
     }

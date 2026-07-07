@@ -306,9 +306,17 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
         active_expert_range_opt = at::IntArrayRef(active_expert_range.value());
     }
 
+    // ---- active_num: int64_t -> aclTensor* (V4 changed active_num from attr to optional input) ----
+    c10::optional<at::Tensor> active_num_tensor_opt;
+    if (active_num > 0) {
+        active_num_tensor_opt = at::full({}, active_num,
+            at::TensorOptions().dtype(at::kLong).device(x.device()));
+    }
+
     // ---- Call aclnnMoeInitRoutingV4 ----
-    ACLNN_CMD(aclnnMoeInitRoutingV4, x_wrapper, expert_idx, scale_wrapper, p_offset, topk_weight,
-              active_num, expert_capacity, expert_num, drop_pad_mode,
+    ACLNN_CMD(aclnnMoeInitRoutingV4, x_wrapper, expert_idx, scale_wrapper, p_offset,
+              active_num_tensor_opt, topk_weight,
+              expert_capacity, expert_num, drop_pad_mode,
               expert_tokens_num_type, expert_tokens_num_flag, quant_mode,
               active_expert_range_opt, row_idx_type,
               expanded_x_wrapper, expanded_row_idx, expert_tokens_count_or_cumsum,
