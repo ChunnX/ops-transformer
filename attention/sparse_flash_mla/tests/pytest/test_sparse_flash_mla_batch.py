@@ -24,8 +24,8 @@ import os
 import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-pt_dir = os.getenv("SAS_PT_LOAD_PATH", "./data")
-result_path = Path(os.getenv("SAS_RESULT_SAVE_PATH", './result/smla_result.xlsx'))
+pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "./data")
+result_path = Path(os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result.xlsx'))
 
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []

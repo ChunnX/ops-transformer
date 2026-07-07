@@ -145,7 +145,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
 
-def save_result(result, fulfill_percent, params, result_path='./result/sas_result.xlsx'):
+def save_result(result, fulfill_percent, params, result_path='./result/smla_result.xlsx'):
     result_path = Path(result_path)
     row_data = {
         **params,

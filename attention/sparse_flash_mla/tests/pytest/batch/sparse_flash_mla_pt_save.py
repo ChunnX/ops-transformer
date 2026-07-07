@@ -24,10 +24,10 @@ import sparse_flash_mla_process
 import sparse_flash_mla_golden
 import torch
 
-excel_path = os.getenv("SAS_EXCEL_PATH", "./excel/example.xlsx")
-excel_sheet = os.getenv("SAS_EXCEL_SHEET", "CSA")
+excel_path = os.getenv("SMLA_EXCEL_PATH", "./excel/example.xlsx")
+excel_sheet = os.getenv("SMLA_EXCEL_SHEET", "CSA")
 ENABLED_PARAMS_FROM_FILE = utils.load_excel_test_cases(excel_path, excel_sheet)
-save_path = os.getenv("SAS_PT_SAVE_PATH", "./data")
+save_path = os.getenv("SMLA_PT_SAVE_PATH", "./data")
 
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS_FROM_FILE, is_save_pt=True)
 

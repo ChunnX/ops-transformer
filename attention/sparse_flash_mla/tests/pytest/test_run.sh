@@ -151,21 +151,21 @@ run_script_save() {
 
     if [ -n "$E_VALUE" ]; then
         echo "  输入excel文件路径 $E_VALUE"
-        export SAS_EXCEL_PATH="$E_VALUE"
+        export SMLA_EXCEL_PATH="$E_VALUE"
     else
         echo "  默认输入excel文件路径 excel/example.xlsx"
     fi
 
     if [ -n "$S_VALUE" ]; then
         echo "  使用sheet名 $S_VALUE"
-        export SAS_EXCEL_SHEET="$S_VALUE"
+        export SMLA_EXCEL_SHEET="$S_VALUE"
     else
         echo "  默认使用 Sheet1"
     fi
 
     if [ -n "$P_VALUE" ]; then
         echo "  PT文件保存地址 $P_VALUE"
-        export SAS_PT_SAVE_PATH="$P_VALUE"
+        export SMLA_PT_SAVE_PATH="$P_VALUE"
     else
         echo "  默认PT文件保存地址 ./data"
     fi
@@ -219,14 +219,14 @@ run_script_load() {
 
     if [ -n "$P_VALUE" ]; then
         echo "  PT文件读取地址 $P_VALUE"
-        export SAS_PT_LOAD_PATH="$P_VALUE"
+        export SMLA_PT_LOAD_PATH="$P_VALUE"
     else
         echo "  默认PT文件读取地址 ./data"
     fi
 
     if [ -n "$R_VALUE" ]; then
         echo "  结果存储至文件 $R_VALUE"
-        export SAS_RESULT_SAVE_PATH="$R_VALUE"
+        export SMLA_RESULT_SAVE_PATH="$R_VALUE"
     else
         echo "  结果存储至文件 ./result/smla_result.xlsx"
     fi
