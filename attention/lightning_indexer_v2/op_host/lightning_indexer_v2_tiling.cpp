@@ -21,6 +21,7 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
     // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
@@ -895,7 +896,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
-    
+
     context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ge::GRAPH_SUCCESS;
 }
