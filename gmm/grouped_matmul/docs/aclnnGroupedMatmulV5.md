@@ -119,7 +119,7 @@ abbr {
 | 版本变化 | Ascend 950PR/Ascend 950DT | Atlas A3/A2 系列产品 |
 |---------|----------------|----------|
 | V4 → V5 | — | 增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token 数预期值，tiling 时按该值进行最优切分 |
-| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight 为 INT4/FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8（仅 perchannel 模式） | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持 x/weight/y 均为单 Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
+| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight 为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel） | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持 x/weight/y 均为单 Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
 
 **确定性计算**：GroupedMatmul 默认提供确定性实现。
 
@@ -329,7 +329,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
-  - 全量化下 x/weight=INT8、静态 <abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr> 或动态 <abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+  - 全量化下 x/weight=INT8 且 out=BFLOAT16/FLOAT16、静态 <abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr> 或动态 <abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
 
 <a id="721-场景速查表"></a>
 
@@ -485,12 +485,17 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 - weight 为 FLOAT8 系列时，antiquantOffsetOptional 仅支持空指针或空 TensorList，weight 仅支持转置。
 - 若 weight 的类型为 INT4，则 weight 中每一组 tensor 的最后一维大小都应是偶数。$weight_i$ 的最后一维指 weight 不转置时 $weight_i$ 的 N 轴或当 weight 转置时 $weight_i$ 的 K 轴。
-- antiquantScaleOptional 和非空的 biasOptional、antiquantOffsetOptional 要满足下表（其中 $g$ 为 matmul 组数即分组数）：
+- 当 weight 为 INT4 时，支持 perchannel 和 pergroup 两种伪量化模式，通过 antiquantScaleOptional 的维度数自动判定：单多单场景维度为 2 时为 perchannel、维度为 3 时为 pergroup；多多多场景维度为 1 时为 perchannel、维度为 2 时为 pergroup。
+- pergroup 场景下，pergroup 数 $G$ 或 $G_i$ 须能整除对应 $k_i$。多 Tensor 时 pergroup 长度 $s_i = k_i / G_i$ 各组相等。
+- pergroup 场景下，groupSize 取值仅支持 32、64、128、256。weight 转置时 pergroup 长度 $s_i$ 须为偶数。
+- antiquantScaleOptional 和非空的 biasOptional、antiquantOffsetOptional 要满足下表（其中 $g$ 为 matmul 组数即分组数，$G$ 为 pergroup 数，$G_i$ 为第 i 个 tensor 的 pergroup 数）：
 
   | groupType | 使用场景 | shape 限制 |
   |:---:|:---|:---|
-  | -1 | weight 多 tensor | 每个 tensor 1 维，shape 为（$n_i$），不允许存在一个 tensorList 中部分 tensor 的 shape 为（$n_i$）部分 tensor 为空的情况 |
-  | 0 | weight 单 tensor | 每个 tensor 2 维，shape 为（$g$, N）|
+  | -1 | weight 多 tensor（perchannel） | 每个 tensor 1 维，shape 为（$n_i$），不允许存在一个 tensorList 中部分 tensor 的 shape 为（$n_i$）部分 tensor 为空的情况 |
+  | -1 | weight 多 tensor（pergroup） | 每个 tensor 2 维，shape 为（$G_i$, $n_i$） |
+  | 0 | weight 单 tensor（perchannel） | 每个 tensor 2 维，shape 为（$g$, N）|
+  | 0 | weight 单 tensor（pergroup） | 每个 tensor 3 维，shape 为（$g$, $G$, N）|
 
 </details>
 
@@ -627,7 +632,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 **offset 不为空（非对称量化）：**
 - scale shape `(E, 1, N)`。
 - offset 为离线辅助结果（$antiquantOffset \times scale$），shape `(E, 1, N)`，dtype=FLOAT32。
-- tuningConfigOptional[1]可置1，以开启 weight 亲核格式（需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
+- tuningConfigOptional[1]可置1，以开启 weight 亲核格式（仅支持 perchannel，需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
 
 </details>
 
