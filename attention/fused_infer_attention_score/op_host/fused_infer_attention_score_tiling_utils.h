@@ -73,15 +73,15 @@ inline std::string ToString(ge::DataType type)
     }
 }
 
-const std::map<ge::Format, std::string> kFormatToStringMap = {
-    {ge::FORMAT_NCHW, "NCHW"},
-    {ge::FORMAT_NHWC, "NHWC"},
-    {ge::FORMAT_ND, "ND"},
-    {ge::FORMAT_NCDHW, "NCDHW"},
-};
-
 inline std::string FormatToSerialString(const ge::Format format)
 {
+    const std::map<ge::Format, std::string> kFormatToStringMap = {
+        {ge::FORMAT_NCHW, "NCHW"},
+        {ge::FORMAT_NHWC, "NHWC"},
+        {ge::FORMAT_ND, "ND"},
+        {ge::FORMAT_NCDHW, "NCDHW"},
+    };
+
     const auto it = kFormatToStringMap.find(static_cast<ge::Format>(GetPrimaryFormat(format)));
     if (it != kFormatToStringMap.end()) {
         if (HasSubFormat(format)) {
