@@ -189,7 +189,17 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 
     topkSharedTmpLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
 
-    uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
+    // topkSharedTmpLocal_ 内部布局(uint32 为单位):
+    //   [0, Align)                    : hisIndexLocal[1]
+    //   [Align, Align+256)            : histogramsLocal
+    //   [Align+256, Align+512)        : idxHighLocal
+    //   [Align+512, Align+768)        : idxLowLocal
+    //   [Align+768, Align+832)        : nkValueLocal
+    //   [Align+832, Align+832+tmpIdx) : tmpIndexLocal (ReinterpretCast<uint16_t>, tmpIdx=(Align+trunkLen)/2)
+    // scoreOutLocal_ 必须跳过整个 topkSharedTmpLocal_ 区域，否则与 tmpIndexLocal 重叠，
+    // LiTopKVF<true> 写 hisValueLocal 会覆盖 tmpIndexLocal 中的索引数据，导致索引输出变成分数值。
+    uint32_t tmpIndexLocalSizeInU32 = (topkCountAlign256_ + trunkLen_) / 2;
+    uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64 + tmpIndexLocalSizeInU32;
     scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<uint16_t>();
 
     pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(bfloat16_t));
