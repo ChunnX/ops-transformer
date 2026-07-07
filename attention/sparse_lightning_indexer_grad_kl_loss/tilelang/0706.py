@@ -10,7 +10,7 @@ import tilelang.language as T
 
 tilelang.disable_cache()
 
-BLOCK_M = 16
+BLOCK_M = 128
 BLOCK_N = 128
 BLOCK_K = 128
 
@@ -42,53 +42,16 @@ def ceil_div(a: int, b: int) -> int:
 
 
 def _get_aicore_count() -> int:
-    """Detect available Cube (AIC) core count on Ascend NPU device 0.
-
-    Uses the same API as TileLang itself (see tilelang/carver/arch/ascend.py:80-81).
-    Falls back to 24 (Ascend 910B2 default) if detection fails.
-    """
+    """Read cube core count from NPU device properties. Fallback: 24."""
     try:
         import torch
         if torch.npu.is_available() and torch.npu.device_count() > 0:
             props = torch.npu.get_device_properties(0)
             if hasattr(props, "cube_core_num"):
-                cores = int(props.cube_core_num)
-                if cores > 0:
-                    return cores
+                return int(props.cube_core_num)
     except Exception:
         pass
-    return 24  # Conservative default for Ascend 910B2
-
-
-def _compute_optimal_block_n(K: int, core_count: int, min_block_n: int = 64):
-    """Compute optimal BLOCK_N to utilize all available NPU cores.
-
-    Finds the smallest divisor of K >= min_block_n such that the number of
-    K-blocks (K // BLOCK_N) is at least core_count.
-
-    Returns (block_n, n_num) tuple.
-    """
-    # Collect all divisors of K
-    divisors = set()
-    for i in range(1, int(K ** 0.5) + 1):
-        if K % i == 0:
-            divisors.add(i)
-            divisors.add(K // i)
-
-    # Filter to valid block sizes (>= min for gemm efficiency)
-    candidates = sorted(d for d in divisors if d >= min_block_n)
-
-    # Find smallest BLOCK_N that yields >= core_count blocks (maximizes parallelism)
-    for d in candidates:
-        if K // d >= core_count:
-            return d, K // d
-
-    # Cannot meet core_count — use smallest valid divisor for best possible parallelism
-    if candidates:
-        d = candidates[0]
-        return d, K // d
-
-    return 128, K // 128  # Ultimate fallback
+    return 24
 
 
 @dataclass
@@ -760,9 +723,12 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # === Compute optimal BLOCK_N to fully utilize available NPU cores ===
+        # Block size: match NPU core count
         core_count = _get_aicore_count()
-        block_n, n_num_ws = _compute_optimal_block_n(K, core_count)
+        n_num_ws = core_count
+        while K % n_num_ws != 0:
+            n_num_ws += 1
+        block_n = K // n_num_ws
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                      d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n)
