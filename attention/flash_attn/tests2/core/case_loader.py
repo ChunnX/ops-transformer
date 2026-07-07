@@ -35,10 +35,18 @@ def load_cases(op_name: str, marker: str = "ci") -> tuple[list[dict], list[str]]
             case = {"name": case_name}
             for key, val in zip(param_names, combo):
                 case[key] = val
+            for key, val in case_dict.items():
+                if key not in case:
+                    case[key] = val
+            for key, val in defaults.items():
+                if key not in case:
+                    case[key] = val[0] if isinstance(val, list) and len(val) == 1 else val
             param_str = "_".join(
                 _param_segment(n, v) for n, v in zip(param_names, combo)
             )
             case_id = f"{case_name}_{param_str}"
+            case["case_id"] = case_id
+            case["case_set"] = marker
             if case_id in skip_set or case_name in skip_set:
                 continue
             cases.append(case)

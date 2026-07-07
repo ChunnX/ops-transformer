@@ -84,7 +84,7 @@ def trans_bnsd_to_layout(tensor, layout_type, **kwargs):
     block_size      = kwargs.get("block_size")
     block_table     = kwargs.get("block_table")
     seqused_kv      = kwargs.get("seqused_kv")
-    dtype           = kwargs.get("Dtype", "bf16")
+    dtype           = kwargs.get("dtype", "bf16")
 
     if tensor is None:
         return None

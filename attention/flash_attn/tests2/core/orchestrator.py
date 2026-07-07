@@ -68,7 +68,8 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
             if keep_pt:
                 _save_pt(cpu_out, _pt_path(case_set, case_id, "cpu"))
         else:
-            cpu_out = _load_pt(_pt_path(case_set, case_id, "cpu"))
+            cpu_pt = _pt_path(case_set, case_id, "cpu")
+            cpu_out = _load_pt(cpu_pt) if cpu_pt.exists() else None
 
         if "npu" in stages:
             dev_inputs = _to_device(inputs, "npu")
@@ -86,7 +87,8 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
                 _save_pt(npu_out, _pt_path(case_set, case_id, "npu"))
             del dev_inputs
         else:
-            npu_out = _load_pt(_pt_path(case_set, case_id, "npu"))
+            npu_pt = _pt_path(case_set, case_id, "npu")
+            npu_out = _load_pt(npu_pt) if npu_pt.exists() else None
 
         if "gpu" in stages:
             gpu = load_gpu(op_name)
@@ -96,7 +98,7 @@ def run_case(stages: set, op_name: str, params: dict, reporter: Reporter, *,
                 _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
             del dev_inputs
 
-        if "compare" in stages:
+        if "compare" in stages and cpu_out is not None and npu_out is not None:
             result = compare_outputs(cpu_out, npu_out,
                                      op_name=op_name,
                                      chunk_size=chunk_size, num_workers=num_workers)

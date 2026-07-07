@@ -162,7 +162,7 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                     result[bi, :, start:end, :] = t[blk_id, :, :cnt, :]
 
     elif layout == "PA_NZ":
-        dtype_str = params.get("Dtype", "fp16")
+        dtype_str = params.get("dtype", "fp16")
         blk_element = 16 if dtype_str in ("fp16", "bf16") else 32
         d_actual = t.shape[2] * t.shape[4]
         result = torch.zeros(b, n2, s2, d_actual, dtype=t.dtype)
