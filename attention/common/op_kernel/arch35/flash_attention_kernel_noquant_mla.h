@@ -464,6 +464,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
             }
+            multiCoreInnerIdx++;
             // s2轴循环计数，支持sparse和非sparse场景
             s2LoopLimit = runParam.s2LoopEndIdx - 1;
             if (lastLoopThisCore) {
@@ -522,7 +523,6 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeA
     }
     runParam.goIdx = gS1Index / constInfo.s1OuterSize;
     runParam.s1oIdx = gS1Index % constInfo.s1OuterSize;
-    multiCoreInnerIdx++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
