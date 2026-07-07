@@ -346,7 +346,6 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
 
-    constexpr float descaleQK = 1.0;
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
@@ -364,28 +363,28 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
             FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb,
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb,
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     } else {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb,
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb,
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     }
     qScaleInputQue.FreeTensor(qScaleUbTensor);
@@ -640,7 +639,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runI
     }
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
-        RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
+        // RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
@@ -788,12 +787,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     InitUniqueLocalBuffer(constInfo);
 
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-
     vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
 
 
