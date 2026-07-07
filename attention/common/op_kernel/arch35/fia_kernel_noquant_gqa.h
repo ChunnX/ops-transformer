@@ -98,6 +98,8 @@ public:
     int64_t validTaskNum = 0;
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    uint64_t cachedS2LoopTimes = 0;
+    uint64_t cachedG1S1LoopTimes = 0;
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
     uint32_t prevBIdx = 0;
@@ -417,16 +419,16 @@ public:
             prevBIdx = bIdx;
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+            cachedG1S1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         }
 
         if (constInfo.enableS1OutSplit && accGS1Loops != CalcS1OutTaskIdx()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (cachedS2LoopTimes == 0 || cachedG1S1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -795,8 +797,7 @@ public:
             return;
         }
 
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1LoopTimes = cachedG1S1LoopTimes;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;
