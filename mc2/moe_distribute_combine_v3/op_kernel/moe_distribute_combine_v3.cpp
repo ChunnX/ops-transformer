@@ -85,13 +85,22 @@ moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
-    if constexpr ((ArchTag == TILINGKEY_TPL_A3) || (ArchTag == TILINGKEY_TPL_A5)) {
-        GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-        ExecMoeDistributeCombineV3<Mc2Kernel::Mc2MoeContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false>(
-            mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, scales, xActiveMask,
-            sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut,
-            workspaceGM, tilingGM, &pipe);
-    }
+    // if constexpr ((ArchTag == TILINGKEY_TPL_A3) || (ArchTag == TILINGKEY_TPL_A5)) {
+    //     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
+    //     ExecMoeDistributeCombineV3<Mc2Kernel::Mc2MoeContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false>(
+    //         mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, scales, xActiveMask,
+    //         sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut,
+    //         workspaceGM, tilingGM, &pipe);
+    // }
+    AscendC::printf("printf kernel enter!");
+    GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
+    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp,
+                                                                         QuantMode == TILINGKEY_INT8_QUANT>
+        op;
+    op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, expandScales, xActiveMask, sharedExpertX,
+            elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, XOut, workspaceGM, &pipe,
+            &tilingData);
+    op.Process();
 #endif
 }
 } // namespace
