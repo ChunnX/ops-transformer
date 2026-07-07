@@ -1750,7 +1750,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
                     runInfo.s1RealSize, realK, constInfo.mm1Ka);
             }
             mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知HardEvent::MTE2_MTE1
-        } else { 
+        } else {
             // 非s2的第一次循环直接复用Q
             mm1A = l1QBuffers.GetPre();
             // 左矩阵复用时，sinner循环内不需要MTE2同步等待
