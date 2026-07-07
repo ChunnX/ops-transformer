@@ -2,21 +2,19 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | × |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
 - API功能：
 
     * `sparse_flash_mla_grad`：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
-    * `sparse_flash_mla_grad_metadata`：用于在`sparse_flash_mla_grad`主算子前生成metadata，此接口为后续扩展预留，暂时无实际作用，输出为None。
+    * `sparse_flash_mla_grad_metadata`：接口用于生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`sparse_flash_mla_grad`算子使用。
 
 - 计算公式：
 
@@ -71,27 +69,67 @@
 ## 函数原型
 
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla_grad_metadata
-sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
-                            cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
-                            seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
-                            cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-                            batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
-                            ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
-                            ori_win_left=-1, ori_win_right=-1,
-                            layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True) -> Tensor
+cann_ops_transformer.sparse_flash_mla_grad_metadata(
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    *，
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    batch_size=None,
+    max_seqlen_q=None,
+    max_seqlen_ori_kv=None,
+    max_seqlen_cmp_kv=None,
+    ori_topk=None,
+    cmp_topk=None,
+    cmp_ratio=None,
+    ori_mask_mode=0,
+    cmp_mask_mode=0,
+    ori_win_left=-1,
+    ori_win_right=-1,
+    layout_q="BSND",
+    layout_kv="BSND",
+    has_ori_kv=True,
+    has_cmp_kv=True
+) -> Tensor
 ```
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla_grad
-sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
-                        ori_sparse_indices=None, cmp_sparse_indices=None, cu_seqlens_q=None,
-                        cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None,
-                        seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None, 
-                        ori_topk_length=None, cmp_topk_length=None, 
-                        sinks=None, metadata=None,
-                        softmax_scale=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
-                        ori_win_left=-1, ori_win_right=-1,
-                        layout_q="BSND", layout_kv="BSND") -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+cann_ops_transformersparse_flash_mla_grad(
+    q,
+    dout,
+    attn_out,
+    softmax_lse,
+    *,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None, 
+    ori_topk_length=None,
+    cmp_topk_length=None, 
+    sinks=None, metadata=None,
+    softmax_scale=None,
+    cmp_ratio=None,
+    ori_mask_mode=0,
+    cmp_mask_mode=0,
+    ori_win_left=-1,
+    ori_win_right=-1,
+    layout_q="BSND",
+    layout_kv="BSND"
+) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -154,59 +192,37 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 ### sparse_flash_mla_grad_metadata
 
-- **num_heads_q**（`int`）：必选参数，表示公式中$Q$的头数（即N1），数据类型支持`int`。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| num_heads_q | int | 必选 | 表示公式中$Q$的头数（即N1），当前支持[1, 128]。 | int32 | - |
+| num_heads_kv | int | 必选 | 表示公式中$oriKv$或$cmpkv$的头数（即N2），当前仅支持1。 | int32 | - |
+| head_dim | int | 必选 | 表示头的维度（即D），当前仅支持512。 | int32 | - |
+| cu_seqlens_q | Tensor | 可选 | 代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T1保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_ori_kv | Tensor | 可选 | 代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T2保持一致。 | int32 | (B+1, ) |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，累加和与T3保持一致。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示不同batch中query实际参与运算的token数。 | int32 | (B, ) |
+| seqused_ori_kv | Tensor | 可选 | 表示不同batch中ori_kv实际参与运算的token数。 | int32 | (B, ) |
+| seqused_cmp_kv | Tensor | 可选 | 表示不同batch中cmp_kv实际参与运算的token数。 | int32 | (B, ) |
+| cmp_residual_kv | Tensor | 可选 | 表示每个batch 实际ori_s2 // cmpRatio后的余数，支持非连续，数据格式支持ND，当cmp_kv不为空且cmp_mask_mode=3时必须传入。 | int32 | (B, ) |
+| ori_topk_length | Tensor | 可选 | 表示每行query对应的ori_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
+| cmp_topk_length | Tensor | 可选 | 表示每行query对应的cmp_kv实际可选的topk长度。 | int32 | (B, S1, N2)或(T1, N2) |
+| batch_size | int | 可选 | 表示输入样本批量大小（即B），默认值为0。 | int32 | - |
+| max_seqlen_q | int | 可选 | 表示TND场景下输入q的最大序列长度，默认值为0。 | int32 | - |
+| max_seqlen_ori_kv | int | 可选 | 表示TND场景下输入ori_kv的最大序列长度，默认值为0。 | int32 | - |
+| max_seqlen_cmp_kv | int | 可选 | 表示TND场景下输入cmp_kv的最大序列长度，默认值为0。 | int32 | - |
+| ori_topk | int | 可选 | 表示ori_kv的topk长度，默认值为0。 | int32 | - |
+| cmp_topk | int | 可选 | 表示cmp_kv的topk长度，默认值为0。 | int32 | - |
+| cmp_ratio | int | 可选 | 代表压缩率，取值范围：1~128，默认值为1。 | int32 | - |
+| ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0。 | int32 | - |
+| cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
+| ori_win_left | int | 可选 | 表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| ori_win_right | int | 可选 | 表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1。 | int32 | - |
+| layout_q | str | 可选 | 表示q的数据排布格式，支持"BSND"、"TND"，默认值为BSND。 | string | - |
+| layout_kv | str | 可选 | 表示ori_kv、cmp_kv的数据排布格式，支持"BSND"、"TND"，当前必须与layout_q保持一致，默认值为BSND。 | string | - |
+| has_ori_kv | bool | 可选 | 表示是否传入ori_kv，默认值为true。 | bool | - |
+| has_cmp_kv | bool | 可选 | 表示是否传入cmp_kv，默认值为true。 | bool | - |
 
-- **num_heads_kv**（`int`）：必选参数，表示公式中$oriKv$或$cmpkv$的头数（即N2），数据类型支持`int`。
-
-- **head_dim**（`int`）：必选参数，表示头的维度（即D），数据类型支持`int`。
-
-- **cu_seqlens_q**（`Tensor`）：可选参数，代表每个Batch中，q的有效token数的累加和形式，当`layout_q`为TND时该参数必传，支持非连续，数据格式支持ND，数据类型支持`int32`，shape为[B+1]，累加和与T1保持一致。
-
-- **cu_seqlens_ori_kv**（`Tensor`）：可选参数，代表每个Batch中，ori_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，数据类型支持`int32`，shape为[B+1]，累加和与T2保持一致。
-
-- **cu_seqlens_cmp_kv**（`Tensor`）：可选参数，代表每个Batch中，cmp_kv的有效token数的累加和形式，当`layout_kv`为TND时该参数必传，支持非连续，数据格式支持ND，数据类型支持`int32`，shape为[B+1]，累加和与T3保持一致。
-
-- **seqused_q**（`Tensor`）：可选参数，表示不同batch中query实际参与运算的token数，当前仅支持传None。
-
-- **seqused_ori_kv**（`Tensor`）：可选参数，表示不同batch中ori_kv实际参与运算的token数，当前仅支持传None。
-
-- **seqused_cmp_kv**（`Tensor`）：可选参数，表示不同batch中cmp_kv实际参与运算的token数，当前仅支持传None。
-
-- **cmp_residual_kv**（`Tensor`）：可选参数，表示每个batch 实际ori_s2 // cmpRatio后的余数，数据类型支持`int32`，支持非连续，数据格式支持ND，shape为[B]，当cmp_kv不为空且cmp_mask_mode=3时必须传入。
-
-- **ori_topk_length**（`Tensor`）：可选参数，表示每行query对应的ori_kv实际可选的topk长度，当前仅支持传None。
-
-- **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，当前仅支持传None。
-
-- **batch_size**（`int`）：可选参数，表示输入样本批量大小（即B），数据类型支持`int`。
-
-- **max_seqlen_q**（`int`）：可选参数，表示TND场景下输入q的最大序列长度，数据类型支持`int`。
-
-- **max_seqlen_ori_kv**（`int`）：可选参数，表示TND场景下输入ori_kv的最大序列长度，数据类型支持`int`。
-
-- **max_seqlen_cmp_kv**（`int`）：可选参数，表示TND场景下输入cmp_kv的最大序列长度，数据类型支持`int`。
-
-- **ori_topk**（`int`）：可选参数，表示ori_kv的topk长度，数据类型支持`int`。
-
-- **cmp_topk**（`int`）：可选参数，表示cmp_kv的topk长度，数据类型支持`int`。
-
-- **cmp_ratio**（`int`）：可选参数，代表压缩率，数据类型支持`int`，取值范围：1~128，默认值：1。
-
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`，当前仅支持模式4（band模式的mask，滑窗范围由ori_win_left、ori_win_right控制，起点为右下角）。
-
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`，当前仅支持模式3（rightDownCausal模式的mask，对应以右顶点为划分的下三角场景）。
-
-- **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，当前仅支持取值127。
-
-- **ori_win_right**（`int`）：可选参数，表示q和ori_kv计算中q对未来token计算的数量，数据类型支持`int`，当前仅支持取值0。
-
-- **layout_q**（`str`）：可选参数，表示q的数据排布格式，支持"BSND"、"TND"。
-
-- **layout_kv**（`str`）：可选参数，表示ori_kv、cmp_kv的数据排布格式，支持"BSND"、"TND"，当前必须与layout_q保持一致。
-
-- **has_ori_kv**（`bool`）：可选参数，表示是否传入ori_kv。
-
-- **has_cmp_kv**（`bool`）：可选参数，表示是否传入cmp_kv。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持seqused_q、seqused_ori_kv、seqused_cmp_kv、ori_topk_length、cmp_topk_length，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0。
 
 ## 返回值说明
 
@@ -226,15 +242,23 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 ### sparse_flash_mla_grad_metadata
 
-- **metadata**（`Tensor`）：暂不支持，输出固定为None。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor。 | int32 | (1024, ) |
 
 ## 约束说明
 
+- 该接口支持训练场景下使用。
+- 该接口支持单算子模式和aclgraph模式。
 - 参数q、dout、attn_out、ori_kv、cmp_kv的数据类型必须保持一致。
 - 各个场景关于cmp_kv、cmp_sparse_indices的使用说明如下：
     - SWA场景：要求cmp_kv == None && cmp_sparse_indices == None
     - SCFA场景：要求cmp_kv != None && cmp_sparse_indices != None
     - CFA场景：要求cmp_kv != None && cmp_sparse_indices == None
+
+## 确定性计算
+
+- 默认支持确定性计算
 
 ## 调用示例
 

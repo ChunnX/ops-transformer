@@ -37,49 +37,49 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景需传入。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，仅layout_q为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入。</td>
+      <td>表示不同Batch中ori_kv的有效Sequence Length，shape为(B+1, )，仅layout_kv为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入。</td>
+      <td>表示不同Batch中cmp_kv的有效Sequence Length，shape为(B+1, )，仅layout_kv为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length，维度为B。</td>
+      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入，维度为B。</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
