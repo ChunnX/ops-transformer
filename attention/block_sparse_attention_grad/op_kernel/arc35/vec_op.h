@@ -208,7 +208,8 @@ public:
         SET_FLAG(MTE3, MTE2, event_ping_);
         SET_FLAG(MTE3, MTE2, event_pong_);
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
-            int64_t current_q_seqlen, last_seq_total_len;
+            int64_t current_q_seqlen;
+            int64_t last_seq_total_len;
             if constexpr (INPUT_LAYOUT == TND) {
                 current_q_seqlen = GetSeqLen(b_idx, act_seq_q_len);
                 last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx - 1, act_seq_q_len);
@@ -217,7 +218,8 @@ public:
                 last_seq_total_len = 0;
             }
             for (uint32_t n1_idx = 0; n1_idx < q_head_num_; n1_idx++) {
-                uint64_t in_gm_offset, out_gm_offset;
+                int64_t in_gm_offset;
+                int64_t out_gm_offset;
 
                 if constexpr (INPUT_LAYOUT == BSND) {
                     in_gm_offset = b_idx * current_q_seqlen * q_head_num_ * head_dim_ + n1_idx * head_dim_;
