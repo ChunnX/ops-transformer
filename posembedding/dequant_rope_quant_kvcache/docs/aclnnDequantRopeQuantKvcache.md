@@ -4,65 +4,53 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+
+| 产品                              | 是否支持 |
+| ------------------------------- | ---- |
+| Ascend 950PR/Ascend 950DT       | ×    |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品 | √    |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | √    |
+| Atlas 200I/500 A2 推理产品          | ×    |
+| Atlas 推理系列产品                    | ×    |
+| Atlas 训练系列产品                    | ×    |
+
 
 ## 功能说明
 
 - 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
-
 - 计算公式：
-  
   $$
   dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
   $$
-  
   $$
   q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
   $$
-  
   $$
   qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
   $$
-  
   $$
   quantK = Quant(kOut,scaleK,offsetKOptional)
   $$
-  
   $$
   quantV = Quant(vOut,scaleV,offsetVOptional)
   $$
-  
   如果cacheModeOptional为contiguous则：
-  
   $$
   kCacheRef[i][indice[i]]=quantK[i]
   $$
-  
   $$
   vCacheRef[i][indice[i]]=quantV[i]
   $$
-  
   如果cacheModeOptional为page则：
-  
   $$
   kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
   $$
-  
   $$
   vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
   $$
-  
   $$
   kCacheRefView[indices[i]]=quantK[i]
   $$
-  
   $$
   vCacheRefView[indices[i]]=quantV[i]
   $$
@@ -110,309 +98,60 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>x</td>
-        <td>输入</td>
-        <td>公式中用于切分的输入x。</td>
-        <td>shape为[B, S, H]或[B, H]，H=(Nq+Nkv+Nkv)*D。x的尾轴小于等于4096，且按64对齐。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>cos</td>
-        <td>输入</td>
-        <td>公式中的用于位置编码的输入cos。</td>
-        <td>x为3维时shape为[B, S, 1, D]，x为2维时shape为[B, D]。</td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>2，4</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>sin</td>
-        <td>输入</td>
-        <td>公式中的用于位置编码的输入sin。</td>
-        <td>x为3维时shape为[B, S, 1, D]，x为2维时shape为[B, D]。</td>
-        <td>和cos保持一致</td>
-        <td>ND</td>
-        <td>2，4</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>kCacheRef</td>
-        <td>输入</td>
-        <td>公式中用于缓存k的输入kCacheRef。</td>
-        <td>shape为[C_1, C_2, Nkv, D]。</td>
-        <td>INT8</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>vCacheRef</td>
-        <td>输入</td>
-        <td>公式中用于缓存v的输入vCacheRef。</td>
-        <td>shape为[C_1, C_2, Nkv, D]。</td>
-        <td>INT8</td>
-        <td>ND</td>
-        <td>4</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>indices</td>
-        <td>输入</td>
-        <td>公式中表示Kvcache的token位置信息的输入indices。</td>
-        <td>当cache_mode为page且x为3维时shape为[B*S]，否则shape为[B]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>scaleK</td>
-        <td>输入</td>
-        <td>公式中的输入scaleK用于量化k的scale因子。</td>
-        <td>当cache_mode为page且x为3维时shape为[B*S]，否则shape为[B]。</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>scaleV</td>
-        <td>输入</td>
-        <td>公式中的输入scaleV用于量化v的scale因子。</td>
-        <td>shape为[Nkv, D]</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>offsetKOptional</td>
-        <td>输入</td>
-        <td>公式中的输入offsetKoptional用于量化k的offset因子。</td>
-        <td>shape为[Nkv, D]。</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>offsetVOptional</td>
-        <td>输入</td>
-        <td>公式中的输入offsetVOptional用于量化v的offset因子。</td>
-        <td>shape为[Nkv, D]。</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>weightScaleOptional</td>
-        <td>输入</td>
-        <td>公式中的输入weightScaleoptional用于反量化的权重scale因子。</td>
-        <td>shape为[H]。</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>activationScaleOptional</td>
-        <td>输入</td>
-        <td>公式中的输入activationScaleOptional用于反量化的激活scale因子。</td>
-        <td>x为3维时shape为[B*S]，x为2维时shape为[B]。</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>biasOptional</td>
-        <td>输入</td>
-        <td>公式中的输入用于反量化的偏置biasOptional。</td>
-        <td>shape为[H]。</td>
-        <td>FLOAT、FLOAT16、INT32、BFLOAT16</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>sizeSplits</td>
-        <td>输入</td>
-        <td>表示输入的qkv进行切分的长度。</td>
-        <td>size大小为3，值为[Nq*D, Nkv*D, Nkv*D]。</td>
-        <td>AclIntArray</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>quantModeOptional</td>
-        <td>输入</td>
-        <td>表示支持的量化类型。</td>
-        <td>目前仅传入“static”。</td>
-        <td>CHAR</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>layoutOptional</td>
-        <td>输入</td>
-        <td>表示支持的数据格式。</td>
-        <td>目前仅支持“BSND”。</td>
-        <td>CHAR</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>kvOutput</td>
-        <td>输入</td>
-        <td>表示支持的数据格式。</td>
-        <td>目前仅支持“BSND”。</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>cacheModeOptional</td>
-        <td>输入</td>
-        <td>表示kCacheRef的更新方式。</td>
-        <td>目前仅支持“page”和“contiguous”，默认为“contiguous”。</td>
-        <td>CHAR</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+  | 参数名                     | 输入/输出 | 描述                                            | 使用说明                                                                                                     | 数据类型                         | 数据格式 | 维度(shape) | 非连续Tensor |
+  | ----------------------- | ----- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------- | ---- | --------- | --------- |
+  | x                       | 输入    | 公式中用于切分的输入x。                                  | shape为[B, S, H]或[B, H]，H=(Nq+Nkv+Nkv)*D。x的尾轴小于等于4096，且按64对齐。                                             | FLOAT16、BFLOAT16、FLOAT32     | ND   | 2-3       | √         |
+  | cos                     | 输入    | 公式中的用于位置编码的输入cos。                             | x为3维时shape为[B, S, 1, D]，x为2维时shape为[B, D]。                                                               | FLOAT16、BFLOAT16             | ND   | 2，4       | √         |
+  | sin                     | 输入    | 公式中的用于位置编码的输入sin。                             | x为3维时shape为[B, S, 1, D]，x为2维时shape为[B, D]。                                                               | 和cos保持一致                     | ND   | 2，4       | √         |
+  | kCacheRef               | 输入    | 公式中用于缓存k的输入kCacheRef。                         | shape为[C_1, C_2, Nkv, D]。                                                                                | INT8                         | ND   | 2-3       | √         |
+  | vCacheRef               | 输入    | 公式中用于缓存v的输入vCacheRef。                         | shape为[C_1, C_2, Nkv, D]。                                                                                | INT8                         | ND   | 4         | √         |
+  | indices                 | 输入    | 公式中表示Kvcache的token位置信息的输入indices。             | 当cache_mode为page且x为3维时shape为[B*S]，否则shape为[B]。                                                           | INT32                        | ND   | 1-2       | √         |
+  | scaleK                  | 输入    | 公式中的输入scaleK用于量化k的scale因子。                    | 当cache_mode为page且x为3维时shape为[B*S]，否则shape为[B]。                                                           | FLOAT                        | ND   | 1-2       | √         |
+  | scaleV                  | 输入    | 公式中的输入scaleV用于量化v的scale因子。                    | shape为[Nkv, D]                                                                                           | FLOAT                        | ND   | 2         | √         |
+  | offsetKOptional         | 输入    | 公式中的输入offsetKoptional用于量化k的offset因子。          | shape为[Nkv, D]。                                                                                          | FLOAT                        | ND   | 2         | √         |
+  | offsetVOptional         | 输入    | 公式中的输入offsetVOptional用于量化v的offset因子。          | shape为[Nkv, D]。                                                                                          | FLOAT                        | ND   | 2         | √         |
+  | weightScaleOptional     | 输入    | 公式中的输入weightScaleoptional用于反量化的权重scale因子。     | shape为[H]。                                                                                               | FLOAT                        | ND   | 1         | √         |
+  | activationScaleOptional | 输入    | 公式中的输入activationScaleOptional用于反量化的激活scale因子。 | x为3维时shape为[B*S]，x为2维时shape为[B]。                                                                         | FLOAT                        | ND   | 1         | √         |
+  | biasOptional            | 输入    | 公式中的输入用于反量化的偏置biasOptional。                   | shape为[H]。                                                                                               | FLOAT、FLOAT16、INT32、BFLOAT16 | ND   | 1         | √         |
+  | sizeSplits              | 输入    | 表示输入的qkv进行切分的长度。                              | size大小为3，值为[Nq*D, Nkv*D, Nkv*D]。                                                                         | AclIntArray                  | -    | -         | -         |
+  | quantModeOptional       | 输入    | 表示支持的量化类型。                                    | 目前仅传入“static”。                                                                                           | CHAR                         | -    | -         | -         |
+  | layoutOptional          | 输入    | 表示支持的数据格式。                                    | 目前仅支持“BSND”。                                                                                             | CHAR                         | -    | -         | -         |
+  | kvOutput                | 输入    | Host侧布尔值。表示是否输出kOut和vOut。                     | 为true时输出有效shape的kOut和vOut；为false时kOut和vOut的shape为空。                                                      | BOOL                         | -    | -         | -         |
+  | cacheModeOptional       | 输入    | 表示kCacheRef的更新方式。                             | 目前仅支持“page”和“contiguous”，默认为“contiguous”。                                                                | CHAR                         | -    | -         | -         |
+  | qOut                    | 输出    | 公式中经旋转位置编码后的q。                                | x为3维时shape为[B, S, Nq, D]，x为2维时shape为[B, Nq, D]。数据类型与cos、sin保持一致。                                         | FLOAT16、BFLOAT16             | ND   | 3-4       | ×         |
+  | kOut                    | 输出    | 公式中经旋转位置编码后的k。                                | kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。 | FLOAT16、BFLOAT16             | ND   | 1-4       | ×         |
+  | vOut                    | 输出    | 公式中切分得到的v。                                    | kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。 | FLOAT16、BFLOAT16             | ND   | 1-4       | ×         |
+  | workspaceSize           | 输出    | 返回需要在Device侧申请的workspace大小。                   | -                                                                                                        | -                            | -    | -         | -         |
+  | executor                | 输出    | 返回op执行器，包含了算子计算流程。                            | -                                                                                                        | -                            | -    | -         | -         |
 
 - **返回值**
-  
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 269px">
-  <col style="width: 119px">
-  <col style="width: 762px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>输入和输出的Tensor是空指针。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>输入和输出的数据类型不在支持的范围内。</td>
-    </tr>
-  </tbody>
-  </table>
+  | 返回值                     | 错误码    | 描述                  |
+  | ----------------------- | ------ | ------------------- |
+  | ACLNN_ERR_PARAM_NULLPTR | 161001 | 输入和输出的Tensor是空指针。   |
+  | ACLNN_ERR_PARAM_INVALID | 161002 | 输入和输出的数据类型不在支持的范围内。 |
+
 
 ## aclnnDequantRopeQuantKvcache
 
 - **参数说明**
-  
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnDequantRopeQuantKvcacheGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+
+  | 参数名           | 输入/输出 | 描述                                                                           |
+  | ------------- | ----- | ---------------------------------------------------------------------------- |
+  | workspace     | 输入    | 在Device侧申请的workspace内存地址。                                                    |
+  | workspaceSize | 输入    | 在Device侧申请的workspace大小，由第一段接口aclnnDequantRopeQuantKvcacheGetWorkspaceSize获取。 |
+  | executor      | 输入    | op执行器，包含了算子计算流程。                                                             |
+  | stream        | 输入    | 指定执行任务的Stream。                                                               |
 
 - **返回值**
-  
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 1. 确定性计算：
-     - aclnnDequantRopeQuantKvcache默认确定性实现。
-
+  - aclnnDequantRopeQuantKvcache默认确定性实现。
 2. cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维。
 3. cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
 4. 输入x不为INT32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效。
@@ -660,3 +399,4 @@ int main() {
   return 0;
 }
 ```
+
