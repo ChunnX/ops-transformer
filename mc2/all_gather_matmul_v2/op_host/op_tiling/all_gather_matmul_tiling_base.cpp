@@ -402,22 +402,24 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
 
 /* *
  * Due to communication constraints:
- * 1. The maximum number of communication attempts is limited to 63
- * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
+ * 1. The maximum number of communication attempts is limited to HCCL_MAX_COMM_TILES
+ * 2. The data volume of a single communication shall not exceed 256MB in CCU
+ * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSingleM).c_str(), "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
+            std::to_string(sizeOfSingleM).c_str(),
+            "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
         return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, HCCL_MAX_COMM_TILES) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB even after splitting M into 63 parts"),
+            std::to_string(sizeOfSplitM).c_str(),
+            "The value of x1 size must not exceed 256MB even after splitting M into 62 parts"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
