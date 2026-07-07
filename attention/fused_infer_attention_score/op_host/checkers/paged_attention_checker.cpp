@@ -183,8 +183,8 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
 // check pse shape
 ge::graphStatus PagedAttentionChecker::CheckPseShape(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.pseShiftFlag || fiaInfo.enableAlibiPse) {
-        // 若不存在pseType或pseType = 2/3，则放弃后续校验
+    if (!fiaInfo.pseShiftFlag) {
+        // 若不使能pse，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
     // Page attention使能场景下，传入的PseShift的最后一维需要大于等于maxBlockNumPerSeq * blockSize

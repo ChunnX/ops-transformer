@@ -44,8 +44,6 @@ private:
     // feature
     ge::graphStatus CheckFeatureDConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo);
-    // multipara
-    ge::graphStatus CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo);
 
 private:
 };
