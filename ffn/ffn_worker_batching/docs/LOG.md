@@ -72,7 +72,7 @@
 | 阶段 | 任务 | 状态 | 完成时间 | 备注 |
 |------|------|------|---------|------|
 | 1.1 | 开发准备 | ✅完成 | 2026-07-07 | LOG.md + issues/ 已建；环境检查完成，Ascend950 可用 |
-| 1.2 | 需求分析 | ⬜待办 | - | 产出 REQUIREMENTS.md + aclnn 接口文档 |
+| 1.2 | 需求分析 | ✅完成 | 2026-07-07 | REQUIREMENTS.md + aclnn 接口文档已产出；A5 对外支持范围全对齐 A2，arch35 可行 |
 | 1.2.5 | spec 生成 | ⬜待办 | - | 产出 spec.yaml（9-stage 校验） |
 | 1.2.5R | spec 自审 | ⬜待办 | - | 13 条 SPEC-* 条款 |
 | 1.3 | 方案设计 | ⬜待办 | - | 产出 DESIGN.md + PLAN.md（A5 全新代次路径） |
@@ -96,8 +96,8 @@
 |-------|------|------|
 | 开发日志 | `docs/LOG.md` | ✅已创建 |
 | 问题记录目录 | `issues/` | ✅已创建（含 .gitkeep） |
-| 需求分析文档 | `docs/REQUIREMENTS.md` | ⬜待产出 |
-| aclnn 接口文档 | `docs/aclnnFfnWorkerBatching.md` | ⬜待产出 |
+| 需求分析文档 | `docs/REQUIREMENTS.md` | ✅已产出 |
+| aclnn 接口文档 | `docs/aclnnFfnWorkerBatching.md` | ✅已产出 |
 | L0 数学契约 | `docs/spec.yaml` | ⬜待产出 |
 | 详细设计文档 | `docs/DESIGN.md` | ⬜待产出 |
 | 迭代执行计划 | `docs/PLAN.md` | ⬜待产出 |
@@ -108,4 +108,5 @@
 ## 八、开发记录
 
 - **2026-07-07 [1.1 开发准备]**：执行环境检查——实测 Ascend950DT_9584（arch35/A5）设备可用，CANN 9.1.0 + 驱动 7.0.t9.0.B827，编译工具链就绪；创建 `docs/LOG.md` 与 `issues/`。确认现状：算子已支持 A2(ascend910b)/A3(ascend910_93)，本次新增 A5 走全新代次路径、支持范围对齐 A2、A2/A3 分支保留不动。无阻塞问题。
+- **2026-07-07 [1.2 需求分析]**：产出 `docs/REQUIREMENTS.md` + `docs/aclnnFfnWorkerBatching.md`，支持范围全部追溯到 def.cpp/README/infershape/tiling 源码 + 两个样板算子。结论：A5 对外支持范围可完全对齐 A2（8 输入输出 / 3 profile dtype 矩阵 / 5 属性 / 6 条功能路径 TilingKey 100/101 / shape 约束 A≤1024·topK+1≤64·M≤64·expert_num≤8192·Y=A×BS×(topK+1) / 二进制一致精度全对齐），差异仅在内部实现代次（arch35 全新 kernel/tiling）与内部切分阈值（UB 248KB vs 192KB 重算），不改变对外可见支持范围；arch35 经 moe_init_routing_v3/moe_gating_top_k 样板验证可行、无阻塞风险。两处源码事实供下游：① kernel TilingKey 102(RECV_GATHER) 为已实现未启用保留分支，tiling 从不设置；② 本算子属非计算类，精度口径为二进制一致，spec.yaml tolerance 需对齐。无阻塞问题。
 
