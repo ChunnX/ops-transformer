@@ -19,12 +19,12 @@ namespace {
 extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *sparseIndices,
     const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
-    const aclTensor *valueOptional, const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *sinksOptional, const aclTensor *valueOptional, const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
     double scaleValue, int64_t sparseBlockSize, char *layoutOptional, int64_t sparseMode, int64_t preTokens,
     int64_t nextTokens, bool deterministic, const aclTensor *dQueryOut, const aclTensor *dKeyOut,
     const aclTensor *dValueOutOptional, const aclTensor *dQueryRopeOutOptional, const aclTensor *dKeyRopeOutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *dSinksOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize,
                                                       aclOpExecutor *executor, aclrtStream stream);
@@ -38,6 +38,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *out,
     const aclTensor *softmaxMax,
     const aclTensor *softmaxSum,
+    const aclTensor *sinks,
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional,
@@ -54,14 +55,16 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *dValueOut,
     const aclTensor *dQueryRopeOutOptional,
     const aclTensor *dKeyRopeOutOptional,
+    const aclTensor *dSinksOptional,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
-        query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, value,
+        query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, sinks, value,
         actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
         scaleValue, sparseBlockSize, layoutOptional, sparseMode, preTokens, nextTokens, deterministic,
-        dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional, dKeyRopeOutOptional, workspaceSize, executor);
+        dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional, dKeyRopeOutOptional, dSinksOptional,
+        workspaceSize, executor);
 }
 
 aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

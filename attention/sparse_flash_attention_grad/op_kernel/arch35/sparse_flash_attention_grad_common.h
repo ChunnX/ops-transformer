@@ -63,6 +63,7 @@ struct DqkvResPos {
     X(IS_TND, bool, false)                                                                                             \
     X(IS_ROPE, bool, false)                                                                                            \
     X(IS_DETER, bool, false)                                                                                           \
+    X(IS_SINKS, bool, false)                                                                                           \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)
  
