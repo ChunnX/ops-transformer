@@ -30,9 +30,9 @@
 |q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_q, headdim_q)，layout_q为TND时shape为(total_q, nheads_q, headdim_q)。|HIFLOAT8|ND|
 |ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_orikv, block_size_orikv, nheads_kv, headdim_kv)|HIFLOAT8|ND|
 |cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_cmpkv, block_size_cmpkv, nheads_kv, headdim_kv)|HIFLOAT8|ND|
-|q_descale|输入|输入q的反量化值，shape固定为(1,)。|FLOAT|ND|
-|ori_kv_descale|可选输入|输入ori_kv的反量化值，shape固定为(1,)。|FLOAT|ND|
-|cmp_kv_descale|可选输入|输入cmp_kv的反量化值，shape固定为(1,)。|FLOAT|ND|
+|q_descale|可选输入|输入q的反量化值，shape固定为(1,)。|FLOAT32|ND|
+|ori_kv_descale|可选输入|输入ori_kv的反量化值，shape固定为(1,)。|FLOAT32|ND|
+|cmp_kv_descale|可选输入|输入cmp_kv的反量化值，shape固定为(1,)。|FLOAT32|ND|
 |ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_orikv)，layout_q为TND时shape为(total_q, nheads_kv, topk_orikv)|INT32|ND|
 |cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_cmpkv)，layout_q为TND时shape为(total_q, nheads_kv, topk_cmpkv)|INT32|ND|
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
