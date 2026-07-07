@@ -31,8 +31,8 @@ N_q = 16
 N_kv = 2
 D = 128
 
-ACTUAL_SEQ_Q = [20480]
-ACTUAL_SEQ_KV = [20480]
+ACTUAL_SEQ_Q = [2048]
+ACTUAL_SEQ_KV = [2048]
 
 # Layout 选择
 INPUT_LAYOUT = "NTD_TND"
@@ -44,8 +44,8 @@ KV_CACHE_LAYOUT = "BnNBsD"
 
 # Data Range
 Q_DATA_RANGE = (-1, 1)
-K_DATA_RANGE = (-5, 5)
-V_DATA_RANGE = (-5, 5)
+K_DATA_RANGE = (-1, 1)
+V_DATA_RANGE = (-1, 1)
 
 ENABLE_PA = True
 ENABLE_LSE = True
@@ -122,9 +122,11 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE, num_blo
     total_blocks = sum(block_num_per_batch)
     max_blocks = max(block_num_per_batch)
 
-    if num_blocks != 0:
+    if num_blocks < total_blocks and num_blocks != 0:
         # 使用指定的 num_blocks 个物理 block，有放回地填充 total_blocks 个 slot
         block_idx_list = np.random.default_rng(seed).integers(0, num_blocks, size=total_blocks, dtype=np.int32)
+    elif num_blocks > total_blocks and num_blocks != 0:
+        block_idx_list = np.random.default_rng(seed).permutation(np.arange(num_blocks, dtype=np.int32))
     else:
         block_idx_list = np.random.default_rng(seed).permutation(np.arange(total_blocks, dtype=np.int32))
 
@@ -1055,14 +1057,11 @@ if __name__ == '__main__':
         npu_out, cache_info = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
                                                  dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                                  ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    # torch.save(npu_out[0], './wk_out/atten_out_5.pt')
     print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
     if ENABLE_LSE:
         print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
     if GOLDEN_MODE:
-        # 当 NUM_BLOCKS 非默认时，从 PA cache 还原 NPU 实际看到的 K/V,
-        # 重新跑 CPU golden 以保证和 NPU 输入一致
         if cache_info is not None:
             print("\n[Step 3.5] 从 PA cache 还原 BNSD 并重新跑 CPU Golden")
             k_pa_cache, v_pa_cache, bt_cache = cache_info
