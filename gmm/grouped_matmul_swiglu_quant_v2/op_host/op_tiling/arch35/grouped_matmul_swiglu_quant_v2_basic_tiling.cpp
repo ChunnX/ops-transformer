@@ -28,15 +28,27 @@ namespace optiling {
 namespace {
 constexpr int64_t INVALID_MXFP4_WEIGHT_DIM = 1;
 constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
-constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 3;
+constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 2;
+constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
+constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
 constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
+
+size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
+{
+    size_t count = 0;
+    while (context->GetDynamicInputShape(inputIndex, count) != nullptr) {
+        ++count;
+    }
+    return count;
+}
 } // namespace
 
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    isMxWeightNzMultiTensor_ = false;
     return;
 }
 
@@ -165,7 +177,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::LoadDescsAndDtypes()
                                                       "wDesc cannot be nullptr"),
                 return false);
     inputParams_.bDtype = wDesc->GetDataType();
-    auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
+    auto scaleDesc = context_->GetDynamicInputDesc(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleDesc == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
                                                       "scaleDesc cannot be nullptr"),
@@ -324,6 +336,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp8WeightNz() const
 {
     return IsMXFp8Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxWeightNzMultiTensor(const gert::Shape &wShape) const
+{
+    return wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
@@ -528,10 +545,15 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                 return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
-    OP_CHECK_IF(
-        scaleDimNum != MX_WEIGHT_SCALE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum), "4"),
-        return false);
+    size_t weightCount = GetDynamicInputCount(context_, WEIGHT_INDEX);
+    size_t scaleCount = GetDynamicInputCount(context_, SCALE_INDEX);
+    bool isMultiWeightNz = IsMxWeightNzMultiTensor(wShape);
+    isMxWeightNzMultiTensor_ = isMultiWeightNz;
+    size_t expectedScaleDim = isMultiWeightNz ? MX_MULTI_WEIGHT_SCALE_DIM : MX_WEIGHT_SCALE_DIM;
+    OP_CHECK_IF(scaleDimNum != expectedScaleDim,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum),
+                                             std::to_string(expectedScaleDim)),
+                return false);
     auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x_scale", "nullptr",
@@ -544,11 +566,63 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "3"),
         return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(isMultiWeightNz && weightCount != static_cast<size_t>(inputParams_.groupNum),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight",
+                                                      std::to_string(weightCount),
+                                                      "weight tensor list size must equal groupList length"),
+                return false);
+    OP_CHECK_IF(isMultiWeightNz && scaleCount != weightCount,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale",
+                                                      std::to_string(scaleCount),
+                                                      "weightScale tensor list size must equal "
+                                                      "weight tensor list size"),
+                return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
-        OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+        if (isMultiWeightNz) {
+            auto expectedKDimValue = GroupedMatmul::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
+            uint64_t expectedWeightDim0 = inputParams_.transB ? inputParams_.nSize : inputParams_.kSize;
+            uint64_t expectedWeightDim1 = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
+            uint64_t expectedScaleDim0 = inputParams_.transB ? inputParams_.nSize : expectedKDimValue;
+            uint64_t expectedScaleDim1 = inputParams_.transB ? expectedKDimValue : inputParams_.nSize;
+            for (size_t i = 0; i < weightCount; ++i) {
+                auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
+                auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
+                OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight/weight_scale",
+                                                                  "nullptr",
+                                                                  "dynamic weight and weightScale cannot be nullptr"),
+                            return false);
+                const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
+                const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
+                OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
+                                static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
+                                static_cast<uint64_t>(curWShape.GetDim(1)) != expectedWeightDim1,
+                            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight", ShapeToString(curWShape),
+                                                      ShapeDimsToString(expectedWeightDim0, expectedWeightDim1)),
+                            return false);
+                OP_CHECK_IF(curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
+                                static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
+                                static_cast<uint64_t>(curScaleShape.GetDim(1)) != expectedScaleDim1 ||
+                                static_cast<uint64_t>(curScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+                            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale",
+                                                      ShapeToString(curScaleShape),
+                                                      ShapeDimsToString(expectedScaleDim0, expectedScaleDim1,
+                                                                        MXFP_MULTI_BASE_SIZE)),
+                            return false);
+            }
+            OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
+                            static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
+                            static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+                        OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                                  ShapeDimsToString(inputParams_.mSize, expectedKDimValue,
+                                                                    MXFP_MULTI_BASE_SIZE)),
+                        return false);
+        } else {
+            OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
+                        OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+        }
     }
     return true;
 }
@@ -571,6 +645,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 {
     tilingData_.gmmSwigluQuantParams.set_groupNum(inputParams_.groupNum);
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
+    tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(
+        static_cast<uint8_t>(isMxWeightNzMultiTensor_));
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
         const int64_t *dequantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
@@ -595,7 +671,8 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
-        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype());
+        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype())
+        << ", isMxWeightNzMultiTensor = " << static_cast<int32_t>(params.get_isMxWeightNzMultiTensor());
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
     return 0;
 }

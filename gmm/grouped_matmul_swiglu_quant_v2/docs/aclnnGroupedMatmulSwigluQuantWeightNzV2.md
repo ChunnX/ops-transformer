@@ -514,7 +514,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - 仅支持dequantMode和quantMode相同取值。
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
-      - MXFP8、MXFP4场景下weight和weightScale仅支持tensorlist长度为1；MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
+      - MXFP4和MXFP8场景下，weight和weightScale既支持单Tensor场景（tensorlist长度必须为1）也支持多Tensor场景（tensorlist长度大于等于1）。多Tensor场景下，tensorlist长度需等于E，E可以为1，weight、weightScale的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+      - MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
       - MXFP4场景支持weight NZ格式，x和weight为FLOAT4_E2M1或FLOAT4_E1M2（支持交叉），output支持FLOAT8_E4M3FN、FLOAT4_E1M2或FLOAT4_E2M1。
 
   - **返回值**
@@ -551,7 +552,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
       </tr>
       <tr>
-        <td>传入的weight、weightScale的tensor list长度不满足约束（MXFP8/MXFP4场景需为1，MXA8W4多tensor场景需weight与weightScale数量一致）。</td>
+        <td>在不支持多Tensor的场景下，传入的weight、weightScale的tensor list长度不为1；或在多Tensor场景下，weight和weightScale的tensor list长度不一致。</td>
       </tr>
       <tr>
         <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
@@ -824,9 +825,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(N / 32), ceil(K / 16), 16, 32)}，viewShape形如{E个(K, N)}</li>
               <li>转置shape形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
@@ -837,9 +840,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(N / 64), ceil(K / 16), 16, 64)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(N / 64), ceil(K / 16), 16, 64)}，viewShape形如{E个(K, N)}</li>
               <li>转置shape形如{(E, ceil(K / 64), ceil(N / 16), 16, 64)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
@@ -872,6 +877,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
 
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，当输入为fp8数据类型时，需满足N为64对齐；当输入为fp4数据类型时，需满足N为128对齐。
+        - MXFP4和MXFP8多Tensor场景，weight和weightScale的tensorlist长度需等于E。
         - MXFP4场景下，K需大于2。
         - MXFP4场景下，左右矩阵内轴均需为偶数。
         - MXFP4场景下，weight后两轴均不能为1。

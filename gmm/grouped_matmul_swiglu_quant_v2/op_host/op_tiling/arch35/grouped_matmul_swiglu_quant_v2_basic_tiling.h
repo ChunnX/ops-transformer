@@ -76,6 +76,7 @@ private:
     bool IsMXFp8Input() const;
     bool IsMxFp4WeightNz() const;
     bool IsMxFp8WeightNz() const;
+    bool IsMxWeightNzMultiTensor(const gert::Shape &wShape) const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     ge::graphStatus CalWeightNzL1Tiling();
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
@@ -99,6 +100,7 @@ private:
     bool ValidateDtypeAndQuantParams(const gert::Shape &xShape, const gert::Shape &wShape,
                               const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
+    bool isMxWeightNzMultiTensor_ = false;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};
