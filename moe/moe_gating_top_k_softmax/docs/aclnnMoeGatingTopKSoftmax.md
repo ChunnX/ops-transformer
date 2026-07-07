@@ -267,7 +267,6 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
   - 输入x仅支持FLOAT16。
   - 输入不支持finishedOptional，只能输入None。
   - 输出不支持rowIdxOut，rowIdxOut输出全0。
-  - 本算子仅保证Ascend310P3经过验证，其他310系列不保证功能正确。
 
 ## 调用示例
 
