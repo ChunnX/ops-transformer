@@ -140,7 +140,7 @@ public:
     __aicore__ inline
     void getKVOffset(uint32_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
     {
-        kOffset = nIdx * maxKVStackLen * strideKV;
+        kOffset = static_cast<uint64_t>(nIdx) * maxKVStackLen * strideKV;
     }
 
     __aicore__ inline
