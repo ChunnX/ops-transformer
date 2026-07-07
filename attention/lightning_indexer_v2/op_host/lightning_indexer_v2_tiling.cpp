@@ -21,7 +21,8 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
-    // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+// --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
