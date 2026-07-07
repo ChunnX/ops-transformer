@@ -183,7 +183,7 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
 // check pse shape
 ge::graphStatus PagedAttentionChecker::CheckPseShape(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.pseShiftFlag) {
+    if (!fiaInfo.pseShiftFlag || fiaInfo.enableAlibiPse) {
         // 若不存在pseType或pseType = 2/3，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
