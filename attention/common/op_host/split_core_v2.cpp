@@ -656,11 +656,11 @@ void SplitFD(FAMetaData &result)
 
 bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param)
 {
-    const int64_t full_block_cost = CalcCost(actualMFdsize, param.s2BaseSize);
-    if (noFdCost <= param.fdLeastBlock * full_block_cost) {
+    const int64_t fullBlockCost = CalcCost(actualMFdsize, param.s2BaseSize);
+    if (noFdCost <= param.fdLeastBlock * fullBlockCost) {
         return false;
     }
-    int64_t fdTolerance = param.fdTolerance * full_block_cost;
+    int64_t fdTolerance = param.fdTolerance * fullBlockCost;
     return noFdCost - fdTolerance > withFdCost;        // using minus in case overflow
 }
 
