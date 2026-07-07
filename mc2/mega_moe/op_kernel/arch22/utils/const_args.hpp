@@ -29,4 +29,5 @@ constexpr static uint16_t SYNCFLAGC2V = 9;
 constexpr static uint16_t SYNCFLAGV2C = 10;
 constexpr static uint32_t SERVER_RANK_SIZE_A2 = 8;
 constexpr static uint32_t kMaxDequantSyncGroups = 16;
+constexpr static uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
 #endif

@@ -1112,7 +1112,7 @@ public:
     int64_t rope_d = 0;
     int64_t value_d = 0;
     uint64_t dsinksumWorkSpaceOffset = 0;
-    uint32_t baseMN = 0;
+    int64_t baseMN = 0;
     int64_t t1 = 0;
     int64_t t2 = 0;
 
@@ -1511,11 +1511,11 @@ public:
     {
         this->dsinksumWorkSpaceOffset = dsinksumWorkSpaceOffset_val;
     }
-    uint32_t get_baseMN() const
+    int64_t get_baseMN() const
     {
         return this->baseMN;
     }
-    void set_baseMN(uint32_t baseMN_val)
+    void set_baseMN(int64_t baseMN_val)
     {
         this->baseMN = baseMN_val;
     }

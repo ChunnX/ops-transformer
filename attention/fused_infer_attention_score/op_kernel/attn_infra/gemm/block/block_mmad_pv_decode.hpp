@@ -143,7 +143,7 @@ public:
             if (valueBnStride != 0) {
                 kOffset = blockTableId * valueBnStride;
             } else {
-                kOffset = blockTableId * blockSize * strideKV;
+                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV;
             }
         } else {
             kOffset = nowNIdx * blockSize * strideKV;

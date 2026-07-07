@@ -40,7 +40,6 @@ struct CGDRInitParams {
     GM_ADDR finalState;
 };
 
-
 template <typename lowType, typename highType, typename stateType = lowType>
 class CGDR {
 public:

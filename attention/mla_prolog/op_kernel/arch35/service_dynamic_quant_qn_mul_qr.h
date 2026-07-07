@@ -164,12 +164,12 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     }
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
-    constexpr uint32_t DYNAMIC_QUANT_INPUT_READY =
-        EVENT_ID0; // dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    // dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0;
     constexpr uint32_t MUL_QR_INPUT_COPY_READY = EVENT_ID3; // 是否可以开始下一轮的MUL_QR_INPUT_COPY
     constexpr uint32_t CALC_SCALE_FINISH = EVENT_ID0;       // dynamicquant的scale是否计算完成可以开始搬运
-    constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY =
-        EVENT_ID3; // dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    // dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY = EVENT_ID3;
 
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));

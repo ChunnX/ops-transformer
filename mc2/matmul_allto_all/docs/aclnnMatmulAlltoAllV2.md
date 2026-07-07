@@ -29,7 +29,9 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：`commMode`支持`ai_cpu`和`ccu`。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：无新增特性，`commMode`仅支持`ai_cpu`。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：无新增特性，`commMode`仅支持`aiv`。
 
 ## 函数原型
 
@@ -138,7 +140,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>commMode</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入空字符串""、"ai_cpu"或"ccu"。</td>
+    <td>支持输入"aiv"、"ai_cpu"或"ccu"。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -314,12 +316,15 @@ aclnnStatus aclnnMatmulAlltoAllV2(
   - <term>Ascend 950PR/Ascend 950DT</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持BFLOAT16和FLOAT32。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎参数commMode根据不同设备型号有不同的限制：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持输入`aiv`。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持输入`ai_cpu`。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持输入`ai_cpu`和`ccu`。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AI_CPU通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：
       - 支持CCU通信和AI_CPU通信。
-      - 传""空字符串场景为自适应模式：卡数小于等于8卡时使用CCU通信，大于8卡时使用AI_CPU通信。
       - CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
