@@ -895,7 +895,8 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
-
+    
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ge::GRAPH_SUCCESS;
 }
 
