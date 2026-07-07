@@ -408,9 +408,18 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.coscdNum = params.coscNum * params.cosDim3; // coscNum = 1 --> 1 * D
     params.qkcNum = params.qcNum + params.kcNum;       // (Q_n + K_n), Q、K在N轴上进行拼接
     // kernel侧Mul()中repeatTimes参数为uint8_t类型，避免使用qkcNum传参计算时超出范围
-    OP_CHECK_IF(params.qkcNum > UINT8_MAX, OP_LOGE(context->GetNodeName(),
-        "qkcNum exceeds the maximum range of uint8_t"), return ge::GRAPH_FAILED);
-                
+    if (params.qkcNum > UINT8_MAX) {
+        gert::Shape qShape = context->GetInputTensor(INPUT0)->GetStorageShape();
+        gert::Shape kShape = context->GetInputTensor(INPUT1)->GetStorageShape();
+        std::string shapeMsg = ToString(qShape) + " and " + ToString(kShape);
+        std::string reasonMsg =
+            "The sum of the N axis of input query and the N axis of input key must not exceed "
+            + std::to_string(UINT8_MAX) + ", where N is the second-to-last dimension";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key",
+            shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
     params.mulNum = params.qkcNum * params.halfNum;    // (Q_n + K_n) * D / 2
     params.qcdHalfNum = params.qcNum * params.halfNum; // Q_n * D / 2
     // 单核处理的数据偏移 batch * ND

@@ -679,12 +679,11 @@ public:
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
         }
-        info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
-
-        info.actMSize = mBaseSize;
+        info.s2Idx = s2Cur * s2BaseSize;
         uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        info.actMSize = mBaseSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }

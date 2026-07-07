@@ -56,6 +56,8 @@ struct SameAbFuzzyBaseInfoParams { // 频繁使用的基础参数
     int64_t t1 = 0;
     int64_t t2 = 0;
     int64_t sumS1S2Product = 0;
+    int64_t effectiveT1 = 0; // TND布局下有效(非EOD padding)的Q token总数, 仅在解析actualSeqQlen时累加
+    int64_t effectiveT2 = 0; // TND布局下有效(非EOD padding)的KV token总数, 仅在解析actualSeqKvlen时累加
 
     int64_t pseType = PSE_OUTER_ADD_MUL_TYPE;
     int64_t pseAlibiBaseS1 = 0;

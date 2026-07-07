@@ -20,8 +20,8 @@ if (BUILD_OPEN_PROJECT)  # custom
 
     set(QUANT_TILING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.cpp
-        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_adapter.cpp
+        ${QUANT_TILING_DIR}/quant_grouped_mat_mul_allto_allv_tiling_common.cpp
+        ${QUANT_TILING_DIR}/quant_grouped_mat_mul_allto_allv_tiling_adapter.cpp
     )
 
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)

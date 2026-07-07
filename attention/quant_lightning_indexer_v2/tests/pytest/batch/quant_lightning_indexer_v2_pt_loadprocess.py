@@ -21,7 +21,6 @@ import math
 import ast
 import cann_ops_transformer
 
-
 def test_qliv2_process(filepath, device_id=0):
     # 加载测试数据
     test_data = torch.load(filepath, map_location="cpu")
@@ -29,6 +28,7 @@ def test_qliv2_process(filepath, device_id=0):
     params = test_data['params']
     cpu_result = test_data['cpu_result']
     topk_value = test_data['topk_value']
+    cpu_topk_value = test_data['cpu_topk_value']
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
@@ -44,10 +44,18 @@ def test_qliv2_process(filepath, device_id=0):
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
-    actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
-    actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    if output_idx_offset is not None:
+    if test_data['actual_seq_lengths_query'] is not None:
+        actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
+    else:
+        actual_seq_lengths_query = None
+    if test_data['actual_seq_lengths_key'] is not None:
+        actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
+    else:
+        actual_seq_lengths_key = None
+    if test_data['output_idx_offset'] is not None:
         output_idx_offset = test_data['output_idx_offset'].npu()
+    else:
+        output_idx_offset = None
     if test_data['cu_seqlens_query'] is not None:
         cu_seqlens_query = test_data['cu_seqlens_query'].npu()
     else:
@@ -56,7 +64,10 @@ def test_qliv2_process(filepath, device_id=0):
         cu_seqlens_key = test_data['cu_seqlens_key'].npu()
     else:
         cu_seqlens_key = None
-    block_table = test_data['block_table'].npu()
+    if test_data['block_table'] is not None:
+        block_table = test_data['block_table'].npu()
+    else:
+        block_table = None
     metadata = test_data['metadata'].npu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
@@ -69,8 +80,8 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         cmp_residual_k_for_npu = None
 
-    #调用SFA算子
-    npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
+    #调用qli算子
+    npu_result, npu_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
@@ -91,6 +102,6 @@ def test_qliv2_process(filepath, device_id=0):
                                                     return_value = return_value)
     
     torch.npu.synchronize()
-
-    return cpu_result, npu_result, topk_value, params
+    npu_topk_value, _ = npu_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 

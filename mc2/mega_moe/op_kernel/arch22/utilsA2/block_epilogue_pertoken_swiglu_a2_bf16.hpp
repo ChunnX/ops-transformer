@@ -125,6 +125,7 @@ public:
         AscendC::GlobalTensor<ElementD> const &gmD,
         AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
         uint32_t epilogueCoreNum = 40,
+        uint32_t gmmOutPreRowStride = 1,
         Callback &&callback = Callback{}
     )
     {
@@ -148,7 +149,7 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
@@ -161,9 +162,10 @@ public:
             auto &ubQuantF16 = ubQuantF16List[ubListId];
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
+            LayoutC layoutGmC{1, blockN, gmmOutPreRowStride};
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
@@ -240,6 +242,7 @@ public:
         AscendC::GlobalTensor<ElementD> const &gmD,
         uint32_t epilogueCoreNum = 40,
         float swigluLimit = 0.0f,
+        uint32_t gmmOutPreRowStride = 1,
         Callback &&callback = Callback{}
     )
     {
@@ -263,16 +266,17 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockN];
+            auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
             auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId];
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
+            LayoutC layoutGmC{1, blockN, gmmOutPreRowStride};
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
+            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);

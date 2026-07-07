@@ -106,7 +106,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
+        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, test_data)
         print("result", result)
         print("result", fulfill_percent)
 

@@ -24,9 +24,9 @@
 #include "../common.h"
 #include "lib/hccl/hccl.h"
 #include "all_gather_matmul_base.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
-#include "../../common/op_kernel/mc2_quant_batch_matmul.h"
-#include "all_gather_matmul_tiling_arch35.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
+#include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
+#include "../all_gather_matmul_tiling_arch35.h"
 
 /**
  * 1、依赖tiling结构QuantBatchMatmulV3TilingData

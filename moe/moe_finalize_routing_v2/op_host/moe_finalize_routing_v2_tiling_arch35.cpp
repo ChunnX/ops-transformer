@@ -518,8 +518,10 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRange(int64_t start, int64_t e
     }
 
     if (!(0 <= start && start < end && end <= e)) {
-        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) is invalid, must satisfy 0 <= start < end < E(%ld).",
-                rangeName, start, end, e);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), (std::string(rangeName) + " range").c_str(),
+            ("[" + std::to_string(start) + ", " + std::to_string(end) + "), E=" + std::to_string(e)).c_str(),
+            "Range must satisfy 0 <= start < end <= E.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -532,8 +534,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRangeOverlap(int64_t start1, i
         return ge::GRAPH_SUCCESS;
     }
     if (!(end1 <= start2 || end2 <= start1)) {
-        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) overlaps with %s range [%ld, %ld).", name1, start1, end1,
-                name2, start2, end2);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), (std::string(name1) + " range and " + name2 + " range").c_str(),
+            ("[" + std::to_string(start1) + ", " + std::to_string(end1) + ") and [" +
+             std::to_string(start2) + ", " + std::to_string(end2) + ")").c_str(),
+            "Ranges should not overlap.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

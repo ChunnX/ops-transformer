@@ -229,17 +229,20 @@ template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
           bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
+    // 如果是 FP8 或 HIF8，输出 float；如果是 int8，输出 int32_t；否则输出 bfloat16_t
+    template <typename T>
+    using GetMatmulOutType_t = typename std::conditional<
+        std::is_same<T, FP8E4M3>::value || std::is_same<T, HIF8>::value, float,
+        typename std::conditional<std::is_same<T, int8_t>::value, int32_t, bfloat16_t>::type>::type;
+
     using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
-    using mmQnInputType = bfloat16_t; // matmul计算Qn的输入类型
-    using mmCqOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
-                                                     bfloat16_t>::type; // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
-                                                        bfloat16_t>::type; // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = typename std::conditional<std::is_same<W_T, int8_t>::value, int32_t,
-                                                       bfloat16_t>::type; // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;                                    // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t;                                  // gamma的输入类型
+    using mmQnInputType = bfloat16_t;                  // matmul计算Qn的输入类型
+    using mmCqOutputType = GetMatmulOutType_t<X_T>;    // matmul计算Cq的输出类型
+    using mmCkvKrOutputType = GetMatmulOutType_t<X_T>; // matmul计算QcQr的输出类型
+    using mmQcQrOutputType = GetMatmulOutType_t<W_T>;  // matmul计算Qn的输出类型
+    using mmQnOutputType = bfloat16_t;                 // matmul计算Qn的输出类型
+    using rmsNormGammaType = bfloat16_t;               // gamma的输入类型
     using rmsNormComputType = float;
     using rmsNormCqOutputType = W_T;
     using rmsNormCkvOutputType = C_T;
@@ -247,81 +250,14 @@ struct MLAPType {
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
     using kvCacheType = C_T; // kvcache的类型
-    using krCacheType =
-        typename std::conditional<((std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value) ||
-                                   IS_PERTILE),
-                                  bfloat16_t, C_T>::type; // krcache的类型
-    using dequantScaleQNopeType = float;                  // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;                  // dequantScaleQNorm的类型
-    using dequantScaleType = float;
-
-    static constexpr CACHE_MODE cacheMode = C_M;
-    static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
-    static constexpr bool enableGroupComputeOpt = ENABLE_GROUP_COMPUTE_OPT;
-    static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
-    static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
-    static constexpr bool isPertile = IS_PERTILE;
-    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
-};
-
-// 类模板特化，支持mxfp8/fp8全量化
-template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
-struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
-                IS_PERTILE, CV_RATIO, Args...> {
-    using mmInputType = FP8E4M3; // tokenX的类型与weight的类型一致
-    using mmQcQrInputType = FP8E4M3;
-    using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
-    using mmCqOutputType = float;        // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = float;     // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = float;      // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;   // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t; // gamma的输入类型
-    using rmsNormComputType = float;
-    using rmsNormCqOutputType = FP8E4M3;
-    using rmsNormCkvOutputType = C_T;
-    using ropeSinCosType = bfloat16_t; // sin cos的输入类型
-    using ropeComputType = float;
-    using ropeOutputType = bfloat16_t;
-    using kvCacheType = C_T;             // kvcache的类型
-    using krCacheType = bfloat16_t;      // krcache的类型
+    // 如果是 X_T 为 bfloat16_t && C_T 为 int8_t 且不是 pertile (半量化kv perchannel量化), 则为 int8_t；否则为
+    // bfloat16_t
+    using krCacheType = typename std::conditional<std::is_same<X_T, bfloat16_t>::value &&
+                                                      std::is_same<C_T, int8_t>::value && !IS_PERTILE,
+                                                  int8_t, bfloat16_t>::type;
     using dequantScaleQNopeType = float; // dequantScaleQNope的类型
-    using dequantScaleQNormType = D_S;   // dequantScaleQNormType的类型
+    using dequantScaleQNormType = D_S; // dequantScaleQNorm的类型
     using dequantScaleType = D_S;
-
-    static constexpr CACHE_MODE cacheMode = C_M;
-    static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
-    static constexpr bool enableGroupComputeOpt = ENABLE_GROUP_COMPUTE_OPT;
-    static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
-    static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
-    static constexpr bool isPertile = IS_PERTILE;
-    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
-};
-
-// 类模板特化，支持hif8全量化
-template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
-struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
-                IS_PERTILE, CV_RATIO, Args...> {
-    using mmInputType = HIF8; // tokenX的类型与weight的类型一致
-    using mmQcQrInputType = HIF8;
-    using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
-    using mmCqOutputType = float;        // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = float;     // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = float;      // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;   // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t; // gamma的输入类型
-    using rmsNormComputType = float;
-    using rmsNormCqOutputType = HIF8;
-    using rmsNormCkvOutputType = C_T;
-    using ropeSinCosType = bfloat16_t; // sin cos的输入类型
-    using ropeComputType = float;
-    using ropeOutputType = bfloat16_t;
-    using kvCacheType = C_T;             // kvcache的类型
-    using krCacheType = bfloat16_t;      // krcache的类型
-    using dequantScaleQNopeType = float; // dequantScaleQNope的类型
-    using dequantScaleQNormType = float; // dequantScaleQNormType的类型
-    using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
     static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;

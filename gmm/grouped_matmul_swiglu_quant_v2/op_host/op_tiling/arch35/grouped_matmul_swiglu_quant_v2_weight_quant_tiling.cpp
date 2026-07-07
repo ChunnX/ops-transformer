@@ -586,6 +586,28 @@ bool CheckSingleMultiSingleInputs(
     return true;
 }
 
+// 大函数整改：提取 xScale/groupList/weightScale shape 校验为独立函数
+static bool CheckScaleAndGroupListShapes(gert::TilingContext &context,
+    const GMMSQWeightQuantInputParams &params, const gert::Shape &xScaleShape,
+    const gert::Shape &groupListShape, const gert::Shape &weightScaleShape)
+{
+    int64_t scaleKSize = GroupedMatmul::CeilDiv<int64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
+    const std::vector<int64_t> expectedXScaleShape = {
+        static_cast<int64_t>(params.mSize), scaleKSize, MX_INNER_DIM};
+    if (!CheckInputShape(&context, "xScale", xScaleShape, expectedXScaleShape)) {
+        return false;
+    }
+    if (!CheckInputShape(&context, "groupList", groupListShape, {params.groupNum})) {
+        return false;
+    }
+    const std::vector<int64_t> expectedWeightScaleShape = {
+        params.groupNum, params.nSize, scaleKSize, MX_INNER_DIM};
+    if (!CheckInputShape(&context, "weightScale", weightScaleShape, expectedWeightScaleShape)) {
+        return false;
+    }
+    return true;
+}
+
 bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
 {
     if (!IsInputShapeValid(context, params)) {
@@ -647,16 +669,7 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
     }
 
     auto& weightScaleShape = weightScaleShapePtr->GetOriginShape();
-    const std::vector<int64_t> expectedWeightScaleShape = {
-        params.groupNum,
-        params.nSize,
-        scaleKSize,
-        MX_INNER_DIM
-    };
-    if (!CheckInputShape(&context, "weightScale", weightScaleShape, expectedWeightScaleShape)) {
-        return false;
-    }
-    return true;
+    return CheckScaleAndGroupListShapes(context, params, xScaleShape, groupListShape, weightScaleShape);
 }
 
 void PrintInputParams(gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)

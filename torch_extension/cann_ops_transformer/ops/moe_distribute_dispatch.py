@@ -210,7 +210,6 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
 
 # Instantiate the builder
 moe_distribute_dispatch_op_builder = MoeDistributeDispatchOpBuilder()
-op_module = moe_distribute_dispatch_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, moe_distribute_dispatch_op_builder.name, "PrivateUse1")
@@ -225,6 +224,7 @@ def npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_i
     Dispatcher implementation for NPU.
     'PrivateUse1' is the dispatch key for custom NPU backends.
     """
+    op_module = moe_distribute_dispatch_op_builder.load()  # Compiles/loads the .so file
     return op_module.npu_moe_distribute_dispatch(context, x, expert_ids, ep_world_size, ep_rank_id, moe_expert_num,
                                                     ccl_buffer_size, scales, x_active_mask, expert_scales, elastic_info,
                                                     performance_info, tp_world_size, tp_rank_id,

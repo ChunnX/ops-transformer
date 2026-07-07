@@ -128,14 +128,14 @@
    <td>weight1</td>
    <td>输入</td>
    <td>GroupMatmul1计算的右矩阵，用于计算SwiGLU激活前的线性变换。</td>
-   <td>FP8_E5M2、FP8_E4M3</td>
+   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weight2</td>
    <td>输入</td>
    <td>GroupMatmul2计算的右矩阵，用于SwiGLU激活后的线性变换。</td>
-   <td>FP8_E5M2、FP8_E4M3</td>
+   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -204,7 +204,7 @@
   <tr>
    <td>dispatch_quant_out_type</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持23（FP8_E5M2）、24（FP8_E4M3）。</td>
+   <td>dispatch量化后输出的数据类型。支持23（FP8_E5M2）、24（FP8_E4M3）、296（FP4_E2M1）。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -257,28 +257,27 @@
     - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs`参数取值需保持一致。
 
 - **参数约束**：
-  - BS（x.dim0）范围 [1, 512]。
-  - H（x.dim1）仅支持4096、5120、7168。
-  - topK（topkIds.dim1）仅支持6或8。
-  - expertPerRank（weight1.dim0）范围 [1, 16]。
+  - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
+  - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
+  - topK（topkIds.dim1）支持[1, 16]。
+  - expertPerRank（weight1.dim0）范围 [1, 1024]。
   - hiddenDim（weight1.dim1）仅支持1024、2048、3072、4096、7168。
-  - epWorldSize范围 [2, 768]。
-  - moeExpertNum范围 [epWorldSize, 1024]，且moeExpertNum % epWorldSize == 0。
+  - epWorldSize范围 [2, 1024]。
+  - moeExpertNum范围 [epWorldSize, 2048]，且moeExpertNum % epWorldSize == 0。
   - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。
-  - dispatchQuantOutType仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）。
-  - globalBs为0或满足BS × epWorldSize <= globalBs且globalBs % epWorldSize == 0。
+  - dispatchQuantOutType仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
   - 当前版本仅支持MXFP量化模式（dispatchQuantMode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
   - combineQuantMode必须为0，commAlg必须为空字符串""。
   - y的数据类型与x相同。
   - weight1的dim1（hiddenDim）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从hiddenDim减半为hiddenDim/2。
-  - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 16] 范围内。
+  - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 1024] 范围内。
 
 - **MXFP量化场景约束**：
     - weight1 shape为(expertPerRank, hiddenDim, H)，weight2 shape为(expertPerRank, H, hiddenDim/2)。
     - weightScales1 shape为(expertPerRank, hiddenDim, CeilDiv(H, 64), 2)，其中CeilDiv(H, 64) = (H + 63) / 64。
     - weightScales2 shape为(expertPerRank, H, CeilDiv(hiddenDim/2, 64), 2)，其中CeilDiv(hiddenDim/2, 64) = (hiddenDim/2 + 63) / 64。
     - weightScales1的dim3和weightScales2的dim3必须等于2。
-    - MXFP场景下，dispatchQuantOutType=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutType=24时必须为FLOAT8_E4M3FN。
+    - MXFP场景下，dispatchQuantOutType=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutType=24时必须为FLOAT8_E4M3FN，dispatchQuantOutType=296时必须为FLOAT4_E2M1。
 
 ## 调用说明
 

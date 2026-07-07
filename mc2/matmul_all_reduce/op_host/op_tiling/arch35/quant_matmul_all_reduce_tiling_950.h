@@ -71,6 +71,8 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
+    bool IsPerTensorDequantScale(const gert::Shape& dequantShape) const override;
+
     ge::graphStatus CheckDequantScaleType();
     ge::graphStatus CheckCommQuantScale();
     ge::graphStatus CheckBias();

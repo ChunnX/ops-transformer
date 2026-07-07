@@ -2087,6 +2087,38 @@ static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
     return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
+static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
+{
+    if (gmmParams.groupType == gmm::NO_SPLIT) {
+        CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == -1(no split) and x, weight and y are all separated, [%s] is not "
+                   "supported.",
+                   opName, "transposeX");
+        CHECK_COND(!(gmmParams.apiVersion == gmm::GMMApiVersion::V1 && gmmParams.transposeWeight) ||
+                       op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510,
+                   ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == -1(no split) and x, weight and y are all separated in V1, [%s] is "
+                   "not supported.",
+                   opName, "transposeWeight");
+        CHECK_COND(CheckCaseNoSplit(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == -1(no split), parameter check failed.", opName);
+    } else if (gmmParams.groupType == gmm::SPLIT_M) {
+        std::string errorMessage = gmmParams.apiVersion != gmm::GMMApiVersion::V2 && !gmmParams.isSingleWeight ?
+                                       "split axis is M" :
+                                       "groupType == 0(split-M)";
+        CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, [%s] is not supported.",
+                   opName, errorMessage.c_str(), "transposeX");
+        CHECK_COND(CheckCaseSplitM(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when %s, parameter check failed.", opName, errorMessage.c_str());
+    } else if (gmmParams.groupType == gmm::SPLIT_K) {
+        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 2(split-K), [%s] must be empty.", opName, "bias");
+        CHECK_COND(CheckCaseSplitK(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 2(split-K), parameter check failed.", opName);
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
     CHECK_COND(!(gmmParams.transposeX && gmmParams.transposeWeight), ACLNN_ERR_PARAM_INVALID,
@@ -2125,33 +2157,8 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         return ACLNN_SUCCESS;
     }
 
-    if (gmmParams.groupType == gmm::NO_SPLIT) {
-        CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == -1(no split) and x, weight and y are all separated, [%s] is not "
-                   "supported.",
-                   opName, "transposeX");
-        CHECK_COND(!(gmmParams.apiVersion == gmm::GMMApiVersion::V1 && gmmParams.transposeWeight) ||
-                       op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510,
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == -1(no split) and x, weight and y are all separated in V1, [%s] is "
-                   "not supported.",
-                   opName, "transposeWeight");
-        CHECK_COND(CheckCaseNoSplit(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == -1(no split), parameter check failed.", opName);
-    } else if (gmmParams.groupType == gmm::SPLIT_M) {
-        std::string errorMessage = gmmParams.apiVersion != gmm::GMMApiVersion::V2 && !gmmParams.isSingleWeight ?
-                                       "split axis is M" :
-                                       "groupType == 0(split-M)";
-        CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, [%s] is not supported.",
-                   opName, errorMessage.c_str(), "transposeX");
-        CHECK_COND(CheckCaseSplitM(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when %s, parameter check failed.", opName, errorMessage.c_str());
-    } else if (gmmParams.groupType == gmm::SPLIT_K) {
-        CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == 2(split-K), [%s] must be empty.", opName, "bias");
-        CHECK_COND(CheckCaseSplitK(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when groupType == 2(split-K), parameter check failed.", opName);
-    }
+    CHECK_COND(CheckParamsByGroupType(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], groupType specific parameter check failed.", opName);
     if (gmmParams.biasOptional != nullptr) {
         CHECK_COND(CheckOptionalTensorList(gmmParams, gmmParams.biasOptional, "bias") == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "In op [%s], [%s] check failed.", opName, "bias");

@@ -17,6 +17,7 @@
 #include "mc2_common_log.h"
 #include "platform/platform_info.h"
 #include "mc2_gen_task_ops_utils.h"
+#include <algorithm>
 
 namespace ops {
 const int64_t AICORE_IDX = 0;

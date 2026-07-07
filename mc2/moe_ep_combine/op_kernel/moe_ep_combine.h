@@ -15,12 +15,21 @@
 #ifndef MOE_EP_COMBINE_H
 #define MOE_EP_COMBINE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
-#include "moe_ep_combine_tiling_key.h"
+#endif
+#include "kernel_tiling/kernel_tiling.h"
+#include "adv_api/hccl/hccl.h"
+#include "adv_api/reduce/reduce.h"
+#include "adv_api/reduce/sum.h"
+#include "adv_api/hcomm/hcomm.h"
 
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#include "moe_ep_combine_tiling_key.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -177,7 +186,7 @@ private:
     TBuf<> tokenTargetTBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
@@ -226,11 +235,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     }
 
     workspaceStateSize_ = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * UB_ALIGN * epWorldSize_;
-    // workspaceStateSize_ = 16 * 1024 * 1024;
     CombineStateAddr_ = tilingData->winStateOffset;
-    // CombineStateAddr_ = GetWinCombineStateAddrByRankId(mc2Context_);
     CombineDataAddr_ = tilingData->winDataOffset;
-    // CombineDataAddr_ = GetWinCombineDataAddrByRankId(mc2Context_);
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -451,8 +457,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
+        uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * perSlotBytes_;
         GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) +
-                (tokenIndex * topK_ + topkId) * perSlotBytes_;
+                slotOffset;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);

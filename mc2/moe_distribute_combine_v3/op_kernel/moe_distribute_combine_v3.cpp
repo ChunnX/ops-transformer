@@ -19,10 +19,14 @@
 #endif
 #include "lib/matmul_intf.h"
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_a5_mte.h")
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_a5_mte.h"
+#else
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_a5_mte.h"
+#endif
 using namespace MoeDistributeCombineV2A5MteImpl;
 #endif
-#if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h")
+#if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2.h")
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2.h"
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h"
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling_key.h"

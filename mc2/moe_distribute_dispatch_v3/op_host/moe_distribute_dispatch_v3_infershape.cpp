@@ -255,8 +255,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
     }
 
     expandXShape->SetDimNum(DIM_TWO);
-    auto realA = ((*tpWorldSize == 0) ? a : (a * *tpWorldSize));
-    expandXShape->SetDim(0U, realA);
+    expandXShape->SetDim(0U, a);
     expandXShape->SetDim(1U, h);
     OP_LOGD(context->GetNodeName(), "expandx shape is :%s after infershape.",
         Ops::Base::ToString(*expandXShape).c_str());
@@ -265,7 +264,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
         InferShapeDynamicScalesA5(dynamicScalesShape, *quantMode, a, h);
     } else {
         dynamicScalesShape->SetDimNum(DIM_ONE);
-        dynamicScalesShape->SetDim(0U, realA);
+        dynamicScalesShape->SetDim(0U, a);
     }
     OP_LOGD(context->GetNodeName(), "dynamicScalesShape shape is :%s after infershape.",
         Ops::Base::ToString(*dynamicScalesShape).c_str());
@@ -288,11 +287,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
-        } else {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
-        }
+        epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
     }
     OP_LOGD(context->GetNodeName(), "epRecvCountShape shape is :%s after infershape.",
         Ops::Base::ToString(*epRecvCountShape).c_str());
