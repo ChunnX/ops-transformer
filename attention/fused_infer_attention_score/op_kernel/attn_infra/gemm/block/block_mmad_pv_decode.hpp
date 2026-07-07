@@ -129,7 +129,7 @@ public:
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1U) {
-            nSplitSize = kvSeqlen - nowNIdx * blockSize;
+            nSplitSize = static_cast<uint32_t>(kvSeqlen - static_cast<uint64_t>(nowNIdx) * blockSize);
         }
         actualShape[COORD_DIM2] = nSplitSize;
     }
@@ -146,7 +146,7 @@ public:
                 kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV;
             }
         } else {
-            kOffset = nowNIdx * blockSize * strideKV;
+            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV;
         }
     }
 
