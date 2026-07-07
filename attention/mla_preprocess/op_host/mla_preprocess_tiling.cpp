@@ -53,7 +53,7 @@ constexpr uint64_t INDEX_WUQ = 12;
 constexpr uint64_t INDEX_WUK = 18;
 constexpr uint64_t INDEX_KV_CACHE = 19;
 constexpr uint64_t INDEX_KV_CACHE_ROPE = 20;
-constexpr uint64_t INDEX_DEQBIAS = 7;
+constexpr uint64_t INDEX_DEQSCALE = 6;
 
 constexpr uint64_t DIM_0 = 0;
 constexpr uint64_t DIM_1 = 1;
@@ -795,8 +795,8 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     auto quantModePtr = attrPtr->GetAttrPointer<QuantMode>(ATTR_QUANT_MODE_IDX);
     param.quantMode = *quantModePtr;
 
-    auto deqBiasShape = context->GetInputShape(INDEX_DEQBIAS)->GetStorageShape();
-    param.hiddenStateMm = static_cast<uint64_t>(deqBiasShape.GetDim(DIM_0));
+    auto deqScaleShape = context->GetInputShape(INDEX_DEQSCALE)->GetStorageShape();
+    param.hiddenStateMm = static_cast<uint64_t>(deqScaleShape.GetDim(DIM_0));
 
     constexpr uint64_t CONCAT_SIZE_PLUS_HEAD_DIM = 576;  // concatSize(512) + headDim(64)
     param.qLoraRank = param.hiddenStateMm - CONCAT_SIZE_PLUS_HEAD_DIM;
