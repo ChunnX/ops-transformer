@@ -107,7 +107,9 @@ private:
     __aicore__ inline void ExpGradSimdVf(__local_mem__ U *expGradPtr, __local_mem__ U *skGradPtr,
                                           __local_mem__ U *zResPtr, int64_t idxBs, int64_t lenBs);
     __aicore__ inline void ComputeGNormOutAndGHcBeforeNorm(int64_t ofsBs, int64_t lenBs,
-                                                            U alphaScalar, int64_t count, int64_t segOffset);
+                                                            U alphaScalar, int64_t nRows,
+                                                            int64_t ubSegOffset, int64_t wsSegOffset,
+                                                            __local_mem__ U *hcPtr, __local_mem__ U *irPtr);
 
 private:
     const Td *td_   = nullptr;
@@ -364,9 +366,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         }
 
         SyncAll();
+        // CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG);
+        // CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);
+        // SyncAll();
+
+        // for (int64_t idxBs = 0; idxBs < numLoopBs; idxBs++) {
+        //     int64_t lenBs = (idxBs == numLoopBs - 1) ? tailBs : ubFactorBS_;
+        //     PhaseE_CLoop(idxBs, lenBs);
+        // }
 
         if (blockIdx_ == 0) {
-            ReduceBiasAlpha();
+            // ReduceBiasAlpha();
         }
         SyncAll();
     }
@@ -430,9 +440,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     int64_t ofsGmX     = ofsGmBs * n_ * c_;
     int64_t ofsGmGh = ofsGmBs * c_;
 
-    // --- Step 1: gradHPre 清零 ---
+    // --- Step 1: gradHPre 清零 (仅首块全量清零, 避免尾块残留) ---
     auto gradHPreUb = gradHPreBuf_.template Get<U>();
-    Duplicate(gradHPreUb, float(0), lenBs * nAlign_);
+    if (idxBs == 0) {
+        Duplicate(gradHPreUb, float(0), ubFactorBS_ * nAlign_);
+    }
 
     // --- Step 2: 搬入 hPre[lenBs, n_] ---
     CopyInQue(hPreAndGradHPostQue_, hPreGm_[ofsGmHPre], lenBs, n_, 0, nAlign_);
@@ -570,6 +582,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         CopyOutQue(gradXFromHinQue_, gradXFromHinWs_[ofsGmXSlice], lenBs * n_, lenCSlice, alignUCSlice, (c_ - lenCSlice) * uSize_);
     }
 
+    AscendC::printf("[DUMP] 200 grad_h_pre lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradHPreBuf_.template Get<U>(), 200, lenBs * nAlign_);
+    AscendC::printf("[DUMP] 201 x_fp32 lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(xFp32Ws_[ofsGmBs * n_ * c_], 201, lenBs * n_ * c_);
+    AscendC::printf("[DUMP] 215 grad_x_from_hin lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradXFromHinWs_[ofsGmBs * n_ * c_], 215, lenBs * n_ * c_);
 
     hPreAndGradHPostQue_.FreeTensor(hPreUb);
 }
@@ -581,6 +599,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     int64_t ofsBs = blockIdx_ * td_->blockFactorBS + idxBs * ubFactorBS_;
     int64_t ofsHcBN = ofsBs * kDim_;
     int64_t ofsInvRms = ofsBs;
+
+    if (idxBs == 0) {
+        auto gradInvRmsUb = gradInvRmsBuf_.template Get<U>();
+        Duplicate(gradInvRmsUb, U(0), bsPerCore_);
+    }
 
     // --- 搬入 invRms + hcBeforeNorm (k_ 全量对齐) ---
     CopyInQue(invRmsQue_, invRmsGm_[ofsInvRms], 1, lenBs);
@@ -622,12 +645,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
     // --- SigmoidGrad: gradZ_pre = SigmoidGrad(z_pre, gradHPre, isPre=true) ---
     SigmoidGrad<U, true>(ghPrePtr, zPtr, gradZPtr, lenBs, nAlign_, kAlign_, 256, eps_);
+    AscendC::printf("[DUMP] 216 grad_z_pre lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradZBuf_.template Get<U>(), 216, lenBs * kAlign_);
 
-    // --- SigmoidGrad: gradZ_post = 2 * SigmoidGrad(z_post, gradHPost, isPre=false) ---
     CopyInQue(hPreAndGradHPostQue_, gradHPostGm_[ofsBs * n_], lenBs, n_, 0, nAlign_);
     auto gradHPostUb = hPreAndGradHPostQue_.template DeQue<U>();
     __local_mem__ U *ghPostPtr = reinterpret_cast<__local_mem__ U *>(gradHPostUb.GetPhyAddr());
     SigmoidGrad<U, false>(ghPostPtr, zPtr + nAlign_, gradZPtr + nAlign_, lenBs, nAlign_, kAlign_, 256, eps_);
+    AscendC::printf("[DUMP] 217 grad_z_post lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradZBuf_.template Get<U>(), 217, lenBs * kAlign_);
     hPreAndGradHPostQue_.FreeTensor(gradHPostUb);
 
     // AscendC::printf("[DBG] A blk=%d\n", GetBlockIdx());
@@ -685,18 +711,16 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
     // AscendC::printf("[DBG] before SinkhornGrad blk=%d skIterCount=%d\n", GetBlockIdx(), skIterCount_);
     SinkhornGradSimdVf(skGradPtr, idxBs, lenBs);
-    // AscendC::printf("[DBG] after SinkhornGrad blk=%d\n", GetBlockIdx());
-    // AscendC::DumpTensor(gradHResUb, 203, lenBs * nnAlign_);
+    AscendC::printf("[DUMP] 218 sk_grad(sinkhorn) lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradHResUb, 218, lenBs * nnAlign_);
 
-    // gradZ_res = ExpGrad(z_res, skGrad)
     __local_mem__ U *zResPtr = zPtr + 2 * nAlign_;
     __local_mem__ U *gradZResPtr = gradZPtr + 2 * nAlign_;
     // AscendC::DumpTensor(zBuf_.template Get<U>(), 204, lenBs * kAlign_);
     ExpGradSimdVf(gradZResPtr, skGradPtr, zResPtr, idxBs, lenBs);
-    {
-        auto gradZUb = gradZBuf_.template Get<U>();
-        // AscendC::DumpTensor(gradZUb[2 * nAlign_], 205, lenBs * nnAlign_);
-    }
+    AscendC::printf("[DUMP] 219 grad_z_res lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradZBuf_.template Get<U>(), 219, lenBs * kAlign_);
+
 
     gradHResQue_.FreeTensor(gradHResUb);
 
@@ -733,10 +757,25 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
     gradAlphaAndBiasQue_.FreeTensor(gradAlphaBiasOut);
 
-    // --- Compute gradHcBeforeNorm → WS and gradInvRms → gradInvRmsBuf_ ---
-    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaPre_, nAlign_, 0);
-    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaPost_, nAlign_, nAlign_);
-    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaRes_, nnAlign_, 2 * nAlign_);
+    AscendC::printf("[DUMP] 220 grad_alpha+bias(ws) perCoreElem=%d\n", perCoreElem);
+    AscendC::DumpTensor(gradAlphaBiasWs_[wsOffset], 220, perCoreElem);
+    AscendC::printf("[DUMP] 210 grad_z(pre+post+res) lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(gradZBuf_.template Get<U>(), 210, lenBs * kAlign_);
+    AscendC::printf("[DUMP] 211 hc_before_norm lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(hcUb, 211, lenBs * kAlign_);
+    AscendC::printf("[DUMP] 212 inv_rms lenBs=%d\n", lenBs);
+    AscendC::DumpTensor(invRmsUb, 212, lenBs);
+
+    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaPre_, 1, 0, 0, hcPtr, irPtr);
+    AscendC::printf("[DBG GN] pre done\n");
+    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaPost_, 1, nAlign_, n_, hcPtr, irPtr);
+    AscendC::printf("[DBG GN] post done\n");
+    ComputeGNormOutAndGHcBeforeNorm(ofsBs, lenBs, alphaRes_, n_, 2 * nAlign_, 2 * n_, hcPtr, irPtr);
+    AscendC::printf("[DBG GN] res done\n");
+    AscendC::printf("[DUMP] 213 grad_inv_rms bsPerCore=%d\n", bsPerCore_);
+    AscendC::DumpTensor(gradInvRmsBuf_.template Get<U>(), 213, bsPerCore_);
+    AscendC::printf("[DUMP] 214 grad_hc_before_norm(ws) lenBs=%d kDim=%d\n", lenBs, kDim_);
+    AscendC::DumpTensor(gradHcBeforeNormWs_[ofsBs * kDim_], 214, lenBs * kDim_);
 
     invRmsQue_.FreeTensor(invRmsUb);
     hcBeforeNormQue_.FreeTensor(hcUb);
@@ -790,7 +829,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     for (int64_t loopBs = 0; loopBs < lenBs; loopBs++) {
         int64_t idxCurBs = ofsBs + loopBs;
         U curInvRms = invRmsGm_(idxCurBs);
-        U curGradInvRms = gradInvRmsUb(idxBs * ubFactorBS_ + loopBs);
+        U curGradInvRms = gradInvRmsUb.GetValue(loopBs);
         U invRmsCubed = curInvRms * curInvRms * curInvRms;
         int64_t ofsNC = idxCurBs * cntNC;
 
@@ -1130,100 +1169,75 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
 // ================================================================
 template <typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGNormOutAndGHcBeforeNorm(
-    int64_t ofsBs, int64_t lenBs, U alphaScalar, int64_t count, int64_t segOffset)
+    int64_t ofsBs, int64_t lenBs, U alphaScalar, int64_t nRows,
+    int64_t ubSegOffset, int64_t wsSegOffset,
+    __local_mem__ U *hcPtr, __local_mem__ U *irPtr)
 {
     AscendC::printf("[DBG FN] >> ComputeGNormOutAndGHcBeforeNorm blk=%d\n", GetBlockIdx());
+
     auto gradZUb = gradZBuf_.template Get<U>();
-    auto hcUb = hcBeforeNormQue_.template DeQue<U>();  // re-dequeue (already freed? need to re-get)
-    // Actually hcBeforeNormQue_ was already freed. We need hcBeforeNorm data.
-    // It was in hcUb which was freed. We need to re-read from GM or keep a copy.
-    // Let's re-read hcBeforeNorm from GM for gradInvRms computation.
-    // Actually, hcBeforeNorm is still in UB via hcBeforeNormQue_ if we haven't freed it yet.
-    // Looking at the flow: we call this AFTER SigmoidGrad but BEFORE freeing hcBeforeNormQue_.
-    // Wait, no - in the current PhaseB, hcUb is freed at the END. But we call ComputeGNormOutAndGHcBeforeNorm
-    // before the final free. However, hcBeforeNormQue_ was DeQue'd once and the tensor is still valid
-    // until FreeTensor is called. Let me re-get it.
-
-    // Re-acquire hcBeforeNorm (it's still in the queue since we haven't freed it yet)
-    auto hcUb2 = hcBeforeNormQue_.template DeQue<U>();
-    auto invRmsUb2 = invRmsQue_.template DeQue<U>();
-
-    __local_mem__ U *gradZPtr = reinterpret_cast<__local_mem__ U *>(gradZUb.GetPhyAddr());
-    __local_mem__ U *hcPtr2 = reinterpret_cast<__local_mem__ U *>(hcUb2.GetPhyAddr());
-    __local_mem__ U *irPtr2 = reinterpret_cast<__local_mem__ U *>(invRmsUb2.GetPhyAddr());
-
-    auto gradCalc1 = gradCalcBuf1_.template Get<U>();
-    __local_mem__ U *tmpPtr = reinterpret_cast<__local_mem__ U *>(gradCalc1.GetPhyAddr());
-
-    uint32_t vfLen = Ops::Base::GetVRegSize() / sizeof(U);
+    auto gradCalc2 = gradCalcBuf2_.template Get<U>();
     auto gradInvRmsUb = gradInvRmsBuf_.template Get<U>();
 
+    __local_mem__ U *gradZPtr = reinterpret_cast<__local_mem__ U *>(gradZUb.GetPhyAddr());
+    __local_mem__ U *tmpPtr = reinterpret_cast<__local_mem__ U *>(gradCalc2.GetPhyAddr());
+
+    uint64_t nAlign = nAlign_;
+    uint64_t rowStride = kAlign_;
+
     for (int64_t loopBs = 0; loopBs < lenBs; loopBs++) {
-        int64_t idxCurBs = ofsBs + loopBs;
-        U invRms = irPtr2[loopBs];
+        U invRms = irPtr[loopBs];
         U invRmsAlpha = invRms * alphaScalar;
 
-        // gradHcBeforeNorm = gradZ * invRms * alpha → CopyOut to WS
-        // gradNormOut = gradZ * alpha (for gradInvRms computation)
-        __local_mem__ U *gradZSegPtr = gradZPtr + loopBs * count;
-        __local_mem__ U *hcSegPtr = hcPtr2 + loopBs * kAlign_ + segOffset;
-
-        uint32_t maskLen = static_cast<uint32_t>(count);
-        uint16_t loopCnt = static_cast<uint16_t>((count + vfLen - 1) / vfLen);
-
-        U gradInvRmsAcc = U(0);
+        __local_mem__ U *gradZBs = gradZPtr + loopBs * rowStride + ubSegOffset;
+        __local_mem__ U *hcBs = hcPtr + loopBs * rowStride + ubSegOffset;
 
         __VEC_SCOPE__
         {
             MicroAPI::RegTensor<U> gradZReg, gradNormOutReg, gradHcBnReg, hcReg, mulReg;
-            MicroAPI::RegTensor<U> gradInvRmsSumReg;
-            MicroAPI::MaskReg maskReg;
+            MicroAPI::RegTensor<U> gradInvRmsSumReg, reduceReg;
+            MicroAPI::MaskReg maskN = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::ALL>();
             MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<U, MicroAPI::MaskPattern::VL1>();
+            MicroAPI::UnalignReg u0;
+            uint32_t maskLenN = static_cast<uint32_t>(n_);
 
             MicroAPI::Duplicate(gradInvRmsSumReg, U(0), oneMask);
 
-            for (uint16_t i = 0; i < loopCnt; i++) {
-                maskReg = MicroAPI::UpdateMask<U>(maskLen);
-                MicroAPI::AddrReg ofs = MicroAPI::CreateAddrReg<U>(i, vfLen);
+            for (uint16_t row = 0; row < static_cast<uint16_t>(nRows); row++) {
+                __local_mem__ U *gzRow = gradZBs + row * nAlign;
+                __local_mem__ U *hcRow = hcBs + row * nAlign;
+                __local_mem__ U *dstRow = tmpPtr + row * n_;
+                maskN = MicroAPI::UpdateMask<U>(maskLenN);
 
-                MicroAPI::DataCopy(gradZReg, gradZSegPtr, ofs);
+                MicroAPI::LoadUnAlignPre(u0, gzRow);
+                MicroAPI::LoadUnAlign(gradZReg, u0, gzRow);
+                MicroAPI::Muls(gradNormOutReg, gradZReg, alphaScalar, maskN);
+                MicroAPI::Muls(gradHcBnReg, gradZReg, invRmsAlpha, maskN);
+                MicroAPI::DataCopy(dstRow, gradHcBnReg, maskN);
 
-                // gradNormOut = gradZ * alpha
-                MicroAPI::Muls(gradNormOutReg, gradZReg, alphaScalar, maskReg);
-
-                // gradHcBeforeNorm = gradZ * invRms * alpha
-                MicroAPI::Muls(gradHcBnReg, gradZReg, invRmsAlpha, maskReg);
-
-                // Accumulate gradInvRms: hcBeforeNorm * gradNormOut
-                MicroAPI::DataCopy(hcReg, hcSegPtr, ofs);
-                MicroAPI::Mul(mulReg, hcReg, gradNormOutReg, maskReg);
-                MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(mulReg, mulReg, maskReg);
-                MicroAPI::Add(gradInvRmsSumReg, gradInvRmsSumReg, mulReg, oneMask);
+                MicroAPI::LoadUnAlignPre(u0, hcRow);
+                MicroAPI::LoadUnAlign(hcReg, u0, hcRow);
+                MicroAPI::Mul(mulReg, hcReg, gradNormOutReg, maskN);
+                MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, maskN);
+                MicroAPI::Add(gradInvRmsSumReg, gradInvRmsSumReg, reduceReg, oneMask);
             }
 
-            MicroAPI::DataCopy<U, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(tmpPtr, gradInvRmsSumReg, oneMask);
+            MicroAPI::DataCopy<U, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+                tmpPtr + nRows * n_, gradInvRmsSumReg, oneMask);
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::SCALAR_LOAD>();
         }
 
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::SCALAR_LOAD>();
-        gradInvRmsAcc = tmpPtr[0];
+        U gradInvRmsAcc = gradCalc2.GetValue(nRows * n_);
 
-        // Store gradHcBeforeNorm to WS
-        // Use DataCopyPad to write count elements to WS[idxBs * kDim_ + segOffset]
-        {
-            auto dstLocal = gradCalcBuf2_.template Get<U>();
-            __local_mem__ U *dstPtr = reinterpret_cast<__local_mem__ U *>(dstLocal.GetPhyAddr());
-            // Copy gradHcBeforeNorm from tmpPtr to dstLocal then CopyOutBuf
-            // Actually, we computed gradHcBnReg but stored to registers, not memory.
-            // Need to store to a UB buffer first, then CopyOutBuf to WS.
-            // Let's use gradCalcBuf2_ for this.
-        }
+        int64_t wsIdx = (ofsBs + loopBs) * kDim_ + wsSegOffset;
+        event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+        WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+        CopyOutBuf(gradCalcBuf2_, gradHcBeforeNormWs_[wsIdx], nRows, n_, n_, 0);
 
-        // Store gradInvRms
-        gradInvRmsUb(idxCurBs * ubFactorBS_ + loopBs) += gradInvRmsAcc;
+        U oldVal = gradInvRmsUb.GetValue(loopBs);
+        gradInvRmsUb.SetValue(loopBs, oldVal + gradInvRmsAcc);
     }
-
-    hcBeforeNormQue_.FreeTensor(hcUb2);
-    invRmsQue_.FreeTensor(invRmsUb2);
 }
 
 #endif

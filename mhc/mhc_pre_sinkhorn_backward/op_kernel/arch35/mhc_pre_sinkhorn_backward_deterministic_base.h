@@ -155,6 +155,7 @@ __aicore__ inline void CopyInBuf(
 // CopyOutBuf: Buf→GM
 //
 //   用法同 CopyOutQue, 传入 TBuf 替代 TQue
+//   srcOffset: UB 端起始偏移(元素数), 用于逐行搬非32B对齐padding的场景
 // ============================================================
 template <typename T>
 __aicore__ inline void CopyOutBuf(
@@ -163,7 +164,8 @@ __aicore__ inline void CopyOutBuf(
     int64_t rowCount,
     int64_t elemPerRow,
     int64_t ubAlignLen = 0,
-    int64_t dstStride = 0)
+    int64_t dstStride = 0,
+    int64_t srcOffset = 0)
 {
     auto local = buf.template Get<T>();
     int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
@@ -173,9 +175,9 @@ __aicore__ inline void CopyOutBuf(
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(rowCount);
     copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
-    copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);     // UB 端，dataBlock
-    copyParams.dstStride  = static_cast<uint32_t>(dstStride);          // GM 端，字节
-    DataCopyPad(dstGm, local, copyParams);
+    copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);
+    copyParams.dstStride  = static_cast<uint32_t>(dstStride);
+    DataCopyPad(dstGm, local[srcOffset], copyParams);
 }
 
 // ============================================================
@@ -237,7 +239,6 @@ __aicore__ inline void ComputeGradAlphaAll(__local_mem__ U *normOutAddr, __local
         AscendC::MicroAPI::RegTensor<U> noReg, gzReg, mulReg;
         AscendC::MicroAPI::RegTensor<U> sumPre, sumPost, sumRes, reduceReg;
         AscendC::MicroAPI::MaskReg maskN = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::MaskReg allMask = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg oneMask = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         AscendC::MicroAPI::UnalignReg u0;
         uint32_t maskLenN = static_cast<uint32_t>(n);
@@ -256,7 +257,7 @@ __aicore__ inline void ComputeGradAlphaAll(__local_mem__ U *normOutAddr, __local
             AscendC::MicroAPI::LoadUnAlignPre(u0, gzBs);
             AscendC::MicroAPI::LoadUnAlign(gzReg, u0, gzBs);
             AscendC::MicroAPI::Mul(mulReg, noReg, gzReg, maskN);
-            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, allMask);
+            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, maskN);
             AscendC::MicroAPI::Add(sumPre, sumPre, reduceReg, oneMask);
 
             AscendC::MicroAPI::LoadUnAlignPre(u0, noBs + nAlign);
@@ -264,7 +265,7 @@ __aicore__ inline void ComputeGradAlphaAll(__local_mem__ U *normOutAddr, __local
             AscendC::MicroAPI::LoadUnAlignPre(u0, gzBs + nAlign);
             AscendC::MicroAPI::LoadUnAlign(gzReg, u0, gzBs + nAlign);
             AscendC::MicroAPI::Mul(mulReg, noReg, gzReg, maskN);
-            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, allMask);
+            AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, maskN);
             AscendC::MicroAPI::Add(sumPost, sumPost, reduceReg, oneMask);
 
             for (uint16_t row = 0; row < static_cast<uint16_t>(n); row++) {
@@ -275,7 +276,7 @@ __aicore__ inline void ComputeGradAlphaAll(__local_mem__ U *normOutAddr, __local
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gzRow);
                 AscendC::MicroAPI::LoadUnAlign(gzReg, u0, gzRow);
                 AscendC::MicroAPI::Mul(mulReg, noReg, gzReg, maskN);
-                AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, allMask);
+                AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(reduceReg, mulReg, maskN);
                 AscendC::MicroAPI::Add(sumRes, sumRes, reduceReg, oneMask);
             }
         }
