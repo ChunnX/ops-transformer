@@ -65,6 +65,9 @@ struct MoeGatingTopKRegbaseTilingData {
     int64_t vmsCount = 0;
     float routedScalingFactor = 0;
     float eps = 0;
+    bool hashFlag = false;
+    int64_t twoStageBatchSize = 0;
+    int64_t twoStageTmpUbSize = 0;
 };
 #pragma pack()
 

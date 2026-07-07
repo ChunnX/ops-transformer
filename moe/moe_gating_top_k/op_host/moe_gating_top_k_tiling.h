@@ -74,6 +74,8 @@ TILING_DATA_FIELD_DEF(int64_t, vmsCount);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
 TILING_DATA_FIELD_DEF(float, eps);
 TILING_DATA_FIELD_DEF(bool, hashFlag);
+TILING_DATA_FIELD_DEF(int64_t, twoStageBatchSize);
+TILING_DATA_FIELD_DEF(int64_t, twoStageTmpUbSize);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxTilingData);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10000, MoeGatingTopKRegbaseTilingData)

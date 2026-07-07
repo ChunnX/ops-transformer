@@ -22,9 +22,11 @@
 #include "op_host/tiling_templates_registry.h"
 
 #include <string>
+#include <vector>
 
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;
+const static uint64_t MOE_GATING_TOP_K_REGBASE_TWO_STAGE_TILING_KEY = 10005;
 const static int64_t TILINGKEY_INT32_INT64_SUFFIX = 1;
 const static int64_t TILINGKEY_INT32_INT32_SUFFIX = 2;
 const static int64_t TILINGKEY_INT64_INT64_SUFFIX = 3;
@@ -46,6 +48,11 @@ const static size_t EXPERT_IDX_OUTPUY_DIMS = 2;
 const static size_t OUT_OUTPUT_DIMS = 2;
 const static int64_t MAX_EXPERT_COUNT = 2048;
 const static int64_t MAX_K_FOR_HASH = 64;
+const static int64_t TWO_STAGE_MAX_EXPERT_COUNT = 64;
+const static int64_t TWO_STAGE_MIN_BATCH_SIZE = 2;
+const static int64_t TWO_STAGE_SIMT_RESERVE_SIZE = 32 * 1024;
+const static uint32_t TWO_STAGE_MIN_TMP_UB_SIZE = 512;
+const static uint32_t UB_BLOCK_SIZE = 32;
 
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
@@ -123,6 +130,7 @@ private:
     ge::graphStatus CheckDtype4Hash();
     void CalTmpBufUbSize();
     void SplitRows();
+    void CalTwoStageTiling();
     void Tiling4GatherOutComputeSplitK();
 
     const gert::Shape *xShape_ = nullptr;
@@ -140,6 +148,7 @@ private:
     int64_t expertCount_;
     int64_t addBias_ = 0;
     bool hashFlag_ = false;
+    bool twoStageFlag_ = false;
 
     int64_t k_;
     int64_t kGroup_ = 1;
@@ -649,6 +658,93 @@ void MoeGatingTopKTilingRegbase::SplitRows()
     moeGatingTopKTilingData_.set_vmsCount(vmsCount);
 }
 
+void MoeGatingTopKTilingRegbase::CalTwoStageTiling()
+{
+    twoStageFlag_ = false;
+    moeGatingTopKTilingData_.set_twoStageBatchSize(0);
+    moeGatingTopKTilingData_.set_twoStageTmpUbSize(0);
+    bool supportedNorm = (normType_ == NORM_TYPE_SIGMOID) ||
+                         (normType_ == NORM_TYPE_SOFTMAX && renorm_ == RENORM_NO);
+    if (hashFlag_ || groupCount_ != 1 || !supportedNorm || outFlag_ != OUT_FLAG_FALSE ||
+        expertCount_ <= 0 || expertCount_ > TWO_STAGE_MAX_EXPERT_COUNT ||
+        moeGatingTopKTilingData_.get_perCoreRowCount() < TWO_STAGE_MIN_BATCH_SIZE ||
+        aicoreParams_.ubSize <= TWO_STAGE_SIMT_RESERVE_SIZE) {
+        return;
+    }
+
+    uint32_t blockUbSize = UB_BLOCK_SIZE;
+    uint64_t usableUb = aicoreParams_.ubSize - TWO_STAGE_SIMT_RESERVE_SIZE;
+    uint64_t bytesPerBatch = 0;
+    uint32_t inputDtypeSize = static_cast<uint32_t>(inputDtypeSize_);
+    uint32_t expertCount = static_cast<uint32_t>(expertCount_);
+    auto ceilAlign = [blockUbSize](uint64_t value) -> uint64_t {
+        return Ops::Base::CeilAlign(value, static_cast<uint64_t>(blockUbSize));
+    };
+
+    int64_t maxBatch = std::min<int64_t>(moeGatingTopKTilingData_.get_perCoreRowCount(), 16);
+    int64_t selectedBatch = 0;
+    uint32_t selectedTmpUb = 0;
+    for (int64_t batch = maxBatch; batch >= TWO_STAGE_MIN_BATCH_SIZE; --batch) {
+        uint64_t expertStride = static_cast<uint64_t>(moeGatingTopKTilingData_.get_perGroupExpertCountAlign());
+        uint64_t inputStride = ceilAlign(static_cast<uint64_t>(expertCount_) * inputDtypeSize) / inputDtypeSize;
+        uint64_t softmaxSrcFactor = (normType_ == NORM_TYPE_SOFTMAX && inputDtypeSize < sizeof(float)) ?
+            (sizeof(float) / inputDtypeSize) : 1U;
+        uint64_t softmaxSrcStride = expertStride * softmaxSrcFactor;
+        uint32_t totalElems = static_cast<uint32_t>(batch * expertStride);
+        std::vector<int64_t> shapeVec = {static_cast<int64_t>(totalElems)};
+        ge::Shape sortShape(shapeVec);
+        AscendC::SortConfig config;
+        config.type = AscendC::SortType::RADIX_SORT;
+        config.isDescend = true;
+        config.hasSrcIndex = false;
+        config.hasDstIndex = true;
+        uint32_t maxValue = 0;
+        uint32_t minValue = 0;
+        AscendC::GetSortMaxMinTmpSize(sortShape, ge::DT_FLOAT, ge::DT_UINT32, false, config, maxValue, minValue);
+
+        std::vector<int64_t> sigmoidShapeVec = {expertCount_};
+        ge::Shape sigmoidShape(sigmoidShapeVec);
+        uint32_t sigmoidMaxValue = 0;
+        uint32_t sigmoidMinValue = 0;
+        AscendC::GetSigmoidMaxMinTmpSize(sigmoidShape, sizeof(float), false, sigmoidMaxValue, sigmoidMinValue);
+
+        std::vector<int64_t> softmaxShapeVec = {static_cast<int64_t>(expertStride)};
+        ge::Shape softmaxShape(softmaxShapeVec);
+        uint32_t softmaxTmpSize = AscendC::GetSoftMaxMaxTmpSize(softmaxShape, sizeof(float), true);
+        uint32_t tmpUbSize = static_cast<uint32_t>(
+            ceilAlign(std::max(std::max(std::max(maxValue, sigmoidMaxValue), softmaxTmpSize),
+                               TWO_STAGE_MIN_TMP_UB_SIZE)));
+
+        uint64_t batchElems = static_cast<uint64_t>(totalElems);
+        uint64_t valueBytes = ceilAlign(batchElems * sizeof(float));
+        uint64_t inputBytes = ceilAlign(inputStride * inputDtypeSize);
+        uint64_t softmaxSrcBytes = ceilAlign(softmaxSrcStride * sizeof(float));
+        uint64_t rowNormBytes = ceilAlign(expertStride * sizeof(float));
+        uint64_t indexBytes = ceilAlign(batchElems * sizeof(uint32_t));
+        uint64_t topKFloatBytes = ceilAlign(static_cast<uint64_t>(k_) * sizeof(float));
+        uint64_t topKTBytes = ceilAlign(static_cast<uint64_t>(k_) * inputDtypeSize);
+        uint64_t topKIndexBytes = ceilAlign(static_cast<uint64_t>(k_) * sizeof(int32_t));
+        uint64_t biasBytes = ceilAlign(static_cast<uint64_t>(expertCount) * sizeof(float));
+        // row inputRaw + row softmaxSrc + rowNorm + xNorm + xBias + stage1Values + stage1Order + rankInverse + finalIdx
+        // + row output buffers + tmp
+        bytesPerBatch = inputBytes + softmaxSrcBytes + rowNormBytes + valueBytes * 3 + indexBytes * 3 +
+                        topKFloatBytes + topKTBytes + topKIndexBytes * 2 + biasBytes + tmpUbSize;
+        if (bytesPerBatch <= usableUb) {
+            selectedBatch = batch;
+            selectedTmpUb = tmpUbSize;
+            break;
+        }
+    }
+
+    if (selectedBatch >= TWO_STAGE_MIN_BATCH_SIZE) {
+        twoStageFlag_ = true;
+        moeGatingTopKTilingData_.set_twoStageBatchSize(selectedBatch);
+        moeGatingTopKTilingData_.set_twoStageTmpUbSize(selectedTmpUb);
+        OP_LOGI(context_, "MoeGatingTopK two-stage sort enabled, batchSize %ld, tmpUbSize %u, ubBytes %lu",
+                selectedBatch, selectedTmpUb, bytesPerBatch);
+    }
+}
+
 ge::graphStatus MoeGatingTopKTilingRegbase::DoOpTiling()
 {
     auto ret = CheckInputShape();
@@ -668,6 +764,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::DoOpTiling()
 
     CalTmpBufUbSize();
     SplitRows();
+    CalTwoStageTiling();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -696,6 +793,9 @@ ge::graphStatus MoeGatingTopKTilingRegbase::PostTiling()
 
 uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 {
+    if (twoStageFlag_) {
+        return MOE_GATING_TOP_K_REGBASE_TWO_STAGE_TILING_KEY;
+    }
     if (!hashFlag_) {
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
     }
@@ -717,6 +817,8 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 void MoeGatingTopKTilingRegbase::Reset()
 {
     opName_ = nullptr;
+    twoStageFlag_ = false;
+    hashFlag_ = false;
     return;
 }
 
