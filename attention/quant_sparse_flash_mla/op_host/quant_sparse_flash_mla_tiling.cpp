@@ -73,8 +73,9 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if (npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -111,6 +112,10 @@ void QSMLAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.sequsedCmpKv.desc = context_->GetOptionalInputDesc(SEQUSED_CMP_KV_INDEX);
     opParamInfo_.cmpResidualKv.tensor = context_->GetOptionalInputTensor(CMP_RESIDUAL_KV_INDEX);
     opParamInfo_.cmpResidualKv.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_KV_INDEX);
+    opParamInfo_.oriTopkLength.tensor = context_->GetOptionalInputTensor(ORI_TOPK_LENGTH_INDEX);
+    opParamInfo_.oriTopkLength.desc = context_->GetOptionalInputDesc(ORI_TOPK_LENGTH_INDEX);
+    opParamInfo_.cmpTopkLength.tensor = context_->GetOptionalInputTensor(CMP_TOPK_LENGTH_INDEX);
+    opParamInfo_.cmpTopkLength.desc = context_->GetOptionalInputDesc(CMP_TOPK_LENGTH_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
@@ -144,6 +149,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<int64_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
+    opParamInfo_.topkValueMode = attrs->GetAttrPointer<int64_t>(ATTR_TOPK_VALUE_MODE_INDEX);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
 
@@ -482,6 +488,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.platformInfo = platformInfo_;
     qsmlaInfo.opParamInfo = opParamInfo_;
     qsmlaInfo.socVersion = socVersion_;
+    qsmlaInfo.npuArch = npuArch_;
 
     qsmlaInfo.bSize = bSize_;
     qsmlaInfo.n1Size = n1Size_;
@@ -524,6 +531,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
     qsmlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     qsmlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
+    qsmlaInfo.topkValueMode = *opParamInfo_.topkValueMode;
     qsmlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     qsmlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
@@ -592,9 +600,9 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
             return ge::GRAPH_FAILED);
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
     } else {
-        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);

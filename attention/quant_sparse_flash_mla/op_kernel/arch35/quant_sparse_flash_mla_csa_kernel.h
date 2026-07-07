@@ -9,16 +9,16 @@
 */
 
 /*!
- * \file quant_sparse_flash_mla_scfa_kernel.h
+ * \file quant_sparse_flash_mla_csa_kernel.h
  * \brief
  */
 
-#ifndef QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
-#define QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#ifndef QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
+#define QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
 #include "quant_sparse_flash_mla_common_arch35.h"
 #include "quant_sparse_flash_mla_kvcache.h"
-#include "quant_sparse_flash_mla_scfa_block_cube.h"
-#include "quant_sparse_flash_mla_scfa_block_vector.h"
+#include "quant_sparse_flash_mla_csa_block_cube.h"
+#include "quant_sparse_flash_mla_csa_block_vector.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
@@ -53,10 +53,10 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
-class QuantSparseFlashMlaScfa {
+class QuantSparseFlashMlaCsa {
 public:
     ARGS_TRAITS;
-    __aicore__ inline QuantSparseFlashMlaScfa() {};
+    __aicore__ inline QuantSparseFlashMlaCsa() {};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *qDescale, __gm__ uint8_t *oriKVDescale, __gm__ uint8_t *cmpKVDescale,
@@ -136,7 +136,7 @@ private:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Init(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *qDescale,
     __gm__ uint8_t *oriKVDescale, __gm__ uint8_t *cmpKVDescale, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -184,7 +184,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Ini
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::GetSeqLen(
+__aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::GetSeqLen(
     int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
     GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize)
 {
@@ -198,7 +198,7 @@ __aicore__ inline int64_t QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ParseTilingData(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ParseTilingData(
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv,
     __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
@@ -288,7 +288,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Par
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitGlobalBuffer(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *qDescale,
     __gm__ uint8_t *oriKVDescale, __gm__ uint8_t *cmpKVDescale,  __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
@@ -303,7 +303,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Ini
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitMMResBuf(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitMMResBuf(
     __gm__ uint8_t *workspace)
 {
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
@@ -335,13 +335,13 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Ini
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitLocalBuffer()
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeConstexpr()
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
@@ -376,7 +376,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Com
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Process()
 {
     // SyncAll Cube和Vector都需要调用
     if (this->constInfo.needInit) {
@@ -386,7 +386,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Pro
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ProcessMainLoop()
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
     int64_t maxS2LoopCnt = 0;
@@ -524,7 +524,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Pro
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
     int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
@@ -537,7 +537,7 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Com
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
     int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
@@ -574,14 +574,14 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Set
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
     RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
@@ -606,4 +606,4 @@ __aicore__ inline void QuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Com
     }
 }
 } // namespace BaseApi
-#endif // QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#endif // QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
