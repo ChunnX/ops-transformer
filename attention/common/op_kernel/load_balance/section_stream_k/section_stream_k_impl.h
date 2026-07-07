@@ -701,8 +701,8 @@ inline void SectionStreamKImpl::ScheduleFd(uint32_t aivNum, SectionStreamKImplRe
         totalFDLoad += result.s2SplitNum[i] * result.mSize[i];
     }
     // 计算每个核处理的load
-    uint32_t emptyVectorNum = aivNum - result.fdRes.fdNum;
-    uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum - curCoreIndex));  
+    uint32_t emptyVectorNum = aivNum - result.fdNum;
+    uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum));  
     uint32_t curCoreIndex = 0U;
 
     // 1. 计算全局平均负载，向上取整避免核负载为0
