@@ -164,12 +164,16 @@ private:
     LocalTensor<float> ubWeighted_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<float> stateResetTensor_;
+    LocalTensor<float> statusTensor_;
+    DataCopyPadParams padParams_;
+    DataCopyParams xCopyParams_;
+    DataCopyParams hCommuCopyOutParams_;
+    DataCopyParams weightCommuOutParams_;
 
     LocalTensor<half> maskGenerateTensor_;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<half> tokenTargetTensor_;
 
-    TBuf<QuePosition::VECIN> ubXBuf_;
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
     TBuf<QuePosition::VECIN> ubWeightedBuf_;
@@ -186,6 +190,7 @@ private:
     TBuf<> tokenTargetTBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
+    TQue<QuePosition::VECIN, 1> moeSumQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
@@ -233,6 +238,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
         hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
+    padParams_ = {false, 0, 0, 0};
+    xCopyParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    hCommuCopyOutParams_ = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
+    weightCommuOutParams_ = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
 
     workspaceStateSize_ = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * UB_ALIGN * epWorldSize_;
     CombineStateAddr_ = tilingData->winStateOffset;
@@ -294,28 +303,21 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(
     if (dstRankId == rankId_) {
         outTokenGT.SetGlobalBuffer((__gm__ XType*)remoteRankWinAddr); // 目标rank是epRankId，直接写入remoteAddr
     }
-    
-    DataCopyPadParams padParams = {false, 0, 0, 0};
-    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-    DataCopyParams weightCommuOutParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
-
     // 从GM读取token到UB
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
-    DataCopyPad(xTmpTensor_, xGm_[tokenIndex * axisH_], xCopyParams, padParams);
+    DataCopyPad(xTmpTensor_, xGm_[tokenIndex * axisH_], xCopyParams_, padParams_);
     if constexpr (HasTopkWeight == 1) {
         // 从GM读取WeightData到UB
         DataCopyPad(xTmpTensor_[hAlignSize_ / sizeof(XType)].template ReinterpretCast<float>(),
-            topkWeightsOptionalGm_[tokenIndex], weightCommuOutParams, padParams);
-        hCommuCopyOutParams = {1U, static_cast<uint16_t>(hWeightAlignSize_), 0U, 0U};
+            topkWeightsOptionalGm_[tokenIndex], weightCommuOutParams_, padParams_);
+        hCommuCopyOutParams_ = {1U, static_cast<uint16_t>(hWeightAlignSize_), 0U, 0U};
     }
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-
     // 写入目标rank的窗口
-    DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
+    DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams_);
+    PipeBarrier<PIPE_MTE3>();
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-    PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
     if (dstRankId != rankId_) {
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, XTypeAlign32Size_);
     }
@@ -327,20 +329,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
 {
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
-    LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
-    Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     GlobalTensor<float> outStateTensor;
     outStateTensor.SetGlobalBuffer((__gm__ float*)localRankStateAddr);
     if (dstRankId == rankId_) {
         outStateTensor.SetGlobalBuffer((__gm__ float*)remoteRankStateAddr); // 目标rank是epRankId，直接写入remoteAddr
     }
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy<float>(outStateTensor, statusTensor, 8UL);
-    PipeBarrier<PIPE_MTE3>();
+    DataCopy<float>(outStateTensor, statusTensor_, 8UL);
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
-        hcomm_.Drain(GetCommHandle(dstRankId));
     }
 }
 
@@ -352,12 +349,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (startRankId >= endRankId || sendRankNum == 0) {
         return;
     }
+    statusTensor_ = readStateBuf_.Get<float>();
+    Duplicate<float>(statusTensor_, (float)1, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
         for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
             int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
             int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank!= rankId) { // 只处理当前rank负责的token
+            if (src_rank!= rankId) { // 只处理当前rank负责的token
                 continue;
             }
             // 计算目标窗口地址:
@@ -368,12 +368,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) +
                 slotOffset;
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
-            PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
             GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
-
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
         }
     }
@@ -408,11 +406,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
         tpipe_->InitBuffer(ubWeightedBuf_, sizeof(float));
         ubWeighted_ = ubWeightedBuf_.Get<float>();
     }
-    tpipe_->InitBuffer(ubXBuf_, ubXBytes_);
     tpipe_->InitBuffer(ubAccFp32Buf_, axisH_ * sizeof(float));
     tpipe_->InitBuffer(ubTmpFp32Buf_, axisH_ * sizeof(float));
-
-    ubX_ = ubXBuf_.Get<XType>();
+    tpipe_->InitBuffer(moeSumQueue_, 2, XTypeAlign32Size_);
     ubAccFp32_ = ubAccFp32Buf_.Get<float>();
     ubTmpFp32_ = ubTmpFp32Buf_.Get<float>();
 }
@@ -462,10 +458,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
                 slotOffset;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
+        ubX_ = moeSumQueue_.AllocTensor<XType>();
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        moeSumQueue_.EnQue(ubX_);
+        ubX_ = moeSumQueue_.DeQue<XType>();
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
+        moeSumQueue_.FreeTensor<XType>(ubX_);
         if constexpr (HasTopkWeight == 1) {
             GM_ADDR weightAddr = wAddr + hAlignSize_;
             GlobalTensor<float> srcWeightTensor;
@@ -505,7 +504,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             CompletedtokenNum++;
             tokenStatusTensor.SetValue(tokenIdx - tStart_, 1);
             ProcessTopKToken(tokenIdx);
-            LocalTensor<XType> ubResultBf16 = ubX_;
+            LocalTensor<XType> ubResultBf16 = ubTmpFp32Buf_.Get<XType>();
             Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
             DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResultBf16, xCopyParams);
