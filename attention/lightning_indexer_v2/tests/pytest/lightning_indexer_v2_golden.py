@@ -773,6 +773,7 @@ def liv2_output_single(params, is_batch = False):
             "params":params,
             "cpu_result": cpu_result,
             "topk_value": topk_value,
+            "cpu_topk_value": cpu_topk_value,
             "query": query,
             "key":key,
             "weights": weights,

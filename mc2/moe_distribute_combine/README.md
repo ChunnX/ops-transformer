@@ -123,7 +123,7 @@
 <tr>
 <td>groupEp</td>
 <td>属性</td>
-<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)。</td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
@@ -257,7 +257,7 @@
         - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，当前版本不支持TP域通信。
 
 - 本文公式中的"/"表示整除。
 

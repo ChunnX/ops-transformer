@@ -89,7 +89,6 @@ class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
 
 # 实例化OpBuilder
 scatter_pa_kv_cache_with_k_scale_op_builder = ScatterPaKvCacheWithKScaleOpBuilder()
-op_module = scatter_pa_kv_cache_with_k_scale_op_builder.load()
 
 
 @impl(AS_LIBRARY, scatter_pa_kv_cache_with_k_scale_op_builder.name, "PrivateUse1")
@@ -125,6 +124,7 @@ def scatter_pa_kv_cache_with_k_scale(
         2. slot_mapping值必须在[0, num_blocks*block_size-1]范围内
         3. 超出范围的slot会被跳过（不更新对应cache）
     """
+    op_module = scatter_pa_kv_cache_with_k_scale_op_builder.load()
     return op_module.scatter_pa_kv_cache_with_k_scale(
         key, value, key_cache, value_cache,
         slot_mapping, key_scale, key_scale_cache,

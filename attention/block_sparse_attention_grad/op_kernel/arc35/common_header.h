@@ -47,10 +47,6 @@ struct RunTimeInfo {
     int32_t n2Idx{0};      // 当前计算的kv_head的idx
     int32_t s1Idx{0};      // 当前计算的q_seq的起始idx
     int32_t s2Idx{0};      // 当前计算的kv_seq的起始idx
-    int32_t s1Len{0};      // 当前计算的q_seq的长度
-    int32_t s2Len{0};      // 当前计算的kv_seq的长度
-    int32_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
-    int32_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
     int32_t last_q_seq_sum{0};
     int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
@@ -59,10 +55,14 @@ struct RunTimeInfo {
     int32_t need_copy_kv{0};     // 是否需要copy kv
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
     int32_t is_singlekv_last{0};
-    uint64_t queryGmOffset{0}; // query gm offset
-    uint64_t keyGmOffset{0};   // key gm offset
-    uint64_t lseGmOffset{0};   // lse gm offset
-    uint64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t s1Len{0};      // 当前计算的q_seq的长度
+    int64_t s2Len{0};      // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
+    int64_t queryGmOffset{0}; // query gm offset
+    int64_t keyGmOffset{0};   // key gm offset
+    int64_t lseGmOffset{0};   // lse gm offset
+    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
 };
 
 
@@ -101,8 +101,8 @@ __aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n_idx)
+__aicore__ inline int64_t GetQKVGmOffset(int64_t lastBatchSum, int64_t current_seq_len, int64_t head_num,
+                                         int64_t head_dim, int64_t batch_idx, int64_t seqlen_idx, int64_t n_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * (current_seq_len * head_num * head_dim) + (seqlen_idx * head_num * head_dim) +
@@ -116,8 +116,8 @@ __aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                          int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+__aicore__ inline int64_t GetLseGmOffset(int64_t lastBatchSum, int64_t current_seq_len, int64_t head_num,
+                                         int64_t batch_idx, int64_t seqlen_idx, int64_t n1Idx)
 {
     if constexpr (INPUT_LAYOUT == TND) {
         // TN1
@@ -129,8 +129,8 @@ __aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t current_
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                           int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+__aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t current_seq_len, int64_t head_num,
+                                          int64_t batch_idx, int64_t seqlen_idx, int64_t n1Idx)
 {
     if constexpr (INPUT_LAYOUT == TND) {
         // BNS8
@@ -142,12 +142,12 @@ __aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current
 }
 
 
-__aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int32_t batch_idx, const int32_t n1_idx,
-                                    const int32_t q_block_idx, const int32_t kv_block_idx,
+__aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t batch_idx, const int64_t n1_idx,
+                                    const int64_t q_block_idx, const int64_t kv_block_idx,
                                     __gm__ uint8_t *block_sparse_mask)
 
 {
-    uint64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
+    int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
                       n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
                       q_block_idx * const_info.kv_block_num + kv_block_idx;
     bool is_valid = block_sparse_mask[offset];

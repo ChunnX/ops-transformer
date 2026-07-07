@@ -38,6 +38,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/attention_worker_combine/README.md">attention_worker_combine</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/attention_worker_scheduler/README.md">attention_worker_scheduler</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -1325,6 +1335,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出q_out、k_cache、v_cache、q_out_before_quant(可选)、k_out_before_quant(可选)、v_out_before_quant(可选)。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/qkv_rms_norm_rope_cache_with_k_scale/README.md">qkv_rms_norm_rope_cache_with_k_scale</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>输入Q/K/V融合张量，拆分Q、K、V；对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出q_out和q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。</td>
   </tr>
   <tr>
     <td>posembedding</td>

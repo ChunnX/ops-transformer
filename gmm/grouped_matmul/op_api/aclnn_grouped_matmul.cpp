@@ -640,6 +640,15 @@ static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParam
   return ACLNN_SUCCESS;
 }
 
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams);
+
+static bool IsWeightNzMultiTensorCase(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams.groupType == gmm::SPLIT_M &&
+           gmmParams.x->Size() == 1 && gmmParams.y->Size() == 1 && gmmParams.biasOptional == nullptr &&
+           IsMultiTensorWeight(gmmParams);
+}
+
 static uint64_t GetGroupSize(const gmm::GroupedMatmulParams &gmmParams) {
   // When X is already split, or in scenarios where splititem is 0 or 2, X input is pre-grouped,
   // and group size can be obtained from X.
@@ -959,12 +968,8 @@ static aclnnStatus CheckGroupedMatmulAntiQuant(const gmm::GroupedMatmulParams &g
                "In op [%s], when %s, [%s] must not be nullptr.", opName, scenario, "antiquantScale");
     DataType w0Dtype = (*gmmParams.weight)[0]->GetDataType();
     bool isAntiquantInt4 = w0Dtype == DataType::DT_INT4;
-    bool isA16W4Pergroup = isAntiquantInt4 && !gmmParams.isSingleWeight &&
-                           gmmParams.antiquantScaleOptional != nullptr &&
-                           (*gmmParams.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == 2;
 
-    CHECK_COND(((isAntiquantInt4 && gmmParams.isSingleWeight) || isA16W4Pergroup ||
-                gmmParams.antiquantOffsetOptional != nullptr),
+    CHECK_COND(((isAntiquantInt4 && gmmParams.isSingleWeight) || gmmParams.antiquantOffsetOptional != nullptr),
                ACLNN_ERR_PARAM_INVALID, "In op [%s], when A16W4 antiquant, [%s] must not be nullptr.", opName,
                "antiquantOffset");
     // check the shape of antiquantScale and antiquantOffset
@@ -1886,6 +1891,13 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
     bool apiVersionFlag =
         gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz || gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
         gmmParams.apiVersion == gmm::GMMApiVersion::V4 || gmmParams.apiVersion == gmm::GMMApiVersion::V3;
+    if (IsWeightNzMultiTensorCase(gmmParams)) {
+        CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when groupType == 0(split-M) with single x, separated weight and single y, parameter "
+                   "check failed.",
+                   opName);
+        return ACLNN_SUCCESS;
+    }
     if (xSize == 1UL && weightSize == 1UL && ySize == 1UL) {
         CHECK_COND(SplitMSingleXSingleWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, single weight and single y, parameter "
