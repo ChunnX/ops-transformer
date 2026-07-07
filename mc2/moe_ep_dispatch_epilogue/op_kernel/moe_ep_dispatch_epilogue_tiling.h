@@ -32,6 +32,7 @@ struct MoeEpDispatchEpilogueInfo {
     uint64_t winDataOffset      = 0;    // Win Data Offset
     uint32_t cached             = 0;   // 0 = non-cached path, 1 = cached path
     uint32_t isMxQuant         = 0;   // 0 = float scales, 1 = fp8_e8m0 scales (MX quant)
+    uint32_t hitCountStride    = 0;   // per-aiv hitCount 存储步长(int32 元素数), 128 对齐 → 每 aiv 块 512B 对齐
 };
 
 struct MoeEpDispatchEpilogueTilingData {

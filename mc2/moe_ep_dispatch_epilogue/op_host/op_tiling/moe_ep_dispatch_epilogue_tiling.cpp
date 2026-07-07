@@ -502,8 +502,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
     
-    uint32_t numLocalExpertsAlign8 = (info.cfg.numLocalExperts + 7) / 8 * 8;
-    uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * numLocalExpertsAlign8 * sizeof(int32_t);
+    // numLocalExperts 按 128 对齐, 使 numLocalExpertsAlign128 * sizeof(int32_t) 为 512B 对齐(WIN_ADDR_ALIGN)
+    uint32_t numLocalExpertsAlign128 = (info.cfg.numLocalExperts + 127) / 128 * 128;
+    info.hitCountStride = numLocalExpertsAlign128;   // 传给 kernel, 使 hitCountGm_ 每 aiv 块 512B 对齐
+    uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * numLocalExpertsAlign128 * sizeof(int32_t);
     uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL)/ WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;

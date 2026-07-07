@@ -191,9 +191,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     }
 
-    // hitCountStride_: 每 aiv 的 hitCount 存储步长，对齐到 8 个 int32 (32 bytes)
-    // 确保 CopyFromWindowByExpert 中 Cast 读取地址始终 32B 对齐
-    hitCountStride_ = Ceil(numLocalExperts_, 8U) * 8U;
+    // hitCountStride_: 每 aiv 的 hitCount 存储步长(int32 元素数), 由 tiling 传入(128 对齐 → 每 aiv 块 512B 对齐)
+    hitCountStride_ = tilingData->hitCountStride;
 
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
