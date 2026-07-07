@@ -87,8 +87,8 @@ constexpr uint32_t MIN_AVAIL_UB_SIZE = 8192U; // 单位字节
 constexpr uint32_t SCALE_FACTOR_CONSTANT = 4U; // 单位字节
 
 #define CombineV2HostTypeClass                                                                                         \
-    typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, bool IsInt8Quant
-#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, IsInt8Quant
+    typename ExpandXType, typename XType, typename ExpandIdxType, bool IsInt8Quant
+#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsInt8Quant
 
 using namespace MoeDistributeV2Base;
 using namespace AscendC;

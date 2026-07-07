@@ -22,6 +22,7 @@
 #include "../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_host_kfc.h"
 #if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_a5_mte.h")
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_a5_mte.h"
+#include "../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_host_kfc.h"
 #else
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_a5_mte.h"
 #endif
@@ -95,7 +96,7 @@ moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds
     // }
     AscendC::printf("printf kernel enter!");
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp,
+    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t,
                                                                          QuantMode == TILINGKEY_INT8_QUANT>
         op;
     op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, expandScales, xActiveMask, sharedExpertX,
