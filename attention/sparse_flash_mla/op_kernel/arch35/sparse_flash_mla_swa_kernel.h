@@ -358,11 +358,10 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     int64_t fdStagingOffset = 0U;
     if constexpr (IS_SPLIT_G) {
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
-        constexpr uint32_t S2_REAL_BUF_LEN = 128U;
-        int64_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
+        int64_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
         int64_t v0LogicalSlotCount = GetBlockNum() >> 1U;
         fdStagingOffset = v0ResSize * TRIPLE_BUFFER_NUM * v0LogicalSlotCount;
-        fdStagingOffset += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * GetBlockNum();
+        fdStagingOffset += TRIPLE_BUFFER_NUM * constInfo.s2BaseSize * sizeof(int32_t) * GetBlockNum();
     }
     s2SplitStagingBase = workspace + fdStagingOffset;
 }
@@ -417,24 +416,24 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
     if (this->constInfo.needInit) {
         SyncAll<false>();
     }
+    FdRunInfo fdRunInfo;
+    if ASCEND_IS_AIV {
+        ParseFdRunInfo(fdRunInfo);
+    }
     ProcessMainLoop();
+    if ASCEND_IS_AIV {
+        SyncAll();
+        if (fdRunInfo.coreEnable) {
+            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
+        }
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
-    FdRunInfo fdRunInfo;
-    if ASCEND_IS_AIV {
-        ParseFdRunInfo(fdRunInfo);
-    }
     if (hasLoad == 0) {
-        if ASCEND_IS_AIV {
-            SyncAll();
-            if (fdRunInfo.coreEnable) {
-                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
-            }
-        }
         return;
     }
 
@@ -510,8 +509,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                     continue;
                 }
                 if (runParam.isS2Split) {
-                    runParam.s2SplitIdx = s2SplitIdxCounter;
-                    s2SplitIdxCounter++;
+                    runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
             } else {
@@ -551,12 +549,6 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
         }
         gS1StartIdx = 0;
     }
-    if ASCEND_IS_AIV {
-        SyncAll();
-        if (fdRunInfo.coreEnable) {
-            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
-        }
-    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -566,7 +558,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Com
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
     } else {
         runParam.goIdx = 0;
     }
@@ -607,6 +599,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Set
     runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;
     runInfo.isS2Split = runParam.isS2Split;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
+    runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
@@ -710,6 +703,7 @@ __aicore__ inline bool SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::App
     bool hasPrevCore = rangeStart > 0;
     bool hasNextCore = rangeEnd < totalLen;
     runParam.isS2Split = hasPrevCore || hasNextCore;
+    runParam.isFirstS2SplitCore = !hasPrevCore;
 
     int64_t oriRangeStart = rangeStart < oriLen ? rangeStart : oriLen;
     int64_t oriRangeEnd = rangeEnd < oriLen ? rangeEnd : oriLen;

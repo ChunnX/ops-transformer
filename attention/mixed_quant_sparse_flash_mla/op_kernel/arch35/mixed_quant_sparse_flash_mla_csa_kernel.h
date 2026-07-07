@@ -330,14 +330,15 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         bmm1Buffers.Get().SetCrossCore();
     }
 
+    uint32_t v0RegionSize = 0U;
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
+        constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
+        uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
+        int64_t totalOffset = v0ResSize * TRIPLE_BUFFER_NUM * (aicIdx >> 1U);
         v0ResGmBufferManager.Init(workspace + totalOffset);
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
+        v0RegionSize = v0ResSize * TRIPLE_BUFFER_NUM * (GetBlockNum() >> 1U);
     }
-
-    uint32_t v0RegionSize = IS_SPLIT_G ? (128U * 512U * 2U * 3U * (GetBlockNum() >> 1U)) : 0U;
     s2SplitStagingBase = workspace + v0RegionSize;
 }
 
@@ -389,18 +390,23 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     if (this->constInfo.needInit) {
         SyncAll<false>();
     }
+    FdRunInfo fdRunInfo;
+    if ASCEND_IS_AIV {
+        ParseFdRunInfo(fdRunInfo);
+    }
     ProcessMainLoop();
+    SyncAll();
+    if ASCEND_IS_AIV {
+        if (fdRunInfo.coreEnable > 0) {
+            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
+        }
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
-    FdRunInfo fdRunInfo;
-    if ASCEND_IS_AIV {
-        ParseFdRunInfo(fdRunInfo);
-    }
-    (void)fdRunInfo;
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -412,12 +418,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                     CrossCoreSetFlag<0, PIPE_MTE3>(15);
                     CrossCoreWaitFlag<0, PIPE_MTE3>(15);
                 }
-            }
-        }
-        SyncAll();
-        if ASCEND_IS_AIV {
-            if (fdRunInfo.coreEnable > 0) {
-                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
             }
         }
         return;
@@ -493,9 +493,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
-                runParam.s2SplitIdx = s2SplitIdxCounter;
                 if (runParam.isS2Split) {
-                    s2SplitIdxCounter++;
+                    runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 if constexpr (IS_SPLIT_G) {
                     maxS2LoopCnt -= runParam.s2LoopEndIdx;
@@ -557,12 +556,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             }
         }
     }
-    SyncAll();
-    if ASCEND_IS_AIV {
-        if (fdRunInfo.coreEnable > 0) {
-            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
-        }
-    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -613,6 +606,7 @@ __aicore__ inline bool MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     bool hasPrevCore = rangeStart > 0;
     bool hasNextCore = rangeEnd < totalLen;
     runParam.isS2Split = hasPrevCore || hasNextCore;
+    runParam.isFirstS2SplitCore = !hasPrevCore;
 
     int64_t oriRangeStart = rangeStart < oriLen ? rangeStart : oriLen;
     int64_t oriRangeEnd = rangeEnd < oriLen ? rangeEnd : oriLen;
@@ -661,7 +655,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
     } else {
         runParam.goIdx = 0;
     }
@@ -702,6 +696,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;
     runInfo.isS2Split = runParam.isS2Split;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
+    runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }

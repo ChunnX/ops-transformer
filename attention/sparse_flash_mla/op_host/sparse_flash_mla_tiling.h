@@ -588,7 +588,6 @@ public:
 private:
     void SplitBalanced(SMLATilingInfo *tilingInfo);
     void CalcUbBmm(SMLATilingInfo *tilingInfo);
-    uint32_t CalcFdStagingM(const SMLATilingInfo *tilingInfo) const;
     uint32_t CalcFdLogicalSlotCount(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const;
     uint64_t CalcFdStagingWorkspaceSize(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const;
     gert::TilingContext *context_ = nullptr;

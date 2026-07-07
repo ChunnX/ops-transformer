@@ -82,6 +82,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t firstFdDataWorkspaceIdx = 0;
     bool isS2Split = false;
     int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
 };
 
 #define COMMON_RUN_INFO \
@@ -125,6 +126,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t mOuterOffset; \
     bool    isS2Split = false; \
     int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
