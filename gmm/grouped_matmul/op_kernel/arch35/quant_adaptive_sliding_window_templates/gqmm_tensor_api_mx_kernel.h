@@ -68,7 +68,8 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                         static_cast<uint8_t>(mmTilingDataIn->isBias),
                         static_cast<uint8_t>(mmTilingDataIn->dbL0C),
                         static_cast<int8_t>(gmmBaseParamsIn->groupType),
-                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType)};
+                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType),
+                        static_cast<uint8_t>(gmmBaseParamsIn->singleW)};
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
     GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
@@ -79,7 +80,10 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                                reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias)) :
                                nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
+    GM_ADDR scaleDataAddr = gmmBaseParamsIn->singleW == 1
+                                ? reinterpret_cast<GM_ADDR>(
+                                      GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale))
+                                : scale;
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
