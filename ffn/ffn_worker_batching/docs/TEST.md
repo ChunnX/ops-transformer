@@ -30,8 +30,8 @@ REQUIREMENTS 与 spec.yaml 在 spec-owned 字段上**无冲突**（SPEC_REVIEW �
 |----------------|-----------------|----------|
 | `dtype_policy.supported_combinations`（P0 fp16 / P1 bf16 / P2 int8） | token_dtype∈{0,1,2} 枚举因子 → y.dtype 随动（0→fp16/1→bf16/2→int8）；schedule_context 恒 int8 | §5.1 dtype 矩阵；L0（3 profile 全覆盖）、L1（`_PRF_*` 6 条 profile×path 矩阵 + 500 pairwise）、design `07_因子值.csv` Y-DTYPE-001 |
 | `outputs[].shape_rule`（y=[Y,H]、group_list=[expert_num,2]、id=[Y]、actual_token_num=[1]，Y=A×BS×(topK+1)） | 约束 `Y-SHAPE-001/GL-SHAPE-001/SID/MBID/TID/EOFF/DS/ATN-SHAPE-001` 由 max_out_shape/expert_num 静态推导 | §5.2 shape 关系；全部用例 tensor_view_shapes 静态推导 |
-| `boundary_conditions[]`（10 条：k=0 / k=N(A=1024,topK+1=64) / same_bin(expert_num=8192) / expert_num 越界 / topK+1 越界 / A 越界 / max_out_shape 长度≠4 / dtype≠INT8 / 非 1 维 / need_schedule 0/1） | boundary 用例逐条覆盖 | §4.1 边界覆盖表（L1_BND_* 非报错项 + L2_ERR_* 报错项） |
-| `extreme_inputs[]`（4 条：all_same_index / token_dtype=2 连续 scale / 稀疏 mask） | extreme 用例覆盖 | §4.2 极端输入表（L1_EXT_*） |
+| `boundary_conditions[]`（11 条：k=0 / k=N(A=1024,topK+1=64) / same_bin(expert_num=8192) / expert_num 越界 / topK+1 越界 / A 越界 / max_out_shape 长度≠4 / dtype≠INT8 / 非 1 维 / need_schedule=0 / need_schedule=1） | boundary 用例逐条覆盖 | §4.1 边界覆盖表（L1_BND_* 非报错项 + L2_ERR_* 报错项） |
+| `extreme_inputs[]`（3 条：all_same_index / token_dtype=2 连续 scale / 稀疏 mask） | extreme 用例覆盖 | §4.2 极端输入表（L1_EXT_*） |
 | `math_semantics.reference_oracle`（`absent: true`, framework=numpy） | CPU numpy golden 精确重排 + `np.array_equal` 对拍（见 §6 oracle 选择） | §6 oracle 与 golden 来源 |
 | `numerical_tolerance.per_dtype`（全 dtype bitwise_equal, rtol=0/atol=0） | 精度断言 = 二进制一致 | §5.3 精度验收标准 |
 | `determinism`（required=true, sequential, bitwise_reproducible） | 确定性/重复执行用例 | §7 确定性测试 |
@@ -77,7 +77,7 @@ REQUIREMENTS 与 spec.yaml 在 spec-owned 字段上**无冲突**（SPEC_REVIEW �
 | 13 | need_schedule=0 NORM 路径 (TilingKey 100) | need_schedule=0, token_dtype=0 | output_shape_static_contract | `L1_PRF_P0_fp16_NORM` | L1 |
 | 14 | need_schedule=1 RECV 路径 (TilingKey 101) | need_schedule=1, token_dtype=0 | output_shape_static_contract | `L1_PRF_P0_fp16_RECV` | L1 |
 
-> boundary_conditions[] 共 10 条 case（spec）；上表 1–12 覆盖全部 10 条（含 need_schedule 0/1 两路 = 第 13/14 行，另由 500 pairwise 冗余覆盖）。
+> boundary_conditions[] 共 11 条 case（spec）；上表逐条覆盖全部 11 条——第 1–12 行覆盖前 9 条（k=0 / k=N / same_bin / expert_num·topK+1·A 越界 / max_out_shape 长度≠4 / dtype≠INT8 / 非 1 维，另含 expert_num 下界、内部 topK+1·A 上界补强），第 13/14 行分别对应 need_schedule=0 / need_schedule=1 两条独立 boundary case（TilingKey 100/101），并由 500 pairwise 冗余覆盖。
 
 ### 4.2 extreme_inputs 覆盖表
 
