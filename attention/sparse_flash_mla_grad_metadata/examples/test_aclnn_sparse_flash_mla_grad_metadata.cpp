@@ -46,8 +46,7 @@ constexpr uint32_t MAX_ORI_KV_SIZE = 5;
 constexpr uint32_t MAX_CMP_KV_SIZE = 6;
 
 struct SmlagMetadata {
-    uint32_t faMetadata[AIC_CORE_MAX_NUM][FA_METADATA_SIZE];
-    uint32_t fdMetadata[AIV_CORE_MAX_NUM][FD_METADATA_SIZE];
+    uint32_t gradMetadata[GRAD_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -327,13 +326,13 @@ int main() {
 
     for (uint32_t i = 0; i < GRAD_METADATA_SIZE; ++i) {
         printf("AIC Core%u\n", i);
-        printf("    Total Num                 : %u\n", result.gradMetadata[i][TOTAL_NUM]);
-        printf("    Former Core Process Num   : %u\n", result.gradMetadata[i][FORMER_CORE_PROCESS_NUM]);
-        printf("    Remain Core Process Num   : %u\n", result.gradMetadata[i][REMAIN_CORE_PROCESS_NUM]);
-        printf("    Remain Core Num           : %u\n", result.gradMetadata[i][REMAIN_CORE_NUM]);
-        printf("    Used Core Num             : %u\n", result.gradMetadata[i][USED_CORE_NUM]);
-        printf("    Max Ori Kv Size           : %u\n", result.gradMetadata[i][MAX_ORI_KV_SIZE]);
-        printf("    Max Cmp Kv Size           : %u\n", result.gradMetadata[i][MAX_CMP_KV_SIZE]);
+        printf("    Total Num                 : %u\n", result.gradMetadata[TOTAL_NUM]);
+        printf("    Former Core Process Num   : %u\n", result.gradMetadata[FORMER_CORE_PROCESS_NUM]);
+        printf("    Remain Core Process Num   : %u\n", result.gradMetadata[REMAIN_CORE_PROCESS_NUM]);
+        printf("    Remain Core Num           : %u\n", result.gradMetadata[REMAIN_CORE_NUM]);
+        printf("    Used Core Num             : %u\n", result.gradMetadata[USED_CORE_NUM]);
+        printf("    Max Ori Kv Size           : %u\n", result.gradMetadata[MAX_ORI_KV_SIZE]);
+        printf("    Max Cmp Kv Size           : %u\n", result.gradMetadata[MAX_CMP_KV_SIZE]);
     }
 
     return 0;
