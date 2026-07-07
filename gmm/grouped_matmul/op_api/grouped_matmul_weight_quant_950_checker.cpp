@@ -95,9 +95,9 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup(const size_t i
 
     auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
     auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-    size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
-    size_t pergroupDim = perchannelDim + 1;
-    // pergroup场景比perchannel维度大
+    // pergroup 单单单场景默认维度为3，多多多场景默认维度为2
+    size_t pergroupDim =
+        gmmParams_.groupType == SPLIT_M ? PERGROUP_SINGLE_ANTIQUANT_SCALE_DIM : PERGROUP_MULTI_ANTIQUANT_SCALE_DIM;
     return antiquantScaleDimNum == pergroupDim;
 }
 

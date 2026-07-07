@@ -41,6 +41,10 @@ constexpr size_t MX_SINGLE_ANTIQUANT_SCALE_DIM = 4UL;
 constexpr size_t MX_MULTI_BIAS_DIM = 1UL;
 constexpr size_t MX_SINGLE_BIAS_DIM = 2UL;
 
+// mx dim num
+constexpr size_t PERGROUP_MULTI_ANTIQUANT_SCALE_DIM = 2UL;
+constexpr size_t PERGROUP_SINGLE_ANTIQUANT_SCALE_DIM = 3UL;
+
 constexpr size_t MX_TUPLE_X_DIM_INDEX = 0UL;
 constexpr size_t MX_TUPLE_WEIGHT_DIM_INDEX = 1UL;
 constexpr size_t MX_TUPLE_SCALE_DIM_INDEX = 2UL;
