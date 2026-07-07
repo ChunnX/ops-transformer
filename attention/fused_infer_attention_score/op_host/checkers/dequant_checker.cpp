@@ -416,36 +416,30 @@ ge::graphStatus DequantChecker::CheckTensorNotExistFullquant(const FiaTilingInfo
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus DequantChecker::CheckExistenceNoquant(const FiaTilingInfo &fiaInfo) const
-{
-    struct ParamInfo {
-        const char* paraName;
-        const gert::Tensor *tensor;
-    };
-    
-    std::vector<ParamInfo> quantParams = {
-        {"deq_scale1", fiaInfo.opParamInfo.deqScale1.tensor},
-        {"quant_scale1", fiaInfo.opParamInfo.quantScale1.tensor},
-        {"deq_scale2", fiaInfo.opParamInfo.deqScale2.tensor},
-        {"dequant_scale_query", fiaInfo.opParamInfo.dequantScaleQuery.tensor},
-        {"antiquant_scale", fiaInfo.opParamInfo.antiquantScale.tensor},
-        {"antiquant_offset", fiaInfo.opParamInfo.antiquantOffset.tensor},
-        {"key_antiquant_scale", fiaInfo.opParamInfo.keyAntiquantScale.tensor},
-        {"key_antiquant_offset", fiaInfo.opParamInfo.keyAntiquantOffset.tensor},
-        {"value_antiquant_scale", fiaInfo.opParamInfo.valueAntiquantScale.tensor},
-        {"value_antiquant_offset", fiaInfo.opParamInfo.valueAntiquantOffset.tensor}
-    };
-    
-    for (const auto& param : quantParams) {
-        if (param.tensor != nullptr) {
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, param.paraName,
-                ("In no quant scenario, quant related param: " +
-                    std::string(param.paraName) + " must be empty").c_str());
-            return ge::GRAPH_FAILED;
-        }
-    }
 
-    return ge::GRAPH_SUCCESS;
+ge::graphStatus DequantChecker::CheckExistenceNoquant(const FiaTilingInfo &fiaInfo)	 
+{	 
+    auto deqScale1 = fiaInfo.opParamInfo.deqScale1.tensor;	 
+    auto quantScale1 = fiaInfo.opParamInfo.quantScale1.tensor;	 
+    auto deqScale2 = fiaInfo.opParamInfo.deqScale2.tensor;	 
+    auto dequantScaleQuery = fiaInfo.opParamInfo.dequantScaleQuery.tensor;	 
+    auto antiquantScale = fiaInfo.opParamInfo.antiquantScale.tensor;	 
+    auto antiquantOffset = fiaInfo.opParamInfo.antiquantOffset.tensor;	 
+    auto keyAntiquantScale = fiaInfo.opParamInfo.keyAntiquantScale.tensor;	 
+    auto keyAntiquantOffset = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;	 
+    auto valueAntiquantScale = fiaInfo.opParamInfo.valueAntiquantScale.tensor;	 
+    auto valueAntiquantOffset = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;	 
+    bool checkExistenece = deqScale1 == nullptr && quantScale1 == nullptr && deqScale2 == nullptr &&	 
+                        dequantScaleQuery == nullptr && antiquantScale == nullptr && antiquantOffset == nullptr &&	 
+                        keyAntiquantScale == nullptr && keyAntiquantOffset == nullptr &&	 
+                        valueAntiquantScale == nullptr && valueAntiquantOffset == nullptr;	 
+    if (checkExistenece) {	 
+        return ge::GRAPH_SUCCESS;	 
+    } else {
+        OP_LOGE(fiaInfo.opName,	 
+                "In gqa no quant scenario, quant related param cannot exist.");
+        return ge::GRAPH_FAILE;
+    }
 }
 
 ge::graphStatus DequantChecker::CheckExistencePertensorFullquant(const FiaTilingInfo &fiaInfo)
