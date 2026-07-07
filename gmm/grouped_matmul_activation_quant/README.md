@@ -165,5 +165,4 @@
 
 | 调用方式 | 调用样例 | 说明 |
 | -------- | -------- | ---- |
-| aclnn调用 | [aclnnGroupedMatmulActivationQuantWeightNz](docs/aclnnGroupedMatmulActivationQuantWeightNz.md) | 通过两段式aclnn接口调用GroupedMatmulActivationQuant WeightNz算子。 |
-| torch调用 | [grouped_matmul_activation_quant](../../torch_extension/cann_ops_transformer/docs/zh/grouped_matmul_activation_quant.md) | 通过torch_extension调用GroupedMatmulActivationQuant算子。 |
+| aclnn调用 | [test_aclnn_grouped_matmul_activation_quant_weight_nz](examples/arch35/test_aclnn_grouped_matmul_activation_quant_weight_nz.cpp) | 通过两段式aclnn接口调用[GroupedMatmulActivationQuantWeightNz](docs/aclnnGroupedMatmulActivationQuantWeightNz.md)算子。 |

@@ -75,8 +75,8 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 ## 约束说明
 
-- 该接口支持训练、推理场景下使用。
-- 该接口支持单算子模式调用。
+- 适用场景：该接口支持训练、推理场景下使用。
+- 调用方式：该接口支持单算子模式调用。
 - 当前仅支持`activation_type="gelu_tanh"`。
 - 当前仅支持MXFP8量化模式，`quant_mode`显式传值时必须为`"mx"`。
 - `weight`必须先通过`torch_npu.npu_format_cast(weight, 29)`转换为FRACTAL_NZ格式，再以TensorList形式传入。
