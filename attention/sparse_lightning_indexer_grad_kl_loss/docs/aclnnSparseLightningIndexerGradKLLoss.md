@@ -237,7 +237,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <ul>
                 <li>与query的layout维度保持一致。</li>
                 <li>不支持空Tensor。</li>
-            <ul>
+            </ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <ul>
                 <li>与key的layout维度保持一致。</li>
                 <li>不支持空Tensor。</li>
-            <ul>
+            </ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
