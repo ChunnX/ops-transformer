@@ -1152,6 +1152,11 @@ private:
                         rows = params.maxOutputSize - rowStart;
                     }
                     uint32_t rowSrc = preSumBeforeRankForDispatch(dstEpIdx * params.expertPerRank + groupIdx);
+                    // 检查源端边界：rowSrc + rows 不能超过 windowsOut A区域的总token数 (bs * topK)
+                    uint32_t maxTokensInWinOut = params.problemShape.m() * params.topK;
+                    if (rowSrc + rows > maxTokensInWinOut) {
+                        rows = (rowSrc >= maxTokensInWinOut) ? 0 : (maxTokensInWinOut - rowSrc);
+                    }
                     AscendC::GlobalTensor<ElementA> gmSrcA;
                     gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(
                         shmem.windowsOutAddr() + peermemInfo.offsetWinOutA));
