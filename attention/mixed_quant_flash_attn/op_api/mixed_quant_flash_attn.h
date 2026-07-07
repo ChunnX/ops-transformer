@@ -26,7 +26,6 @@ namespace l0op {
  * @param v                   value tensor
  * @param blockTableOptional  分页KV缓存块映射表（可选，INT32）
  * @param cuSeqlensQOptional  query累积序列长度tensor（可选，INT32）
- * @param cuSeqlensKvOptional kv累积序列长度tensor（可选，INT32）
  * @param sequsedQOptional    query各batch实际序列长度tensor（可选，INT32）
  * @param sequsedKvOptional   kv各batch实际序列长度tensor（可选，INT32）
  * @param sinksOptional       可学习sink权重（可选，FLOAT32）
@@ -54,7 +53,6 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     const aclTensor *vDescale, 
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
     const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
@@ -69,8 +67,9 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     int32_t maxSeqlenKV,
     const char *layoutQ,
     const char *layoutKv,
-    const char *layoutOut,
-    int32_t returnSoftmaxLse,
+    const char *layoutAttnOut,
+    int64_t paBlockSize,
+    bool returnSoftmaxLse,
     aclOpExecutor *executor);
 
 }  // namespace l0op

@@ -20,7 +20,7 @@ extern "C" {
 
 namespace {
 
-void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
+void MixedQuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
                                 const aclTensor *&placeHolder)
 {
     if (returnSoftmaxLse == false) {

@@ -44,8 +44,6 @@ extern "C" {
  * @param cuSeqlensQOptional  [IN]  可选。query的累积序列长度（前缀和），数据类型INT32。
  *                                  shape=(B+1,)，cu_seqlens_q[i+1]-cu_seqlens_q[i]为第i个sample的q序列长度。
  *                                  TND layout变长场景时有效。与seqused_q互斥。
- * @param cuSeqlensKvOptional [IN]  可选。kv的累积序列长度（前缀和），数据类型INT32。
- *                                  shape=(B+1,)，与cuSeqlensQOptional配合使用。
  * @param sequsedQOptional    [IN]  可选。各batch中query的实际序列长度，数据类型INT32。
  *                                  shape=(B,)，padded batch模式下有效。与cuSeqlensQOptional互斥。
  * @param sequsedKvOptional   [IN]  可选。各batch中kv的实际序列长度，数据类型INT32。
@@ -65,12 +63,12 @@ extern "C" {
  * @param winRight            [IN]  ATTR可选。右侧注意力窗口大小（maskMode=4时的winRight）。数据类型INT。
  * @param layoutQ             [IN]  ATTR可选。query的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
  * @param layoutKv            [IN]  ATTR可选。key/value的数据布局，支持"BSND"/"TND"/"PA_ND"/"PA_Nz"。
- * @param layoutOut           [IN]  ATTR可选。输出的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
- * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。INT类型，1表示输出，0表示不输出。
+ * @param layoutAttnOut           [IN]  ATTR可选。输出的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
+ * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。bool类型，true表示输出，false表示不输出。
  *                                  训练正向传播时置1，推理时置0。
- * @param attnOut        [OUT] 必选输出。attention计算结果，数据类型与q一致，layout由layoutOut决定。
+ * @param attnOut        [OUT] 必选输出。attention计算结果，数据类型与q一致，layout由layoutAttnOut决定。
  * @param softmaxLseOptional  [OUT] 可选输出。softmax的log-sum-exp值，FLOAT32类型。
- *                                  returnSoftmaxLse=1时有效，shape取决于layout和序列长度：
+ *                                  returnSoftmaxLse=true时有效，shape取决于layout和序列长度：
  *                                  TND: (T_q, N_q) 或 (N_q, T_q)；其他layout: (B, N_q, S_q)。
  * @param workspaceSize       [OUT] workspace大小（字节数）。
  * @param executor            [OUT] op执行器句柄，供第二段接口使用。
@@ -78,11 +76,11 @@ extern "C" {
  */
 aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut, int64_t paBlockSize,
+    bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**

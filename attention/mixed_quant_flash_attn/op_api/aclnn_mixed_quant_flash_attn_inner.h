@@ -20,17 +20,17 @@ extern "C" {
 
 extern aclnnStatus aclnnInnerMixedQuantFlashAttnGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
+    int64_t paBlockSize, bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                        const aclrtStream stream);
 
-void MixedQuantFlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
+void MixedQuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
                                 const aclTensor *&placeHolder);
 
 void MixQuantFlashAttnProcessSinks(const aclTensor *&sinksOptional);
