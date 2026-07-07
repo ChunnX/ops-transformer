@@ -1,0 +1,168 @@
+# ============================================================
+# FfnWorkerBatching (ffn_worker_batching) 参数定义
+# 新增 Ascend950/A5 支持，支持范围对齐 A2
+# 字段所有权：dtype / value_range / 上限 均取自 docs/spec.yaml，禁止从 REQUIREMENTS 重新解释
+#   - schedule_context.dtype        <- spec.inputs[0].dtype_set = [int8]
+#   - schedule_context.shape        <- spec.inputs[0].shape.symbolic = [1024], rank_range=[1,1]
+#   - expert_num range              <- spec.attributes.expert_num.machine_constraint (1..8192)
+#   - max_out_shape length/range    <- spec.attributes.max_out_shape (length=4; A(0,1024]/BS>0/topK+1(0,64]/H>0)
+#   - token_dtype domain            <- spec.attributes.token_dtype [0,2]
+#   - need_schedule domain          <- spec.attributes.need_schedule [0,1]
+#   - layer_num range               <- spec.attributes.layer_num [0, expert_num]
+#   - y dtype 集合                  <- spec.dtype_policy.supported_combinations (fp16/bf16/int8)
+#   - 其余输出 dtype                <- spec.outputs[].dtype_rule
+# ============================================================
+aclnn_name: "aclnnFfnWorkerBatching"
+
+parameters:
+# ── 输入（唯一物理张量输入）──
+- name: "schedule_context"
+  type: "aclTensor"
+  required: true
+  io_type: "input"
+  format: ["ND"]
+  dimensions: [1]                       # spec rank_range [1,1] -> 恒 1 维（1024B 结构体）
+  dtype_with_ranges:
+    - dtype: "int8"
+      value_range: [[-128, 127]]        # 逐字节调度上下文，INT8 全域
+
+# ── 属性 ──
+# expert_num: 本卡专家总数，(0, 8192]；覆盖 1 / 8 / 256(默认) / 5120(片上暂存) / 8192(上界)
+- name: "expert_num"
+  type: "int64_t"
+  required: true
+  io_type: "input"
+  is_enum: true
+  dtype_with_values:
+    - dtype: "int64"
+      value: [1, 8, 256, 5120, 8192]
+
+# max_out_shape: {A, BS, topK+1, H}，长度必须为 4；
+# 逐元素统一取值域 [1,64] 同时满足 A∈(0,1024]、BS>0、topK+1∈(0,64]、H>0；
+# A=1024 / topK+1=64 等对外上界由 boundary 用例在 testcases 中显式承载（见 TEST.md §边界）。
+- name: "max_out_shape"
+  type: "aclIntArray"
+  required: true
+  io_type: "input"
+  length_ranges: [[4, 4]]
+  dtype_with_ranges:
+    - dtype: "int64"
+      value_range: [[1, 64]]
+
+# token_dtype: 0=FP16 / 1=BF16 / 2=int8 动态量化；取值范围 [0,2]（3 profile 全覆盖）
+# required:true —— ST 黑盒用例恒显式传入 token_dtype（默认值 0 仅为 API 便利，非独立 kernel 路径）
+- name: "token_dtype"
+  type: "int64_t"
+  required: true
+  io_type: "input"
+  is_enum: true
+  dtype_with_values:
+    - dtype: "int64"
+      value: [0, 1, 2]
+
+# need_schedule: 0=NORM(TilingKey100) / 1=RECV(TilingKey101)；取值范围 [0,1]（2 功能路径）
+# required:true —— ST 黑盒用例恒显式传入 need_schedule
+- name: "need_schedule"
+  type: "int64_t"
+  required: true
+  io_type: "input"
+  is_enum: true
+  dtype_with_values:
+    - dtype: "int64"
+      value: [0, 1]
+
+# layer_num: 层数，spec 语义域 [0, expert_num]；取 {0,1}
+# 取 0/1 均 <= 最小 expert_num 候选(=1)，保证任意 (layer_num, expert_num) 组合恒满足 layer_num<=expert_num，
+# 避免 L0/L1 正常用例出现 layer_num>expert_num 的语义非法组合（该越界在 L2 attribute_value_out_of_range 覆盖）。
+# required:true —— ST 黑盒用例恒显式传入 layer_num
+- name: "layer_num"
+  type: "int64_t"
+  required: true
+  io_type: "input"
+  is_enum: true
+  dtype_with_values:
+    - dtype: "int64"
+      value: [0, 1]
+
+# ── 输出（8 个，dtype 取自 spec.outputs[].dtype_rule / supported_combinations）──
+# y: dtype 随 token_dtype (0->fp16 / 1->bf16 / 2->int8)；shape=[Y,H]
+- name: "y"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [2]
+  dtype_with_ranges:
+    - dtype: "float16"
+    - dtype: "bfloat16"
+    - dtype: "int8"
+
+# group_list: [expert_num, 2], INT64
+- name: "group_list"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [2]
+  dtype_with_ranges:
+    - dtype: "int64"
+
+# session_ids: [Y], INT32
+- name: "session_ids"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "int32"
+
+# micro_batch_ids: [Y], INT32
+- name: "micro_batch_ids"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "int32"
+
+# token_ids: [Y], INT32
+- name: "token_ids"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "int32"
+
+# expert_offsets: [Y], INT32
+- name: "expert_offsets"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "int32"
+
+# dynamic_scale: [Y], FP32（仅 token_dtype=2 有效）
+- name: "dynamic_scale"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "float32"
+
+# actual_token_num: [1], INT64（标量）
+- name: "actual_token_num"
+  type: "aclTensor"
+  required: true
+  io_type: "output"
+  format: ["ND"]
+  dimensions: [1]
+  dtype_with_ranges:
+    - dtype: "int64"

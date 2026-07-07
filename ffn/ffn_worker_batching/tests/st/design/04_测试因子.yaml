@@ -1,0 +1,161 @@
+schedule_context:
+  type: aclTensor
+  factors:
+    schedule_context.exist:
+    - true
+    schedule_context.format:
+    - ND
+    schedule_context.dimensions:
+    - 1
+    schedule_context.dtype:
+    - int8
+    schedule_context.value_range_int8:
+    - - -128
+      - 127
+expert_num:
+  type: int64_t
+  factors:
+    expert_num.exist:
+    - true
+    expert_num.dtype:
+    - int64
+    expert_num.value:
+    - 1
+    - 8
+    - 256
+    - 5120
+    - 8192
+max_out_shape:
+  type: aclIntArray
+  factors:
+    max_out_shape.exist:
+    - true
+    max_out_shape.length_ranges:
+    - - 4
+      - 4
+    max_out_shape.dtype:
+    - int64
+    max_out_shape.value_range_int64:
+    - - 1
+      - 64
+token_dtype:
+  type: int64_t
+  factors:
+    token_dtype.exist:
+    - true
+    token_dtype.dtype:
+    - int64
+    token_dtype.value:
+    - 0
+    - 1
+    - 2
+need_schedule:
+  type: int64_t
+  factors:
+    need_schedule.exist:
+    - true
+    need_schedule.dtype:
+    - int64
+    need_schedule.value:
+    - 0
+    - 1
+layer_num:
+  type: int64_t
+  factors:
+    layer_num.exist:
+    - true
+    layer_num.dtype:
+    - int64
+    layer_num.value:
+    - 0
+    - 1
+y:
+  type: aclTensor
+  factors:
+    y.exist:
+    - true
+    y.format:
+    - ND
+    y.dimensions:
+    - 2
+    y.dtype:
+    - float16
+    - bfloat16
+    - int8
+group_list:
+  type: aclTensor
+  factors:
+    group_list.exist:
+    - true
+    group_list.format:
+    - ND
+    group_list.dimensions:
+    - 2
+    group_list.dtype:
+    - int64
+session_ids:
+  type: aclTensor
+  factors:
+    session_ids.exist:
+    - true
+    session_ids.format:
+    - ND
+    session_ids.dimensions:
+    - 1
+    session_ids.dtype:
+    - int32
+micro_batch_ids:
+  type: aclTensor
+  factors:
+    micro_batch_ids.exist:
+    - true
+    micro_batch_ids.format:
+    - ND
+    micro_batch_ids.dimensions:
+    - 1
+    micro_batch_ids.dtype:
+    - int32
+token_ids:
+  type: aclTensor
+  factors:
+    token_ids.exist:
+    - true
+    token_ids.format:
+    - ND
+    token_ids.dimensions:
+    - 1
+    token_ids.dtype:
+    - int32
+expert_offsets:
+  type: aclTensor
+  factors:
+    expert_offsets.exist:
+    - true
+    expert_offsets.format:
+    - ND
+    expert_offsets.dimensions:
+    - 1
+    expert_offsets.dtype:
+    - int32
+dynamic_scale:
+  type: aclTensor
+  factors:
+    dynamic_scale.exist:
+    - true
+    dynamic_scale.format:
+    - ND
+    dynamic_scale.dimensions:
+    - 1
+    dynamic_scale.dtype:
+    - float32
+actual_token_num:
+  type: aclTensor
+  factors:
+    actual_token_num.exist:
+    - true
+    actual_token_num.format:
+    - ND
+    actual_token_num.dimensions:
+    - 1
+    actual_token_num.dtype:
+    - int64

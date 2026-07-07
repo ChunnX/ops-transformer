@@ -1,0 +1,34 @@
+summary:
+  level: L1
+  strategy: pairwise_combination + explicit_boundary_extreme_profile
+  total_cases: 515
+  pairwise_target: 500
+  pairwise_coverage_rate: 94.00%   # 94/100 两两组合（不可达组合为语义受限，见 note）
+  explicit_boundary_cases: 6
+  explicit_profile_matrix_cases: 6
+  explicit_extreme_cases: 3
+details:
+  token_dtype_distribution:
+    "0": 162
+    "1": 175
+    "2": 178
+  need_schedule_distribution:
+    "0": 341
+    "1": 174
+  functional_path_6combo (token_dtype x need_schedule):
+    "td0_ns0": 100
+    "td0_ns1": 62
+    "td1_ns0": 148
+    "td1_ns1": 27
+    "td2_ns0": 93
+    "td2_ns1": 85
+  expert_num_distribution:
+    "1": 112
+    "8": 97
+    "256": 125
+    "5120": 95
+    "8192": 86
+notes:
+  - 每个 (token_dtype, need_schedule) 6 条功能路径组合均 >=1 用例，含显式 PRF 矩阵与 boundary/extreme。
+  - A=1024 / topK+1=64 上界由 L1_BND_* 显式用例覆盖（参数化 [1,64] 域不可达上界）。
+  - pairwise 未达 100% 的组合来自 layer_num<=expert_num 语义约束下的不可行离散对，非缺陷。

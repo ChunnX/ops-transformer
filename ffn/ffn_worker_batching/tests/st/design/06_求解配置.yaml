@@ -1,0 +1,127 @@
+# 求解配置
+# 基于约束定义自动生成
+# 
+# 依赖关系分析：
+# - IMPLICIT-RANGE-schedule_context: schedule_context.value_range <- schedule_context.dtype
+# - IMPLICIT-RANGE-max_out_shape: max_out_shape.value_range <- max_out_shape.dtype
+# - IMPLICIT-LENGTH-max_out_shape: max_out_shape.length <- max_out_shape.length_ranges
+# - IMPLICIT-VALUE-LIST-max_out_shape: max_out_shape.value <- max_out_shape.length, max_out_shape.value_range
+# - SC-SHAPE-001: schedule_context.shape <- schedule_context.dimensions
+# - Y-SHAPE-001: y.shape <- max_out_shape.value
+# - Y-DTYPE-001: y.dtype <- token_dtype.value
+# - GL-SHAPE-001: group_list.shape <- expert_num.value
+# - SID-SHAPE-001: session_ids.shape <- max_out_shape.value
+# - MBID-SHAPE-001: micro_batch_ids.shape <- max_out_shape.value
+# - TID-SHAPE-001: token_ids.shape <- max_out_shape.value
+# - EOFF-SHAPE-001: expert_offsets.shape <- max_out_shape.value
+# - DS-SHAPE-001: dynamic_scale.shape <- max_out_shape.value
+# - ATN-SHAPE-001: actual_token_num.shape <- schedule_context.dimensions
+
+solver:
+  strategy: topological
+  
+  # ========== 锚点因子 ==========
+  # 定义：入度为0的因子，无依赖，可独立随机采样
+  anchors:
+    # 类型锚点
+    - actual_token_num.dtype
+    - dynamic_scale.dtype
+    - expert_num.value
+    - expert_offsets.dtype
+    - group_list.dtype
+    - layer_num.value
+    - max_out_shape.dtype
+    - micro_batch_ids.dtype
+    - need_schedule.value
+    - schedule_context.dtype
+    - session_ids.dtype
+    - token_dtype.value
+    - token_ids.dtype
+    # 固定值因子（无依赖）
+    - max_out_shape.length_ranges
+    - schedule_context.dimensions
+    - schedule_context.exist
+    - y.dimensions
+  
+  # ========== 推导顺序 ==========
+  derivation_order:
+    # Level 0: 锚点因子（无依赖，可独立采样）
+    level_0:
+      - actual_token_num.dtype
+      - dynamic_scale.dtype
+      - expert_num.value
+      - expert_offsets.dtype
+      - group_list.dtype
+      - layer_num.value
+      - max_out_shape.dtype
+      - max_out_shape.length_ranges
+      - micro_batch_ids.dtype
+      - need_schedule.value
+      - schedule_context.dimensions
+      - schedule_context.dtype
+      - schedule_context.exist
+      - session_ids.dtype
+      - token_dtype.value
+      - token_ids.dtype
+      - y.dimensions
+    # Level 1: 从前面层级推导
+    #   - actual_token_num.shape <- [schedule_context.dimensions]
+    #   - group_list.shape <- [expert_num.value]
+    #   - max_out_shape.length <- [max_out_shape.length_ranges]
+    #   - max_out_shape.value_range <- [max_out_shape.dtype]
+    #   - schedule_context.shape <- [schedule_context.dimensions]
+    #   ... (+2 more)
+    level_1:
+      - actual_token_num.shape
+      - group_list.shape
+      - max_out_shape.length
+      - max_out_shape.value_range
+      - schedule_context.shape
+      - schedule_context.value_range
+      - y.dtype
+    # Level 2: 从前面层级推导
+    #   - max_out_shape.value <- [max_out_shape.length, max_out_shape.value_range]
+    level_2:
+      - max_out_shape.value
+    # Level 3: 从前面层级推导
+    #   - dynamic_scale.shape <- [max_out_shape.value]
+    #   - expert_offsets.shape <- [max_out_shape.value]
+    #   - micro_batch_ids.shape <- [max_out_shape.value]
+    #   - session_ids.shape <- [max_out_shape.value]
+    #   - token_ids.shape <- [max_out_shape.value]
+    #   ... (+1 more)
+    level_3:
+      - dynamic_scale.shape
+      - expert_offsets.shape
+      - micro_batch_ids.shape
+      - session_ids.shape
+      - token_ids.shape
+      - y.shape
+# ========== 依赖图说明 ==========
+# 
+# 类型依赖图：
+#   schedule_context.value_range <- schedule_context.dtype  (IMPLICIT-RANGE-schedule_context)
+#   max_out_shape.value_range <- max_out_shape.dtype  (IMPLICIT-RANGE-max_out_shape)
+#   max_out_shape.length <- max_out_shape.length_ranges  (IMPLICIT-LENGTH-max_out_shape)
+#   max_out_shape.value <- max_out_shape.length, max_out_shape.value_range  (IMPLICIT-VALUE-LIST-max_out_shape)
+#   schedule_context.shape <- schedule_context.dimensions  (SC-SHAPE-001)
+#   y.shape <- max_out_shape.value  (Y-SHAPE-001)
+#   y.dtype <- token_dtype.value  (Y-DTYPE-001)
+#   group_list.shape <- expert_num.value  (GL-SHAPE-001)
+#   session_ids.shape <- max_out_shape.value  (SID-SHAPE-001)
+#   micro_batch_ids.shape <- max_out_shape.value  (MBID-SHAPE-001)
+#   token_ids.shape <- max_out_shape.value  (TID-SHAPE-001)
+#   expert_offsets.shape <- max_out_shape.value  (EOFF-SHAPE-001)
+#   dynamic_scale.shape <- max_out_shape.value  (DS-SHAPE-001)
+#   actual_token_num.shape <- schedule_context.dimensions  (ATN-SHAPE-001)
+# 
+# 形状依赖图：
+#   schedule_context.shape <- schedule_context.dimensions  (SC-SHAPE-001)
+#   y.shape <- max_out_shape.value  (Y-SHAPE-001)
+#   group_list.shape <- expert_num.value  (GL-SHAPE-001)
+#   session_ids.shape <- max_out_shape.value  (SID-SHAPE-001)
+#   micro_batch_ids.shape <- max_out_shape.value  (MBID-SHAPE-001)
+#   token_ids.shape <- max_out_shape.value  (TID-SHAPE-001)
+#   expert_offsets.shape <- max_out_shape.value  (EOFF-SHAPE-001)
+#   dynamic_scale.shape <- max_out_shape.value  (DS-SHAPE-001)
+#   actual_token_num.shape <- schedule_context.dimensions  (ATN-SHAPE-001)

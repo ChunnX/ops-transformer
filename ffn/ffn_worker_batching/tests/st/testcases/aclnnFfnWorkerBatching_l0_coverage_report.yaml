@@ -1,0 +1,170 @@
+summary:
+  level: L0
+  strategy: single_factor_coverage
+  total_factors: 20
+  total_factor_values: 30
+  covered_factor_values: 30
+  uncovered_factor_values: 0
+  coverage_rate: 100.00%
+  minimal_case_count: 30
+details:
+  schedule_context.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  layer_num.value:
+    target_values:
+    - '0'
+    - '1'
+    covered_values:
+    - '0'
+    - '1'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  token_ids.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - int8
+    covered_values:
+    - bfloat16
+    - float16
+    - int8
+    uncovered_values: []
+    coverage_rate: 100.00%
+  need_schedule.value:
+    target_values:
+    - '0'
+    - '1'
+    covered_values:
+    - '0'
+    - '1'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  schedule_context.dimensions:
+    target_values:
+    - '1'
+    covered_values:
+    - '1'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  schedule_context.value_range:
+    target_values:
+    - '[-128, 127]'
+    covered_values:
+    - '[-128, 127]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  expert_offsets.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  max_out_shape.value_range:
+    target_values:
+    - '[1, 64]'
+    covered_values:
+    - '[1, 64]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  schedule_context.dtype:
+    target_values:
+    - int8
+    covered_values:
+    - int8
+    uncovered_values: []
+    coverage_rate: 100.00%
+  actual_token_num.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  group_list.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  max_out_shape.length_ranges:
+    target_values:
+    - '[4, 4]'
+    covered_values:
+    - '[4, 4]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  session_ids.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  max_out_shape.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  token_dtype.value:
+    target_values:
+    - '0'
+    - '1'
+    - '2'
+    covered_values:
+    - '0'
+    - '1'
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  dynamic_scale.dtype:
+    target_values:
+    - float32
+    covered_values:
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  micro_batch_ids.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  expert_num.value:
+    target_values:
+    - '1'
+    - '256'
+    - '5120'
+    - '8'
+    - '8192'
+    covered_values:
+    - '1'
+    - '256'
+    - '5120'
+    - '8'
+    - '8192'
+    uncovered_values: []
+    coverage_rate: 100.00%

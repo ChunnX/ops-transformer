@@ -1,0 +1,151 @@
+# ============================================================
+# FfnWorkerBatching 约束定义
+# 依据 spec.yaml：
+#   Y = A*BS*(topK+1) = max_out_shape[0]*max_out_shape[1]*max_out_shape[2]
+#   H = max_out_shape[3]
+#   y.shape=[Y,H]; group_list.shape=[expert_num,2]; id 类=[Y]; actual_token_num=[1]
+#   y.dtype 随 token_dtype (0->float16 / 1->bfloat16 / 2->int8)
+# 仅使用 calculate 型约束（单向计算，输出形状/类型静态推导）；本算子无广播语义，无 match/broadcast。
+# 说明：手工剔除隐式生成器对「输出 shape」的随机 derive_shape_from_dimensions 约束
+#       （与下方精确推导冲突），保留 value_range / max_out_shape length+value 的隐式推导。
+# ============================================================
+metadata:
+  operator: "FfnWorkerBatching"
+  version: "1.0"
+  description: "FfnWorkerBatching 算子约束定义：输出 shape/dtype 由属性 max_out_shape/expert_num/token_dtype 静态推导"
+
+factors:
+  # 输入
+  schedule_context.dtype: {type: dtype, param: schedule_context, io_type: input}
+  schedule_context.shape: {type: shape, param: schedule_context, io_type: input}
+  schedule_context.dimensions: {type: dimensions, param: schedule_context, io_type: input}
+  schedule_context.value_range: {type: value_range, param: schedule_context, io_type: input}
+  schedule_context.exist: {type: exist, param: schedule_context, io_type: input}
+  # 属性
+  expert_num.value: {type: value, param: expert_num, io_type: input}
+  max_out_shape.dtype: {type: dtype, param: max_out_shape, io_type: input}
+  max_out_shape.length_ranges: {type: length_ranges, param: max_out_shape, io_type: input}
+  max_out_shape.length: {type: length, param: max_out_shape, io_type: input}
+  max_out_shape.value_range: {type: value_range, param: max_out_shape, io_type: input}
+  max_out_shape.value: {type: value, param: max_out_shape, io_type: input}
+  token_dtype.value: {type: value, param: token_dtype, io_type: input}
+  need_schedule.value: {type: value, param: need_schedule, io_type: input}
+  layer_num.value: {type: value, param: layer_num, io_type: input}
+  # 输出 —— shape 由属性推导，dtype 为 spec 固定值（作为锚点从 04_测试因子.yaml 取单值）
+  y.dimensions: {type: dimensions, param: y, io_type: output}
+  y.shape: {type: shape, param: y, io_type: output}
+  y.dtype: {type: dtype, param: y, io_type: output}
+  group_list.shape: {type: shape, param: group_list, io_type: output}
+  group_list.dtype: {type: dtype, param: group_list, io_type: output}
+  session_ids.shape: {type: shape, param: session_ids, io_type: output}
+  session_ids.dtype: {type: dtype, param: session_ids, io_type: output}
+  micro_batch_ids.shape: {type: shape, param: micro_batch_ids, io_type: output}
+  micro_batch_ids.dtype: {type: dtype, param: micro_batch_ids, io_type: output}
+  token_ids.shape: {type: shape, param: token_ids, io_type: output}
+  token_ids.dtype: {type: dtype, param: token_ids, io_type: output}
+  expert_offsets.shape: {type: shape, param: expert_offsets, io_type: output}
+  expert_offsets.dtype: {type: dtype, param: expert_offsets, io_type: output}
+  dynamic_scale.shape: {type: shape, param: dynamic_scale, io_type: output}
+  dynamic_scale.dtype: {type: dtype, param: dynamic_scale, io_type: output}
+  actual_token_num.shape: {type: shape, param: actual_token_num, io_type: output}
+  actual_token_num.dtype: {type: dtype, param: actual_token_num, io_type: output}
+
+constraints:
+  # ---- 保留：隐式 value_range / max_out_shape length+value 推导 ----
+  - id: "IMPLICIT-RANGE-schedule_context"
+    type: calculate
+    sources: ["schedule_context.dtype"]
+    target: "schedule_context.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype生成schedule_context.value_range"
+  - id: "IMPLICIT-RANGE-max_out_shape"
+    type: calculate
+    sources: ["max_out_shape.dtype"]
+    target: "max_out_shape.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype生成max_out_shape.value_range"
+  - id: "IMPLICIT-LENGTH-max_out_shape"
+    type: calculate
+    sources: ["max_out_shape.length_ranges"]
+    target: "max_out_shape.length"
+    expression: "derive_length_from_length_ranges(sources[0])"
+    description: "根据length_ranges生成max_out_shape.length（固定 4）"
+  - id: "IMPLICIT-VALUE-LIST-max_out_shape"
+    type: calculate
+    sources: ["max_out_shape.length", "max_out_shape.value_range"]
+    target: "max_out_shape.value"
+    expression: "derive_array_value_from_length_and_value_range(sources[0], sources[1])"
+    description: "根据length与value_range生成max_out_shape.value（4 元素，∈[1,64]）"
+
+  # ---- 精确形状/类型推导（本算子核心契约） ----
+  # schedule_context 固定为 1024B / 1 维（spec inputs[0].shape.symbolic=[1024]）
+  - id: "SC-SHAPE-001"
+    type: calculate
+    sources: ["schedule_context.dimensions"]
+    target: "schedule_context.shape"
+    expression: "[1024]"
+    description: "schedule_context.shape 固定 [1024]（1024 字节调度上下文结构体）"
+
+  # y.shape = [Y, H] = [mos[0]*mos[1]*mos[2], mos[3]]
+  - id: "Y-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "y.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2], sources[0][3]]"
+    description: "y.shape=[Y,H], Y=A*BS*(topK+1)=mos[0]*mos[1]*mos[2], H=mos[3]"
+
+  # y.dtype 随 token_dtype（0->float16 / 1->bfloat16 / 2->int8）
+  - id: "Y-DTYPE-001"
+    type: calculate
+    sources: ["token_dtype.value"]
+    target: "y.dtype"
+    expression: "['float16', 'bfloat16', 'int8'][sources[0]]"
+    description: "y.dtype 由 token_dtype 决定：0->fp16,1->bf16,2->int8"
+
+  # group_list.shape = [expert_num, 2]
+  - id: "GL-SHAPE-001"
+    type: calculate
+    sources: ["expert_num.value"]
+    target: "group_list.shape"
+    expression: "[sources[0], 2]"
+    description: "group_list.shape=[expert_num,2]"
+
+  # id 类输出 shape = [Y]
+  - id: "SID-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "session_ids.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2]]"
+    description: "session_ids.shape=[Y]"
+  - id: "MBID-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "micro_batch_ids.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2]]"
+    description: "micro_batch_ids.shape=[Y]"
+  - id: "TID-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "token_ids.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2]]"
+    description: "token_ids.shape=[Y]"
+  - id: "EOFF-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "expert_offsets.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2]]"
+    description: "expert_offsets.shape=[Y]"
+  - id: "DS-SHAPE-001"
+    type: calculate
+    sources: ["max_out_shape.value"]
+    target: "dynamic_scale.shape"
+    expression: "[sources[0][0]*sources[0][1]*sources[0][2]]"
+    description: "dynamic_scale.shape=[Y]（仅 token_dtype=2 有效，非 2 时为空 tensor）"
+
+  # actual_token_num.shape = [1]（从固定锚点 schedule_context.dimensions 派生，表达式恒返回 [1]）
+  - id: "ATN-SHAPE-001"
+    type: calculate
+    sources: ["schedule_context.dimensions"]
+    target: "actual_token_num.shape"
+    expression: "[1]"
+    description: "actual_token_num.shape=[1]（标量）"
