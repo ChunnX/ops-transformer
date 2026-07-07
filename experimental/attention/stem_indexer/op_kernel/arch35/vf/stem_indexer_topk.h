@@ -162,9 +162,9 @@ public:
         if (s2LoopNum == 1) {
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                topkb16gather::LiTopKVF<false>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                               idx0Local, idx1Local, idx2Local, idx3Local,
-                                               nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+                SIStemTopkb16gather::LiTopKVF<false>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                     idx0Local, idx1Local, nkValueLocal, topKLocalSlice,
+                                                     validLen, batchRowNum, offset);
             } else {
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                    idx0Local, idx1Local, idx2Local, idx3Local,
@@ -175,9 +175,9 @@ public:
                 uint32_t mInnerIdx = mBaseIdx + m;
                 if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                     LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                    topkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
-                                                          tmpIdxLocal16[m * topkAlign],
-                                                          topkNumLocal.GetValue(mInnerIdx));
+                    SIStemTopkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
+                                                                tmpIdxLocal16[m * topkAlign],
+                                                                topkNumLocal.GetValue(mInnerIdx));
                 } else {
                     AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
                 }
@@ -185,9 +185,9 @@ public:
         } else if (loopIdx == 0) {
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                topkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                              idx0Local, idx1Local, idx2Local, idx3Local,
-                                              nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+                SIStemTopkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                    idx0Local, idx1Local, nkValueLocal, topKLocalSlice,
+                                                    validLen, batchRowNum, offset);
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
@@ -199,9 +199,9 @@ public:
                 // 输出到 globalIndexLocal(hisIndexLocal[0])，给下一轮 gather 和 CopyOutFourRows 用
                 if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                     LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                    topkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
-                                                          tmpIdxLocal16[m * topkAlign],
-                                                          topkNumLocal.GetValue(mInnerIdx));
+                    SIStemTopkb16gather::LiTopKTmpIndexU16ToU32(hisIndexLocal[0][m * topkAlign],
+                                                                tmpIdxLocal16[m * topkAlign],
+                                                                topkNumLocal.GetValue(mInnerIdx));
                 } else {
                     AscendC::DataCopy(hisIndexLocal[0][m * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
                 }
@@ -210,9 +210,9 @@ public:
         } else {
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                topkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                              idx0Local, idx1Local, idx2Local, idx3Local,
-                                              nkValueLocal, topKLocalSlice, validLen, batchRowNum, offset);
+                SIStemTopkb16gather::LiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                    idx0Local, idx1Local, nkValueLocal, topKLocalSlice,
+                                                    validLen, batchRowNum, offset);
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
@@ -224,7 +224,7 @@ public:
                 uint32_t mInnerIdx = mBaseIdx + m;
                 if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                     LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                    topkb16gather::LiTopKGatherVF(
+                    SIStemTopkb16gather::LiTopKGatherVF(
                         hisIndexLocal[1][m * topkAlign],
                         hisValueLocal[m * topkAlign],
                         inputValueLocal[m * offset],

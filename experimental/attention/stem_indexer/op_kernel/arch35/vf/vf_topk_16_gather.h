@@ -13,10 +13,10 @@
 * \brief
 */
 
-#ifndef VF_TOP_K_16_GATHER_H
-#define VF_TOP_K_16_GATHER_H
+#ifndef STEM_INDEXER_VF_TOP_K_16_GATHER_H
+#define STEM_INDEXER_VF_TOP_K_16_GATHER_H
 
-namespace topkb16gather {
+namespace SIStemTopkb16gather {
 
 template<typename T>
 __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf,
