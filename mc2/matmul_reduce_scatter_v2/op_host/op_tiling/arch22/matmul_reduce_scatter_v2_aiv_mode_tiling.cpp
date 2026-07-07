@@ -547,8 +547,7 @@ static inline bool IsArrayEqual(std::vector<uint32_t> &arr1, const std::vector<u
     return true;
 }
 
-static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context,
-                                                                   const MatmulReduceScatterV2AivModeInfo &)
+static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context)
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(A_INDEX);
@@ -1127,7 +1126,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
                     OP_LOGE(context->GetNodeName(),
                             "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(),
                             "MatmulReduceScatterV2 aivMode CheckDtypeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);

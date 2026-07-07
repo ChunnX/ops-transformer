@@ -95,6 +95,7 @@ class AllGatherMatmulV2(BaseApi):
             if dequantType:
                 if use_int64:
                     output_dtype = torch.float16
+                    x2_scale = torch_npu.npu_trans_quant_param(x2_scale, round_mode=1)
 
             if dequantType == 0:
                 output = torch.matmul(allgather_out, x2)
@@ -103,8 +104,8 @@ class AllGatherMatmulV2(BaseApi):
                                                       dtype=x1_scale.dtype).npu()
                 dist._all_gather_base(x1_scale_all_gather_out, x1_scale)
                 output = torch_npu.npu_quant_matmul(x1=allgather_out, x2=x2, scale=x2_scale.squeeze(0),
-                                                    pertoken_scale=x1_scale_all_gather_out.squeeze(-1),
                                                     output_dtype=output_dtype)
+                output = (output.to(torch.float32) * x1_scale_all_gather_out).to(output_dtype)
             else:
                 output = torch_npu.npu_quant_matmul(x1=allgather_out, x2=x2, scale=x2_scale.squeeze(0),
                                                     output_dtype=output_dtype)
@@ -154,7 +155,7 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
 
         use_int64 = input_data.kwargs["useInt64"]
         if use_int64:
-            input_data.kwargs["x2Scale"] = torch_npu.npu_trans_quant_param(input_data.kwargs["x2Scale"])
+            input_data.kwargs["x2Scale"] = torch_npu.npu_trans_quant_param(input_data.kwargs["x2Scale"], round_mode=1)
 
         use_x1_scale = input_data.kwargs["useX1Scale"]
 
