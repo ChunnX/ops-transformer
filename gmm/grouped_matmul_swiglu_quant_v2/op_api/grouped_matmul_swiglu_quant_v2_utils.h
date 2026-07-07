@@ -474,7 +474,8 @@ protected:
         return true;
     }
 
-    void SetTensorListOriginalShapes(const aclTensorList *tensorList, const std::vector<op::Shape> &originalShapes) const
+    void SetTensorListOriginalShapes(
+        const aclTensorList *tensorList, const std::vector<op::Shape> &originalShapes) const
     {
         if (tensorList == nullptr || tensorList->Size() != originalShapes.size()) {
             return;

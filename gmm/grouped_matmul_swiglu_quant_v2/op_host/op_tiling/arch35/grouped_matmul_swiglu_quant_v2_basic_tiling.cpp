@@ -574,7 +574,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     OP_CHECK_IF(isMultiWeightNz && scaleCount != weightCount,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale",
                                                       std::to_string(scaleCount),
-                                                      "weightScale tensor list size must equal weight tensor list size"),
+                                                      "weightScale tensor list size must equal "
+                                                      "weight tensor list size"),
                 return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);

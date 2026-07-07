@@ -144,7 +144,7 @@ static aclnnStatus ProcessSingleWeightNz(const aclTensorList *weight)
                GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                "storage shape dim num must be 5 when weight NZ v2");
     CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape,
-                                           WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
+                                          WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
     if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
