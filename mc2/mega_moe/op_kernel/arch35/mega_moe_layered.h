@@ -163,6 +163,8 @@ private:
     uint32_t roundMaskAlignSize_ = 0; // 分轮次：每轮部分 mask 的字节大小（32B 对齐）
     uint32_t roundMaskSlotSize_ = 0;  // 分轮次：每轮部分 [mask|count] 槽位字节大小
     uint32_t totalRounds_ = 0;        // 分轮次：总轮数 = CeilDiv(sendTotalNum, roundSendTotalNum)
+    uint32_t dispatchRoundSendTotalNum_ = 0; // dispatch分轮次：每轮处理的 token*topK 数量（256 对齐）
+    uint32_t dispatchTotalRounds_ = 0;       // dispatch分轮次：总轮数
     uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
@@ -349,18 +351,54 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         gatherMaskTensorSize / sizeof(uint8_t));
     gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
         gatherMaskTensorSize / sizeof(uint32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的dst Tensor；
-    // Tensor大小：sendTotalNum_ * sizeof(int32_t) align至32字节对齐；
+    // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ 从 sendTotalNum_ 缩减为 roundSize
+    // UB 预算：需容纳 2*roundSize*4 (topkIndex + validTopkIndex) + tokenScaleSize*6 + 8KB + 2KB + ...
+    // 求解最大 roundSize：令 x = roundSize (256对齐)，约束 8x + tokenScaleSize*6 + 8K + 2K + ... <= 248K
+    // 简化：从 gatherMaskTensorAddr 之后可用空间反推
+    uint32_t dispatchFixedCost = 0;
+    {
+        uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+            static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+            static_cast<int64_t>(ALIGN_32));
+        dispatchFixedCost = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize
+            + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES
+            + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32)
+            + Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t)
+            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    }
+    uint32_t dispatchAvailUb = SEND_MASK_UB_LIMIT - gatherMaskTensorAddr - gatherMaskTensorSize - dispatchFixedCost;
+    // 2 个 round-sized tensor: topkIndex(R*4) + validTopkIndex(R*4) = 8R bytes
+    uint32_t maxDispatchRoundSize = dispatchAvailUb / 8U;
+    maxDispatchRoundSize = (maxDispatchRoundSize / 256U) * 256U;
+    if (maxDispatchRoundSize == 0) { maxDispatchRoundSize = 256U; }
+    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxDispatchRoundSize)) {
+        dispatchRoundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
+    } else {
+        uint32_t minDispatchRounds = static_cast<uint32_t>(Ops::Base::CeilDiv(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxDispatchRoundSize)));
+        uint32_t evenDispatchRoundSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minDispatchRounds)),
+            static_cast<int64_t>(ALIGN_256)));
+        dispatchRoundSendTotalNum_ = (evenDispatchRoundSize <= maxDispatchRoundSize) ?
+            evenDispatchRoundSize : maxDispatchRoundSize;
+    }
+    if (dispatchRoundSendTotalNum_ == 0) { dispatchRoundSendTotalNum_ = 256U; }
+    dispatchTotalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(dispatchRoundSendTotalNum_)));
+
+    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的dst Tensor（分轮次分配）；
+    // Tensor大小：dispatchRoundSendTotalNum_ * sizeof(int32_t) align至32字节对齐；
     uint32_t validTopkIndexTensorAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的src Tensor；
-    // Tensor大小：sendTotalNum_ * sizeof(int32_t) align至32字节对齐；
+    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的src Tensor（分轮次分配）；
+    // Tensor大小：dispatchRoundSendTotalNum_ * sizeof(int32_t) align至32字节对齐；
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
@@ -404,7 +442,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         expertTokenNumsOutTensorSize / sizeof(int32_t));
     // 记录当前已被使用的ub地址，用于后续TripleInfoCalAndDispatch函数中分核后神申请tripleTensor_
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
-    CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
 }
@@ -1148,19 +1185,9 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(
     GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
-    // Phase 1: 分组分核进行三元组组装以及token dispatch
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
-    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
+    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
-    uint32_t topkIndexTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // A8W4 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
-    if constexpr (ENABLE_A8W4) {
-        if (localExpertId != 0) {
-            CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
 
     constexpr int32_t MAX_TRIPLE_ROWS_PER_CHUNK = static_cast<int32_t>(DISPATCH_WAVE_TILE_M);
     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
@@ -1169,47 +1196,79 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             if (dstRankIdx >= worldSize_) {
                 continue;
             }
-            uint64_t sendToCurExpTokenCnt = 0;
-            GatherMask(validTopkIndexTensor_, topkIndexTensor_,
-                gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
-                true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
             int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
             if (rowStartIdxInDst >= maxOutputSize_) {
                 continue;
             }
-            int32_t rowsCopyCnt = sendToCurExpTokenCnt;
-            if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
-                rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
-            }
-            for (int32_t rowSrcIdxInCore = 0; rowSrcIdxInCore < rowsCopyCnt;
-                rowSrcIdxInCore += MAX_TRIPLE_ROWS_PER_CHUNK) {
-                int32_t rowsNumInCore = rowsCopyCnt - rowSrcIdxInCore;
-                if (rowsNumInCore > MAX_TRIPLE_ROWS_PER_CHUNK) {
-                    rowsNumInCore = MAX_TRIPLE_ROWS_PER_CHUNK;
+
+            uint64_t totalSendToCurExp = 0;
+            int32_t accumulatedRowSrcOffset = 0;
+            LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[
+                dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))];
+
+            for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
+                uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
+                    static_cast<uint64_t>(dispatchRoundSendTotalNum_);
+                uint32_t roundLen = (roundIdx + 1 < dispatchTotalRounds_) ?
+                    dispatchRoundSendTotalNum_ :
+                    static_cast<uint32_t>(sendTotalNum_ - roundStart);
+                uint32_t topkIndexTensorElemCount = Ops::Base::CeilAlign(
+                    static_cast<int64_t>(roundLen * sizeof(int32_t)),
+                    static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
+
+                CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
+                    topkIndexTensorElemCount);
+                AscendC::PipeBarrier<PIPE_V>();
+
+                uint64_t roundTokenCnt = 0;
+                GatherMask(validTopkIndexTensor_, topkIndexTensor_,
+                    rankMaskSlice, true, roundLen, {1, 1, 0, 0}, roundTokenCnt);
+                totalSendToCurExp += roundTokenCnt;
+
+                if (roundTokenCnt == 0) {
+                    continue;
                 }
-                int32_t rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore;
-                uint32_t tripleTensorAddr = ubBufferUsedAddr_;
-                uint32_t tripleTensorSize = rowsNumInCore * ALIGN_32;
-                tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
-                    tripleTensorSize / sizeof(int32_t));
-                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-                PipeBarrier<PIPE_ALL>();
-                CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-                PipeBarrier<PIPE_ALL>();
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-                int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
-                int32_t rowEndLocal = rowStartLocal + rowsNumInCore;
-                int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
-                int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-                __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-                for (int32_t w = waveLo; w <= waveHi; ++w) {
-                    int32_t waveStartLocal = w * L1_TILE_M_I32;
-                    int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
-                    int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
-                    int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                    AtomicAdd(flagBase + w, int32_t(hi - lo));
+
+                int32_t roundCopyCnt = static_cast<int32_t>(roundTokenCnt);
+                if (rowStartIdxInDst + accumulatedRowSrcOffset + roundCopyCnt > maxOutputSize_) {
+                    roundCopyCnt = maxOutputSize_ - rowStartIdxInDst - accumulatedRowSrcOffset;
                 }
+                if (roundCopyCnt <= 0) {
+                    accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
+                    continue;
+                }
+
+                for (int32_t chunkSrcIdx = 0; chunkSrcIdx < roundCopyCnt;
+                    chunkSrcIdx += MAX_TRIPLE_ROWS_PER_CHUNK) {
+                    int32_t chunkRows = roundCopyCnt - chunkSrcIdx;
+                    if (chunkRows > MAX_TRIPLE_ROWS_PER_CHUNK) {
+                        chunkRows = MAX_TRIPLE_ROWS_PER_CHUNK;
+                    }
+                    int32_t rowDstOffsetInCore = rowStartIdxInDst + accumulatedRowSrcOffset + chunkSrcIdx;
+                    uint32_t tripleTensorAddr = ubBufferUsedAddr_;
+                    uint32_t tripleTensorSize = chunkRows * ALIGN_32;
+                    tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+                        tripleTensorSize / sizeof(int32_t));
+                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+                    PipeBarrier<PIPE_ALL>();
+                    CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
+                    PipeBarrier<PIPE_ALL>();
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+                    int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
+                    int32_t rowEndLocal = rowStartLocal + chunkRows;
+                    int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
+                    int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
+                    __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
+                    for (int32_t w = waveLo; w <= waveHi; ++w) {
+                        int32_t waveStartLocal = w * L1_TILE_M_I32;
+                        int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
+                        int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
+                        int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
+                        AtomicAdd(flagBase + w, int32_t(hi - lo));
+                    }
+                }
+                accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
         }
     }
