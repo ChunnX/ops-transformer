@@ -451,6 +451,7 @@ __aicore__ inline void VecOp<SFAGT>::InitUB(TPipe *pipe)
 
         uint32_t dstSoftShape[2] = {static_cast<uint32_t>(params.sftBaseM), static_cast<uint32_t>(params.sftBaseN)};
         pTensor.SetShapeInfo(ShapeInfo(2, dstSoftShape, DataFormat::ND));
+        mte2WaitMte3Proc = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
         mte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
         mte3WaitMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>());
         mte2WaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
@@ -1296,20 +1297,14 @@ __aicore__ inline void VecOp<SFAGT>::Process(const RunInfo &runInfo)
 
         CalSoftmax(i, processM, mm12Addr, mm345Addr, runInfo);
 
-        if constexpr (!IS_DETERMINISTIC) {
-            if (enableOptimizedScatter) {
-                SET_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
-                WAIT_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
-            }
-        }
+        SET_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
+        WAIT_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
 
         CalSoftmaxGrad(i, processM, mm12Addr, mm345Addr, runInfo);
 
-        if constexpr (!IS_DETERMINISTIC) {
-            if (i < subLoopEnd - 1 && enableOptimizedScatter) {
-                SET_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
-                WAIT_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
-            }
+        if (i < subLoopEnd - 1) {
+            SET_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
+            WAIT_FLAG(MTE3, MTE2, mte2WaitMte3Proc);
         }
         mm12Addr += dataSize;
         mm345Addr += dataSize;
