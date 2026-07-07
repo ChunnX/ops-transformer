@@ -120,7 +120,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
 
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
-    int64_t sizeLow = ge::GetSizeByDataType(ge::DT_BFLOAT16);
+    int64_t sizeLow = ge::GetSizeByDataType(ge::DT_BF16);
     int64_t nv = tilingData_.nv;
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
