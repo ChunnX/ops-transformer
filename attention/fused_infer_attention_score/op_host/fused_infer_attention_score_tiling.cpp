@@ -1393,6 +1393,49 @@ static ge::graphStatus CheckFAIKVContiguity(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus ValidateCacheAllAxisContiguous(const gert::TilingContext *context,
+    uint64_t inputIndex, const gert::Shape &shape, const char *tensorName)
+{
+    auto *stride = context->GetDynamicInputStride(inputIndex, 0);
+    if (stride == nullptr || stride->GetDimNum() == 0 || stride->GetDimNum() != shape.GetDimNum()) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t expectedStride = 1;
+    for (size_t i = shape.GetDimNum(); i > 0; --i) {
+        size_t dimIndex = i - 1;
+        if (shape.GetDim(dimIndex) == 1) {
+            continue;
+        }
+        uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(dimIndex));
+        if (actualStride != expectedStride) {
+            OP_LOGE(context,
+                    "Tensor %s (irIdx=%lu) dim%zu is non-contiguous: "
+                    "actual stride=%lu, expected contiguous stride=%lu. "
+                    "Non-contiguous key/value is not supported in the current scenario.",
+                    tensorName, inputIndex, dimIndex, actualStride, expectedStride);
+            return ge::GRAPH_FAILED;
+        }
+        expectedStride *= static_cast<uint64_t>(shape.GetDim(dimIndex));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckKVContiguityForNonSplitFuse(const gert::TilingContext *context)
+{
+    auto keyShape = context->GetInputShape(KEY_INDEX)->GetStorageShape();
+    auto valueShape = context->GetInputShape(VALUE_INDEX)->GetStorageShape();
+    OP_CHECK_IF(ValidateCacheAllAxisContiguous(context, KEY_INDEX, keyShape, "key") != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "key is non-contiguous, "
+                                                            "which is not supported in the current scenario."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateCacheAllAxisContiguous(context, VALUE_INDEX, valueShape, "value") != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "value is non-contiguous, "
+                                                            "which is not supported in the current scenario."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 {
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
@@ -2287,6 +2330,10 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
+    OP_CHECK_IF(!usingFAI && CheckKVContiguityForNonSplitFuse(context) != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "non-contiguous key/value is not supported in the current scenario"),
+        return ge::GRAPH_FAILED);
     if (usingFAI) {
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
