@@ -70,9 +70,6 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        if constexpr (kIsFp32) {
-            curDkF32_ = Ceil(Dk_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
-        }
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
@@ -86,15 +83,15 @@ public:
             return;
         }
         if constexpr (kIsFp32) {
-            uint64_t inSize = Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDkF32_ * sizeof(float);
+            uint64_t inSize = Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(float);
             uint64_t deltaSize = Dv_ * curDk_ * sizeof(bfloat16_t);
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, deltaSize));
             uint64_t outSize = Std::max(inSize, deltaSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
-            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDkF32_ + Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
+            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
             uint32_t buffOffset = 0;
-            stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDkF32_), buffOffset);
-            buffOffset += Ceil(Dv_ * curDkF32_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
+            buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             stateDeltaUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
@@ -137,38 +134,40 @@ public:
                     if constexpr (kIsFp32) {
                         if (GetSubBlockIdx() == 0) {
                             if (isFirstGroup_ && cId == 0) {
-                                CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
+                                CopyInFp32State(sTP_->stateFp32In[nvId * Dv_ * Dk_]);
                             } else {
-                                CopyIn<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_);
+                                CopyInFp32State(sTP_->stateFp32Out[nvId * Dv_ * Dk_]);
                             }
                             auto stateIn = inQueue_.DeQue<float>();
-                            DataCopy(stateFp32Ub_, stateIn, Dv_ * curDkF32_);
+                            DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
                             inQueue_.FreeTensor(stateIn);
                             if (isFirstGroup_ && cId == 0) {
                                 auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
-                                Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
+                                Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                                 outQueue_.EnQue(bf16Init);
-                                CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false);
+                                CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                                 CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                             }
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
-                            CopyIn<bfloat16_t>(sTP_->finalState[nvId * Dv_ * Dk_], Dv_, Dk_);
-                            auto deltaIn = inQueue_.DeQue<bfloat16_t>();
-                            Cast(stateDeltaUb_, deltaIn, RoundMode::CAST_NONE, Dv_ * curDk_);
-                            inQueue_.FreeTensor(deltaIn);
-                            Add(stateFp32Ub_, stateFp32Ub_, stateDeltaUb_, Dv_ * Dk_);
-                            PipeBarrier<PIPE_V>();
+                            if (cId != 0) {
+                                CopyIn<bfloat16_t>(sTP_->finalState[nvId * Dv_ * Dk_], Dv_, Dk_);
+                                auto deltaIn = inQueue_.DeQue<bfloat16_t>();
+                                Cast(stateDeltaUb_, deltaIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+                                inQueue_.FreeTensor(deltaIn);
+                                Add(stateFp32Ub_, stateFp32Ub_, stateDeltaUb_, Dv_ * curDk_);
+                                PipeBarrier<PIPE_V>();
+                            }
                             auto fp32Local = outQueue_.AllocTensor<float>();
-                            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDkF32_);
+                            DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
                             outQueue_.EnQue(fp32Local);
-                            CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false);
+                            CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                             auto bf16Accum = outQueue_.AllocTensor<bfloat16_t>();
-                            Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
+                            Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
                             outQueue_.EnQue(bf16Accum);
-                            CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false);
+                            CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                         CrossCoreWaitFlag(0x4);
@@ -237,7 +236,7 @@ public:
         }
         float tmpFloat = lastGCum_.GetValue(0);
         if constexpr (kIsFp32) {
-            Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * Dk_);
+            Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
             PipeBarrier<PIPE_V>();
         } else {
             auto stateIn = inQueue_.DeQue<bfloat16_t>();
@@ -313,19 +312,37 @@ public:
         inQueue_.EnQue(inLocal);
     }
 
+    __aicore__ inline void CopyInFp32State(GlobalTensor<float> tmpGM)
+    {
+        LocalTensor<float> inLocal = inQueue_.AllocTensor<float>();
+        DataCopyExtParams inParams{static_cast<uint16_t>(Dv_),
+                                   static_cast<uint32_t>(Dk_ * sizeof(float)),
+                                   static_cast<uint32_t>(0),
+                                   0, 0};
+        int32_t padding = curDk_ - Dk_;
+        DataCopyPadExtParams<float> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
+        DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
+        inQueue_.EnQue(inLocal);
+    }
+
     __aicore__ inline void CopyOutState(GlobalTensor<bfloat16_t> stateNew)
     {
         CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
     }
 
     template <typename outType>
-    __aicore__ inline void CopyOut(GlobalTensor<outType> tmpGM, int32_t row, int32_t col, bool setAtomic = false)
+    __aicore__ inline void CopyOut(GlobalTensor<outType> tmpGM, int32_t row, int32_t col,
+                                   bool setAtomic = false, int32_t srcCol = 0)
     {
         auto outLocal = outQueue_.DeQue<outType>();
         DataCopyExtParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(row);
         copyParams.blockLen = static_cast<uint32_t>(col * sizeof(outType));
-        copyParams.srcStride = static_cast<uint32_t>(0);
+        if (srcCol > col && ((srcCol - col) * sizeof(outType)) % BLOCK_SIZE == 0) {
+            copyParams.srcStride = static_cast<uint32_t>((srcCol - col) * sizeof(outType) / BLOCK_SIZE);
+        } else {
+            copyParams.srcStride = static_cast<uint32_t>(0);
+        }
         copyParams.dstStride = static_cast<uint32_t>(0);
         if (setAtomic) {
             SetAtomicAdd<outType>();
@@ -355,7 +372,6 @@ private:
     int32_t chunkSize_;
     int32_t curChunkSize_;
     int32_t curDk_;
-    int32_t curDkF32_;
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
