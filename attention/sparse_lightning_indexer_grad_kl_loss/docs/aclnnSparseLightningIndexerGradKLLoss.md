@@ -237,7 +237,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <ul>
                 <li>与query的layout维度保持一致。</li>
                 <li>不支持空Tensor。</li>
-            <ul>
+            </ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <ul>
                 <li>与key的layout维度保持一致。</li>
                 <li>不支持空Tensor。</li>
-            <ul>
+            </ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
@@ -609,7 +609,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
 
-    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128；N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
+    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
 
 ## 调用示例
 

@@ -246,9 +246,13 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
     OP_TILING_CHECK(group == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_GROUP_INDEX failed"),
                     return ge::GRAPH_FAILED);
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    if (commMode != nullptr && strnlen(commMode, 1UL) > 0) { // 不为空字符串
-        OP_LOGI(context_->GetNodeName(), "The current soc only support default communication engine.");
-    }
+    OP_TILING_CHECK(commMode == nullptr,
+                    OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_COMM_MODE_INDEX failed"),
+                    return ge::GRAPH_FAILED);
+    const size_t maxLength = 7UL;
+    OP_TILING_CHECK((strncmp(commMode, "ai_cpu", maxLength) != 0),
+                    OP_LOGE(context_->GetNodeName(), "comm_mode only support 'ai_cpu'."),
+                    return ge::GRAPH_FAILED);
     uint32_t optype = HcclCMDType::HCCL_CMD_ALLTOALL;
     std::string algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
     OP_LOGD(context_->GetNodeName(), "AllToAllFpMatmulTilingBaseA3, SetHcclTiling algConfig is: %s", algConfig.c_str());

@@ -64,7 +64,8 @@ __aicore__ inline T Min(T a, T b)
 }
 
 template <typename T1, typename T2>
-__aicore__ inline T1 CeilAlign(T1 a, T2 b) {
+__aicore__ inline T1 CeilAlign(T1 a, T2 b)
+{
     if (b == 0) {
         return 0;
     }
@@ -80,6 +81,14 @@ __aicore__ inline T1 CeilDiv(T1 x, T2 y)
     }
 
     return x;
+}
+
+template <HardEvent event>
+__aicore__ inline void SetWaitFlag(HardEvent evt)
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
+    SetFlag<event>(eventId);
+    WaitFlag<event>(eventId);
 }
 
 } // namespace MoeGatingTopK
