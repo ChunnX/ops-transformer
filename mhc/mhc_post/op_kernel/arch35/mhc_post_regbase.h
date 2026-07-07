@@ -257,11 +257,11 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd_N4(
                 AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat2, xReg2, pMask);
                 AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat3, xReg3, pMask);
 
-                AscendC::MicroAPI::Mul(outRegFloat, xRegFloat0, hResReg0, pMask);
+                AscendC::MicroAPI::Mul(outRegFloat, hOutRegFloat, hPostReg, pMask);
+                AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat0, hResReg0, pMask);
                 AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat1, hResReg1, pMask);
                 AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat2, hResReg2, pMask);
                 AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat3, hResReg3, pMask);
-                AscendC::MicroAPI::MulAddDst(outRegFloat, hOutRegFloat, hPostReg, pMask);
 
                 AscendC::MicroAPI::DataCopy(yAddr + nIndex * dAlign + j * VL_FP32, outRegFloat, pMask);
             }
