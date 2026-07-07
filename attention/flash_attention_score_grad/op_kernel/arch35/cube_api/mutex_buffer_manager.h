@@ -18,29 +18,34 @@
 #include "mutex_buffer.h"
 
 namespace fa_base_matmul {
-template<BufferType bufferType>
+template <BufferType bufferType>
 class MutexBufferManager {
     using TensorType = LocalTensor<uint8_t>;
+
 public:
-    __aicore__ inline void Init(TPipe *pipe, uint32_t size) {
+    __aicore__ inline void Init(TPipe *pipe, uint32_t size)
+    {
         TBuf<BufferInfo<bufferType>::Position> tbuf;
         pipe->InitBuffer(tbuf, size);
         mem_ = tbuf.template Get<uint8_t>();
     }
 
-    template<SyncType syncType = SyncType::INNER_CORE_SYNC>
-    __aicore__ inline MutexBuffer<bufferType, syncType> AllocBuffer(uint32_t size) {
+    template <SyncType syncType = SyncType::INNER_CORE_SYNC>
+    __aicore__ inline MutexBuffer<bufferType, syncType> AllocBuffer(uint32_t size)
+    {
         TensorType temp = mem_[offset_];
         offset_ += size;
         return MutexBuffer<bufferType, syncType>(temp, size);
     }
 
-    template<SyncType syncType = SyncType::INNER_CORE_SYNC>
-    __aicore__ inline void FreeBuffer(MutexBuffer<bufferType, syncType> &buffer) {
+    template <SyncType syncType = SyncType::INNER_CORE_SYNC>
+    __aicore__ inline void FreeBuffer(MutexBuffer<bufferType, syncType> &buffer)
+    {
     }
+
 private:
     uint32_t offset_ = 0;
     TensorType mem_;
 };
-}
+} // namespace fa_base_matmul
 #endif

@@ -109,6 +109,8 @@ public:
     constexpr static uint32_t DETER_CUBE_BASEN = CUBE_BASEM > CUBE_BASEN ? CUBE_BASEM : CUBE_BASEN;
     constexpr static uint32_t IS_NORMAL_SWIZZLE = !IS_TND && CUBE_BASEM == CUBE_BASEN && SPLIT_AXIS == BN2GS1S2 &&
                                                   DETER_SPARSE_TYPE == NO_DETER;
+    constexpr static bool IS_PRELOAD_TWO_TIMES = HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned128) &&
+                                                 !IS_DROP && SPLIT_AXIS == BN2GS1S2 && DETER_SPARSE_TYPE == NO_DETER;
 
 protected:
     TPipe *pipe;
@@ -121,9 +123,11 @@ protected:
     TBuf<> mm1ResBuf[2];
     TBuf<> mm2ResBuf[2];
     MutexBufferManager<BufferType::L1> l1BufferManager;
-    MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
-    MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
- 
+    typename std::conditional<IS_PRELOAD_TWO_TIMES, MutexBuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>,
+                              MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>>::type pL1Buf;
+    typename std::conditional<IS_PRELOAD_TWO_TIMES, MutexBuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>,
+                              MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>>::type dSL1Buf;
+
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
     GM_ADDR actualSeqKvlenAddr;
