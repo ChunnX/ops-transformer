@@ -59,7 +59,7 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
 ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
 {
     // 校验pseShift的数据类型
-    if (fiaInfo.opParamInfo.pseType == nullptr || fiaInfo.opParamInfo.pseShift.desc == nullptr) {
+    if (!fiaInfo.pseShiftFlag) {
         // 若pseType或者pseShift的数据类型不存在，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
@@ -189,26 +189,18 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
 }
 
 // feature
-ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckFeatureDConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.opParamInfo.pseType == nullptr || fiaInfo.enableAlibiPse) {
-        // 若不存在pseType或pseType = 2/3，则放弃后续校验
-        return ge::GRAPH_SUCCESS;
-    }
-    // Page attention使能场景下，传入的PseShift的最后一维需要大于等于maxBlockNumPerSeq * blockSize
-    if (*fiaInfo.opParamInfo.pseType != 0 && fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        uint32_t pseShiftS2 = fiaInfo.pseShiftS2;
-        int32_t blockSize = fiaInfo.blockSize;
-        uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
-        if (pseShiftS2 < maxBlockNumPerBatch * blockSize) {
-            std::string reason = "The last axis of pse_shift must be greater than or equal to maxBlockNumPerBatch(" +
-                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) +
-                ") when page attention is enabled";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift",
-                ToStringRaw(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
-            return ge::GRAPH_FAILED;
-        }
-    }
+    // 校验pseShift使能时，D不等长不支持
+    OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when D of query and key is not equal to D of value"),
+        return ge::GRAPH_FAILED);
+    // 校验alibi使能时，D不等长不支持
+    OP_CHECK_IF(fiaInfo.enableAlibiPse && fiaInfo.isQKVDDifferent,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when D of query and key is not equal to D of value"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -294,8 +286,7 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus PSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckPseType(fiaInfo) || ge::GRAPH_SUCCESS != CheckPseShiftDataType(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckPseShiftShape(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckPseType(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -311,7 +302,7 @@ ge::graphStatus PSEChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeaturePA(fiaInfo) ||
+    if (ge::GRAPH_SUCCESS != CheckFeatureDConsistency(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckerFeatureCrossover(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -320,7 +311,9 @@ ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus PSEChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckAlibiStartIdx(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckPseShiftDataType(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckPseShiftShape(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckAlibiStartIdx(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
