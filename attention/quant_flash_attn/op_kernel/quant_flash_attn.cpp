@@ -35,5 +35,17 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    return;
+#if (ORIG_DTYPE_Q == DT_FP8_E4M3FN)
+    quant_flash_attn_kernel_run<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, kvLayoutType, hasAttenMask, config>(
+        query, key, value, qDescale, kDescale, vDescale, pScale, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks,
+        attnMask, metadata, blockTable, attnOut, softmaxLse, user, tiling);
+#elif (ORIG_DTYPE_Q == DT_BF16)
+    quant_flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, kvLayoutType, hasAttenMask, config>(
+        query, key, value, qDescale, kDescale, vDescale, pScale, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks,
+        attnMask, metadata, blockTable, attnOut, softmaxLse, user, tiling);
+#elif (ORIG_DTYPE_Q == DT_FLOAT16)
+    quant_flash_attn_kernel_run<half, bfloat16_t, inOutLayoutType, kvLayoutType, hasAttenMask, config>(
+        query, key, value, qDescale, kDescale, vDescale, pScale, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks,
+        attnMask, metadata, blockTable, attnOut, softmaxLse, user, tiling);
+#endif
 }
