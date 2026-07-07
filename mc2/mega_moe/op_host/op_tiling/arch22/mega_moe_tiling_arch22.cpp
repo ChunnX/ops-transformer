@@ -84,7 +84,7 @@ namespace MegaMoeA2A3Tiling {
     constexpr int64_t MIN_BS = 1;
     constexpr int64_t MAX_BS = 8192;
     constexpr int64_t MIN_HIDDEN_SIZE = 1024;
-    constexpr int64_t MAX_HIDDEN_SIZE = 10240;
+    constexpr int64_t MAX_HIDDEN_SIZE = 3072;
     constexpr int64_t MIN_TOPK = 1;
     constexpr int64_t MAX_TOPK = 32;
     constexpr int64_t MIN_EXPERT_PER_RANK = 1;

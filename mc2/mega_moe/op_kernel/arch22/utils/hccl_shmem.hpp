@@ -29,7 +29,6 @@
 #include "../../../../common/op_kernel/moe_distribute_base.h"
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__
-constexpr int32_t MAX_RANK_SIZE = 32;
 constexpr int32_t SHMEM_MEM = 700 * MB_SIZE;
 
 constexpr uint16_t SEND_SYNC_EVENT_ID = 9;
@@ -69,7 +68,7 @@ FORCE_INLINE_AICORE void gm_dcci(__gm__ T *addr)
     __asm__ __volatile__("");
 }
 
-FORCE_INLINE_AICORE int32_t gm_signal_wait_until_eq_for_barrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
+FORCE_INLINE_AICORE int64_t gm_signal_wait_until_eq_for_barrier(__gm__ int64_t *sig_addr, int64_t cmp_val)
 {
     do {
         gm_dcci((__gm__ uint8_t *)sig_addr);
@@ -404,17 +403,17 @@ public:
     FORCE_INLINE_AICORE
     void CrossRankSync()
     {
-        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
-        __gm__ int32_t *sync_counter = (__gm__ int32_t *)(*this)() + flag_offset;
-        __gm__ int32_t *sync_base = (__gm__ int32_t *)(*this)() + flag_offset + m_rankSize * 16;
-        int count = gm_load(sync_base) + 1;
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
+        __gm__ int64_t *sync_counter = (__gm__ int64_t *)(*this)() + flag_offset;
+        __gm__ int64_t *sync_base = (__gm__ int64_t *)(*this)() + flag_offset + m_rankSize * 8;
+        int64_t count = gm_load(sync_base) + 1;
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            __gm__ int32_t *sync_remote = (__gm__ int32_t *)((*this)(i)) + flag_offset + m_rank * 16;
+            __gm__ int64_t *sync_remote = (__gm__ int64_t *)((*this)(i)) + flag_offset + m_rank * 8;
             gm_store(sync_remote, count);
             gm_dcci((__gm__ uint8_t *)sync_remote);
-            auto sync_check = sync_counter + i * 16;
+            auto sync_check = sync_counter + i * 8;
             gm_signal_wait_until_eq_for_barrier(sync_check, count);
         }
 
@@ -435,12 +434,12 @@ public:
     // duration of this call (matches how CrossRankSyncV2Set lays out its scratch).
     FORCE_INLINE_AICORE
     void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer) {
-        uint64_t flag_offset_i32   = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
+        uint64_t flag_offset_i64   = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
         uint64_t flag_offset_bytes = ((m_segmentSize - m_tailReservedSize));
-        __gm__ int32_t* sync_counter = (__gm__ int32_t*)(*this)() + flag_offset_i32;
-        __gm__ int32_t* sync_base    = (__gm__ int32_t*)(*this)() + flag_offset_i32 + m_rankSize * 16;
+        __gm__ int64_t* sync_counter = (__gm__ int64_t*)(*this)() + flag_offset_i64;
+        __gm__ int64_t* sync_base    = (__gm__ int64_t*)(*this)() + flag_offset_i64 + m_rankSize * 8;
         gm_dcci((__gm__ uint8_t*)sync_base);
-        int count = gm_load(sync_base) + 1;
+        int64_t count = gm_load(sync_base) + 1;
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
 
@@ -453,7 +452,7 @@ public:
             rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
             gmCrossServerPayload.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 windowsOutAddr() + flag_offset_bytes
-                + static_cast<uint64_t>(m_rank) * 16 * sizeof(int32_t)));
+                + static_cast<uint64_t>(m_rank) * 8 * sizeof(int64_t)));
             // Only this core's stride may include cross-server targets; skip UB→GM staging if none.
             bool needRdmaStage = false;
             int32_t const localServerId = m_rank / SERVER_RANK_SIZE_A2;
@@ -464,14 +463,14 @@ public:
                 }
             }
             if (needRdmaStage) {
-                ctrBuffer.SetValue(0, count);
+                ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, count);
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::DataCopy(gmCrossServerPayload, ctrBuffer, 8);
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
         } else {
-            ctrBuffer.SetValue(0, count);
+            ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, count);
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         }
@@ -482,8 +481,8 @@ public:
         // may already have arrived while our own cross-server WQEs are still
         // sitting unposted, and the producer side never makes forward progress).
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            __gm__ int32_t* sync_remote =
-                (__gm__ int32_t*)((*this)(i)) + flag_offset_i32 + m_rank * 16;
+            __gm__ int64_t* sync_remote =
+                (__gm__ int64_t*)((*this)(i)) + flag_offset_i64 + m_rank * 8;
 #ifdef HCCL_COMM
             if constexpr (IS_A2) {
                 int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
@@ -493,7 +492,7 @@ public:
                         (GM_ADDR)gmCrossServerPayload.GetPhyAddr(),
                         (GM_ADDR)sync_remote,
                         static_cast<uint64_t>(i),
-                        8 * sizeof(int32_t),
+                        4 * sizeof(int64_t),
                         reinterpret_cast<__gm__ HcclAiRMAInfo*>(WinContext_->aiRMAInfo),
                         rdmaUbLocal,
                         rdmaUbLocalHead);
@@ -508,9 +507,9 @@ public:
         // Phase 2: wait for the same set of source ranks to land their count in
         // our local sync slots. Works uniformly for intra-server (gm_store) and
         // inter-server (RDMA) producers because both ultimately materialize the
-        // same int32 at sync_counter[i*16].
+        // same int64 at sync_counter[i*8].
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            auto sync_check = sync_counter + i * 16;
+            auto sync_check = sync_counter + i * 8;
             gm_signal_wait_until_eq_for_barrier(sync_check, count);
         }
 
