@@ -136,7 +136,11 @@ public:
                 if ASCEND_IS_AIV {
                     if constexpr (kIsFp32) {
                         if (GetSubBlockIdx() == 0) {
-                            CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
+                            if (isFirstGroup_ && cId == 0) {
+                                CopyIn<float>(sTP_->stateFp32In[nvId * Dv_ * Dk_], Dv_, Dk_);
+                            } else {
+                                CopyIn<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_);
+                            }
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDkF32_);
                             inQueue_.FreeTensor(stateIn);
@@ -161,9 +165,9 @@ public:
                             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDkF32_);
                             outQueue_.EnQue(fp32Local);
                             CopyOut<float>(sTP_->stateFp32Out[nvId * Dv_ * Dk_], Dv_, Dk_, false);
-                            auto bf16Out = outQueue_.AllocTensor<bfloat16_t>();
-                            Cast(bf16Out, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
-                            outQueue_.EnQue(bf16Out);
+                            auto bf16Accum = outQueue_.AllocTensor<bfloat16_t>();
+                            Cast(bf16Accum, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * Dk_);
+                            outQueue_.EnQue(bf16Accum);
                             CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false);
                         }
                         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);

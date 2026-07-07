@@ -143,7 +143,6 @@ public:
 
         if constexpr (kStateIsFp32) {
             highStateAddr_ = user + offset;
-            highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
             offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
 
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
@@ -286,7 +285,6 @@ private:
     GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
-    GlobalTensor<highType> highState_;
     // mask矩阵
     GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)
     GlobalTensor<highType> stageThreeMask_;          // (Nv, maxGroupLength, C)
