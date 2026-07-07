@@ -19,7 +19,7 @@ import pytest
 import random
 import math
 import ast
-import custom_ops as ops
+import cann_ops_transformer as ops
 
 
 def test_compressor_process(filepath, device_id=0):

@@ -10,7 +10,7 @@ import random
 import torch
 import torch_npu
 import torchair
-import custom_ops
+from cann_ops_transformer.ops import quant_compressor
 import numpy as np
 import torch.nn as nn
 from torch_npu.testing.testcase import TestCase, run_tests
@@ -742,7 +742,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     print(f"block_table: shape {block_table.shape}, dtype: {block_table.dtype}")
     
     npu_out = (
-        torch.ops.custom.quant_compressor(
+        torch.ops.cann_ops_transformer.quant_compressor(
             x,
             wkv,
             wgate,
