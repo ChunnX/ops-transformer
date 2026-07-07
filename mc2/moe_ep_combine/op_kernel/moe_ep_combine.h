@@ -169,8 +169,7 @@ private:
     DataCopyParams xCopyParams_;
     DataCopyParams hCommuCopyOutParams_;
     DataCopyParams weightCommuOutParams_;
-
-
+    
     LocalTensor<half> maskGenerateTensor_;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<half> tokenTargetTensor_;
@@ -319,7 +318,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams_);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-    PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
     if (dstRankId != rankId_) {
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, XTypeAlign32Size_);
     }
@@ -337,11 +335,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
         outStateTensor.SetGlobalBuffer((__gm__ float*)remoteRankStateAddr); // 目标rank是epRankId，直接写入remoteAddr
     }
     DataCopy<float>(outStateTensor, statusTensor_, 8UL);
-    PipeBarrier<PIPE_MTE3>();
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
-        hcomm_.Drain(GetCommHandle(dstRankId));
     }
 }
 
@@ -361,7 +357,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
             int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank!= rankId) { // 只处理当前rank负责的token
+            if (src_rank!= rankId) { // 只处理当前rank负责的token
                 continue;
             }
             // 计算目标窗口地址:
