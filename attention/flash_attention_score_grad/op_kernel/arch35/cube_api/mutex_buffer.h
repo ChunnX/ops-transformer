@@ -19,9 +19,10 @@
 
 namespace fa_base_matmul {
 
-template<BufferType Type>
+template <BufferType Type>
 struct MutexBufferInfo {
-    __aicore__ const static constexpr pipe_t ProdPipe() {
+    __aicore__ const static constexpr pipe_t ProdPipe()
+    {
         if constexpr (Type == BufferType::L1) {
             return PIPE_MTE2;
         } else if constexpr (Type == BufferType::L0A || Type == BufferType::L0B || Type == BufferType::C2) {
@@ -31,7 +32,8 @@ struct MutexBufferInfo {
         }
     }
 
-    __aicore__ const static constexpr pipe_t ConsPipe() {
+    __aicore__ const static constexpr pipe_t ConsPipe()
+    {
         if constexpr (Type == BufferType::L1) {
             return PIPE_MTE1;
         } else if constexpr (Type == BufferType::L0A || Type == BufferType::L0B || Type == BufferType::C2) {
@@ -46,7 +48,7 @@ struct MutexBufferInfo {
     static constexpr TPosition Position = BufferInfo<Type>::Position;
 };
 
-template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
+template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class MutexBuffer {
     // TensorType用于定义缓冲区的基础数据类型（此处为uint8_t），用于互斥缓冲区的原始存储。
     using TensorType = LocalTensor<uint8_t>;
@@ -54,11 +56,17 @@ class MutexBuffer {
     // TargetTensorType是一个模板，允许根据需要组合不同的数据类型，便于不同数据类型的缓冲需求。
     template <typename T>
     using TargetTensorType = LocalTensor<T>;
-public:
-    __aicore__ inline MutexBuffer() {}
-    __aicore__ inline MutexBuffer(TensorType tensor, uint32_t size) : tensor_(tensor), size_(size) {}
 
-    __aicore__ inline void Init() {
+public:
+    __aicore__ inline MutexBuffer()
+    {
+    }
+    __aicore__ inline MutexBuffer(TensorType tensor, uint32_t size) : tensor_(tensor), size_(size)
+    {
+    }
+
+    __aicore__ inline void Init()
+    {
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             if ASCEND_IS_AIC {
                 mutexId_ = AllocMutexID();
@@ -66,7 +74,8 @@ public:
         }
     }
 
-    __aicore__ inline void UnInit() {
+    __aicore__ inline void UnInit()
+    {
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             if ASCEND_IS_AIC {
                 ReleaseMutexID(mutexId_);
@@ -74,8 +83,9 @@ public:
         }
     }
 
-    template<pipe_t pipe>
-    __aicore__ inline void Lock() {
+    template <pipe_t pipe>
+    __aicore__ inline void Lock()
+    {
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             if ASCEND_IS_AIC {
                 AscendC::Mutex::Lock<pipe>(mutexId_);
@@ -83,8 +93,9 @@ public:
         }
     }
 
-    template<pipe_t pipe>
-    __aicore__ inline void Unlock() {
+    template <pipe_t pipe>
+    __aicore__ inline void Unlock()
+    {
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             if ASCEND_IS_AIC {
                 AscendC::Mutex::Unlock<pipe>(mutexId_);
@@ -92,35 +103,41 @@ public:
         }
     }
 
-    __aicore__ inline void LockProd() {
+    __aicore__ inline void LockProd()
+    {
         Lock<MutexBufferInfo<bufferType>::ProdPipeVal>();
     }
 
-    __aicore__ inline void UnlockProd() {
+    __aicore__ inline void UnlockProd()
+    {
         Unlock<MutexBufferInfo<bufferType>::ProdPipeVal>();
     }
 
-    __aicore__ inline void LockCons() {
+    __aicore__ inline void LockCons()
+    {
         Lock<MutexBufferInfo<bufferType>::ConsPipeVal>();
     }
 
-    __aicore__ inline void UnlockCons() {
+    __aicore__ inline void UnlockCons()
+    {
         Unlock<MutexBufferInfo<bufferType>::ConsPipeVal>();
     }
 
-    template<HardEvent EventType>
+    template <HardEvent EventType>
     __aicore__ inline void Wait() = delete;
 
-    template<HardEvent EventType>
+    template <HardEvent EventType>
     __aicore__ inline void Set() = delete;
 
-    template<typename T>
-    __aicore__ inline TargetTensorType<T> GetTensor() {
+    template <typename T>
+    __aicore__ inline TargetTensorType<T> GetTensor()
+    {
         return tensor_.template ReinterpretCast<T>();
     }
 
-    template<typename T>
-    __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex) {
+    template <typename T>
+    __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex)
+    {
         TargetTensorType<T> tmpTensor = tensor_.template ReinterpretCast<T>();
         return tmpTensor[startindex];
     }
@@ -130,5 +147,5 @@ private:
     uint32_t size_ = 0;
     MutexID mutexId_ = 0;
 };
-}
+} // namespace fa_base_matmul
 #endif

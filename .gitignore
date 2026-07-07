@@ -44,8 +44,6 @@ third_party/
 .agents/
 .opencode/
 .claude/
-.cursor/
-.understand-anything/
 
 # pre-commit log
 log/
