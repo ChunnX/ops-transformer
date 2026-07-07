@@ -73,12 +73,12 @@
 |------|------|------|---------|------|
 | 1.1 | 开发准备 | ✅完成 | 2026-07-07 | LOG.md + issues/ 已建；环境检查完成，Ascend950 可用 |
 | 1.2 | 需求分析 | ✅完成 | 2026-07-07 | REQUIREMENTS.md + aclnn 接口文档已产出；A5 对外支持范围全对齐 A2，arch35 可行 |
-| 1.2.5 | spec 生成 | ⬜待办 | - | 产出 spec.yaml（9-stage 校验） |
-| 1.2.5R | spec 自审 | ⬜待办 | - | 13 条 SPEC-* 条款 |
-| 1.3 | 方案设计 | ⬜待办 | - | 产出 DESIGN.md + PLAN.md（A5 全新代次路径） |
-| 1.3R | 方案评审 | ⬜待办 | - | 产出 DESIGN_REVIEW.md |
-| 1.4 | 测试设计 | ⬜待办 | - | 产出 TEST.md + 用例表 |
-| 1.4R | 测试设计评审 | ⬜待办 | - | 产出 TEST_REVIEW.md |
+| 1.2.5 | spec 生成 | ✅完成 | 2026-07-07 | spec.yaml 9-stage 全 PASS（stage8/9 非计算类合法 SKIP）；主 Agent 独立复跑确认 |
+| 1.2.5R | spec 自审 | ✅完成 | 2026-07-07 | SPEC_REVIEW.md：13 条 SPEC-* 0 个 ❌（7✓+1⚠+5暂缓）；tag spec-approved |
+| 1.3 | 方案设计 | ✅完成 | 2026-07-07 | DESIGN.md + PLAN.md；arch35 _apt.cpp 入口 + tiling 方案A隔离（分派器3行守卫）+ UB运行时取值 |
+| 1.3R | 方案评审 | ✅完成 | 2026-07-07 | DESIGN_REVIEW.md：12 条全过，HIGH=0，无 spec 冲突；3MED+2LOW 非阻塞 |
+| 1.4 | 测试设计 | ✅完成 | 2026-07-07 | TEST.md + L0/L1/L2 用例(5/515/13)；spec.yaml 测试映射齐备 |
+| 1.4R | 测试设计评审 | ✅完成 | 2026-07-07 | TEST_REVIEW.md：7 条全过，HIGH=0，无 spec 冲突；2MED(标签订正)+2LOW 非阻塞 |
 | 2-迭代一 | 骨架搭建（A5 单 TilingKey + 穿刺 + L0 ST） | ⬜待办 | - | - |
 | 2-迭代二 | 策略整合（多 TilingKey + 穿刺 + 多 shape ST） | ⬜待办 | - | - |
 | 2-迭代三 | 全量覆盖（全功能 + 全覆盖 UT + 全量 ST） | ⬜待办 | - | - |
@@ -98,10 +98,14 @@
 | 问题记录目录 | `issues/` | ✅已创建（含 .gitkeep） |
 | 需求分析文档 | `docs/REQUIREMENTS.md` | ✅已产出 |
 | aclnn 接口文档 | `docs/aclnnFfnWorkerBatching.md` | ✅已产出 |
-| L0 数学契约 | `docs/spec.yaml` | ⬜待产出 |
-| 详细设计文档 | `docs/DESIGN.md` | ⬜待产出 |
-| 迭代执行计划 | `docs/PLAN.md` | ⬜待产出 |
-| 测试设计文档 | `docs/TEST.md` | ⬜待产出 |
+| L0 数学契约 | `docs/spec.yaml` | ✅已产出 |
+| spec 自审报告 | `docs/SPEC_REVIEW.md` | ✅已产出 |
+| 详细设计文档 | `docs/DESIGN.md` | ✅已产出 |
+| 迭代执行计划 | `docs/PLAN.md` | ✅已产出 |
+| 方案评审报告 | `docs/DESIGN_REVIEW.md` | ✅已产出 |
+| 测试设计文档 | `docs/TEST.md` | ✅已产出 |
+| 测试用例 | `tests/st/testcases/`（L0/L1/L2 CSV + 覆盖报告） | ✅已产出 |
+| 测试设计评审报告 | `docs/TEST_REVIEW.md` | ✅已产出 |
 | A5 算子代码 | `op_kernel/` + `op_host/`（新增 A5 路径） | ⬜待产出 |
 | A5 算子配置 | `op_host/config/ascend950/` | ⬜待产出 |
 
@@ -109,4 +113,7 @@
 
 - **2026-07-07 [1.1 开发准备]**：执行环境检查——实测 Ascend950DT_9584（arch35/A5）设备可用，CANN 9.1.0 + 驱动 7.0.t9.0.B827，编译工具链就绪；创建 `docs/LOG.md` 与 `issues/`。确认现状：算子已支持 A2(ascend910b)/A3(ascend910_93)，本次新增 A5 走全新代次路径、支持范围对齐 A2、A2/A3 分支保留不动。无阻塞问题。
 - **2026-07-07 [1.2 需求分析]**：产出 `docs/REQUIREMENTS.md` + `docs/aclnnFfnWorkerBatching.md`，支持范围全部追溯到 def.cpp/README/infershape/tiling 源码 + 两个样板算子。结论：A5 对外支持范围可完全对齐 A2（8 输入输出 / 3 profile dtype 矩阵 / 5 属性 / 6 条功能路径 TilingKey 100/101 / shape 约束 A≤1024·topK+1≤64·M≤64·expert_num≤8192·Y=A×BS×(topK+1) / 二进制一致精度全对齐），差异仅在内部实现代次（arch35 全新 kernel/tiling）与内部切分阈值（UB 248KB vs 192KB 重算），不改变对外可见支持范围；arch35 经 moe_init_routing_v3/moe_gating_top_k 样板验证可行、无阻塞风险。两处源码事实供下游：① kernel TilingKey 102(RECV_GATHER) 为已实现未启用保留分支，tiling 从不设置；② 本算子属非计算类，精度口径为二进制一致，spec.yaml tolerance 需对齐。无阻塞问题。
+- **2026-07-07 [1.2.5 spec 生成 + 1.2.5R 自审]**：spec.yaml（320 行）9-stage 全 PASS（stage8 textual_only / stage9 oracle absent 为非计算类合法 SKIP），主 Agent 独立 --strict 复跑确认 overall PASS；tolerance 6 dtype 全 bitwise_equal。自审 SPEC_REVIEW.md 13 条 SPEC-* 0 个 ❌（7✓活跃 + 1⚠ FORMULA 合法降级 + 5 条 v1 暂缓）。tag spec-approved。
+- **2026-07-07 [1.3 方案设计 + 1.3R 评审]**：DESIGN.md（441 行）+ PLAN.md。关键决策：arch35 走 ops-transformer 仓 _apt.cpp 约定（非 ops-nn add_kernel_sources）；tiling 双代隔离采方案A——读码校正「现有非2000档模板而是 monolithic IMPL_OP_OPTILING」，分派器加 3 行 IsRegbaseSocVersion 守卫分流 ascend950→1000档 Regbase 模板，arch22 类体零改；UB/核数全部运行时 GetCoreMemSize 取值无 arch 常量；主路线经典 SIMD/MemBase（gather 原样字节搬运无需 RegBase）。1.3R DESIGN_REVIEW.md 12 条全过 HIGH=0 无冲突，评审补做 11 个 API 官方文档演练确认 950 支持。
+- **2026-07-07 [1.4 测试设计 + 1.4R 评审]**：TEST.md + L0/L1/L2 用例（5/515/13），按 ascendc-st-design 默认流程产出，含 spec.yaml 测试映射专章；精度 bitwise_equal（CPU numpy 精确重排 + np.array_equal）；boundary 10 条 / extreme 3 条逐条对齐，L2 错误码全 ⊆ spec.error_codes，TilingKey 102 正确排除。1.4R TEST_REVIEW.md 7 条全过 HIGH=0 无冲突。
 
