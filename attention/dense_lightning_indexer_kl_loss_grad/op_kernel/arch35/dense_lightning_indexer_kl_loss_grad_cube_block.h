@@ -56,9 +56,9 @@ public:
     /* =====================LocalBuffer变量==================== */
 
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
-    BuffersPolicy3buff<BufferType::L1> sYQueryL1Buf;
     BuffersPolicy3buff<BufferType::L1> sYKeyL1Buf;
-    BuffersPolicySingleBuffer<BufferType::L1> sYGatherResBuf; // mm4右矩阵用
+    BuffersPolicy3buff<BufferType::L1> sYQueryL1Buf;
+    // BuffersPolicySingleBuffer<BufferType::L1> sYGatherResBuf; // mm4右矩阵用
 
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
@@ -74,8 +74,7 @@ public:
     __aicore__ inline DlikgBlockCube(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitCubeBuffers();
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey,
-            GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res);
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey);
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
@@ -112,9 +111,9 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 {
     // init l1 buffer
-    sYQueryL1Buf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
     sYKeyL1Buf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
-    sYGatherResBuf.Init(*l1BufferManagerPtr, MM4_GATHER_BUFFER_SIZE);
+    sYQueryL1Buf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
+    // sYGatherResBuf.Init(*l1BufferManagerPtr, MM4_GATHER_BUFFER_SIZE);
 
     // init l0a l0b buffer
     l0aBufferManager.Init(pipe, L0_MAX_SIZE);
@@ -129,16 +128,13 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key,
-            GM_ADDR dKey, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res)
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery,
+                GM_ADDR key, GM_ADDR dKey)
 {
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     mm4ResGm.SetGlobalBuffer((__gm__ OUT_T *)dQuery);
     mm3ResGm.SetGlobalBuffer((__gm__ OUT_T *)dKey);
-    this->mm2ResGm = bmm2Res;
-    this->gatherSYResGm = gatherSYResGm;
-    this->mm3DeterResGm = bmm3Res;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -215,6 +211,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     // 搬运key_index
     sYKL1Buffer[runInfo.taskIdMod3] = sYKeyL1Buf.Get();
     LocalTensor<INPUT_T> syKL1Tensor = sYKL1Buffer[runInfo.taskIdMod3].GetTensor<INPUT_T>();
+    // printf("1 runInfo.taskId : %d runInfo.taskIdMod3 : %d runInfo.s2Offset %d \n",runInfo.taskId,runInfo.taskIdMod3,runInfo.s2Offset);
     sYKL1Buffer[runInfo.taskIdMod3].Wait<HardEvent::MTE1_MTE2>();
     CopyInMm2BToL1(syKL1Tensor, runInfo, constInfo);
     sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE2_MTE1>();
@@ -247,6 +244,10 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm2L0CTensor, fixpipe2UbParams);
     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
     mm2L0CBuffer.Set<HardEvent::FIX_M>();
+    // if (runInfo.isLastBlock) {
+    //     sYQL1Buffer[runInfo.sTaskIdMod3].Set<HardEvent::MTE1_MTE2>();
+    // }
+    // sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -303,6 +304,11 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
             }
             Fixpipe<OUT_T, T, PFA_CFG_ROW_MAJOR_GM>(mm3ResGm[runInfo.keyIndexTensorOffset], mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
             mm3L0CBuffer.Set<HardEvent::FIX_M>();
+            // pipe_barrier(PIPE_ALL);
+            // printf("runInfo.keyIndexTensorOffset : %d \n", runInfo.keyIndexTensorOffset);
+            // uint32_t array1[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(128)}; 
+            // AscendC::ShapeInfo shapeInfo1(2, array1); // dim为2， shape为(8,8) 
+            // AscendC::DumpTensor(mm3ResGm[runInfo.keyIndexTensorOffset], 111, 1 * 128, shapeInfo1);
         } else {
             // int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize + pRunInfo.kTaskId * constInfo.pKBaseSize +
             //     kIdx * VEC_P_BASESIZE) *
@@ -360,10 +366,11 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
         }
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
             reluGradL1Tensor[reluGradOffset], syKL1Tensor, l0aBuf, l0bBuf, mm4L0CBuffer.GetTensor<T>(), mmParam);
-        sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
     }
     mm4L0CBuffer.Set<HardEvent::M_FIX>();
     mm4L0CBuffer.Wait<HardEvent::M_FIX>();
+    // printf("2 runInfo.taskId : %d runInfo.taskIdMod3 : %d runInfo.s2Offset %d \n",runInfo.taskId,runInfo.taskIdMod3,runInfo.s2Offset);
+    sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
     if (isFixOut) {
         // fix2gm
@@ -393,8 +400,7 @@ public:
     __aicore__ inline DlikgBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitCubeBuffers(){};
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey, 
-        GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3Res){};
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR dQuery, GM_ADDR key, GM_ADDR dKey){};
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};

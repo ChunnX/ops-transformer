@@ -22,12 +22,14 @@ using namespace AscendC;
 
 namespace optiling {
 static const int64_t PING_PONG_VALUE = 2L;
+static const int64_t THREE_BUFFER_VALUE = 3L;
 static const int64_t GM_ALIGN = 512;
 static const int32_t FRACTAL_NUM = 16L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 static constexpr uint32_t B32 = 4; // 4B
 static constexpr uint32_t B16 = 2;
 static constexpr uint32_t BASE_LEN_256 = 256;
+static constexpr uint32_t BLOCK_SIZE = 128;
 
 static constexpr size_t SIZE_1 = 1;
 static constexpr size_t SIZE_128 = 128;
@@ -609,6 +611,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
+        aivNum = 2;
+        aicNum = 1;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
@@ -617,6 +621,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
+        aivNum = 2;
+        aicNum = 1;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
@@ -997,16 +1003,16 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoOpTiling(
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     context_->SetBlockDim(aicNum); // 使用的核数确定
 
-    std::vector<int64_t> shapeVec = { 1, kSize };
-    ge::Shape srcShape(shapeVec);
-    int64_t softmaxTmpBufferSize = BUFFER_SIZE_BYTE_32K; // 需要32KB
-    if (kSize > BUFFER_SIZE_BYTE_2K) {
-        softmaxTmpBufferSize = BUFFER_SIZE_BYTE_33K; // kSize >2048 需要33kB
-    }
-    SoftMaxTilingFunc(srcShape, 4, softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
+    // std::vector<int64_t> shapeVec = { 1, kSize };
+    // ge::Shape srcShape(shapeVec);
+    // int64_t softmaxTmpBufferSize = BUFFER_SIZE_BYTE_32K; // 需要32KB
+    // if (kSize > BUFFER_SIZE_BYTE_2K) {
+    //     softmaxTmpBufferSize = BUFFER_SIZE_BYTE_33K; // kSize >2048 需要33kB
+    // }
+    // SoftMaxTilingFunc(srcShape, 4, softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
 
-    SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
-    InitOutputSplit(); // output分核
+    // SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
+    // InitOutputSplit(); // output分核
     auto status = DoCastTiling();
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -1022,7 +1028,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::PostTiling(
     OP_LOGI(context_, "dlikGradBaseParams_.cmpRatio = [%ld]", dlikGradBaseParams_->get_cmpRatio());
     OP_LOGI(context_, "dlikGradBaseParams_.dSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_dSizeQueryIndex());
     OP_LOGI(context_, "dlikGradBaseParams_.gSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_gSizeQueryIndex());
-    OP_LOGI(context_, "dlikGradBaseParams_.kSize = [%ld]", dlikGradBaseParams_->get_kSize());
+    // OP_LOGI(context_, "dlikGradBaseParams_.kSize = [%ld]", dlikGradBaseParams_->get_kSize());
     OP_LOGI(context_, "dlikGradBaseParams_.layoutType = [%ld]", dlikGradBaseParams_->get_layoutType());
     OP_LOGI(context_, "dlikGradBaseParams_.n2Size = [%ld]", dlikGradBaseParams_->get_n2Size());
     OP_LOGI(context_, "dlikGradBaseParams_.s1Size = [%ld]", dlikGradBaseParams_->get_s1Size());
@@ -1074,20 +1080,20 @@ uint64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetTilingKey() con
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
-    int64_t reduceSumOffset = kSizeAlign128 * sizeof(float);
-    int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float);
-    int64_t gatherSYOffset = kSizeAlign128 * dSizeQueryIndex * 2; // 2代表输入D类型大小
-    int64_t bmm3Size = kSize * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE;
+    // int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
+    int64_t reduceSumOffset = BLOCK_SIZE * sizeof(float) * 2;
+    // int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float);
+    // int64_t gatherSYOffset = kSizeAlign128 * dSizeQueryIndex * 2; // 2代表输入D类型大小
+    int64_t bmm3Size = 1 * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE;
 
-    int64_t scatterAddOutSize;
-    if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
-        scatterAddOutSize = accumS2 * dSizeQueryIndex * sizeof(float); // batch
-    } else {
-        scatterAddOutSize = bSize * s2Size * dSizeQueryIndex * sizeof(float); // batch
-    }
+    int64_t scatterAddOutSize = 0;
+    // if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
+    //     scatterAddOutSize = accumS2 * dSizeQueryIndex * sizeof(float); // batch
+    // } else {
+    //     scatterAddOutSize = bSize * s2Size * dSizeQueryIndex * sizeof(float); // batch
+    // }
 
-    int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
+    int64_t singlecoreTotalSize = THREE_BUFFER_VALUE * reduceSumOffset;
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
         multicoreTotalsize =
@@ -1095,7 +1101,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
             scatterAddOutSize * 2;
     } else {
         multicoreTotalsize =
-            singlecoreTotalSize * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+            singlecoreTotalSize * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum());
     }
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
