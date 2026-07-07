@@ -142,7 +142,6 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(qkv, head_nums, layout_qk
 
 
 qkv_rms_norm_rope_cache_with_k_scale_op_builder = QkvRmsNormRopeCacheWithKScaleOpBuilder()
-op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()
 
 
 @impl(AS_LIBRARY, INPLACE_OP_NAME, "PrivateUse1")
@@ -157,6 +156,7 @@ def qkv_rms_norm_rope_cache_with_k_scale_(
     """
     Run Q/K/V RMSNorm, RoPE, rotation matmul, FP8 quantization, and in-place KV cache update.
     """
+    op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()
     return op_module.qkv_rms_norm_rope_cache_with_k_scale_(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
         query_start_loc, seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)
@@ -174,6 +174,7 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     """
     Functional variant returning cloned cache outputs instead of mutating caller-visible caches.
     """
+    op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()
     return op_module.qkv_rms_norm_rope_cache_with_k_scale(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
         query_start_loc, seq_lens, head_nums, layout_qkv, layout_q_out, rotation, v_scale, epsilon)
