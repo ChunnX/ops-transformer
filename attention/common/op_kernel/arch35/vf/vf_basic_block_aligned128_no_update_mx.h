@@ -285,7 +285,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128Mxfp8FullquantVFSubloop0(
         } else if constexpr (IsSameType<T2, int8_t>::value) {
             // 硬件不支持 float → int8 直接转换，需分两步：float → half → int8
             MaskReg preg_all_f16 = CreateMask<half, MaskPattern::ALL>();
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             RegTensor<int8_t> vreg_exp_merge_tmp_int8;
             RegTensor<int8_t> vreg_exp_merge_int8;
 
@@ -307,7 +308,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128Mxfp8FullquantVFSubloop0(
                 ((__ubuf__ int8_t *&)expUb), vreg_exp_merge_int8, blockStride, repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
             MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             RegTensor<hifloat8_t> vreg_exp_even_hif8;
             RegTensor<hifloat8_t> vreg_exp_odd_hif8;
             RegTensor<hifloat8_t> vreg_exp_merge_hif8;
@@ -624,7 +626,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128Mxfp8FullquantVFSubloop1(
             // 硬件不支持 float → int8 直接转换，需 float → half → int8 两步
             RegTensor<int8_t> vreg_exp_merge_tmp_int8;
             MaskReg preg_all_f16 = CreateMask<half, MaskPattern::ALL>();
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(128);  // 128: maskLen
+            uint32_t maskLen = 128;
+            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             RegTensor<int8_t> vreg_exp_merge_int8;
             // float → half → Or → half → int8 → Gather
             static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
