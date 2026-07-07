@@ -362,7 +362,7 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     int32_t decayLen = numPromptK - kStart;
 
     // 边界条件：s1Pos < kStart 或 decayLen < 1 时，直接返回 kStart
-    if (s1Pos < kStart || decayLen < 1) {
+    if (s1Pos < kStart || decayLen <= 1) {
         return (uint32_t)kStart;
     }
 
