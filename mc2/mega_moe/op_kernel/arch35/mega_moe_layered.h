@@ -88,6 +88,19 @@ private:
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
         uint32_t expertIdx);
+    // URMA combine helpers
+    __aicore__ inline void InitHcommForCombine();
+    __aicore__ inline void DrainCombineUrmaConnections();
+    __aicore__ inline void ComputeRowGroupAssignment(uint32_t tokenGroupsThisExpert,
+        uint32_t &coreIdForGrouping, uint32_t &totalCoresForGrouping,
+        uint32_t &myGroup, uint32_t &myIdxInGrp, uint32_t &myGrpSize);
+    __aicore__ inline bool PollRowGroupCounter(__gm__ int32_t *counterAddr, int32_t target);
+    __aicore__ inline void ComputeCoreTokenRange(uint32_t myGroup, uint32_t myIdxInGrp, uint32_t myGrpSize,
+        uint32_t tokenGroupsThisExpert, uint32_t mExpert,
+        uint32_t &tokenStart, uint32_t &tokenCount,
+        int32_t &myTokenOffset, int32_t &myTokenCount);
+    __aicore__ inline void LoadTripleForCore(LocalTensor<int32_t> &tripleTensor,
+        uint32_t expertBeforeCnt, uint32_t tokenStart, uint32_t tokenOffset, uint32_t tokenCount);
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
@@ -1302,74 +1315,160 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::InitCombineBuffe
 }
 
 // =============================================
-// ProcessCombine：generic combine-quant 路径的 AIV 后处理。
+// InitHcommForCombine：量化路径 URMA combine 的 Hcomm 初始化
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::InitHcommForCombine()
+{
+    LocalTensor<uint8_t> hcommTensor = LocalTensor<uint8_t>(
+        TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+    hcomm_.Init(hcommTensor, ALIGN_512);
+}
+
+// =============================================
+// DrainCombineUrmaConnections：drain 本核所有可能的 URMA 发送连接
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DrainCombineUrmaConnections()
+{
+    for (uint32_t dr = 0; dr < worldSize_; ++dr) {
+        if (dr == rankId_) {
+            continue;
+        }
+        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        PipeBarrier<PIPE_ALL>();
+    }
+}
+
+// =============================================
+// ComputeRowGroupAssignment：计算当前核的 row-group 分片信息
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ComputeRowGroupAssignment(
+    uint32_t tokenGroupsThisExpert, uint32_t &coreIdForGrouping,
+    uint32_t &totalCoresForGrouping, uint32_t &myGroup,
+    uint32_t &myIdxInGrp, uint32_t &myGrpSize)
+{
+    coreIdForGrouping = aivCoreIdx_;
+    totalCoresForGrouping = blockAivNum_;
+    if constexpr (ENABLE_A8W4) {
+        coreIdForGrouping = aivCoreIdx_ / 2;
+        totalCoresForGrouping = blockAivNum_ / 2;
+    }
+    MegaMoeImpl::ComputeCoreGrouping(
+        coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
+        myGroup, myIdxInGrp, myGrpSize);
+}
+
+// =============================================
+// PollRowGroupCounter：自旋等待直到 row-group 计数器达到目标值
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::PollRowGroupCounter(
+    __gm__ int32_t *counterAddr, int32_t target)
+{
+    while (AscendC::ReadGmByPassDCache(counterAddr) != target) {
+        int64_t st = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - st < 100) {
+        };
+    }
+    return true;
+}
+
+// =============================================
+// ComputeCoreTokenRange：计算当前核在当前 row-group 内处理哪些 token
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ComputeCoreTokenRange(
+    uint32_t myGroup, uint32_t myIdxInGrp, uint32_t myGrpSize,
+    uint32_t tokenGroupsThisExpert, uint32_t mExpert,
+    uint32_t &tokenStart, uint32_t &tokenCount,
+    int32_t &myTokenOffset, int32_t &myTokenCount)
+{
+    tokenStart = myGroup * L1_TILE_M_256;
+    tokenCount = (L1_TILE_M_256 < mExpert - tokenStart) ? L1_TILE_M_256 : mExpert - tokenStart;
+    uint32_t tokensPerCore = Ops::Base::CeilDiv(tokenCount, myGrpSize);
+    myTokenOffset = myIdxInGrp * tokensPerCore;
+    myTokenCount = 0;
+    if (myTokenOffset < static_cast<int32_t>(tokenCount)) {
+        myTokenCount = (tokensPerCore < tokenCount - myTokenOffset)
+            ? tokensPerCore : tokenCount - myTokenOffset;
+    }
+}
+
+// =============================================
+// LoadTripleForCore：从 GM 加载 triple info 到 VECIN
+// =============================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::LoadTripleForCore(
+    LocalTensor<int32_t> &tripleTensor, uint32_t expertBeforeCnt,
+    uint32_t tokenStart, uint32_t tokenOffset, uint32_t tokenCount)
+{
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+        params_.workspaceInfo.tripleInfoPtr
+        + (expertBeforeCnt + tokenStart + tokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, tokenCount * TRIPLE_SIZE);
+    PipeBarrier<PIPE_MTE2>();
+}
+
+// =============================================
+// ProcessCombine：quant combine 路径的 AIV 后处理（URMA 通信适配版）
 //                 等待本 expert 的 row-group 计数满足后，读取 triple 和 GMM2 输出，
-//                 再执行 row-group 级 CombineRowGroup。
+//                 通过 URMA 执行量化 + 发送。
 // =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
-
-    GlobalTensor<int32_t> gmm2CombineSyncCounter;
-    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
-
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
+    uint32_t mExpert = Get<M_VALUE>(gmm2State.problemShape);
+    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(mExpert, L1_TILE_M_256);
 
-    uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
-    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
-
-    uint32_t coreIdForGrouping = aivCoreIdx_;
-    uint32_t totalCoresForGrouping = blockAivNum_;
     if constexpr (ENABLE_A8W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
-        coreIdForGrouping = aivCoreIdx_ / 2;
-        totalCoresForGrouping = blockAivNum_ / 2;
     }
 
-    uint32_t myGroup, myIdxInGrp, myGrpSize;
-    MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
-        myGroup, myIdxInGrp, myGrpSize);
+    // 1. 计算 row-group 分片
+    uint32_t coreIdForGrouping, totalCoresForGrouping, myGroup, myIdxInGrp, myGrpSize;
+    ComputeRowGroupAssignment(tokenGroupsThisExpert,
+        coreIdForGrouping, totalCoresForGrouping, myGroup, myIdxInGrp, myGrpSize);
 
     if (myGroup >= tokenGroupsThisExpert) {
         return;
     }
 
-    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
-        + expertIdx * blockAivNum_ * INT_CACHELINE
-        + aivCoreIdx_ * INT_CACHELINE;
-    while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup)
-    {
-        int64_t st = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - st < 100) {
-        };
-    }
-    uint32_t tokenStart = myGroup * L1_TILE_M_256;
-    uint32_t tokenCount = (L1_TILE_M_256 < m_expert - tokenStart) ? L1_TILE_M_256 : m_expert - tokenStart;
-    uint32_t tokensPerCore = Ops::Base::CeilDiv(tokenCount, myGrpSize);
-    int32_t myTokenOffset = myIdxInGrp * tokensPerCore;
-    int32_t myTokenCount = 0;
-    if (myTokenOffset < (int32_t)tokenCount) {
-        myTokenCount = (tokensPerCore < tokenCount - myTokenOffset) ? tokensPerCore : tokenCount - myTokenOffset;
-    }
+    // 2. 等待 row-group 完成
+    GlobalTensor<int32_t> syncCounter;
+    syncCounter.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
+    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)syncCounter.GetPhyAddr()
+        + expertIdx * blockAivNum_ * INT_CACHELINE + aivCoreIdx_ * INT_CACHELINE;
+    PollRowGroupCounter(myCounterAddr, static_cast<int32_t>(nTilesPerGroup));
+
+    // 3. 计算本核在该 row-group 的 token 范围
+    uint32_t tokenStart, tokenCount;
+    int32_t myTokenOffset, myTokenCount;
+    ComputeCoreTokenRange(myGroup, myIdxInGrp, myGrpSize, tokenGroupsThisExpert, mExpert,
+        tokenStart, tokenCount, myTokenOffset, myTokenCount);
+
+    // 4. 加载 triple + URMA 量化发送
     if (myTokenCount > 0) {
         AscendC::SetCtrlSpr<60, 60>(0);
         int64_t offset = 0;
-        LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
+        LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(
+            TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
         offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
-        AscendC::GlobalTensor<int32_t> tripleGm;
-        tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
-            + (gmm2State.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
-        PipeBarrier<PIPE_MTE2>();
-        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t>(
+        LoadTripleForCore(tripleTensor, gmm2State.expertBeforeCnt,
+            tokenStart, myTokenOffset, myTokenCount);
+
+        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
             tokenStart + myTokenOffset, myTokenCount, k_, expertIdx, rankId_,
-            gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
-            offset, quantTokenSizeBytes);
+            gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor,
+            combineUbTensorSize_, offset, quantTokenSizeBytes);
     }
 }
 
@@ -1686,12 +1785,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
         }
     }
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+        InitHcommForCombine();
+    }
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
+    }
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+        DrainCombineUrmaConnections();
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
@@ -1710,3 +1815,155 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
 
 }   // namespace MegaMoeImpl
 #endif
+
+
+// =============================================
+// ProcessCombineByUrma：量化路径的 Combine 处理（URMA 通信），按 rank 分核
+// =============================================
+// 与 ProcessCombine 的区别：
+//   - 量化模式下所有 AIV 核参与（AIV 不参与计算），按 rank 分核而非按 row group 分核
+//   - 需等待该专家所有 row group 完成（因为按 rank 分核后需扫描所有 token）
+//   - 通过 ComputeGroupRange 定位每个 row group 的计数器进行轮询
+//   - 量化+发送逻辑复用 CombineRowGroup
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineByUrma(
+    GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
+{
+    // 量化模式下所有 AIV 核参与，按 rank 分核
+    uint32_t aivIdx = aivCoreIdx_;
+    uint32_t aivNum = blockAivNum_;
+
+    // 按 rank 分核: 每个核负责一段连续的目标 rank
+    uint32_t rankPerCore = worldSize_ / aivNum;
+    uint32_t remainder = worldSize_ % aivNum;
+    uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
+    uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
+    uint32_t endRankId = startRankId + processRankNum;
+
+    if (processRankNum == 0) {
+        return;
+    }
+
+    int64_t offset = ALIGN_512;
+    uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
+    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
+    uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
+    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
+
+    GlobalTensor<int32_t> rowGroupComplete;
+    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.rowGroupCompletePtr);
+
+    // Phase 1: 从本地 URMA mask slot 读取每个源 rank 的 token count, 计算每 rank 的行范围
+    // token 按源 rank 紧密排布, 利用 mask slot 中的 count 可精确计算每 rank 的起止行
+    __gm__ uint8_t* maskSlotBase = (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr + 
+        static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_);
+
+    // 计算 rank 0..startRankId-1 的 cumsum (作为本核处理范围之前的行偏移)
+    uint32_t cumsumBeforeRange = 0;
+    for (uint32_t r = 0; r < startRankId; r++) {
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+        cumsumBeforeRange += AscendC::ReadGmByPassDCache(cntAddr);
+    }
+
+    // UB 布局 (VECCALC/VECIN 共享物理内存):
+    //   0 ~ ALIGN_512:                      hcomm_ (VECCALC)
+    //   ALIGN_512 ~ ALIGN_512+rankInfoSize:  rankInfoTensor (VECCALC, 跨 Phase 1/2 持续读写)
+    //   ALIGN_512+rankInfoSize ~:            tripleTensor + combineUbTensor (VECIN, 每次 batch 短暂使用)
+    // Layout: [startRow_0..N-1 | tokenCnt_0..N-1 | processedCnt_0..N-1]
+    uint32_t rankInfoSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(processRankNum * 3 * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    LocalTensor<int32_t> rankInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, offset,
+        rankInfoSize / sizeof(int32_t));
+    offset  += rankInfoSize;
+
+    uint32_t cumsumInRange = 0;
+    uint32_t totalTokensToProcess = 0;
+    for (uint32_t i = 0; i < processRankNum; i++) {
+        uint32_t r = startRankId + i;
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+        int32_t cnt = AscendC::ReadGmByPassDCache(cntAddr);
+        rankInfoTensor.SetValue(i, cumsumBeforeRange + cumsumInRange);  // startRow
+        rankInfoTensor.SetValue(processRankNum + i, cnt);               // tokenCnt
+        rankInfoTensor.SetValue(2 * processRankNum + i, 0);             // processedCnt
+        cumsumInRange += cnt;
+        totalTokensToProcess += cnt;
+    }
+
+    if (totalTokensToProcess == 0) {
+        return;
+    }
+
+    // Phase 2: 按 rank 轮询, 只检查每 rank 需要的 row group, 不阻塞等待
+    // 当 group 完成时, 批量处理该 rank 在该 group 内的所有 token
+    uint32_t rankIndex = 0;
+    uint32_t totalProcessed = 0;
+    uint32_t batchBaseOffset = static_cast<uint32_t>(offset);
+    while (totalProcessed < totalTokensToProcess) {
+        // 跳过已处理完毕 (processedCnt >= tokenCnt) 的 rank
+        while (rankInfoTensor.GetValue(2 * processRankNum + rankIndex) >=
+               rankInfoTensor.GetValue(processRankNum + rankIndex)) {
+            rankIndex = (rankIndex + 1) % processRankNum;
+        }
+
+        uint32_t startRow = rankInfoTensor.GetValue(rankIndex);
+        uint32_t tokenCnt = rankInfoTensor.GetValue(processRankNum + rankIndex);
+        uint32_t processedCnt = rankInfoTensor.GetValue(2 * processRankNum + rankIndex);
+        uint32_t currentRow = startRow + processedCnt;
+        uint32_t targetGroup = currentRow / L1_TILE_M_256;
+
+        // 检查该 row group 是否完成 (非阻塞, 未完成则跳到下一个 rank)
+        uint32_t groupCoreStart, groupCoreSize;
+        MegaMoeImpl::ComputeGroupRange(targetGroup, rowGroupsThisExpert, blockAivNum_, groupCoreStart, groupCoreSize);
+        __gm__ int32_t* counterAddr = (__gm__ int32_t*)rowGroupComplete.GetPhyAddr()
+            + expertIdx * maxRowGroupsStride_ + targetGroup * blockAivNum_ * INT_CACHELINE
+            + groupCoreStart * INT_CACHELINE;
+        int32_t counterVal = AscendC::ReadGmByPassDCache(counterAddr);
+
+        if (counterVal == static_cast<int32_t>(nTilesPerGroup)) {
+            // Group 已完成, 计算该 rank 在此 group 内的 batch token 数
+            uint32_t groupEndRow = (targetGroup + 1) * L1_TILE_M_256;
+            if (groupEndRow > m_expert) {
+                groupEndRow = m_expert;
+            }
+            uint32_t remainingTokens = tokenCnt - processedCnt;
+            uint32_t batchCount = groupEndRow - currentRow;
+            if (batchCount > remainingTokens) {
+                batchCount = remainingTokens;
+            }
+            offset = batchBaseOffset;
+            // 加载该 batch 的 triple info 到 VECIN (从 rankInfoTensor 末尾之后开始, 避免覆盖)
+            LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
+            offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
+            AscendC::GlobalTensor<int32_t> tripleGm;
+            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
+                + (expertBeforeCnt_ + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
+            AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
+            PipeBarrier<PIPE_MTE2>();
+
+            // 调用 CombineRowGroup 批量处理该 rank 在此 group 内的所有 token
+            MegaMoeCombineImpl::CombineRowGroup<CombineQuantMode, bfloat16_t>(
+                currentRow, batchCount, k_, expertIdx, rankId_,
+                gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
+                offset, quantRowSizeBytes);
+
+            rankInfoTensor.SetValue(2 * processRankNum + rankIndex, processedCnt + batchCount);
+            totalProcessed += batchCount;
+        } else {
+            // Group 未完成, 短暂等待后轮询下一个 rank
+            AscendC::Nop<200>();
+        }
+
+        // 轮询: 移到下一个 rank
+        rankIndex = (rankIndex + 1) % processRankNum;
+    }
+
+    // drain 本核负责的远程 rank 的 URMA channel
+    for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
+        if (dr == rankId_) {
+            continue;
+        }
+        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        PipeBarrier<PIPE_ALL>();
+    }
+}

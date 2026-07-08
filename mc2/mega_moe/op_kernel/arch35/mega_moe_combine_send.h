@@ -424,8 +424,10 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<flo
 
 // =============================================
 // CombineQuantizedTokens：将量化后的 token 发送到目标 rank
+//   IsLayered=true  → URMA WriteNbi（Layered 路径）
+//   IsLayered=false → DataCopyPad   （UB_MEM 路径）
 // =============================================
-template <typename QuantOutType>
+template <typename QuantOutType, bool IsLayered = false>
 __aicore__ inline void CombineQuantizedTokens(
     uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
     uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
@@ -436,22 +438,77 @@ __aicore__ inline void CombineQuantizedTokens(
     uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
     uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
 
-    AscendC::GlobalTensor<QuantOutType> gmRemoteD;
     uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
-    __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
-    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
-
     uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantTokenSize;
 
+    // 默认写远端win；Layered 远端先用workspace staging再URMA
+    AscendC::GlobalTensor<QuantOutType> gmDst;
+    GM_ADDR dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
+    if constexpr (IsLayered) {
+        if (toRankId != rankId) {
+            dstPeermemPtr = params.workspaceInfo.combineCommDataPtr;
+        }
+    }
+    gmDst.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
+    AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
+    AscendC::DataCopyPad(gmDst[dstBaseOffset], ubQuant, cp);
+
+    if constexpr (IsLayered) {
+        if (toRankId != rankId) {
+            PipeBarrier<PIPE_ALL>();
+            GM_ADDR srcAddr = dstPeermemPtr + dstBaseOffset * sizeof(QuantOutType);
+            GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) +
+                dstBaseOffset * sizeof(QuantOutType);
+            uint64_t channelHandle = GetUrmaCommHandle(
+                params.combineCommParams.mc2Context, toRankId, rankId);
+            params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr,
+                static_cast<uint64_t>(quantTokenSize));
+        }
+    }
+}
+
+
+// =============================================
+// CombineQuantizedTokensByUrma：通过URMA将量化后的 token 发送到目标 rank
+// =============================================
+template <typename QuantOutType>
+__aicore__ inline void CombineQuantizedTokensByUrma(
+    uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
+    uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
+    LocalTensor<QuantOutType>& ubQuant, Params& params)
+{
+    int64_t quantRowSize = n + nScale;
+    uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
+    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
+    uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
+
+    AscendC::GlobalTensor<QuantOutType> gmRemoteD;
+    GM_ADDR dstPeermemPtr = params.workspaceInfo.combineSendDataPtr + static_cast<uint64_t>(toRankId) * quantRowSize * 
+                                params.tilingData->bs * params.tilingData->expertPerRank * sizeof(QuantOutType);
+    if(toRankId == rankId) {
+        dstPeermemPtr = params.epGmAddr + params.peermemInfo.URMACombineWinPtr;
+    }                            
+    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
+    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantRowSize;
+
     AscendC::DataCopyExtParams singleCopyParams{
-        1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
+        1, static_cast<uint32_t>(quantRowSize), 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
+    PipeBarrier<PIPE_ALL>();
+    if (toRankId != rankId) {
+        uint64_t channelHandle = GetUrmaCommHandle(params.peermemInfo.mc2Context, toRankId, rankId);
+        GM_ADDR srcAddr = dstPeermemPtr + dstBaseOffset * sizeof(QuantOutType);
+        GM_ADDR remoteAddr = GetUrmaAddrByRankId(params.peermemInfo.mc2Context, toRankId) + params.peermemInfo.URMACombineWinPtr + dstBaseOffset * sizeof(QuantOutType);
+        params.peermemInfo.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantRowSize * sizeof(QuantOutType));
+    }
 }
 
 // =============================================
 // CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
+//   IsLayered=true  → URMA 路径（rankId 仅用于兼容，实际走 params.combineCommParams）
+//   IsLayered=false → UB_MEM 路径
 // =============================================
-template <uint8_t QuantMode, typename T>
+template <uint8_t QuantMode, typename T, bool IsLayered = false>
 __aicore__ inline void CombineTokenGroup(
     uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
     GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
@@ -459,12 +516,12 @@ __aicore__ inline void CombineTokenGroup(
 {
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
-    
+
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
     uint32_t floatTempSize = nScale + nScale / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
-    
+
     GlobalTensor<T> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gmm2OutAddr));
 
@@ -480,22 +537,22 @@ __aicore__ inline void CombineTokenGroup(
         uint32_t pingPong = i % 2;
         LocalTensor<T> ubBf16 = combineUbTensor[pingPong * singleTokenElems];
         LocalTensor<T> ubQuantData = ubBf16[nAlign32];
-        
+
         // MTE2: read from GM
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
         AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
-        
+
         // V: quantize
         QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
-        
-        // MTE3: send to GM
+
+        // MTE3: send
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
-        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
+        CombineQuantizedTokens<Fp8Type, IsLayered>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
             ubQuantDataFp8, params);
     }
-    
+
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
