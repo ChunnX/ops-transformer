@@ -112,9 +112,9 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     int64_t bs, int64_t topK)
 {
     // ccl buff的承载的数据块 1（winIn）：
-    // TPE = epWorldSize × CeilAlign(epWorldSize × expertPerRank + 1, 128) × 4B
+    // TPE = epWorldSize × CeilAlign(epWorldSize × MAX_EXPERT_PER_RANK + 1, 128) × 4B
     int64_t offsetTokenPerExpert = epWorldSize *
-                                   ops::CeilAlign(epWorldSize * expertPerRank + 1, ALIGN_128) *
+                                   ops::CeilAlign(epWorldSize * MAX_EXPERT_PER_RANK + 1, ALIGN_128) *
                                    static_cast<int64_t>(sizeof(int32_t));
 
     // ccl buff的承载的数据块 2：
@@ -146,8 +146,8 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     // 同步flag
     int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync所用空间
     if (!isA3) {
-        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
-        int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
+        // A2: dispatch flag(EP×E×64B) + allgather flag(EP×64B)
+        int64_t dispatchFlag = epWorldSize * MAX_EXPERT_PER_RANK * 64;
         int64_t allgatherFlag = epWorldSize * 64;
         offsetFlag += dispatchFlag + allgatherFlag;
     }
@@ -360,8 +360,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
 
     // 3. ccl_buffer_size
     OP_TILING_CHECK(cclBufferSizePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is null."), return GRAPH_FAILED);
-
+        OP_LOGE(K_INNER_DEBUG, "ccl_buffer_size is nullptr."), return GRAPH_FAILED);
+    
     // 4. max_recv_token_num
     OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckMaxRecvTokenNumAttr failed."),
