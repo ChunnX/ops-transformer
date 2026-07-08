@@ -1199,6 +1199,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
 {
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
+    if (coreLen == 0) { return; }
     int32_t batchLen = UnpermuteBuffInit(coreLen);
 
     GlobalTensor<bfloat16_t> expandedX;
