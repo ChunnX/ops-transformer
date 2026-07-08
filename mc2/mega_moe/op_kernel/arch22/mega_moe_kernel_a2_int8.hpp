@@ -1283,7 +1283,7 @@ private:
         AscendC::SyncAll<true>();
 #ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params, params.EP * AlignUp(params.EP * params.expertPerRank, 128));
- 	    AscendC::SyncAll<true>();
+        AscendC::SyncAll<true>();
 #endif
         // shmem.InitStatusTargetSum();
         {
