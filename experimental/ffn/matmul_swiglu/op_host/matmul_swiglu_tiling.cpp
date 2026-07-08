@@ -117,7 +117,16 @@ static ge::graphStatus ParseTilingParams(
                 p.m, p.n, p.k, p.coreNum),
         return ge::GRAPH_FAILED);
 
-    p.hasBias = (context->GetOptionalInputShape(IN_BIAS) != nullptr);
+    auto biasShape = context->GetOptionalInputShape(IN_BIAS);
+    p.hasBias = (biasShape != nullptr);
+    if (p.hasBias) {
+        const auto& bS = biasShape->GetStorageShape();
+        // bias 必须为 1 维且长度 == 2N, 否则 kernel 侧按 twoN 读取会越界
+        OP_CHECK_IF(bS.GetDimNum() != 1 || bS.GetDim(0) != p.twoN,
+            OP_LOGE(context, "MatmulSwiglu: bias must be 1-D of length 2N=%ld, got rank=%zu dim0=%ld",
+                    p.twoN, bS.GetDimNum(), (bS.GetDimNum() > 0 ? bS.GetDim(0) : -1)),
+            return ge::GRAPH_FAILED);
+    }
     p.xDtype = GetGeDtype(context, IN_X);
     return ge::GRAPH_SUCCESS;
 }

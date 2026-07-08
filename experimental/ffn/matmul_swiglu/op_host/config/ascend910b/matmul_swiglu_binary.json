@@ -29,7 +29,7 @@
         {
           "name": "bias",
           "index": 2,
-          "dtype": "float16",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "optional",
           "shape": [
@@ -88,7 +88,7 @@
         {
           "name": "bias",
           "index": 2,
-          "dtype": "bfloat16",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "optional",
           "shape": [

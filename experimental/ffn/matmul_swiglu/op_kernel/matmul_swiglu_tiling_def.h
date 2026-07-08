@@ -18,10 +18,6 @@
 #include "adv_api/kernel_tiling.h"
 
 namespace optiling {
-constexpr uint64_t SGM_TILING_KEY_FP16 = 0;
-constexpr uint64_t SGM_TILING_KEY_BF16 = 1;
-constexpr uint64_t SGM_TILING_KEY_FP32 = 2;
-
 struct MatmulSwigluTilingData {
     uint64_t m;
     uint64_t k;

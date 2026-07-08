@@ -10,7 +10,8 @@
 
 /*!
  * \file matmul_swiglu_proto.h
- * \brief
+ * \brief MatmulSwiglu 算子原型定义: 融合线性投影 + SwiGLU 门控激活
+ *        ([gate|up] = x @ weight (+bias); y = SiLU(gate) * up)。
  */
 
 #ifndef OPS_OP_PROTO_INC_MATMUL_SWIGLU_H_

@@ -52,7 +52,6 @@ public:
         twoN_        = tilingData->twoN;
         hasBias_     = (tilingData->hasBias == 1U);
         transposeW_  = (tilingData->transposeWeight == 1U);
-        usedCoreNum_ = tilingData->usedCoreNum;
         tileN_       = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
 
         xGm_.SetGlobalBuffer((__gm__ xType*)x, m_ * k_);
@@ -166,8 +165,11 @@ private:
     GlobalTensor<xType> yGm_;
     GlobalTensor<cType> cGm_;
 
-    uint64_t m_ = 0, k_ = 0, n_ = 0, twoN_ = 0, tileN_ = 0;
-    uint32_t usedCoreNum_ = 0;
+    uint64_t m_ = 0;
+    uint64_t k_ = 0;
+    uint64_t n_ = 0;
+    uint64_t twoN_ = 0;
+    uint64_t tileN_ = 0;
     bool hasBias_ = false;
     bool transposeW_ = false;
 };
