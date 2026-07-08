@@ -1493,14 +1493,14 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant BnNBsD scenarios, "
                         "kscale only supports non-contiguous tensors in dimensions 0 or 1, "
-                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                        "but currently the non-contiguous dimension is dimension %d", dimIndex),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides,
                 dimIndex)) && (dimIndex != 0 && dimIndex != 1)),
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant BnNBsD scenarios, "
                         "key only supports non-contiguous tensors in dimensions 0 or 1, "
-                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                        "but currently the non-contiguous dimension is dimension %d", dimIndex),
                 return ge::GRAPH_FAILED);
 
     // value scale: N layout [n2Size]
@@ -1529,7 +1529,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant BnNBsD scenarios, "
                         "value only supports non-contiguous tensors in dimensions 0 or 1, "
-                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                        "but currently the non-contiguous dimension is dimension %d", dimIndex),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
