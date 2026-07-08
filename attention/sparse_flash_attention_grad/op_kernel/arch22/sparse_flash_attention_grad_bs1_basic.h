@@ -885,6 +885,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].gatherMte2WaitMte3Pong = gatherMte2WaitMte3Pong;
     runInfo[mmPingPongIdx].scatterVWaitMte3 = scatterVWaitMte3;
     runInfo[mmPingPongIdx].scatterVWaitMte3Pong = scatterVWaitMte3Pong;
+    runInfo[mmPingPongIdx].scatterTmpKMte2WaitV = scatterTmpKMte2WaitV;
+    runInfo[mmPingPongIdx].scatterTmpVMte2WaitV = scatterTmpVMte2WaitV;
+    runInfo[mmPingPongIdx].scatterTmpKMte2WaitVPong = scatterTmpKMte2WaitVPong;
+    runInfo[mmPingPongIdx].scatterTmpVMte2WaitVPong = scatterTmpVMte2WaitVPong;
 
     if (runInfo[mmPingPongIdx].s1End > totalS1) {
         runInfo[mmPingPongIdx].s1End = totalS1;

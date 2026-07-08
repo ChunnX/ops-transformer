@@ -29,6 +29,7 @@ enum class QuantMode : int64_t {
     QUANT_MODE_PERTOKEN = 2,
     QUANT_MODE_PERGROUP = 3,
     QUANT_MODE_MX = 4,
+    QUANT_MODE_MX_CLIP = 5,
 };
 }
 
@@ -100,7 +101,8 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, (h + PER_GROUP_SIZE - 1) / PER_GROUP_SIZE);
-    } else if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    } else if ((static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) ||
+        (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX_CLIP)) {
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / NUM_EVEN * NUM_EVEN);
@@ -117,7 +119,8 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
 static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType scalesType, bool quantFlag)
 {
     ge::DataType dynamicScalesDtype = ge::DT_FLOAT;
-    if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    if ((static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) ||
+        (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX_CLIP)) {
         dynamicScalesDtype = ge::DT_FLOAT8_E8M0;
     }
     if (quantFlag && static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_NO_QUANT) {
@@ -346,13 +349,20 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
             return ge::GRAPH_FAILED;
         }
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) ||
-               (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX)) {
+        (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX_CLIP)) {
+        if ((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2))) {
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "y_dtype",
+                std::to_string(yDtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX) {
         if ((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
             (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
             (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
             (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E1M2))) {
             OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "y_dtype",
-                std::to_string(yDtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1 or FLOAT4_E1M2");
+                std::to_string(yDtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2");
             return ge::GRAPH_FAILED;
         }
     }

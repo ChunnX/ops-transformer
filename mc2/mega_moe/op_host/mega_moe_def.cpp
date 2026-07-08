@@ -149,6 +149,7 @@ public:
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
     this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
+    this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
