@@ -1172,7 +1172,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     // ── 固定 batchLen（后续以模板参数形式传入）──
     int32_t batchLen = UNPERMUTE_BATCH_LEN;
     if (batchLen > coreLen) { batchLen = coreLen; }
-    int32_t batchNum = Ops::Base::CeilDiv(coreLen, batchLen);
 
     // ── weight buffer（at tempAddr，每批复用）──
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
@@ -1194,9 +1193,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
 
     // ═══════════════════ 外层：token batch ═══════════════════
-    for (int32_t batchIdx = 0; batchIdx < batchNum; ++batchIdx) {
-        int32_t batchStart = batchIdx * batchLen;
-        int32_t curTokens = (batchIdx == batchNum - 1) ? (coreLen - batchStart) : batchLen;
+    for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLen) {
+        int32_t curTokens = (batchStart + batchLen > coreLen) ? (coreLen - batchStart) : batchLen;
 
         UnpermuteLoadWeights(coreOffset, batchStart, curTokens, tempLocal);
 
