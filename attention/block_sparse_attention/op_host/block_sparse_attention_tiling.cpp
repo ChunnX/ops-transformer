@@ -959,7 +959,8 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     uint64_t totalTaskNumMask = static_cast<uint64_t>(batch_) * numHeads_ * maxQBlockNum_;
     uint64_t blockDim2 = static_cast<uint64_t>(blockDim_) * 2;
     avgRowNumPerSubCore_ = static_cast<uint32_t>((totalTaskNumMask + blockDim2 - 1) / blockDim2);
-    preActivateSubCoreNum_ = static_cast<uint32_t>((totalTaskNumMask + avgRowNumPerSubCore_ - 1) / avgRowNumPerSubCore_);
+    preActivateSubCoreNum_ =
+        static_cast<uint32_t>((totalTaskNumMask + avgRowNumPerSubCore_ - 1) / avgRowNumPerSubCore_);
 
     return ge::GRAPH_SUCCESS;
 }

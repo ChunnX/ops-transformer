@@ -103,8 +103,12 @@ public:
             uint32_t sum = q_len * n_len;
             uint32_t sum_former = q_len == 1 ? sum / 2 : (q_len / 2) * n_len;
 
-            uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2] : splitInfo->lseTaskOffset[process/2] + sum_former;
-            uint64_t addrOOffset = vectorsubBlockID == 0 ? static_cast<uint64_t>(splitInfo->oTaskOffset[process/2]) : static_cast<uint64_t>(splitInfo->oTaskOffset[process/2]) + static_cast<uint64_t>(sum_former) * headSizeV;
+            uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2]
+                                                           : splitInfo->lseTaskOffset[process/2] + sum_former;
+            uint64_t addrOOffset = vectorsubBlockID == 0
+                ? static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
+                : static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
+                  + static_cast<uint64_t>(sum_former) * headSizeV;
 
             uint32_t prevQSeqlenSum = 0;
             if (inputLayoutTND) {
@@ -270,7 +274,8 @@ public:
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
  
                     AscendC::DataCopyPad(loFloatUbTensor,
-                        oCoreTmpGmTensor[addrOOffset + static_cast<uint64_t>(tileStart) * headSizeV + static_cast<uint64_t>(nIdx) * oCount_vector],
+                        oCoreTmpGmTensor[addrOOffset + static_cast<uint64_t>(tileStart) * headSizeV
+                            + static_cast<uint64_t>(nIdx) * oCount_vector],
                         AscendC::DataCopyExtParams(curTile, headSizeV * sizeof(float), 0, dstStrideReadFloat, 0),
                         AscendC::DataCopyPadExtParams<float>(true, 0, rightPadFloat, 0));
 
@@ -309,7 +314,8 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
 
                 if (q_len == 1) {
-                    AscendC::DataCopyPad(oGmTensor[gmOScalar + static_cast<uint64_t>(tileStart) * headSizeV], go16UbTensor,
+                    AscendC::DataCopyPad(
+                        oGmTensor[gmOScalar + static_cast<uint64_t>(tileStart) * headSizeV], go16UbTensor,
                         AscendC::DataCopyExtParams(curTile, blockLenWrite, srcStrideWrite, 0, 0));
                 } else if (tileStart % n_len == 0 && curTile % n_len == 0) {
                     uint32_t qTile = curTile / n_len;
