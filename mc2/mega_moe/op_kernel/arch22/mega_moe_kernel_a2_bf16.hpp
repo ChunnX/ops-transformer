@@ -1503,28 +1503,30 @@ private:
             const int64_t bs = params.problemShape.m();
             const int64_t topK = params.topK;
 
-            // Dispatch Flag: EP×E×64B
-            int64_t flagSize = EP * E * 64;
+            // Dispatch Flag: EP×MAX_EXPERTS_PER_RANK(128)×64B
+            // E 取最大值 128，使 flag 区域位置固定，与实际 expertPerRank 无关
+            int64_t flagSize = EP * MAX_EXPERTS_PER_RANK * 64;
             // Allgather Flag: EP×64B
             int64_t allgatherFlagSize = EP * 64;
 
             // AAfterDispatchSize: dispatch 接收数据区（BF16，无 perTokenScale），原始token
             int64_t AAfterDispatchSize = M * h * sizeof(int16_t);
-            // DAfterCombineSize: combine 接收数据区（BF16），FFN过后的数据
-            int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
 
-            // 从前向后布局 (winIn)
+            // 布局：RESERVED → A → D → (空闲) → TPE → allgatherFlag → flag → [CrossRankSync tail]
+            int64_t usableEnd = static_cast<int64_t>(shmem.SegmentSize()) - static_cast<int64_t>(shmem.TailReservedSize());
+            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)（与 ResetTokenPerExpert 中 num 一致）
+            int64_t tpeSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+
+            // winIn == winOut：A/D 从前向后；flag/allgatherFlag/TPE 从后往前
             offsetA = RESERVED_SPACE_SIZE;
             offsetD = offsetA + AAfterDispatchSize;
-            offsetAllgatherFlag = offsetD + DAfterCombineSize;
-            offsetFlag = offsetAllgatherFlag + allgatherFlagSize;
-            offsetPeerTokenPerExpert = offsetFlag + flagSize;
+            offsetFlag = usableEnd - flagSize;
+            offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
+            offsetPeerTokenPerExpert = offsetAllgatherFlag - tpeSize;
 
-            // WinOut: 纯从前向后布局，A/D 各占独立偏移
+            // WinOut: A/D 从前向后布局（winIn == winOut，flag/TPE offset 复用 winIn）
             // ABeforeDispatchSize: dispatch 发送数据区（BF16，无 perTokenScale），原始token
             int64_t ABeforeDispatchSize = bs * topK * h * sizeof(int16_t);
-            // 还有一块DBeforeCombineSize: combine 发送数据区（BF16，无 perTokenScale），FFN过后的数据。
-            // 此处因为 winIn和winOut空间刚好互换，所以flag的偏移可以复用
             offsetWinOutA = RESERVED_SPACE_SIZE;
             offsetWinOutD = offsetWinOutA + ABeforeDispatchSize;
         }
