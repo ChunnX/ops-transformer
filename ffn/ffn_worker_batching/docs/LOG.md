@@ -79,8 +79,8 @@
 | 1.3R | 方案评审 | ✅完成 | 2026-07-07 | DESIGN_REVIEW.md：12 条全过，HIGH=0，无 spec 冲突；3MED+2LOW 非阻塞 |
 | 1.4 | 测试设计 | ✅完成 | 2026-07-07 | TEST.md + L0/L1/L2 用例(5/515/13)；spec.yaml 测试映射齐备 |
 | 1.4R | 测试设计评审 | ✅完成 | 2026-07-07 | TEST_REVIEW.md：7 条全过，HIGH=0，无 spec 冲突；2MED(标签订正)+2LOW 非阻塞 |
-| 2-迭代一 | 骨架搭建（A5 单 TilingKey + 穿刺 + L0 ST） | ⬜待办 | - | - |
-| 2-迭代二 | 策略整合（多 TilingKey + 穿刺 + 多 shape ST） | ⬜待办 | - | - |
+| 2-迭代一 | 骨架搭建（A5 单 TilingKey + 穿刺 + L0 ST） | ✅完成 | 2026-07-08 | A1-Main骨架✅+B✅(10/10)+4穿刺✅全NPU二进制一致+UT轨✅(10/10)；汇合验证✅(NPU 8路二进制一致连跑3次)；测试工程师验收✅(ST 100%)。环境切/home/zl/Ascend、验证转TTK+Kernel直调 |
+| 2-迭代二 | 策略整合（多 TilingKey + 穿刺 + 多 shape ST） | 🔄进行中 | 2026-07-08 | A1-Main✅ NORM100+RECV101 双 TilingKey 整合(arch35 补9头共15+apt双分发, ascend910b A2零回归, UB216/248收敛issue✅)；A2 UT✅18/18(NORM/RECV分派+单多核阈值+RECV限核双边界+A2/A3守卫)；B✅543用例(NORM357+RECV184,3profile,含上界shape)；穿刺 int8+RECV/上界shape+UB不溢出/稀疏mask ✅ NPU二进制一致, k=0暴露group_listing缺陷已单行修复+验证+归档(迭代三整合)；汇合验证进行中(重build坐实ascend950二进制+NPU双路径ST) |
 | 2-迭代三 | 全量覆盖（全功能 + 全覆盖 UT + 全量 ST） | ⬜待办 | - | - |
 | 2-白盒 | 白盒测试生成与用例汇合 | ⬜待办 | - | - |
 | 2-PyTorch ST | PyTorch ST 测试开发（L0+L1） | ⬜待办 | - | - |
@@ -106,8 +106,11 @@
 | 测试设计文档 | `docs/TEST.md` | ✅已产出 |
 | 测试用例 | `tests/st/testcases/`（L0/L1/L2 CSV + 覆盖报告） | ✅已产出 |
 | 测试设计评审报告 | `docs/TEST_REVIEW.md` | ✅已产出 |
-| A5 算子代码 | `op_kernel/` + `op_host/`（新增 A5 路径） | ⬜待产出 |
-| A5 算子配置 | `op_host/config/ascend950/` | ⬜待产出 |
+| A5 算子代码 | `op_kernel/`（arch35/ 6头 + _apt.cpp 入口）+ `op_host/`（tiling_arch35 + def/tiling 守卫） | ✅已产出（骨架，新环境复验中） |
+| A5 算子配置 | `op_host/config/ascend950/`（json + simplified_key.ini） | ✅已产出 |
+| L0 C++ ST 工程 | `tests/st/`（test_aclnn + CMakeLists + run.sh） | ✅已产出（Mock 10/10） |
+| 穿刺工程 | `probe/`（probe1~4 + PROBE_SUMMARY.md） | 🔄穿刺3/4✅NPU，1/2待TTK复核 |
+| TTK 使用参考 | `docs/TTK_GUIDE.md` + skill `resources/ttk-usage.md` | 🔄产出中 |
 
 ## 八、开发记录
 
@@ -116,4 +119,9 @@
 - **2026-07-07 [1.2.5 spec 生成 + 1.2.5R 自审]**：spec.yaml（320 行）9-stage 全 PASS（stage8 textual_only / stage9 oracle absent 为非计算类合法 SKIP），主 Agent 独立 --strict 复跑确认 overall PASS；tolerance 6 dtype 全 bitwise_equal。自审 SPEC_REVIEW.md 13 条 SPEC-* 0 个 ❌（7✓活跃 + 1⚠ FORMULA 合法降级 + 5 条 v1 暂缓）。tag spec-approved。
 - **2026-07-07 [1.3 方案设计 + 1.3R 评审]**：DESIGN.md（441 行）+ PLAN.md。关键决策：arch35 走 ops-transformer 仓 _apt.cpp 约定（非 ops-nn add_kernel_sources）；tiling 双代隔离采方案A——读码校正「现有非2000档模板而是 monolithic IMPL_OP_OPTILING」，分派器加 3 行 IsRegbaseSocVersion 守卫分流 ascend950→1000档 Regbase 模板，arch22 类体零改；UB/核数全部运行时 GetCoreMemSize 取值无 arch 常量；主路线经典 SIMD/MemBase（gather 原样字节搬运无需 RegBase）。1.3R DESIGN_REVIEW.md 12 条全过 HIGH=0 无冲突，评审补做 11 个 API 官方文档演练确认 950 支持。
 - **2026-07-07 [1.4 测试设计 + 1.4R 评审]**：TEST.md + L0/L1/L2 用例（5/515/13），按 ascendc-st-design 默认流程产出，含 spec.yaml 测试映射专章；精度 bitwise_equal（CPU numpy 精确重排 + np.array_equal）；boundary 10 条 / extreme 3 条逐条对齐，L2 错误码全 ⊆ spec.error_codes，TilingKey 102 正确排除。1.4R TEST_REVIEW.md 7 条全过 HIGH=0 无冲突。
+- **2026-07-08 [2-迭代一 第一波]**：CP2 通过，并行发起 A1-Main + 4 穿刺 + B。①A1-Main✅：A5 arch35 骨架（100/NORM/fp16/单核 sort）编译通过，ascend950+ascend910b 双路径 kernel 二进制生成，A2/A3 零回归（opFile 隔离 + IsRegbaseSocVersion 守卫实测生效）；落 arch35/ 6 头 + _apt.cpp 入口 + tiling_arch35 + config/ascend950/。DESIGN §3.6.2 宏注册 `_1000` 在本仓 opc 下 kernel 无法解析类型，已按 §3.2 手写平铺 struct 落地（编译即过），意图完整保留。②B✅：C++ ST 工程落盘，Mock 编译 + CPU golden 自测 10/10 PASS（L0_002 need_schedule=1 RECV 路径正确 SKIP，非迭代一范围）。③穿刺3(int8/P2)✅、穿刺4(bf16/P1)✅：真实 Ascend950 NPU 8 路输出二进制一致 + 确定性通过；穿刺4 补齐 GatherMask arch35 实证，A2 经典 SIMD 全栈直编 dav-3510 正确，主路线无需 RegBase。穿刺1(RECV)/穿刺2(多核 MrgSort) 旧环境已跑通（待复核）。
+- **2026-07-08 [环境/工具转向 TTK]**：用户决策——① CANN 环境统一改用 `/home/zl/Ascend`（不再用 /root/Ascend）；② kernel/aclnn/E2E 验证统一走 **TTK（ops-test-kit，`/home/zl/ops-test-kit`）**，CSV 用例驱动 + golden 插件，不再手搓 .asc Kernel 直调；③ 已 NPU 通过的穿刺3/4 及旧环境穿刺1/2 在新环境+TTK 下重跑复核；④ 确立「kernel 二进制优先」验证原则（kernel→aclnn→e2e）。旧环境在飞的 probe1 已 kill、A1-Main 已跑完保留代码。当前正搭 TTK 集成地基（`docs/TTK_GUIDE.md` + skill `resources/ttk-usage.md`），地基绿后铺开穿刺 TTK 复核 + A2 UT。观察项（非阻塞）：穿刺3 kernel 侧 `ACL_DEV_ATTR_UBUF_PER_VECTOR_CORE`=216KB vs 穿刺4 host 侧 `GetCoreMemSize(UB)`=248KB 不一致，主线 tiling 走 248KB 分支，大 shape 下有 UB 溢出风险，迭代二整合前须收敛。
+- **2026-07-08 [TTK 集成 + 迭代一收口]**：TTK 地基结论——环境切 `/home/zl/Ascend`、`ttk info` 认到 Ascend950、add.csv 冒烟 PASS、golden/input/CSV 资产就绪；但本算子唯一输入 `schedule_context` 内嵌 4 个 GM 设备绝对地址（二级指针，A2/A3 亦如此，见 `ffn_wb_get_schedule_context.h` 偏移 400/528/544/560），**TTK kernel 模式无地址注入能力、无法直驱**（已证据化，SOC_NOT_SUPPORT）→ 裁定：kernel 级验证用 **Kernel 直调**（host 组装 context），TTK 用于 add 冒烟 + 后续 aclnn/E2E 层。4 穿刺全部新环境 NPU 二进制一致（PROBE_SUMMARY 全 ✅）。**迭代一收口**：汇合验证 ✅（probe5 fp16 骨架真机 8 路二进制一致、连跑 3 次 SHA256 恒定，`iter1-integration-report.md`）；测试工程师验收 ✅（C++ ST 10/10、连跑 2 次确定，`iter1-acceptance-report.md`）；UT 轨 10/10、A2/A3 零回归。UB 216/248 不一致建 tracking issue `issues/issue_20260708_ub-size-host-kernel-mismatch_01.md`（迭代二整合前收敛）。进入迭代二。
+- **2026-07-08 [工作流切换 + 完整开发收口 + 代码检视]**：用户改用 `changwei-op-dev` 手册主导（非 ops-registry-invoke-workflow），流水=开发→交付物→检视→出包→抽检→low→full泛化→性能→精度。①**完整开发收口**（dev subagent）：核对确认 arch35 是 A2 忠实全量移植（15 kernel 头逐字节一致、无桩），NORM100+RECV101 双 TilingKey + token_dtype 0/1/2 + 单多核 sort + 边界校验 + UB 运行时取值全接线；k=0 守卫已落主线 arch35 头。补 README(A5→√) + 6 条 arch35 边界负路径 UT。编译 ascend950 --opkernel EXIT0 + 3 binary、ascend910b EXIT0 零回归、op_host UT 24/24 PASS，全程未碰 A2/A3。②**代码检视 ✅**（内联，report `docs/arch35_code_review_summary.md`）：delta 无阻塞级逻辑缺陷；HIGH=1【H1 UB 大 shape 溢出风险未验：tiling_arch35.cpp:220 从 host 248KB 派生 sortLoopMaxElement，穿刺2 说 kernel 216KB 会溢、两文档矛盾，大 shape NPU 未实测→泛化必跑】；M2 多核 group_listing k=0 未 NPU 覆盖；其余 PASS（校验完整/分派隔离/UB运行时取值）。
+- **⏸️ 2026-07-08 会话恢复锚点**：用户重启会话，已存盘。**下一步 = changwei step4 出包安装（check_arch35_config → build.sh --pkg --soc=ascend950 → .run 装）→ step5-8 泛化验证（边验边修，H1/M2 大shape+多核k=0 必覆盖）→ 性能/精度 → 上库**。恢复必读 `docs/SESSION_HANDOFF.md`。⚠️ **全部代码未 commit（git 停在阶段 1.4），再崩会丢，尽早 checkpoint**。⚠️ arch35 接线 _apt.cpp vs changwei add_kernel_sources 约定悬项（用户暂 deprioritize）。
 
