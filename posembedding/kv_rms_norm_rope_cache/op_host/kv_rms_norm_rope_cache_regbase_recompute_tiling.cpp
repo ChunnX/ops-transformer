@@ -43,6 +43,8 @@ constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 constexpr static int64_t BLOCK_SIZE = 32;
 constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
 constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
+constexpr static int64_t RECOMPUTE_INDEX_BUFFER_BYTES = 32;   // kernel GetIndex 用的 index UB, 需从 UB 预算预留
+constexpr static int64_t RECOMPUTE_SIMT_SM_GUARD_BYTES = 8192; // kernel 头部预留低 8KB 占位, 规避 SIMT 共核污染, 需从 UB 预算预留
 
 static const std::vector<std::string> inputNames = {
     "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
@@ -337,7 +339,8 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
 
-    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
+    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES
+                          - RECOMPUTE_INDEX_BUFFER_BYTES - RECOMPUTE_SIMT_SM_GUARD_BYTES;
     int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
 
     OP_CHECK_IF(
