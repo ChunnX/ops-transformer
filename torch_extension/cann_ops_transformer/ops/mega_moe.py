@@ -126,7 +126,7 @@ class SymmBuffer:
 
 
 def get_mega_moe_ccl_buffer_size(
-    ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
+    ep_world_size: int, num_experts: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
     combine_quant_mode: int = 0, comm_alg: str = ""
@@ -143,11 +143,11 @@ def get_mega_moe_ccl_buffer_size(
         lambda: (f"num_max_tokens_per_rank only support in [1, {tokens_per_rank_limit=}], "
                     f"tokens_per_rank_limit = (8 * (total_ub_size - 48 * 1024)) / (num_topk * (64 + ep_world_size)), "
                     f"but got {num_max_tokens_per_rank=}."))
-    torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 2048)),
-        lambda: (f"moe_expert_num only support in [1, 2048], but got {moe_expert_num=}."))
+    torch._check(((num_experts >= 1) and (num_experts <= 2048)),
+        lambda: (f"num_experts only support in [1, 2048], but got {num_experts=}."))
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
         lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
-    local_moe_expert_num = moe_expert_num // ep_world_size
+    local_moe_expert_num = num_experts // ep_world_size
     align_32 = 32
     align_256 = 256
     align_512 = 512
