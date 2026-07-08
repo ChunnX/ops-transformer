@@ -2048,6 +2048,134 @@ ge::graphStatus DequantChecker::CheckAntiquantModeForAntiquant(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerChannel(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor)
+{
+    // per-tensor模式，仅当key/value的数据类型为INT8时支持
+    gert::Shape expectedShape1 = gert::Shape({1});
+    auto keyAntiquantScaleShape = keyAntiquantScaleTensor->GetStorageShape();
+    if (inputKvType == ge::DT_INT4 || inputKvType == ge::DT_INT32) {
+        OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                ToString(inputKvType).c_str(),
+                "The datatype of key and value must be INT8 "
+                "when keyAntiquantMode and valueAntiquantMode are per-tensor mode"),
+                return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                ToString(inputKvType).c_str(),
+                "The datatype of key and value must be INT8 "
+                "when keyAntiquantMode and valueAntiquantMode are per-tensor mode"),
+                return ge::GRAPH_FAILED);
+    }
+    // per-channel模式，支持key/value的数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
+    OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_HIFLOAT8 &&
+        inputKvType != ge::DT_FLOAT8_E4M3FN),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8, INT4(INT32), "
+            "HIFLOAT8 or FLOAT8_E4M3FN when keyAntiquantMode and valueAntiquantMode are both per-channel mode"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantMixed(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // key支持per-channel叠加value支持per-token，支持key/value的数据类型为INT8、INT4(INT32)
+    OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or INT4 "
+            "when keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 &&
+        (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
+            ToString(inputKvType).c_str(), "The datatype of query and attention_out must be FLOAT16 "
+            "when keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode "
+            "and the datatype of key is INT8"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerToken(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-token模式，支持key/value的数据类型为INT8、INT4(INT32)、FLOAT8_E4M3FN
+    OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_FLOAT8_E4M3FN),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8, INT4 or "
+            "FLOAT8_E4M3FN when keyAntiquantMode and valueAntiquantMode are both per-token mode"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenPA(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-token模式，使用page attention管理scale/offset, 支持key/value的数据类型为INT8、FLAOT8_E4M3FN
+    OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_FLOAT8_E4M3FN),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or FLOAT8_E4M3FN "
+            "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTensorHead(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-tensor-head模式，支持key/value的数据类型为INT8
+    if (inputKvType == ge::DT_INT4) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+            "when keyAntiquantMode and valueAntiquantMode are per-tensor-head mode");
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF((inputKvType != ge::DT_INT8),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+            "when keyAntiquantMode and valueAntiquantMode are per-tensor-head mode"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenHead(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-token-head模式，支持key/value的数据类型为INT8、INT4(INT32)
+    OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or INT4 "
+            "when keyAntiquantMode and valueAntiquantMode are per-token-head mode"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenHeadPA(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-token-head模式使用page attention管理scale/offset，支持key/value的数据类型为INT8
+    OP_CHECK_IF((inputKvType != ge::DT_INT8),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                    ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+                    "when keyAntiquantMode and valueAntiquantMode are per-token-head-PA mode"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenGroup(const FiaTilingInfo &fiaInfo,
+    ge::DataType inputKvType)
+{
+    // per-token-group模式，支持key/value的数据类型为FLOAT4_E2M1
+    OP_CHECK_IF((inputKvType != ge::DT_FLOAT4_E2M1),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+            ToString(inputKvType).c_str(), "The datatype of key and value must be FLOAT4_E2M1 "
+            "when keyAntiquantMode and valueAntiquantMode are per-token-group mode"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo)
 {
     // 根据keyAntiquantMode和valueAntiquantMode，校验输入key、value的datatype的合法性
