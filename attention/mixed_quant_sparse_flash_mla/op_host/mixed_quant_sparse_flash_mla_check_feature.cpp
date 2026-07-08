@@ -22,7 +22,7 @@ using std::pair;
 using std::string;
 namespace optiling {
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 {
     OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
                 OP_LOGE(opName_, "oriWinLeft_ only support -1 or >=0, but got %ld", oriWinLeft_),
@@ -35,12 +35,12 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
 {
     OP_CHECK_IF(bSize_ <= 0, OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSMLALayout::TND),
+    OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == MQSMLALayout::TND),
                 OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
                 return ge::GRAPH_FAILED);
 
@@ -72,7 +72,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantLayout() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
 {
     const std::vector<std::string> layoutSupportList = {"BSND", "TND"};
     std::string layoutQuery = opParamInfo_.layoutQ;
@@ -82,18 +82,18 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantLayout() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
     OP_CHECK_IF(qType_ != ge::DT_BF16,
                 OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-                        QSMLADataTypeToSerialString(ge::DT_BF16).c_str(),
-                        QSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-                        QSMLADataTypeToSerialString(qType_).c_str()),
+                        MQSMLADataTypeToSerialString(ge::DT_BF16).c_str(),
+                        MQSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
+                        MQSMLADataTypeToSerialString(qType_).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
                 OP_LOGE(opName_, "quant_mode only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
@@ -112,9 +112,9 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantPa() const
 {
-    if (kvLayout_ != QSMLALayout::PA_BBND) {
+    if (kvLayout_ != MQSMLALayout::PA_BBND) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
@@ -131,7 +131,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquant() const
+ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquant() const
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureAntiquantAttr() || ge::GRAPH_SUCCESS != CheckFeatureAntiquantShape() ||
         ge::GRAPH_SUCCESS != CheckFeatureAntiquantLayout() || ge::GRAPH_SUCCESS != CheckFeatureAntiquantDtype() ||
@@ -141,7 +141,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeature() const
+ge::graphStatus MQSMLATilingCheck::CheckFeature() const
 {
     return CheckFeatureAntiquant();
 }
