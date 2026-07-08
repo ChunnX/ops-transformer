@@ -19,13 +19,9 @@
 
 namespace optiling {
 struct MatmulSwigluTilingData {
-    uint64_t m;
-    uint64_t k;
-    uint64_t n;
-    uint64_t twoN;
     uint32_t hasBias;
     uint32_t tileN;  // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
-    TCubeTiling mmTiling;
+    TCubeTiling mmTiling;  // m/k/2N 从此派生: m=mmTiling.M, k=mmTiling.Ka, 2N=mmTiling.N
 };
 }  // namespace optiling
 #endif

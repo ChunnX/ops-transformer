@@ -172,10 +172,7 @@ static void FillTilingData(gert::TilingContext* context, const SgmTilingParams& 
         tileN = p.n;  // 小 N 或一块即可容纳: 整行不切分
     }
 
-    tiling->set_m(static_cast<uint64_t>(p.m));
-    tiling->set_k(static_cast<uint64_t>(p.k));
-    tiling->set_n(static_cast<uint64_t>(p.n));
-    tiling->set_twoN(static_cast<uint64_t>(p.twoN));
+    // m/k/2N 不再单独写入 TilingData: kernel 侧从 mmTiling(M/Ka/N) 派生
     tiling->set_hasBias(p.hasBias ? 1U : 0U);
     tiling->set_tileN(static_cast<uint32_t>(tileN));
 

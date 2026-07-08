@@ -49,10 +49,11 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y, GM_ADDR userWs,
                                 const optiling::MatmulSwigluTilingData* tilingData)
     {
-        m_ = tilingData->m;
-        k_ = tilingData->k;
-        n_ = tilingData->n;
-        twoN_ = tilingData->twoN;
+        // m/k/2N 从 mmTiling 派生(避免与 TCubeTiling 重复存储): matmul 为 x[M,K] @ weight[K,2N]
+        m_ = static_cast<uint64_t>(tilingData->mmTiling.M);
+        k_ = static_cast<uint64_t>(tilingData->mmTiling.Ka);
+        twoN_ = static_cast<uint64_t>(tilingData->mmTiling.N);
+        n_ = twoN_ / 2;  // 单边宽度 = 2N / 2
         hasBias_ = (tilingData->hasBias == 1U);
         tileN_ = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
 

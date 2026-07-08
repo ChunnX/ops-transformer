@@ -107,13 +107,10 @@ void RunKernelSmoke(int64_t M, int64_t K, int64_t N)
 
     auto* td = reinterpret_cast<optiling::MatmulSwigluTilingData*>(tiling);
     memset(td, 0, sizeof(optiling::MatmulSwigluTilingData));
-    td->m = M;
-    td->k = K;
-    td->n = N;
-    td->twoN = twoN;
     td->hasBias = 0;
     td->tileN = static_cast<uint32_t>(N);  // 小 N: 整行不切分。transpose 经 TilingKey(默认 0=非转置)
-    FillCubeTiling(td->mmTiling, M, N, K);
+    // m/k/2N 由 kernel 从 mmTiling 派生, 故 mmTiling.N 需为 2N(matmul 输出宽度)
+    FillCubeTiling(td->mmTiling, M, twoN, K);
 
     ICPU_RUN_KF(matmul_swiglu, 1, xGM, wGM, biasGM, yGM, workspace, tiling);
 

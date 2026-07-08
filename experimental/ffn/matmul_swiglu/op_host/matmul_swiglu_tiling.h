@@ -24,14 +24,11 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MatmulSwigluTilingData)
-    TILING_DATA_FIELD_DEF(uint64_t, m);             // 行数 M
-    TILING_DATA_FIELD_DEF(uint64_t, k);             // 收缩维 K
-    TILING_DATA_FIELD_DEF(uint64_t, n);             // 单边宽度 N (= 输出列数)
-    TILING_DATA_FIELD_DEF(uint64_t, twoN);          // 2N (= weight 的拼接列数 / bias 长度)
     TILING_DATA_FIELD_DEF(uint32_t, hasBias);       // 是否带 bias
     TILING_DATA_FIELD_DEF(uint32_t, tileN);         // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
     TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling);  // 完整 [M, 2N, K] 的 cube tiling
-    // 注: transpose_weight 经 TilingKey 传递(不占 TilingData), kernel 侧作编译期模板参数
+    // 注: m/k/2N 直接从 mmTiling 派生(m=mmTiling.M, k=mmTiling.Ka, 2N=mmTiling.N), 不再重复存储;
+    //     transpose_weight 经 TilingKey 传递(不占 TilingData), kernel 侧作编译期模板参数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MatmulSwiglu, MatmulSwigluTilingData)
