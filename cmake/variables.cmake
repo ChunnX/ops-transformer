@@ -48,7 +48,6 @@ get_filename_component(OPTENSOR_INCLUDE_ROOT        "${OPTENSOR_SOURCE_PATH}/inc
 get_filename_component(TENSOR_API_INCLUDE_ROOT      "${OPTENSOR_SOURCE_PATH}/include/tensor_api/include"        REALPATH)
 get_filename_component(TENSOR_API_IMPL_INCLUDE_ROOT "${OPTENSOR_SOURCE_PATH}/include/tensor_api"                REALPATH)
 get_filename_component(BLAZE                        "${OPTENSOR_SOURCE_PATH}/include/blaze"                     REALPATH)
-get_filename_component(TENSOR_API                   "${OPTENSOR_SOURCE_PATH}/include/tensor_api"                REALPATH)
 
 # python
 if(NOT DEFINED ASCEND_PYTHON_EXECUTABLE)
