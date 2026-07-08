@@ -66,7 +66,7 @@
 ## 函数原型
 
 ```python
-MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode=0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0, y_dtype=None, x_dtype=None, scales_dtype=None) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode=0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0, y_dtype=None, x_dtype=None, x_smooth_scales_dtype=None) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -253,7 +253,7 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>-</td>
     </tr>
     <tr>
-        <td>scales_dtype</td>
+        <td>x_smooth_scales_dtype</td>
         <td>int</td>
         <td>可选</td>
         <td>预留参数，当前版本不支持，传默认值None即可。</td>

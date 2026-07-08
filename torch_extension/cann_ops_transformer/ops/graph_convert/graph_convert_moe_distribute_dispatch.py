@@ -197,7 +197,7 @@ if _TORCHAIR_AVAILABLE:
         const_expert_num: int = 0,
         y_dtype: Optional[int] = None,
         x_dtype: Optional[int] = None,
-        scales_dtype: Optional[int] = None,
+        x_smooth_scales_dtype: Optional[int] = None,
         meta_outputs: TensorSpec = None):
         from torchair.ge._ge_graph import DataType
 
@@ -212,9 +212,9 @@ if _TORCHAIR_AVAILABLE:
                 x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
             x.desc.dtype = torch_dtype_value_to_ge_proto_type(x_dtype)
 
-        if scales_dtype is not None and scales is not None:
-            scales = ge.Bitcast(scales, type=torch_dtype_value_to_ge_type(scales_dtype))
-            scales.desc.dtype = torch_dtype_value_to_ge_proto_type(scales_dtype)
+        if x_smooth_scales_dtype is not None and scales is not None:
+            scales = ge.Bitcast(scales, type=torch_dtype_value_to_ge_type(x_smooth_scales_dtype))
+            scales.desc.dtype = torch_dtype_value_to_ge_proto_type(x_smooth_scales_dtype)
 
         expand_x_dtype = DataType.DT_INT8
         if quant_mode == 0:
