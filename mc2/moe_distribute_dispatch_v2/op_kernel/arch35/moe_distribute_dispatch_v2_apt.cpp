@@ -20,7 +20,7 @@
 #include "../moe_distribute_dispatch_v2.h"
 #include "../moe_distribute_dispatch_v2_full_mesh.h"
 #include "moe_distribute_dispatch_v2_apt_tiling_key.h"
-#include "moe_distribute_dispatch_arch35.h"
+#include "moe_distribute_dispatch_v2_a5_ccu.h"
 using namespace MoeDistributeDispatchA5Impl;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
