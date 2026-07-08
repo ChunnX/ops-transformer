@@ -486,6 +486,9 @@ def run_dispatch_combine(rank):
     )
 
     group = dist.new_group(backend="hccl")
+    hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    if not hcomm_info:
+        raise RuntimeError("EP HCCL comm name 为空，请检查 HCCL group 初始化状态")
     buffer = ElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
