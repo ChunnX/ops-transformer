@@ -81,7 +81,7 @@ struct KVL1BuffSel {
            std::is_same_v<INPUT_T, fp8_e5m2_t> ||
            std::is_same_v<INPUT_T, hifloat8_t>;
     using Type = std::conditional_t<
-            (isFP8DType && s2BaseSize == 128 && dBaseSize == 576),
+            (isFP8DType && s2BaseSize == 128 && dBaseSize == 576),  // 128: s2BaseSize, 576: dBaseSize
             BuffersPolicy4buff<BufferType::L1>,
             std::conditional_t<
                 (!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
@@ -792,18 +792,18 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
         // s2 = 512 nSize = s2/2 NZ2NZ
 
         FixpipeParamsC310<CO2Layout::NZ> fixpipeParamsVec0; // L0C→UB
-        fixpipeParamsVec0.nSize = (s2LoopSize + 7) >> 3 << 3;
-        fixpipeParamsVec0.mSize = ((runInfo.s1RealSize + 31) >> 5 << 5) >> 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数)
-        fixpipeParamsVec0.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+        fixpipeParamsVec0.nSize = (s2LoopSize + 7) >> 3 << 3;  // 7: 对齐 2^3
+        fixpipeParamsVec0.mSize = ((runInfo.s1RealSize + 31) >> 5 << 5) >> 1; // 31: 对齐 2^5
+        fixpipeParamsVec0.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16;  // 15：对齐 16
         fixpipeParamsVec0.dstStride = (s1BaseSize >> 1) * 16; // mmResUb上两行之间的间隔，单位：element。
         fixpipeParamsVec0.dualDstCtl = 0; // 单目标模式
         fixpipeParamsVec0.unitFlag = 0;
         fixpipeParamsVec0.quantPre = QuantMode_t::QF322F16_PRE;
 
         FixpipeParamsC310<CO2Layout::NZ> fixpipeParamsVec1; // L0C→UB
-        fixpipeParamsVec1.nSize = (s2LoopSize + 7) >> 3 << 3;
+        fixpipeParamsVec1.nSize = (s2LoopSize + 7) >> 3 << 3;  // 7: 对齐 2^3
         fixpipeParamsVec1.mSize = runInfo.s1RealSize - fixpipeParamsVec0.mSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数)
-        fixpipeParamsVec1.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+        fixpipeParamsVec1.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16;  // 15：对齐 16
         fixpipeParamsVec1.dstStride = (s1BaseSize >> 1) * 16; // mmResUb上两行之间的间隔，单位：element。
         fixpipeParamsVec1.dualDstCtl = 0; // 单目标模式
         fixpipeParamsVec1.unitFlag = 0;
@@ -825,7 +825,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
         // 搬VEC1
         fixpipeParamsVec1.subBlockId = 1;
         Fixpipe<half, T, FA_CFG_NZ_UB>(outputBuf.template GetTensor<half>()[256 * (s1BaseSize >> 1) * n],
-                                        mm1ResL0C.GetTensor<T>()[runInfo.halfS1RealSize * 16], fixpipeParamsVec1); // 将matmul结果从L0C搬运到UB
+                                        mm1ResL0C.GetTensor<T>()[runInfo.halfS1RealSize * 16], fixpipeParamsVec1); // 16: 将matmul结果从L0C搬运到UB
  
         mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
     }
@@ -1046,9 +1046,9 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(
     outputBuf.WaitCrossCore();
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
+    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // 7: 对齐 2^3
     fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15：对齐 16
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
@@ -1164,7 +1164,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Dn(
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
     fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
     fixpipeParams.mSize = runInfo.s2RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15: 对齐 16
     if constexpr (useDn && isFp8) {
         fixpipeParams.dstStride = 64;
     } else {
