@@ -1277,7 +1277,7 @@ private:
         AscendC::SyncAll<true>();
 #ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params, params.EP * AlignUp(params.EP * params.expertPerRank, 128));
- 	    AscendC::SyncAll<true>();
+        AscendC::SyncAll<true>();
 #endif
         // shmem.InitStatusTargetSum();
         {
@@ -1516,14 +1516,13 @@ private:
             // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line（与 BF16/W4A8 统一）
             int64_t flagSize = EP * E * 64;
             // Allgather Flag: EP×64B
- 	        int64_t allgatherFlagSize = EP * 64;
+            int64_t allgatherFlagSize = EP * 64;
             // PerTokenScaleSize: M × sizeof(float)
             int64_t offsetPerTokenScaleSize = M * sizeof(float);
             // AAfterDispatchSize: dispatch 接收数据区INT8， M × (h + ALIGN_512)，原始token
             int64_t AAfterDispatchSize = M * (h + ALIGN_512);
             // DAfterCombineSize: combine 接收数据区BF16，bs × topK × h × sizeof(int16_t)，FFN过后的数据
             int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
-
 
             // WinIn: 纯从前向后布局 (front-to-back)，与 A3 对齐
             // RESERVED → A → perTokenScale → D → flag → TPE
