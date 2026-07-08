@@ -74,6 +74,20 @@ tests2/
 └── designs/                # 设计文档
 ```
 
+## 设计思路
+
+**纯入口 + 引擎分离**：`test.py` 只做 CLI/pytest 委托，`orchestrator.py` 是可独立 UT 的引擎。入口不包含被测逻辑。
+
+**固定顺序 + 子集选择**：阶段间有数据依赖（gen→cpu→npu→gpu→compare），用户通过 `--stages` 选子集，框架按固定顺序执行。跳过的阶段自动从 pt 加载。
+
+**判定与诊断分离**：`compare.py` 只做精度判定（返回 dict，不打印），`precision_analyze.py` 只做失败诊断（打印）。变化频率不同，互不干扰。
+
+**声明式用例管理**：`test_case/*.py` 声明参数值（PARAM_NAMES + DEFAULTS + CASE_SETS），`case_loader` 自动笛卡尔积展开。新增参数只需加到 DEFAULTS，所有用例自动继承。
+
+**ABC 基类集中**：接口契约定义在 `core/__init__.py`（GenDataBase/CpuBase/NpuBase/GpuBase），实现分散在各模块。接口给用户看，实现给维护者看。
+
+**标准 logging**：用 Python 官方 `logging.getLogger(__name__)`，不在基类加自定义属性。orchestrator 统一输出阶段进度日志，Backend 内部日志是 opt-in。
+
 ## 新算子适配
 
 1. `test_case/{prefix}_paramset.py` — 定义参数+用例集
