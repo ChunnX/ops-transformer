@@ -40,26 +40,38 @@ python test.py --stages gen,cpu,npu,compare --case-set ci --log-level WARNING
 ## 目录结构
 
 ```
-test.py              纯入口(CLI + test函数 + fixtures)
-conftest.py          pytest hooks
-orchestrator.py      引擎(run_case + Reporter)
-compare.py           精度判定(纯函数)
-precision_analyze.py 失败诊断
-csv_parser.py        CSV→paramset转换工具
-pytest.ini           marker注册 + 日志配置
-core/
-  __init__.py        ABC基类 + forward门面
-  case_loader.py     用例加载+笛卡尔积展开
-  gen_data.py        GenDataBackend
-  cpu.py             CpuBackend
-  npu.py             NpuBackend
-  gpu.py             GpuBackend(可选)
-  quant.py           量化与反量化(可选)
-  utils/             算子特有工具(input_spec/cpu_golden/data_utils)
-test_case/           paramset文件(stc/rdv/prof/whitebox/redline)
-prof/                性能采集虚函数(npuprof/npuprofop/gpuprof/l2_flush/perf_parse)
-data/                pt中间产物(运行时生成)
-result/              CSV + 失败分析(compare时自动创建)
+tests2/
+├── test.py                 # 统一入口（CLI main + test函数 + fixtures）
+├── conftest.py             # pytest hooks（addoption + generate_tests）
+├── orchestrator.py         # 编排引擎（run_case + Reporter + helpers）
+├── compare.py              # 精度判定（compare_outputs，纯函数）
+├── precision_analyze.py    # 失败诊断（analyze_failure）
+├── csv_parser.py           # CSV→paramset 转换工具
+├── pytest.ini              # marker 静态注册 + 日志配置
+├── core/
+│   ├── __init__.py         # ABC 基类 + forward() 门面函数
+│   ├── case_loader.py      # 用例加载 + 笛卡尔积展开
+│   ├── gen_data.py         # GenDataBackend（gen_inputs + normalize_params）
+│   ├── cpu.py              # CpuBackend（cpu_compute）
+│   ├── npu.py              # NpuBackend（npu_compute）
+│   ├── gpu.py              # GpuBackend（gpu_compute，可选）
+│   ├── quant.py            # 量化与反量化（可选）
+│   └── utils/              # 算子特有工具（input_spec / cpu_golden / data_utils）
+├── test_case/
+│   ├── stc_paramset.py     # STC 用例集（ci + debug）
+│   ├── rdv_paramset.py     # RDV 用例集（func_rdv）
+│   ├── prof_paramset.py    # PROF 用例集
+│   ├── whitebox_paramset.py # WHITEBOX 用例集
+│   └── redline_paramset.py # REDLINE 用例集
+├── prof/                   # 性能采集虚函数接口
+│   ├── npuprof/            # NPU 性能采集
+│   ├── npuprofop/          # NPU 单算子性能
+│   ├── gpuprof/            # GPU 性能
+│   ├── l2_flush/           # L2 缓存刷新
+│   └── perf_parse/         # 性能产物解析
+├── data/                   # pt 中间产物（运行时生成）
+├── result/                 # 测试结果（CSV + 失败分析，compare 时自动创建）
+└── designs/                # 设计文档
 ```
 
 ## 新算子适配
