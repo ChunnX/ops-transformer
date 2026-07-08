@@ -152,22 +152,15 @@ static ge::graphStatus CheckCommAttrValuesValid(gert::TilingContext *context, co
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(), (std::string("(0, ") + std::to_string(MAX_EP_WORLD_SIZE) + "]").c_str()), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > MAX_TP_WORLD_SIZE),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize", std::to_string(*tpWorldSizePtr).c_str(), (std::string("[0, ") + std::to_string(MAX_TP_WORLD_SIZE) + "]").c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tpWorldSize", std::to_string(*tpWorldSizePtr).c_str(),
+            "0 or 1 (TP domain communication is not supported)"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "epRankId", std::to_string(*epRankIdPtr).c_str(), (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()), return ge::GRAPH_FAILED);
-    if (*tpWorldSizePtr > 1) {
-        OP_TILING_CHECK((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId", std::to_string(*tpRankIdPtr).c_str(), (std::string("[0, ") + std::to_string(*tpWorldSizePtr) + ")").c_str()), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr"), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((*commQuantModePtr != 0), OP_LOGE_FOR_INVALID_VALUE(nodeName, "commQuantMode", std::to_string(*commQuantModePtr).c_str(), (std::string("0 when tpWorldSize > 1 (current tpWorldSize=") + std::to_string(*tpWorldSizePtr) + ")").c_str()), return ge::GRAPH_FAILED);
-        groupTp = std::string(groupTpPtr);
-    } else {
-        if (*tpRankIdPtr != 0) {
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId",
-                std::to_string(*tpRankIdPtr).c_str(), "0");
-            return ge::GRAPH_FAILED;
-        }
+    if (*tpRankIdPtr != 0) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId",
+            std::to_string(*tpRankIdPtr).c_str(), "0");
+        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;

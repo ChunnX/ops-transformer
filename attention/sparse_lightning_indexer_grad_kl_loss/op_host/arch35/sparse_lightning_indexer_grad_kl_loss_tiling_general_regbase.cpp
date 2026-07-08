@@ -28,6 +28,7 @@ static const int32_t FRACTAL_NUM = 16L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 static constexpr size_t SIZE_1 = 1;
 static constexpr size_t SIZE_128 = 128;
+static constexpr size_t SIZE_256 = 256;
 static const uint64_t DIM_NUM_0 = 0;
 static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_2 = 2;
@@ -372,8 +373,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
             OP_CHECK_IF(
-                bSize < SIZE_1 || bSize > SIZE_128,
-                OP_LOGE(opName, "Inputshape B Size should be range in 1~128, but got %ld.", bSize),
+                bSize < SIZE_1 || bSize > SIZE_256,
+                OP_LOGE(opName, "Inputshape B Size should be range in 1~256, but got %ld.", bSize),
                 return false);
             OP_CHECK_IF(
                 s1Size > s2Size,
