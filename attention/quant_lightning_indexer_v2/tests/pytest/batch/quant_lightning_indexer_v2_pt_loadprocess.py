@@ -54,6 +54,10 @@ def test_qliv2_process(filepath, device_id=0):
         block_size = params[8]
         head_dim = params[7]
         k_head_num = params[6]
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
         dequant_dtype_str = params[11]
         if dequant_dtype_str == 'FP16':
             dequant_dtype = torch.float16
@@ -63,10 +67,18 @@ def test_qliv2_process(filepath, device_id=0):
             dequant_dtype = torch.float16
         key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
         key_dequant_scale = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
-    if test_data['actual_seq_lengths_query'] is not None:
-        actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
+    if test_data['seqused_q'] is not None:
+        seqused_q = test_data['seqused_q'].npu()
     else:
-        actual_seq_lengths_query = None
+        seqused_q = None
+    if test_data['seqused_k'] is not None:
+        actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
+    else:
+        actual_seq_lengths_key = None
+    if test_data['seqused_k'] is not None:
+        seqused_k = test_data['seqused_k'].npu()
+    else:
+        seqused_k = None
     if test_data['actual_seq_lengths_key'] is not None:
         actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
     else:
@@ -105,8 +117,8 @@ def test_qliv2_process(filepath, device_id=0):
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
                                                     cu_seqlens_k = cu_seqlens_key,
-                                                    seqused_q = actual_seq_lengths_query,
-                                                    seqused_k = actual_seq_lengths_key,
+                                                    seqused_q = seqused_q,
+                                                    seqused_k = seqused_k,
                                                     cmp_residual_k = cmp_residual_k_for_npu,
                                                     output_idx_offset = output_idx_offset,
                                                     max_seqlen_q = max_seqlen_q,

@@ -827,7 +827,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             qk_dtype = torch.int8
         elif qk_dtype == 'FLOAT8_E4M3FN':
             qk_dtype = torch.float8_e4m3fn
-        elif qk_dtype == 'uint8':
+        elif qk_dtype == 'HIFLOAT8':
             qk_dtype = torch.uint8
 
         if dequant_dtype == 'FP16':
@@ -896,11 +896,6 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if isinstance(k_scale_datarange, str):
             k_scale_datarange = ast.literal_eval(k_scale_datarange)
 
-        params = (batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
-                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,
-                  seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
-                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
-                  k_scale_datarange, cmp_ratio, return_value, output_idx_offset)
 
     if qk_dtype == torch.uint8:
         hifp8mode = 1
@@ -1056,6 +1051,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).npu()
     properties = torch.npu.get_device_properties()
+    blockFusion = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(torch.float)
         if hifp8mode == 1:
@@ -1102,7 +1098,6 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
 
     elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
-        blockFusion = None
         k_max_s2 = math.floor(max(act_seq_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
         key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(torch.float)
@@ -1213,7 +1208,8 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if qk_dtype == torch.float8_e4m3fn:
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
-            blockFusion = blockFusion.to(dtype=torch.float16)
+            if blockFusion is not None:
+                blockFusion = blockFusion.to(dtype=torch.float16)
 
         output_tensors = {
             "params":params,
