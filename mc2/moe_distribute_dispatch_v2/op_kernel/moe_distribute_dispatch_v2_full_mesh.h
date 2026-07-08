@@ -46,7 +46,6 @@ namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL;  // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
-constexpr uint64_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U; // 核间软同步偏移地址
 constexpr int32_t  FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256 / sizeof(int32_t);
