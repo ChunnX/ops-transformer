@@ -96,7 +96,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                         get_dtype_from_enum(x_smooth_scales_dtype)
                         if x_smooth_scales_dtype is not None else scales.dtype
                     )
-            elif quant_mode == 4:
+            elif quant_mode == 4 or quant_mode == 5:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
             return dynamic_scales_dtype
 
@@ -110,7 +110,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 shape = tuple([a])
             elif quant_mode == 3:
                 shape = tuple([a, math.ceil(h / 128)])
-            elif quant_mode == 4:
+            elif quant_mode == 4 or quant_mode == 5:
                 shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
             return shape
 
