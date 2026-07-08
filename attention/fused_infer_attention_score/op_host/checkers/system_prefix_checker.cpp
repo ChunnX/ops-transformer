@@ -139,6 +139,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         if (fiaInfo.kvLayout == FiaLayout::BSND) {
             uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
             uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
+            uint32_t keySharedPrefixD = keySharedPrefixShape.GetDim(DIM_NUM_3);
+            uint32_t valueSharedPrefixD = valueSharedPrefixShape.GetDim(DIM_NUM_3);
+            uint32_t keyD = keyShape.GetDim(DIM_NUM_3);
+            uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_2);
+            uint32_t valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_2);
+            uint32_t keyN = keyShape.GetDim(DIM_NUM_2);
             OP_CHECK_IF((keySharedPrefixN != keyN),
                 OP_LOGE(fiaInfo.opName,
                     "The N axis of keySharedPrefix(%ld) and key(%ld) are different. "
