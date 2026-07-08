@@ -116,31 +116,31 @@ static graphStatus FiaFillTensorParams(const OpExecuteContext *host_api_ctx, Fus
 {
     fiaTensors.query = host_api_ctx->GetInputTensor(QUERY_INDEX);
     if (fiaTensors.query == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "query");
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s is required, but it is empty.", "query", host_api_ctx->GetNodeName());
         return GRAPH_FAILED;
     }
 
     fiaTensors.key = host_api_ctx->GetDynamicInputTensor(KEY_INDEX, 0);
     if (fiaTensors.key == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "key");
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s is required, but it is empty.", "key", host_api_ctx->GetNodeName());
         return GRAPH_FAILED;
     }
     
     fiaTensors.value = host_api_ctx->GetDynamicInputTensor(VALUE_INDEX, 0);
     if (fiaTensors.value == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "value");
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s is required, but it is empty.", "value", host_api_ctx->GetNodeName());
         return GRAPH_FAILED;
     }
     
     fiaTensors.output = host_api_ctx->GetOutputTensor(ATTENTION_OUT_INDEX);
     if (fiaTensors.output == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "output");
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s is required, but it is empty.", "output", host_api_ctx->GetNodeName());
         return GRAPH_FAILED;
     }
     
     fiaTensors.softmaxLse = host_api_ctx->GetOutputTensor(SOFTMAX_LSE_INDEX);
     if (fiaTensors.softmaxLse == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "softmaxLse");
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s is required, but it is empty.", "softmaxLse", host_api_ctx->GetNodeName());
         return GRAPH_FAILED;
     }
 
@@ -306,8 +306,7 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
 
     if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) { // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
         std::string reason = "The value of inner_precise must be in 0, 1, 2, 3";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(host_api_ctx->GetNodeName(), "inner_precise",
-            std::to_string(scalarParams.innerPrecise).c_str(), reason.c_str());
+        OP_LOGE(host_api_ctx->GetNodeName(), "Parameter %s of %s has incorrect value %s. Reason: %s.", "inner_precise", std::to_string(scalarParams.innerPrecise).c_str(), reason.c_str());
         return GRAPH_FAILED;
     }
     OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",

@@ -59,8 +59,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQDim(const FiaTilingInfo &
         if (actualSeqLengthsQDimNum != DIM_NUM_1 && actualSeqLengthsQDimNum < batchSize) {
             std::string correctStr = "greater than or equal to the batchSize: " +
                 std::to_string(batchSize) + " of query or equal to 1.";
-            OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths",
-                std::to_string(actualSeqLengthsQDimNum).c_str(), correctStr.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect list size %s. It should be %s.", "actual_seq_lengths", std::to_string(actualSeqLengthsQDimNum).c_str(), correctStr.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -104,8 +103,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(bIdx) +
                     "] cannot be less than 0";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", valueStr.c_str(), std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
@@ -131,8 +129,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(i) +
                     "] cannot be less than 0";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", valueStr.c_str(), std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
@@ -168,8 +165,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvDim(const FiaTilingInfo 
         if (actualSeqLengthsKvDimNum != DIM_NUM_1 && actualSeqLengthsKvDimNum < batchSize) {
             std::string correctStr = "greater than or equal to the batchSize: " +
                 std::to_string(batchSize) + " or equal to 1.";
-            OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths_kv",
-                std::to_string(actualSeqLengthsKvDimNum).c_str(), correctStr.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect list size %s. It should be %s.", "actual_seq_lengths_kv", std::to_string(actualSeqLengthsKvDimNum).c_str(), correctStr.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -213,8 +209,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(bIdx) +
                     "] cannot be less than 0";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", valueStr.c_str(), std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
@@ -233,8 +228,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
                     "] cannot be greater than KV_S: " +
                     std::to_string(sOfKeyValue);
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", valueStr.c_str(), std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
             // curSeqLengthData应为非负数
@@ -242,8 +236,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
                     "] cannot be less than 0";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", valueStr.c_str(), std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
@@ -332,8 +325,7 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenQ(const FiaTiling
     auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
     if (qLayout == FiaLayout::TND || qLayout == FiaLayout::NTD) {
         OP_CHECK_IF(actualSeqLengthsQTensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
-                    "actualSeqLengthsQ cannot be empty when the layout of query is TND or NTD"),
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "actualSeqLengthsQ", "actualSeqLengthsQ cannot be empty when the layout of query is TND or NTD"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -345,15 +337,13 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenKv(const FiaTilin
     // key、value的layout为TND/NTD时，actualSeqLengthsKv必须传入
     if (kvLayout == FiaLayout::TND || kvLayout == FiaLayout::NTD) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsKv",
-                    "actualSeqLengthsKv cannot be empty when the layout of key and value is TND or NTD"),
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "actualSeqLengthsKv", "actualSeqLengthsKv cannot be empty when the layout of key and value is TND or NTD"),
             return ge::GRAPH_FAILED);
     }
     // PagedAttention场景下，必须传入actualSeqLengthsKv
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsKv",
-                    "actualSeqLengthsKv cannot be empty when page attention is enabled"),
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "actualSeqLengthsKv", "actualSeqLengthsKv cannot be empty when page attention is enabled"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -368,8 +358,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
     bool enableIFAMLA = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA && actualSeqLengthsQTensor != nullptr) {
         OP_CHECK_IF((qLayout != FiaLayout::TND) && (qLayout != FiaLayout::NTD),
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
-                    "actualSeqLengthsQ must be empty in IFA MLA and non-TND/NTD scenarios"),
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "actualSeqLengthsQ", "actualSeqLengthsQ must be empty in IFA MLA and non-TND/NTD scenarios"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -49,8 +49,7 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
     // pseType支持范围为0
     if (pseType != PSE_OUTER_MUL_ADD_TYPE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type",
-            std::to_string(pseType).c_str(), "The value of pse_type must be 0");
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "pse_type", std::to_string(pseType).c_str(), "The value of pse_type must be 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -68,9 +67,7 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi，pseShift的数据类型必须为FLOAT32
         if (pseShiftDesc->GetDataType() != ge::DT_FLOAT) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
-                ToString(pseShiftDesc->GetDataType()).c_str(),
-                "The dtype of pse_shift must be FLOAT32 when pse_type is 2 or 3");
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "pse_shift", ToString(pseShiftDesc->GetDataType()).c_str(), "The dtype of pse_shift must be FLOAT32 when pse_type is 2 or 3");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -78,9 +75,7 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
         // query的datatype为FLOAT16、INT8时，pseShift的datatype应为FLOAT16
         if (fiaInfo.inputQType == ge::DT_FLOAT16 || fiaInfo.inputQType == ge::DT_INT8) {
             if (pseShiftDesc->GetDataType() != ge::DT_FLOAT16) {
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
-                    ToString(pseShiftDesc->GetDataType()).c_str(),
-                    "The dtype of pse_shift must be FLOAT16 when the dtype of query "
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "pse_shift", ToString(pseShiftDesc->GetDataType()).c_str(), "The dtype of pse_shift must be FLOAT16 when the dtype of query "
                     "is FLOAT16 or INT8 and pse_type is 0");
                 return ge::GRAPH_FAILED;
             }
@@ -88,9 +83,7 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
         // query的datatype为BFLOAT16时，pseShift的datatype应为BFLOAT16
         if (fiaInfo.inputQType == ge::DT_BF16) {
             if (pseShiftDesc->GetDataType() != ge::DT_BF16) {
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
-                    ToString(pseShiftDesc->GetDataType()).c_str(),
-                    "The dtype of pse_shift must be BFLOAT16 when the dtype of query is BFLOAT16 and pseType is 0");
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "pse_shift", ToString(pseShiftDesc->GetDataType()).c_str(), "The dtype of pse_shift must be BFLOAT16 when the dtype of query is BFLOAT16 and pseType is 0");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -114,8 +107,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         if (pseShiftShape != expectedShapeN) {
             std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +
                 "]) when pse_type is 2 or 3";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
-                                                  reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "pse_shift", ToStringRaw(pseShiftShape).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -126,8 +118,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         // pseShift的维度必须为4
         uint32_t pseShiftDimNum = pseShiftShape.GetDimNum();
         if (pseShiftDimNum != DIM_NUM_4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "pse_shift",
-                std::to_string(pseShiftDimNum).c_str(), "The shape dim of pse_shift must be 4 when pse_type is 0");
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape dim %s. Reason: %s.", "pse_shift", std::to_string(pseShiftDimNum).c_str(), "The shape dim of pse_shift must be 4 when pse_type is 0");
             return ge::GRAPH_FAILED;
         }
         uint32_t pseShiftBatch = pseShiftShape.GetDim(DIM_NUM_0);
@@ -148,8 +139,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
                 std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
                     std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" +
                     std::to_string(s2Size + actualSharedPrefixLen) + "]";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
-                                                      reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "pse_shift", ToStringRaw(pseShiftShape).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -158,8 +148,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
                 (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
                 std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
                     std::to_string(n1Size) + ", 1, >=" + std::to_string(s2Size + actualSharedPrefixLen) + "]";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
-                                                      reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "pse_shift", ToStringRaw(pseShiftShape).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
@@ -174,15 +163,13 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // pseType为2或3时，使能alibi，pseShift必须传
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.tensor == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                        "pseShift cannot be empty when pseType is 2 or 3"),
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "pseShift cannot be empty when pseType is 2 or 3"),
                     return ge::GRAPH_FAILED);
     }
     // 校验pseShift的desc的存在性，若pseShift存在，其desc也必须存在
     if (fiaInfo.opParamInfo.pseShift.tensor != nullptr) {
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.desc == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
-                        "pseShift", "dtype of pseShift cannot be empty"),
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "dtype of pseShift cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -204,8 +191,7 @@ ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
             std::string reason = "The last axis of pse_shift must be greater than or equal to maxBlockNumPerBatch(" +
                 std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) +
                 ") when page attention is enabled";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift",
-                ToStringRaw(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "pse_shift", ToStringRaw(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -219,16 +205,14 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
     if (fiaInfo.enableAlibiPse || fiaInfo.pseShiftFlag) {
         // D不等长时，不支持pse
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                        "pseShift must be empty when D of query and key is not equal to D of value"),
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "pseShift must be empty when D of query and key is not equal to D of value"),
                     return ge::GRAPH_FAILED);
     }
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi时，MLA不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                        "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
     } else if (fiaInfo.pseShiftFlag) {
         if (fiaInfo.isMaxWorkspace) {
             return ge::GRAPH_SUCCESS;
@@ -236,13 +220,11 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         // 非alibi时，MLA，不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                        "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "pseShift must be empty in the MLA scenario"), return ge::GRAPH_FAILED);
         // pse使能时，若inputLayout为BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD，不支持pse
         OP_CHECK_IF(layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD" || layoutStr == "TND" || layoutStr == "NTD" ||
                         layoutStr == "NTD_TND" || layoutStr == "TND_NTD",
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                        "pseShift must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD"),
+                    OP_LOGE(fiaInfo.opName, "Parameter %s of %s is invalid. Reason: %s.", "pseShift", "pseShift must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -262,9 +244,7 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         if (qStartIdxs != nullptr) {
             qStartIdx = qStartIdxs[0];
             if (qStartIdx > INT32_MAX || qStartIdx < INT32_MIN) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "q_start_idx",
-                    std::to_string(qStartIdx).c_str(),
-                    "The value of q_start_idx must be [-2147483648, 2147483647]");
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "q_start_idx", std::to_string(qStartIdx).c_str(), "The value of q_start_idx must be [-2147483648, 2147483647]");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -275,18 +255,14 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         if (kvStartIdxs != nullptr) {
             kvStartIdx = kvStartIdxs[0];
             if (kvStartIdx > INT32_MAX || kvStartIdx < INT32_MIN) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "kv_start_idx",
-                    std::to_string(kvStartIdx).c_str(),
-                    "The value of kv_start_idx must be [-2147483648, 2147483647]");
+                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "kv_start_idx", std::to_string(kvStartIdx).c_str(), "The value of kv_start_idx must be [-2147483648, 2147483647]");
                 return ge::GRAPH_FAILED;
             }
         }
     }
     // kvStartIdx - qStartIdx的取值范围应满足[-1048576, 1048576]
     if ((kvStartIdx - qStartIdx > PSE_SHIFT_MAX) || (kvStartIdx - qStartIdx) < PSE_SHIFT_MIN) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "kv_start_idx - q_start_idx",
-            std::to_string(kvStartIdx - qStartIdx).c_str(),
-            "The value of kv_start_idx - q_start_idx must be [-1048576, 1048576]");
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "kv_start_idx - q_start_idx", std::to_string(kvStartIdx - qStartIdx).c_str(), "The value of kv_start_idx - q_start_idx must be [-1048576, 1048576]");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
