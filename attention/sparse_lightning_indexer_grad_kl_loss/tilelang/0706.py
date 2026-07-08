@@ -17,6 +17,8 @@ BLOCK_K = 128
 VECTOR_BASEG = 32
 VECTOR_BASEN = 256
 
+GATHER_CHUNK_SIZE = 16
+
 DQUERY = 512
 DQUERY_INDEX = 128
 
@@ -227,25 +229,58 @@ def tilelang_grad_kl_loss_single_kernel(
             k_end = T.min(k_start + n_block, K)
 
             # ============================================================
-            # V scope 0: Gather Key/KeyIndex/KeyRope by SparseIndices
-            # Each core gathers only its own K-block rows into workspace
+            # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
+            # Chunked double buffer: MTE2 fill chunk[N+1] || MTE3 write chunk[N]
             # ============================================================
+            num_chunks = n_block // GATHER_CHUNK_SIZE
             with T.Scope("V"):
-                key_row_ub = T.alloc_ub((1, DQuery), input_dtype)
-                ki_row_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
-                kr_row_ub = T.alloc_ub((1, max(d_rope, 1)), input_dtype)
+                key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
+                ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
+                kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    for k_id in T.serial(k_start, k_end):
+                    # ---- Pre-load chunk 0 ----
+                    for i in T.serial(GATHER_CHUNK_SIZE):
+                        k_id = k_start + i
                         idx = SparseIndices[bz, s1_id, 0, k_id]
                         if idx >= 0:
-                            T.copy(Key[bz, idx, 0, 0:DQuery], key_row_ub)
-                            T.copy(key_row_ub, GatherKey_ws[bz, s1_id, k_id, 0:DQuery])
-                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_row_ub)
-                            T.copy(ki_row_ub, GatherKeyIndex_ws[bz, s1_id, k_id, 0:DQueryIndex])
+                            T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[0, i, 0:DQuery])
+                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[0, i, 0:DQueryIndex])
                             if d_rope > 0:
-                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_row_ub)
-                                T.copy(kr_row_ub, GatherKeyRope_ws[bz, s1_id, k_id, 0:d_rope])
+                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[0, i, 0:d_rope])
+                    T.set_flag("mte2", "mte3", 0)
+
+                    # ---- Ping-pong: chunks 0, 1, ..., num_chunks-1 ----
+                    for chunk_id in T.serial(num_chunks):
+                        task_id = chunk_id % 2
+                        nxt_id = 1 - task_id
+                        chunk_start = k_start + chunk_id * GATHER_CHUNK_SIZE
+
+                        T.wait_flag("mte2", "mte3", task_id)
+
+                        # MTE3: write chunk to workspace (overlaps with MTE2 fill of next chunk)
+                        T.copy(key_chunk_ub[task_id, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                               GatherKey_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                        T.copy(ki_chunk_ub[task_id, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                               GatherKeyIndex_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                        if d_rope > 0:
+                            T.copy(kr_chunk_ub[task_id, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                   GatherKeyRope_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:d_rope])
+
+                        T.set_flag("mte3", "mte2", task_id)
+
+                        # MTE2: pre-fill next chunk (overlaps with MTE3 write of current chunk)
+                        if chunk_id < num_chunks - 1:
+                            next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                            for i in T.serial(GATHER_CHUNK_SIZE):
+                                k_id = next_start + i
+                                idx = SparseIndices[bz, s1_id, 0, k_id]
+                                if idx >= 0:
+                                    T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[nxt_id, i, 0:DQuery])
+                                    T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[nxt_id, i, 0:DQueryIndex])
+                                    if d_rope > 0:
+                                        T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[nxt_id, i, 0:d_rope])
+                            T.set_flag("mte2", "mte3", nxt_id)
 
                 T.set_cross_flag("V", 10)
 
@@ -723,10 +758,10 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # Block size: match NPU core count
+        # Block size: match NPU core count, ensure divisible by GATHER_CHUNK_SIZE
         core_count = _get_aicore_count()
         n_num_ws = core_count
-        while K % n_num_ws != 0:
+        while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
             n_num_ws += 1
         block_n = K // n_num_ws
 
