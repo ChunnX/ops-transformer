@@ -84,6 +84,7 @@ private:
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
+    __aicore__ inline int32_t UnpermuteBuffInit(int32_t coreLen);
     __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchStart,
         int32_t curTokens, LocalTensor<bfloat16_t>& tempLocal);
     __aicore__ inline void UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
@@ -180,6 +181,7 @@ private:
     LocalTensor<float> topKWeightsTensor_;
     LocalTensor<float> fp32ScaleTensor_;
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
+    LocalTensor<bfloat16_t> topKWeightsBf16Tensor_;        // Unpermute bf16 weight 搬运中转
 
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
@@ -1137,14 +1139,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(
 }
 
 // ===============================================================
-// Unpermute：主入口 — 分配固定 buffer → 分批循环处理
+// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回 batchLen
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
+__aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(int32_t coreLen)
 {
-    int32_t coreLen, coreOffset;
-    TilingByCore(m_, coreLen, coreOffset, 1);
-
     // ── 固定 buffer：dataRes + dataResFp32 (+ scales) ──
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
@@ -1169,7 +1168,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         tempAddr += fp32ScaleBufAlign;
     }
 
-    // ── 固定 batchLen（后续以模板参数形式传入）──
+    // ── batchLen（后续以模板参数形式传入）──
     int32_t batchLen = UNPERMUTE_BATCH_LEN;
     if (batchLen > coreLen) { batchLen = coreLen; }
 
@@ -1178,15 +1177,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr,
         topKWeightsBufAlign / sizeof(float));
-    LocalTensor<bfloat16_t> tempLocal;
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         uint32_t tempBufAlign = Ops::Base::CeilAlign(
             static_cast<uint32_t>(batchLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
-        tempLocal = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr + topKWeightsBufAlign,
+        topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr + topKWeightsBufAlign,
             tempBufAlign / sizeof(bfloat16_t));
     }
 
-    // ── Global tensors ──
+    return batchLen;
+}
+
+// ===============================================================
+// Unpermute：主入口 — 初始化 buffer → 分批循环处理
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
+{
+    int32_t coreLen, coreOffset;
+    TilingByCore(m_, coreLen, coreOffset, 1);
+    int32_t batchLen = UnpermuteBuffInit(coreLen);
+
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.combineSendPtr);
     GlobalTensor<bfloat16_t> output;
@@ -1196,7 +1206,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLen) {
         int32_t curTokens = (batchStart + batchLen > coreLen) ? (coreLen - batchStart) : batchLen;
 
-        UnpermuteLoadWeights(coreOffset, batchStart, curTokens, tempLocal);
+        UnpermuteLoadWeights(coreOffset, batchStart, curTokens, topKWeightsBf16Tensor_);
 
         // ── 内层：token 循环 ──
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
