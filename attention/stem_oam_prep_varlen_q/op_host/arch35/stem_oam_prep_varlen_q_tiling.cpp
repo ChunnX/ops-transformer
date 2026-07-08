@@ -77,6 +77,12 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
             ("must be <= stemBlockSize (" + std::to_string(stemBlockSize) + ")").c_str());
         return ge::GRAPH_FAILED;
     }
+    if (stemBlockSize % stemStride != 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "stemBlockSize",
+            std::to_string(stemBlockSize).c_str(),
+            "must be a multiple of stemStride");
+        return ge::GRAPH_FAILED;
+    }
 
     auto qShape = context->GetInputShape(0);
     auto qSeqLensShape = context->GetInputShape(1);

@@ -42,6 +42,11 @@ def stem_oam_prep_varlen_q(context: "tbetoolkits.UniversalTestcaseStructure"):
     R = B // S
     batch = len(q_seq_lens_np)
 
+    print(f"[golden] B={B}, S={S}, D={D}, H_q={H_q}, batch={batch}")
+    print(f"[golden] q_seq_lens={q_seq_lens_np}")
+    print(f"[golden] cu_seqlens_q={cu_seqlens_q_np}")
+    print(f"[golden] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
+
     q_fp32 = q_np.astype(np.float32)
     if qscale_np is not None:
         qscale = qscale_np.astype(np.float32)
