@@ -757,7 +757,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
     }
 }
 
-template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config, bool IsLayered = false>
 __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, const Params& params,
     uint32_t groupCnt, const Config& config, uint32_t startLoopIdx, uint32_t tileNum)
 {
@@ -784,8 +784,13 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
             (groupCnt + mLoc) * 32));
         AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
-        MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-            mLoc, nLoc, config.n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+        if constexpr (IsLayered) {
+            MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
+                mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+        } else {
+            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     }
@@ -803,7 +808,7 @@ struct WorkSetA8W4 {
 };
 
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC,
-    typename MakeLayoutC, typename WorkSet, typename Config, typename ExtraArgs>
+    typename MakeLayoutC, typename WorkSet, typename Config, typename ExtraArgs, bool IsLayered = false>
 __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& params, const GMMAddrInfo& gmmAddrInfo,
     const Config& config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
 {
@@ -826,7 +831,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(
+                    AivGmm2PostA8W4<ElementC, MakeLayoutC, IsLayered>(
                         workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
                         startLoopIdx, tileNum);
                 }
@@ -836,7 +841,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
 }
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
-    typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs>
+    typename ElementMxScaleA, typename ElementMxScaleB, typename ExtraArgs, bool IsLayered = false>
 __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, ExtraArgs& args)
@@ -885,7 +890,7 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     using WorkSetType = WorkSetA8W4<
         BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA), decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
-    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC>(
+    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsLayered>(
         workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, args);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
@@ -908,7 +913,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
 
 // GroupMatmul2CombineA8W4 — A8W4 prologue (W4→W8) + GMM2 + Combine
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-    typename ElementMxScaleA, typename ElementMxScaleB>
+    typename ElementMxScaleA, typename ElementMxScaleB, bool IsLayered = false>
 __aicore__ inline void GroupMatmul2CombineA8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt,
@@ -917,7 +922,7 @@ __aicore__ inline void GroupMatmul2CombineA8W4(
     (void)vecSetSyncCom2;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx, groupIdx};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
+        ElementMxScaleA, ElementMxScaleB, IsLayered>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 } // namespace MegaMoeImpl
