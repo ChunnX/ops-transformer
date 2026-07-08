@@ -35,8 +35,7 @@ public:
         .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-                        ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("topk_ids")
@@ -46,62 +45,50 @@ public:
         .AutoContiguous();
     this->Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16,               // fp16/bf16
-                   ge::DT_INT8, ge::DT_INT4,                  // int8/int4
-                   ge::DT_FLOAT8_E5M2,                        // fp8_e5m2
-                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// fp8_e4m3fn (ND/NZ)
-                   ge::DT_HIFLOAT8,                           // hifp8
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,     // fp4_e2m1 / fp4_e1m2 (ND)
+        .DataType({ge::DT_FLOAT8_E5M2,                        // E5M2 (ND)
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// E4M3FN (ND/NZ)
+                   ge::DT_FLOAT4_E2M1,                        // E2M1 (ND)
 #ifdef ENABLE_FORMAT_NZ_C0_32
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1      // fp4_e2m1 (NZ / NZ_C0_32)
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1     // E2M1 (NZ / NZ_C0_32)
 #endif
                    })
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp16/bf16
-                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,  // NZ for int8/int4
-                 ge::FORMAT_ND,                                 // ND for fp8_e5m2
-                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,          // ND/NZ for fp8_e4m3fn
-                 ge::FORMAT_ND,                                 // ND for hifp8
-                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp4_e2m1 / fp4_e1m2
+        .Format({ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND,
 #ifdef ENABLE_FORMAT_NZ_C0_32
-                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32 // NZ / NZ_C0_32 for fp4_e2m1
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
 #endif
                  });
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16,               // fp16/bf16
-                   ge::DT_INT8, ge::DT_INT4,                  // int8/int4
-                   ge::DT_FLOAT8_E5M2,                        // fp8_e5m2
-                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// fp8_e4m3fn (ND/NZ)
-                   ge::DT_HIFLOAT8,                           // hifp8
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,     // fp4_e2m1 / fp4_e1m2 (ND)
+        .DataType({ge::DT_FLOAT8_E5M2,                        // E5M2 (ND)
+                   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,// E4M3FN (ND/NZ)
+                   ge::DT_FLOAT4_E2M1,                        // E2M1 (ND)
 #ifdef ENABLE_FORMAT_NZ_C0_32
-                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1      // fp4_e2m1 (NZ_C0_32 / NZ_C0_32)
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1     // E2M1 (NZ_C0_32 / NZ_C0_32)
 #endif
                    })
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp16/bf16
-                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,  // NZ for int8/int4
-                 ge::FORMAT_ND,                                 // ND for fp8_e5m2
-                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,          // ND/NZ for fp8_e4m3fn
-                 ge::FORMAT_ND,                                 // ND for hifp8
-                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp4_e2m1 / fp4_e1m2
+        .Format({ge::FORMAT_ND,
+                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND,
 #ifdef ENABLE_FORMAT_NZ_C0_32
-                 ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32 // NZ_C0_32 / NZ_C0_32 for fp4_e2m1
+                 ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
 #endif
                  });
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("bias1")
         .ParamType(DYNAMIC)
@@ -120,13 +107,13 @@ public:
         .AutoContiguous();
     this->Input("scales")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
     this->Output("y")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND});
     this->Output("expert_token_nums")
         .ParamType(REQUIRED)
