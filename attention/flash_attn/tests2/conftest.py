@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 import _pytest.terminal
 
@@ -30,6 +32,14 @@ def pytest_generate_tests(metafunc):
     case_id_opt = metafunc.config.getoption("--case-id")
     cases, case_ids = _collect_cases(case_set, case_id_opt)
     metafunc.parametrize("params", cases, ids=case_ids)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_logging(request):
+    level = request.config.getoption("--log-cli-level", default="INFO")
+    if isinstance(level, str):
+        level = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(level=level, format="%(message)s")
 
 
 @pytest.fixture(scope="session")

@@ -1,4 +1,5 @@
 import argparse
+import logging
 import sys
 import traceback
 from datetime import datetime
@@ -106,7 +107,13 @@ def main():
     parser.add_argument("--chunk-size", default=0, type=int, help="比对分块大小")
     parser.add_argument("--num-workers", default=0, type=int, help="比对并行worker数")
     parser.add_argument("--max-retries", default=0, type=int, help="NPU最大重试次数")
+    parser.add_argument("--log-level", default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        help="日志级别")
     args = parser.parse_args()
+
+    logging.basicConfig(level=getattr(logging, args.log_level),
+                        format="%(message)s")
 
     stages = _parse_stages(args.stages)
     cases, case_ids = _collect_cases(args.case_set, args.case_id)
