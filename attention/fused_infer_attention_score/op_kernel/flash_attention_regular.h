@@ -114,8 +114,6 @@ namespace SplitFuse {
             nextToken = fATilingData->nextToken;
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
-            keyBnStride = fATilingData->keyStrides.bnStride;
-            valueBnStride = fATilingData->valueStrides.bnStride;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -682,8 +680,7 @@ namespace SplitFuse {
                                 kvSIdx,
                                 kvSLoopNumTotal,
                                 pagedBlockSize,
-                                strideK,
-                                keyBnStride);
+                                strideK);
                         } else {
                             blockMmadQK(
                                 gQ[gmOffsetQ],
@@ -697,8 +694,7 @@ namespace SplitFuse {
                                 kvSIdx,
                                 kvSLoopNumTotal,
                                 pagedBlockSize,
-                                strideK,
-                                keyBnStride);
+                                strideK);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
@@ -963,8 +959,7 @@ namespace SplitFuse {
                                 noSkipKvS,
                                 strideV,
                                 blockStackNum,
-                                softmaxReady,
-                                valueBnStride);
+                                softmaxReady);
                         } else {
                             blockMmadPV(
                                 gP[gmOffsetP],
@@ -981,8 +976,7 @@ namespace SplitFuse {
                                 noSkipKvS,
                                 strideV,
                                 blockStackNum,
-                                softmaxReady,
-                                valueBnStride);
+                                softmaxReady);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
@@ -1079,8 +1073,6 @@ namespace SplitFuse {
         uint64_t strideO;
         uint64_t strideK;
         uint64_t strideV;
-        uint64_t keyBnStride;
-        uint64_t valueBnStride;
         uint32_t embedRound;
         uint32_t embedRoundV;
         uint32_t groupSize;
