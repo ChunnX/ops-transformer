@@ -40,11 +40,21 @@ constexpr uint32_t DY_INPUT_INDEX = 3;
 constexpr uint32_t SOFTMAX_MAX = 8;
 constexpr uint32_t SOFTMAX_SUM = 9;
 constexpr uint32_t ATTENTION_IN = 11;
+constexpr uint32_t PSE_SHIFT_INPUT_INDEX = 4;
+constexpr uint32_t PREFIX_INPUT_INDEX = 12;
+constexpr uint32_t ACTUAL_SEQ_Q_LEN_INPUT_INDEX = 13;
+constexpr uint32_t ACTUAL_SEQ_KV_LEN_INPUT_INDEX = 14;
 constexpr uint32_t QUERY_ROPE_INPUT_INDEX = 22;
 constexpr uint32_t KEY_ROPE_INPUT_INDEX = 23;
 
 constexpr uint32_t HEAD_NUM_IDX = 4;
 constexpr uint32_t LAYOUT_ATTR_IDX = 5;
+
+constexpr int64_t T_MAX_LIMIT = 1000000;
+constexpr int64_t N_MAX_LIMIT = 256;
+constexpr int64_t D_MAX_LIMIT = 768;
+constexpr int64_t ACTUAL_SEQ_Q_LEN_MAX_LIMIT = 2048;
+constexpr int64_t ACTUAL_SEQ_Q_LEN_PREFIX_MAX_LIMIT = 1000;
 
 constexpr uint32_t FAG_EMPTY_TILING_KEY = 0;
 constexpr uint32_t TILING_KEY_1 = 1U;
@@ -436,11 +446,62 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
     return ge::GRAPH_FAILED;
 }
 
+static void LogConstraintWarnings(gert::TilingContext *context)
+{
+    const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
+    if (inputLayout == nullptr || strlen(inputLayout) != 3 || inputLayout[0] != 'T') {
+        return;
+    }
+
+    auto &queryShape = context->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
+    int64_t tVal = queryShape.GetDim(0);
+    int64_t nVal = queryShape.GetDim(1);
+    int64_t dVal = queryShape.GetDim(2);
+
+    if (tVal > T_MAX_LIMIT) {
+        OP_LOGW(context, "In op [FlashAttentionScoreGrad], T value %ld exceeds the recommended range [1, %ld], "
+                "which may cause aicore timeout or trap error. Consider axis splitting for large computation.",
+                tVal, T_MAX_LIMIT);
+    }
+    if (nVal > N_MAX_LIMIT) {
+        OP_LOGW(context, "In op [FlashAttentionScoreGrad], N value %ld exceeds the recommended range [1, %ld].",
+                nVal, N_MAX_LIMIT);
+    }
+    if (dVal > D_MAX_LIMIT) {
+        OP_LOGW(context, "In op [FlashAttentionScoreGrad], D value %ld exceeds the recommended range [1, %ld].",
+                dVal, D_MAX_LIMIT);
+    }
+
+    auto actualSeqQLenTensor = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN_INPUT_INDEX);
+    auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INPUT_INDEX);
+
+    if (actualSeqQLenTensor != nullptr && actualSeqQLenTensor->GetData<int64_t>() != nullptr &&
+        actualSeqQLenTensor->GetShapeSize() > 0) {
+        int64_t seqQLenSize = static_cast<int64_t>(actualSeqQLenTensor->GetShapeSize());
+
+        auto prefixTensor = context->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
+        bool hasPrefix = (prefixTensor != nullptr && prefixTensor->GetShapeSize() > 0);
+
+        if (seqQLenSize > ACTUAL_SEQ_Q_LEN_MAX_LIMIT) {
+            OP_LOGW(context, "In op [FlashAttentionScoreGrad], actualSeqQLenOptional length %ld exceeds "
+                    "the supported range [1, %ld].",
+                    seqQLenSize, ACTUAL_SEQ_Q_LEN_MAX_LIMIT);
+        }
+
+        if (hasPrefix && seqQLenSize > ACTUAL_SEQ_Q_LEN_PREFIX_MAX_LIMIT) {
+            OP_LOGW(context, "In op [FlashAttentionScoreGrad], when prefixOptional exists, "
+                    "actualSeqQLenOptional length %ld exceeds the max supported value %ld.",
+                    seqQLenSize, ACTUAL_SEQ_Q_LEN_PREFIX_MAX_LIMIT);
+        }
+    }
+}
+
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingContext *context)
 {
     if (CheckParams(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    LogConstraintWarnings(context);
     auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                return ge::GRAPH_FAILED);
