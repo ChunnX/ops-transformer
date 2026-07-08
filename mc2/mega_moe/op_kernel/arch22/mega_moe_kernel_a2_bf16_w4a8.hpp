@@ -1550,9 +1550,12 @@ private:
             int64_t AAfterDispatchSize = M * (h + ALIGN_512);
 
             // 布局：... → winIn TPE → winOut TPE → allgatherFlag → flag（winIn/winOut 共享）→ [CrossRankSync tail]
-            int64_t usableEnd = static_cast<int64_t>(shmem.SegmentSize()) - static_cast<int64_t>(shmem.TailReservedSize());
-            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)（与 ResetTokenPerExpert 中 num 一致）
-            int64_t tpeSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t usableEnd = static_cast<int64_t>(shmem.SegmentSize()) -
+            static_cast<int64_t>(shmem.TailReservedSize());
+            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)
+            // （与 ResetTokenPerExpert 中 num 一致）
+            int64_t tpeSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
+            static_cast<int64_t>(sizeof(int32_t));
 
             // WinIn: A/scale/D 从前向后；flag 紧贴 usableEnd，allgatherFlag/TPE 从后往前
             offsetA = RESERVED_SPACE_SIZE;
