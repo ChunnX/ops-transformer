@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file moe_distribute_combine_v2_apt.cpp
+ * \file moe_distribute_combine_v2_a5.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeCombineV2.
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "moe_distribute_combine_v2_apt_tiling_key.h"
+#include "moe_distribute_combine_v2_a5_tiling_key.h"
 #include "moe_distribute_combine_v2_a5_ccu.h"
 #include "moe_distribute_combine_v2_a5_mte.h"
 

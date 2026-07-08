@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file moe_distribute_dispatch_v2_apt_tiling_key.h
+ * \file moe_distribute_dispatch_v2_a5_tiling_key.h
  * \brief A5 (arch35) tiling key selections.
  */
 #ifndef MOE_DISTRIBUTE_DISPATCH_V2_APT_TILING_KEY_H

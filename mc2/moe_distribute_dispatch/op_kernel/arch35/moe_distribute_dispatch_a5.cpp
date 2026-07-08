@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file moe_distribute_dispatch_apt.cpp
+ * \file moe_distribute_dispatch_a5.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeDispatch.
  */
 #if ASC_DEVKIT_MAJOR >= 9
@@ -16,7 +16,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "moe_distribute_dispatch_apt_tiling_key.h"
+#include "moe_distribute_dispatch_a5_tiling_key.h"
 #include "../moe_distribute_dispatch.h"
 using namespace MoeDistributeDispatchImpl;
 using namespace Mc2Tiling;
