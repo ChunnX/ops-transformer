@@ -640,8 +640,8 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::DispatchB
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
     uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // triple 预留: DISPATCH_TRIPLE_TILE 行 * 32B
-    uint32_t tripleReserveSize = static_cast<uint32_t>(DISPATCH_TRIPLE_TILE) *
+    // triple ring buffer: DISPATCH_BUFFER_NUM 条 * 32B，逐 token 即时写 GM
+    uint32_t tripleReserveSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) *
         static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     uint32_t fixedBytes = expertTokenCntTensorSize + cumsumInfoTensorSize + sendCntTensorSize +
         copyTmpTotalSize + expertTokenNumsOutTensorSize + tripleReserveSize;
@@ -691,6 +691,10 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::DispatchB
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + copyTmpTotalSize;
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
         expertTokenNumsOutTensorSize / sizeof(int32_t));
+    // triple ring buffer 常驻分配：DISPATCH_BUFFER_NUM 条，CopyGMToGMPerToken 逐 token 复用
+    uint32_t tripleTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
+    tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+        tripleReserveSize / sizeof(int32_t));
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
@@ -819,12 +823,7 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::TripleInf
                 int32_t batchHitStart = hitLo - matchedTotal;
                 int32_t batchHitCount = hitHi - hitLo;
                 int32_t globalDstRow = static_cast<int32_t>(rowStartIdxInDst) + hitLo;
-                for (int32_t tileOff = 0; tileOff < batchHitCount; tileOff += DISPATCH_TRIPLE_TILE) {
-                    int32_t tileSize = (batchHitCount - tileOff > DISPATCH_TRIPLE_TILE) ? DISPATCH_TRIPLE_TILE : (batchHitCount - tileOff);
-                    tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, ubBufferUsedAddr_,
-                        static_cast<uint32_t>(tileSize) * INT32_PER_256B);
-                    CopyGMToGMPerToken(globalDstRow + tileOff, dstRankIdx, batchHitStart + tileOff, tileSize);
-                }
+                CopyGMToGMPerToken(globalDstRow, dstRankIdx, batchHitStart, batchHitCount);
                 rowsThisCore += batchHitCount;
             }
             matchedTotal = batchHi;  // 推进全局偏移
@@ -876,14 +875,15 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::CopyGMToG
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
     PipeBarrier<PIPE_ALL>();
-    for (int32_t i = 0; i < copyNum; ++i) {
+    // Phase 1 只组装前 primeCount 条 triple（ring buffer 仅 6 槽），后续 steady 循环逐条增量组装
+    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
+    for (int32_t i = 0; i < primeCount; ++i) {
         int32_t topkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + i);
         int32_t tokenIndex = topkIndex / topK_;
         tripleTensor_[i * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
-    int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t tokenIndex = tripleTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
         uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
@@ -903,11 +903,19 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::CopyGMToG
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        // triple 即时写 GM（与 token+scale 同在 MTE3 pipe，WaitFlag<MTE2_MTE3> 已保证前序完成）
+        DataCopy(tripleGlobalTensor_[(rowDstOffsetInCore + copyIdx) * INT32_PER_256B],
+            tripleTensor_[outIdx * INT32_PER_256B], INT32_PER_256B);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         int32_t nextIdx = copyIdx + BufferNum;
         if (nextIdx < copyNum) {
-            int32_t tokenIndex = tripleTensor_[nextIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-            uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
+            // 组装下一条 triple 到刚释放的 ring buffer 槽位（MTE3 已 SetFlag，可安全覆盖）
+            int32_t nextTopkIndex = validTopkIndexTensor_.GetValue(copyStartIdx + nextIdx);
+            int32_t nextTokenIndex = nextTopkIndex / topK_;
+            tripleTensor_[outIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
+            tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOKEN_ID, nextTokenIndex);
+            tripleTensor_[outIdx * INT32_PER_256B].SetValue(TOPK_INDEX, nextTopkIndex % topK_);
+            uint64_t remoteCopyOffset = static_cast<uint64_t>(nextTokenIndex) * static_cast<uint64_t>(copyInNum);
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
             DataCopy(copyTmpTensors_[outIdx], remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -916,8 +924,6 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::CopyGMToG
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
-    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-    DataCopy(tripleGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], tripleTensor_, copyNum * INT32_PER_256B);
 }
 
 // ==================================================
