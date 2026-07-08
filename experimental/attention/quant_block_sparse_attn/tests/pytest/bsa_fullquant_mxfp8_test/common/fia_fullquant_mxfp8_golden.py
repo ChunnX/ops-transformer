@@ -652,6 +652,21 @@ def generate_data():
                 block_table_torch[b, j] = block_idx_list[idx]
                 idx += 1
 
+    ############## sparse_indices begin
+    if 1:
+        #sparse_indices_list = torch.randperm(B*N1*q_block*kv_block, dtype=torch.int32);
+        sparse_indices_list = torch.cat([torch.randperm(B*N1*q_block*kv_block, dtype=torch.int32) for _ in range(10)]);
+        idx = 0
+        for batch_idx in range(B):
+            for n_idx in range(N1):
+                q_block = 
+                for q_block_idx in range(q_block):
+                    kv_block = 
+                    for kv_block_idx in range(kv_block):
+                        sparse_indices[batch_idx, n_idx, q_block_idx, kv_block_idx] = sparse_indices_list[idx]
+                        idx += 1
+    ########## sparse_indices end
+
     p_scale = torch.tensor([P_SCALE], dtype=torch.float32)
 
     return (q_fp8, k_fp8, v_fp8,
