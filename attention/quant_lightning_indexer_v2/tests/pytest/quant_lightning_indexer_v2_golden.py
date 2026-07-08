@@ -838,6 +838,35 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if actual_seq_dtype == 'INT32':
             actual_seq_dtype = torch.int32
 
+        if q_t_size is None:
+            q_t_size = 0
+        if k_t_size is None:
+            k_t_size = 0
+        if block_size is None:
+            block_size = 0
+        if block_num is None:
+            block_num = 0
+
+        batch_size = int(batch_size)
+        q_seq = int(q_seq)
+        k_seq = int(k_seq)
+        q_t_size = int(q_t_size)
+        k_t_size = int(k_t_size)
+        q_head_num = int(q_head_num)
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        if max_seqlen_q is None:
+            max_seqlen_q = 0
+        max_seqlen_q = int(max_seqlen_q)
+        if quant_mode is None:
+            quant_mode = 0
+        quant_mode = int(quant_mode)
+        sparse_count = int(sparse_count)
+        sparse_mode = int(sparse_mode)
+        return_value = bool(return_value)
+
         if cu_seqlens_q is not None:
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None:
