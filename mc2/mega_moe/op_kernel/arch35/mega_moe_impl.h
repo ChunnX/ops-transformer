@@ -786,10 +786,10 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
         if constexpr (IsLayered) {
             MegaMoeCombineImpl::CombineTokensLayered<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, config.n, tripleTensor, l0cOutUbGMM2, actualShape, params);
         } else {
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, config.n, tripleTensor, l0cOutUbGMM2, actualShape, params);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
