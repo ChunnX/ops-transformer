@@ -39,7 +39,7 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(
     bool             transposeX,
     bool             transposeWeight,
     int64_t          groupType,
-    int64_t          group_list_type,
+    int64_t          groupListType,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
@@ -162,7 +162,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>group_list_type（int64_t）</td>
+      <td>groupListType（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，目前仅支持两个取值。</td>
       <td>
@@ -401,7 +401,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
     bool transpose_x = true;
     bool transpose_weight = false;
     int group_type = 2;
-    int group_list_type = 0;
+    int groupListType = 0;
 
     // 创建x aclTensorList
     ret = CreateAclTensor<uint16_t>(xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
@@ -431,7 +431,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
 
     // 3. 调用CANN算子库API
     // 调用aclnnGroupedMatmulAddV2第一段接口
-    ret = aclnnGroupedMatmulAddV2GetWorkspaceSize(x, weight, groupedList, yRef, transpose_x, transpose_weight, group_type, group_list_type, &workspaceSize, &executor);
+    ret = aclnnGroupedMatmulAddV2GetWorkspaceSize(x, weight, groupedList, yRef, transpose_x, transpose_weight, group_type, groupListType, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAddV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
