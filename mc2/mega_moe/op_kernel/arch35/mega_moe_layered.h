@@ -571,29 +571,29 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             int32_t curExpertId = static_cast<int32_t>(curRankId * expertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
-            PRINTF("=========srcOffset=========:%u\n", srcOffset);
+            //PRINTF("=========srcOffset=========:%u\n", srcOffset);
             uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
                 static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
                 static_cast<uint64_t>(maskSlotSize_);
-            PRINTF("=========dstOffset=========:%u\n", dstOffset);
+            //PRINTF("=========dstOffset=========:%u\n", dstOffset);
             uint64_t totalSendCnt = 0;
 
             for (uint32_t roundIdx = 0; roundIdx < totalRounds_; ++roundIdx) {
-                uint64_t roundStart = static_cast<uint64_t>(roundIdx) * static_cast<uint64_t>(roundSendTotalNum_);
-                uint64_t roundLen64 = (roundIdx + 1 < totalRounds_) ? static_cast<uint64_t>(roundSendTotalNum_) :
+                uint64_t roundStart = static_cast<uint64_t>(roundIdx) * static_cast<uint64_t>(roundSendTotalNum_); // roundIdx * 16K
+                uint64_t roundLen64 = (roundIdx + 1 < totalRounds_) ? static_cast<uint64_t>(roundSendTotalNum_) : // 16K
                     sendTotalNum_ - roundStart;
-                uint32_t roundLen = static_cast<uint32_t>(roundLen64);
-                uint32_t curRoundCompareCount = (roundLen == roundSendTotalNum_) ? roundCompareCount_ :
+                uint32_t roundLen = static_cast<uint32_t>(roundLen64); // 16K
+                uint32_t curRoundCompareCount = (roundLen == roundSendTotalNum_) ? roundCompareCount_ :// 16K
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
                         static_cast<int64_t>(roundLen) * static_cast<int64_t>(sizeof(int32_t)),
                         static_cast<int64_t>(ALIGN_256)) / static_cast<int64_t>(sizeof(int32_t)));
-                uint32_t curRoundMaskAlignSize = (roundLen == roundSendTotalNum_) ? roundMaskAlignSize_ :
+                uint32_t curRoundMaskAlignSize = (roundLen == roundSendTotalNum_) ? roundMaskAlignSize_ :// 2K
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
                         static_cast<int64_t>(curRoundCompareCount) / 8,
                         static_cast<int64_t>(ALIGN_32)));
 
                 // Phase 1: 加载本轮 topkIds 子段（零填充尾部）
-                Duplicate<int32_t>(topkIdsTensor_, 0, roundCompareCount_);
+                Duplicate<int32_t>(topkIdsTensor_, 0, roundCompareCount_); // 16K
                 SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
                 GlobalTensor<int32_t> roundSrcGlobal;
                 roundSrcGlobal.SetGlobalBuffer((__gm__ int32_t*)(params_.expertIdxGmAddr +
@@ -601,7 +601,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
                 DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
-                //DumpTensor(topkIdsTensor_, 1, 8);
+                DumpTensor(topkIdsTensor_, 1, roundCompareCount_);
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
