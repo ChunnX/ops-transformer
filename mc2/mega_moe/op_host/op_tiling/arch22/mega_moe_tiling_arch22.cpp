@@ -251,12 +251,14 @@ static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context
     const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(*ptr < bs,
-        OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be >= bs(%ld), but got %ld.",
-            bs, *ptr), return GRAPH_FAILED);
-    OP_TILING_CHECK(*ptr < MIN_BS || *ptr > MAX_BS,
-        OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
-            MIN_BS, MAX_BS, *ptr), return GRAPH_FAILED);
+    if (*ptr > 0) {
+        OP_TILING_CHECK(*ptr < bs,
+            OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be >= bs(%ld), but got %ld.",
+                bs, *ptr), return GRAPH_FAILED);
+        OP_TILING_CHECK(*ptr < MIN_BS || *ptr > MAX_BS,
+            OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
+                MIN_BS, MAX_BS, *ptr), return GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
