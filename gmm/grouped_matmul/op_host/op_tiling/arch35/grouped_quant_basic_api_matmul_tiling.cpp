@@ -17,6 +17,9 @@ using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
+namespace {
+constexpr size_t TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX = 0;
+}
 namespace optiling {
 GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
 {
@@ -37,12 +40,28 @@ bool GroupedQmmBasicApiTiling::IsCapable()
 void GroupedQmmBasicApiTiling::Reset()
 {
     tilingData_ = GMMQuantBasicApiTilingData();
+    tuningConfig_ = 0L;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    return GroupedQmmTiling::GetShapeAttrsInfo();
+    OP_CHECK_IF(GroupedQmmTiling::GetShapeAttrsInfo() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "GetShapeAttrsInfo failed"), return ge::GRAPH_FAILED);
+    auto attrs = context_->GetAttrs();
+    const auto tuningConfigPtr =
+        attrs != nullptr ? attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG) : nullptr;
+    tuningConfig_ =
+        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX)
+            ? (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX]
+            : 0L;
+    OP_CHECK_IF(tuningConfig_ < 0 || static_cast<uint64_t>(tuningConfig_) > inputParams_.mSize,
+                OP_LOGE(context_->GetNodeName(), "Invalid tuningConfig_: %ld. Valid range: [0, mSize(%lu)]",
+                        tuningConfig_, inputParams_.mSize),
+                return ge::GRAPH_FAILED);
+    OP_LOGD(context_->GetNodeName(), "GMM A5 basic api tiling: tuning_config[0] is %ld.", tuningConfig_);
+    std::cout << "tuningConfig_: " << tuningConfig_ << std::endl;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
@@ -61,12 +80,31 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
+void GroupedQmmBasicApiTiling::CalBasicBlockWithTuningConfig()
 {
     GroupedQmmTiling::CalBasicBlock();
+    if (tuningConfig_ <= 0L) {
+        return;
+    }
+
+    const uint64_t effectiveM = static_cast<uint64_t>(tuningConfig_);
+    basicTiling_.baseM = std::min(effectiveM, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256));
+    basicTiling_.baseM = !inputParams_.transA ?
+                             CeilAlign(basicTiling_.baseM, CUBE_BLOCK) :
+                             CeilAlign(basicTiling_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
+    std::cout << "basicTiling_.baseM: " << basicTiling_.baseM << std::endl;
+    std::cout << "basicTiling_.baseN: " << basicTiling_.baseN << std::endl;
+    std::cout << "basicTiling_.baseK: " << basicTiling_.baseK << std::endl;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
+{
+    const uint64_t effectiveTilingM =
+        tuningConfig_ > 0L ? static_cast<uint64_t>(tuningConfig_) : inputParams_.mSize;
+    CalBasicBlockWithTuningConfig();
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
-    tilingData_.mmTilingData.m = inputParams_.mSize;
+    tilingData_.mmTilingData.m = effectiveTilingM;
     tilingData_.mmTilingData.n = inputParams_.nSize;
     tilingData_.mmTilingData.k = inputParams_.kSize;
     tilingData_.mmTilingData.baseM = basicTiling_.baseM;
@@ -84,6 +122,11 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
         tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     }
     tilingData_.mmTilingData.l1BufferStage = CanEnableThreeL1Buffer() ? TB_SIZE : DB_SIZE;
+    if (CanEnableThreeL1Buffer()) {
+        std::cout << "Enabla three buffer" << std::endl;
+    } else {
+        std::cout << "使能 2 buffer" << std::endl;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
