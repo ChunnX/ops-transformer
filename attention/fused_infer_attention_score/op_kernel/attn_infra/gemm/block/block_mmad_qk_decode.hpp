@@ -153,16 +153,12 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
-        uint32_t strideKV, uint32_t blockSize, uint64_t keyBnStride)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
+        uint32_t strideKV, uint32_t blockSize)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            if (keyBnStride != 0) {
-                kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
-            } else {
-                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
-            }
+            kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         } else {
             kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         }
@@ -175,14 +171,14 @@ public:
                     AscendC::GlobalTensor<int32_t> gBlockTable,
                     LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
                     uint32_t nIdx, uint32_t nLoop, uint32_t blockSize, uint32_t strideKV,
-                    uint32_t kvNIncreIdx, uint64_t keyBnStride)
+                    uint32_t kvNIncreIdx)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM1];
         uint32_t embed = actualOriShape[COORD_DIM2];
 
         GemmCoord actualShape{rowNum, 0, embed};
-        uint64_t gBOffset = 0;
+        uint32_t gBOffset = 0;
 
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(l1ATotalRowNum, l1AEmbedDim);
 
@@ -193,8 +189,7 @@ public:
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; ++nL1Idx) {
             uint32_t nowNIdx = nIdx + nL1Idx / tileNNumPerBaseBlock;
             getBlockShape(actualShape, nL1Idx, nL1Loop, stackSeqTile);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock,
-                        strideKV, blockSize, keyBnStride);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize);
             uint32_t mActual = actualShape.m();
             uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();
