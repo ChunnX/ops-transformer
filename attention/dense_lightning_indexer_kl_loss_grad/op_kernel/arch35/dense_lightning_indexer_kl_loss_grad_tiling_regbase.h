@@ -42,6 +42,7 @@ public:
     uint32_t cmpRatio;
     uint8_t layoutType; // 0: BSND, 1: TND
     uint32_t maxSeqlenK;
+    int64_t mm3ResWorkSpaceOffset;
 
     int32_t get_bSize() const
     {
@@ -186,6 +187,15 @@ public:
     {
         this->maxSeqlenK = maxSeqlenKParam;
     }
+
+    uint32_t get_mm3ResWorkSpaceOffset() const
+    {
+        return mm3ResWorkSpaceOffset;
+    }
+    void set_mm3ResWorkSpaceOffset(uint32_t mm3ResWorkSpaceOffset)
+    {
+        this->mm3ResWorkSpaceOffset = mm3ResWorkSpaceOffset;
+    }
 };
 
 class DLIKGradMultiCoreParamsRegbase {
@@ -209,6 +219,9 @@ public:
     int64_t softmaxOutPreBlockFactor;
     int64_t softmaxOutPreBlockTotal;
     int64_t softmaxOutPreBlockTail;
+    int64_t kPostBlockFactor;
+    int64_t kPostBlockTotal;
+    int64_t kPostBlockTail;
 
     int32_t get_coreNum() const
     {
@@ -294,6 +307,18 @@ public:
     {
         return softmaxOutPreBlockTail;
     }
+    int64_t get_kPostBlockFactor() const
+    {
+        return kPostBlockFactor;
+    }
+    int64_t get_kPostBlockTotal() const
+    {
+        return kPostBlockTotal;
+    }
+    int64_t get_kPostBlockTail() const
+    {
+        return kPostBlockTail;
+    }
 
     void set_postUbBaseSize(int64_t value)
     {
@@ -346,6 +371,18 @@ public:
     void set_softmaxOutPreBlockTail(int64_t value)
     {
         this->softmaxOutPreBlockTail = value;
+    }
+    void set_kPostBlockFactor(int64_t value)
+    {
+        this->kPostBlockFactor = value;
+    }
+    void set_kPostBlockTotal(int64_t value)
+    {
+        this->kPostBlockTotal = value;
+    }
+    void set_kPostBlockTail(int64_t value)
+    {
+        this->kPostBlockTail = value;
     }
 };
 

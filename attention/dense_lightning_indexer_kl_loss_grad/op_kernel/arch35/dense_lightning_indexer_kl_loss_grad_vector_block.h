@@ -55,7 +55,6 @@ public:
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf);
     __aicore__ inline void ReInitBuffers(TPipe *pipe);
     __aicore__ inline void ProcessVector8();
-
     // gm addr
     GlobalTensor<INPUT_T> keyIndexGm;
     GlobalTensor<T> weightGm;
@@ -842,6 +841,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7(
     SetAtomicNone();
     CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[kRunInfo.kTaskIdMod2]);
 }
+
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGradRunInfo &runInfo,

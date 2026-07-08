@@ -611,8 +611,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
-        aivNum = 2;
-        aicNum = 1;
+        // aivNum = 2;
+        // aicNum = 1;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
@@ -621,8 +621,8 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
-        aivNum = 2;
-        aicNum = 1;
+        // aivNum = 2;
+        // aicNum = 1;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
@@ -891,15 +891,15 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     // query
     int64_t allNumQuery = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
         dlikGradBaseParams_->get_gSizeQueryIndex() * dlikGradBaseParams_->get_s1Size() * dAlign16;
-    int64_t allNumKey = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
-        dlikGradBaseParams_->get_s2Size() * dAlign16;
+    int64_t allNumS2 = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
+        dlikGradBaseParams_->get_s2Size();
     // TND时候要按照真实的query的num数计算
     if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
         allNumQuery = dlikGradBaseParams_->get_t1Size() * dlikGradBaseParams_->get_n2Size() *
             dlikGradBaseParams_->get_gSizeQueryIndex() * dAlign16;
-        allNumKey = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() * dAlign16;
+        allNumS2 = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size();
     }
-
+    int64_t allNumKey = allNumS2 * dAlign16;
     // weight
     int64_t allNumWeight = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
         dlikGradBaseParams_->get_s1Size() * dlikGradBaseParams_->get_gSizeQueryIndex();
@@ -988,9 +988,17 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoCastTilin
     dlikGradMultiCoreParams_->set_softmaxOutPreBlockTotal(softmaxOutPreBlockTotal);
     dlikGradMultiCoreParams_->set_softmaxOutPreBlockTail(softmaxOutPreBlockTail);
 
-    dqWorkspaceLen = (allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
-    dwWorkspaceLen = (allNumWeight * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
-    softmaxOutWorkspaceLen = (allNumSoftmaxOut * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    int64_t kPostBlockFactor = (allNumS2 + usedCoreNum - 1) / usedCoreNum;
+    int64_t kPostBlockTotal = (allNumS2 + kPostBlockFactor - 1) / kPostBlockFactor;
+    int64_t kPostBlockTailTmp = allNumS2 % kPostBlockFactor;
+    int64_t kPostBlockTail = kPostBlockTailTmp == 0 ? kPostBlockFactor : kPostBlockTailTmp;
+
+    dlikGradMultiCoreParams_->set_kPostBlockFactor(kPostBlockFactor);
+    dlikGradMultiCoreParams_->set_kPostBlockTotal(kPostBlockTotal);
+    dlikGradMultiCoreParams_->set_kPostBlockTail(kPostBlockTail);
+    // dqWorkspaceLen = (allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    // dwWorkspaceLen = (allNumWeight * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    // softmaxOutWorkspaceLen = (allNumSoftmaxOut * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1079,12 +1087,20 @@ uint64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetTilingKey() con
 
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspaceSize()
 {
+    int64_t coreNum = dlikGradMultiCoreParams_->get_coreNum();
     size_t *workspaces = context_->GetWorkspaceSizes(1);
+
+    int64_t bmm3Size = dlikGradBaseParams_->get_bSize() * dlikGradBaseParams_->get_n2Size() *
+        dlikGradBaseParams_->get_s2Size() * dSizeQueryIndex * sizeof(float);
+    // TND时候要按照真实的query的num数计算
+    if (dlikGradBaseParams_->get_layoutType() == static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND)) {
+        bmm3Size = dlikGradBaseParams_->get_t2Size() * dlikGradBaseParams_->get_n2Size() *
+            dSizeQueryIndex * sizeof(float);
+    }
     // int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
     int64_t reduceSumOffset = BLOCK_SIZE * sizeof(float) * 2;
     // int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float);
     // int64_t gatherSYOffset = kSizeAlign128 * dSizeQueryIndex * 2; // 2代表输入D类型大小
-    int64_t bmm3Size = 1 * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE;
 
     int64_t scatterAddOutSize = 0;
     // if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
@@ -1097,12 +1113,14 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
         multicoreTotalsize =
-            (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()) +
+            (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(coreNum) +
             scatterAddOutSize * 2;
     } else {
         multicoreTotalsize =
-            singlecoreTotalSize * static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum());
+            singlecoreTotalSize * static_cast<int64_t>(coreNum) + bmm3Size;
     }
+    int64_t workspaceOffsets = singlecoreTotalSize * coreNum;
+    dlikGradBaseParams_->set_mm3ResWorkSpaceOffset(workspaceOffsets);
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
     return ge::GRAPH_SUCCESS;

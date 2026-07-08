@@ -167,7 +167,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         // initCubeOP
         cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
         cubeBlock.InitCubeBuffers();
-        cubeBlock.InitGlobalBuffer(query, dQuery, key, dKey);
+        cubeBlock.InitGlobalBuffer(query, dQuery, key, dKey, bmm3Res);
     }
 }
 
@@ -775,11 +775,11 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
 
     reduceSumRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
     offset += reduceSumOffset;
+    bmm3Res.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     // reluRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
     // offset += reluOffset;
     // gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
     // offset += gatherSYOffset;
-    // scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     // if constexpr (Deterministic) {
     //     totalOffset += scatterAddResOffset;
     //     scatterAddResPong.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
@@ -827,6 +827,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
         InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
         InitOutput<OUT_T>(dkGm[dkOffset], initdkSize, 0);
+        InitOutput<T>(bmm3Res[dkOffset], initdkSize, 0);
     }
     SyncAll<false>();
 }

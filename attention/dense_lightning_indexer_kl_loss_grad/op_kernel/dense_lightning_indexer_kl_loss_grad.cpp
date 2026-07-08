@@ -22,21 +22,27 @@ using namespace AscendC;
 #include "arch35/dense_lightning_indexer_kl_loss_grad_vector_block.h"
 #include "arch35/dense_lightning_indexer_kl_loss_grad_cube_block.h"
 #include "arch35/dense_lightning_indexer_kl_loss_grad_kernel_base.h"
+#include "arch35/dense_lightning_indexer_kl_loss_grad_post.h"
 using namespace Dlikg;
 #define DLI_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
         using CubeBlockType =                                                                                          \
-            typename std::conditional<g_coreType == AscendC::AIC, Dlikg::DlikgBlockCube<__VA_ARGS__>,                    \
-                                      Dlikg::DlikgBlockCubeDummy<__VA_ARGS__>>::type;                                    \
+            typename std::conditional<g_coreType == AscendC::AIC, Dlikg::DlikgBlockCube<__VA_ARGS__>,                  \
+                                      Dlikg::DlikgBlockCubeDummy<__VA_ARGS__>>::type;                                  \
         using VecBlockType =                                                                                           \
-            typename std::conditional<g_coreType == AscendC::AIV, Dlikg::DlikgBlockVec<__VA_ARGS__>,                     \
-                                      Dlikg::DlikgBlockVecDummy<__VA_ARGS__>>::type;                                     \
+            typename std::conditional<g_coreType == AscendC::AIV, Dlikg::DlikgBlockVec<__VA_ARGS__>,                   \
+                                      Dlikg::DlikgBlockVecDummy<__VA_ARGS__>>::type;                                   \
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(q, k, w, attnSoftmaxL1, softmaxLse, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,       \
+        op.Init(q, k, w, attnSoftmaxL1, softmaxLse, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,          \
             metadata, dq, dk, dw, softmaxOut, user, tiling_data, &tPipe);                                              \
         op.Process();                                                                                                  \
+        tPipe.Destroy();                                                                                               \
+        TPipe pipePost;                                                                                                \
+        DenseLightningIndexerKLLossGradPost<__VA_ARGS__> opPost;                                                       \
+        opPost.Init(dk, user, tiling_data, &pipePost);                                                                 \
+        opPost.Process();                                                                                              \
     } while (0)
 
 template<int TopKRange, int LayoutT_Q, int LayoutT_KT, int SparseMode,
