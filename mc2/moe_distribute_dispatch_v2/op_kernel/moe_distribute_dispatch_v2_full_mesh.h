@@ -44,8 +44,6 @@
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL;  // 384 * 2，0/1标识区偏移
-constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL;  // 768 + 100
-constexpr uint64_t CUMSUM_FLAG_OFFSET = 876UL * 1024UL; // 868 + 8
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL; // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U;  // 核间软同步偏移地址
@@ -56,10 +54,13 @@ constexpr uint32_t AIV_STATE_SIZE = 64U;
 constexpr uint32_t SFFVALUE_SIZE = 64U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t CUMSUM_MAX_CORE_NUM = 32U;
+constexpr uint32_t DATA_TO_CNT_TIME_RATIO = 4U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
+// 按32核上限预留前缀和数据区（32*32*32=32KB）
+constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
@@ -185,6 +186,7 @@ private:
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<int32_t> performanceInfoGMTensor_;
     GlobalTensor<float> selfRankWinInGMTensor_;
+    GlobalTensor<float> cumsumWsGMTensor_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
 
     LocalTensor<int32_t> statusTensor_;
@@ -434,7 +436,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理32个专家cnt发送
+    // 根据AllToAll和前缀和两阶段的工作量比例分配核数，使两阶段耗时更均衡
+    aivUsedCumSum_ = aivNum_ - ((axisBS_ * axisK_ * DATA_TO_CNT_TIME_RATIO * aivNum_) /
+                        (axisBS_ * axisK_ * DATA_TO_CNT_TIME_RATIO  + totalExpertNum_));
 #else
     aivUsedCumSum_ = totalExpertNum_ / 32; // 单核处理32个专家cnt发送
 #endif
@@ -508,10 +512,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SetDataStatus();
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut;
-    recvCntWorkspaceGM_ = workspaceGM;
+    recvCntWorkspaceGM_ = AscendC::GetUserWorkspace(workspaceGM);
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGM_));
     selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float *)(statusDataSpaceGM_));
+    uint64_t recvCntWsSize = static_cast<uint64_t>(aivNum_) * static_cast<uint64_t>(rscvStatusNum_) *
+                             sizeof(int32_t);
+    uint64_t cumsumWsBaseOffset = Ceil(recvCntWsSize, WORKSPACE_ELEMENT_OFFSET) * WORKSPACE_ELEMENT_OFFSET;
+    cumsumWsGMTensor_.SetGlobalBuffer(
+        (__gm__ float *)((__gm__ uint8_t *)(recvCntWorkspaceGM_) + cumsumWsBaseOffset));
     windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
@@ -1522,8 +1531,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GatherSumRecvCnt(L
     Duplicate<float>(sumCoreFP32Tensor, static_cast<float>(1.0), maskArrayFlag, repeatTimes, 1, 8);
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_CAL_OFFSET + newAivId * aivUsedCumSum_ * UB_ALIGN) / sizeof(float)],
-             sumCoreFP32Tensor, sumIntriParams);
+    DataCopy(cumsumWsGMTensor_[(newAivId * aivUsedCumSum_ * UB_ALIGN) / sizeof(float)], sumCoreFP32Tensor,
+             sumIntriParams);
     SyncFunc<AscendC::HardEvent::MTE3_V>();
 }
 
@@ -1535,7 +1544,6 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(LocalTen
     outLocal = gatherMaskOutBuf_.Get<int32_t>();
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, static_cast<uint16_t>(aivUsedCumSum_ - 1),
                                   0};
-    uint32_t cumSumStatusOffset = (CUMSUM_CAL_OFFSET + newAivId * UB_ALIGN) / sizeof(float);
     LocalTensor<float> sumLocalTensor = sumLocalBuf_.Get<float>();
     LocalTensor<uint32_t> gatherSumPattern = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
     LocalTensor<float> sumContinueTensor = sumContinueBuf_.Get<float>();
@@ -1558,12 +1566,13 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(LocalTen
     while (true) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         // 每个32B状态块的第2个float是完成标记，轮询时只搬运这一项。
-        DataCopyPad<float, PaddingMode::Compact>(sumLocalTensor, selfRankWinInGMTensor_[cumSumStatusOffset + 1],
+        DataCopyPad<float, PaddingMode::Compact>(sumLocalTensor,
+                                                 cumsumWsGMTensor_[(newAivId * UB_ALIGN) / sizeof(float) + 1],
                                                  flagCopyParams, flagCopyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(recvCntSumOutTensor, sumLocalTensor, sumParams);
 #else
-        DataCopy(sumLocalTensor, selfRankWinInGMTensor_[cumSumStatusOffset], sumIntriParams);
+        DataCopy(sumLocalTensor, cumsumWsGMTensor_[(newAivId * UB_ALIGN) / sizeof(float)], sumIntriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(sumContinueTensor, sumLocalTensor, gatherSumPattern, true, mask,
                    {1, static_cast<uint16_t>(aivUsedCumSum_), 1, 0}, recvCnt);
@@ -1580,7 +1589,7 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(LocalTen
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     // 前缀和计算仍需要每个状态块中的计数值，完成标记到齐后再完整搬运一次。
     if (newAivId != 0) {
-        DataCopy(sumLocalTensor, selfRankWinInGMTensor_[cumSumStatusOffset], sumIntriParams);
+        DataCopy(sumLocalTensor, cumsumWsGMTensor_[(newAivId * UB_ALIGN) / sizeof(float)], sumIntriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
     }
 #endif
@@ -1609,8 +1618,7 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetCumSum(LocalTen
     Duplicate<float>(sumCoreFp32Tensor, static_cast<float>(0), 64, repeatTimes, 1, 8);
     DataCopyParams cleanParams{static_cast<uint16_t>(aivUsedCumSum_), 1, 0, static_cast<uint16_t>(aivUsedCumSum_ - 1)};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_CAL_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], sumCoreFp32Tensor,
-             cleanParams);
+    DataCopy(cumsumWsGMTensor_[(newAivId * UB_ALIGN) / sizeof(float)], sumCoreFp32Tensor, cleanParams);
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1715,7 +1723,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     Duplicate<int32_t>(syncOnCoreTensor, static_cast<int32_t>(1), SIZE_ALIGN_256 / sizeof(int32_t), repeatTimes, 1, 8);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     PipeBarrier<PIPE_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_FLAG_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], syncOnCoreFP32Tensor,
+    DataCopy(cumsumWsGMTensor_[(CUMSUM_WS_FLAG_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], syncOnCoreFP32Tensor,
              sumIntriParams); // 软同步
 }
 
@@ -1831,7 +1839,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 #else
     int32_t targetFlag = aivUsedCumSum_ * UB_ALIGN_DATA_COUNT;
 #endif
-    uint32_t cumSumFlagOffset = (CUMSUM_FLAG_OFFSET + aivId_ * aivUsedCumSum_ * UB_ALIGN) / sizeof(float);
+    uint32_t cumSumFlagOffset = (CUMSUM_WS_FLAG_OFFSET + aivId_ * aivUsedCumSum_ * UB_ALIGN) / sizeof(float);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     DataCopyExtParams flagCopyParams{static_cast<uint16_t>(aivUsedCumSum_), sizeof(float),
                                      UB_ALIGN - sizeof(float), 0U, 0U};
@@ -1846,10 +1854,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
     while (true) {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        DataCopyPad<float, PaddingMode::Compact>(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset],
+        DataCopyPad<float, PaddingMode::Compact>(statusFp32Tensor_, cumsumWsGMTensor_[cumSumFlagOffset],
                                                  flagCopyParams, flagCopyPadParams);
 #else
-        DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
+        DataCopy(statusFp32Tensor_, cumsumWsGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
 #endif
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
@@ -1864,7 +1872,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     Duplicate<float>(statusCleanFp32Tensor_, static_cast<float>(0), aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[cumSumFlagOffset], statusCleanFp32Tensor_, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
+    DataCopy(cumsumWsGMTensor_[cumSumFlagOffset], statusCleanFp32Tensor_, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
 }
 
 template <TemplateMC2TypeFullmeshClass>
