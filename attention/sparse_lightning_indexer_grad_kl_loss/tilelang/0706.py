@@ -230,7 +230,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
-            # Chunked gather: 16 rows/chunk → MTE3 burst 16KB writes (was 1KB)
+            # T.Pipelined(num_stages=2): MTE2 fill chunk[N+1] || MTE3 write chunk[N]
             # ============================================================
             num_chunks = n_block // GATHER_CHUNK_SIZE
             with T.Scope("V"):
@@ -239,10 +239,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 kr_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    for chunk_id in T.serial(num_chunks):
+                    for chunk_id in T.Pipelined(num_chunks, num_stages=2):
                         chunk_start = k_start + chunk_id * GATHER_CHUNK_SIZE
 
-                        # MTE2: fill chunk (16 rows)
+                        # MTE2: fill chunk (16 rows of random reads)
                         for i in T.serial(GATHER_CHUNK_SIZE):
                             k_id = chunk_start + i
                             idx = SparseIndices[bz, s1_id, 0, k_id]
@@ -252,7 +252,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 if d_rope > 0:
                                     T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[i, 0:d_rope])
 
-                        # MTE3: write chunk to workspace (16KB burst vs old 1KB)
+                        # MTE3: write chunk to workspace (16KB burst)
                         T.copy(key_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQuery],
                                GatherKey_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQuery])
                         T.copy(ki_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
@@ -754,6 +754,17 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
             )
+
+            # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
+            try:
+                import os as _os
+                _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0706_kernel_source.cpp")
+                with open(_dump_path, "w", encoding="utf-8") as _f:
+                    _f.write(func.get_kernel_source())
+                print(f"[dump] kernel source written to {_dump_path}")
+            except Exception as _e:
+                print(f"[dump] failed to write kernel source: {_e}")
+
             _kernel_cache[cache_key] = func
 
         ws_key = (B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, d_rope, input_dtype, query.device, n_num_ws)
