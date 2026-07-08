@@ -358,6 +358,22 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo) co
     const gert::Tensor *queryRopeTensor = fiaInfo.opParamInfo.queryRope.tensor;
     const gert::Tensor *keyRopeTensor = fiaInfo.opParamInfo.keyRope.tensor;
 
+    // rope split时 rope必须都存在
+    if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
+        OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
+        OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope and key_rope",
+                                                           "When rope exists, queryRope or keyRope cannot be empty"),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RopeChecker::CheckRopeConsistency(const FiaTilingInfo &fiaInfo) const
+{
+    const gert::Tensor *queryRopeTensor = fiaInfo.opParamInfo.queryRope.tensor;
+    const gert::Tensor *keyRopeTensor = fiaInfo.opParamInfo.keyRope.tensor;
+
     // 一个空 一个非空
     OP_CHECK_IF((queryRopeTensor == nullptr && keyRopeTensor != nullptr),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
@@ -368,15 +384,6 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo) co
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
                                                       "When query_rope is not empty, key_rope cannot be empty"),
                 return ge::GRAPH_FAILED);
-
-    // rope split时 rope必须都存在
-    if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
-        OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
-        OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope and key_rope",
-                                                           "When rope exists, queryRope or keyRope cannot be empty"),
-                    return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -553,8 +560,8 @@ ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
-        return ge::GRAPH_SUCCESS;
+    if (ge::GRAPH_SUCCESS != CheckRopeConsistency(fiaInfo)) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
