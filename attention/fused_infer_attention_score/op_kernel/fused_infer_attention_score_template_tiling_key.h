@@ -83,6 +83,7 @@ ASCENDC_TPL_ARGS_DECL(FusedInferAttentionScore,
     //   18: FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR
     //   19: FULLQUANT_MODE_QKV_MXFP8_PREFILL
     //   20: FULLQUANT_MODE_QKV_MXFP8_DECODE
+    //   21: FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD
     //   30: FullQuantMode
     //   31: NoQuantMode
     ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
@@ -3156,6 +3157,7 @@ ASCENDC_TPL_SEL(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+    // mxfp8
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -3175,9 +3177,26 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
+    // fp8 qk per-tensor-head v per-head
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_NTD_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasRope, 0),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BNBD),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
+        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
+    ),
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+    // mxfp8
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -3190,6 +3209,22 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(HasRope, 0, 1),
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
                              KvLayoutType_PA_NZ),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
+        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
+    ),
+    // fp8 qk per-tensor-head v per-head
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_NTD_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasRope, 0),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BNBD),
         ASCENDC_TPL_BOOL_SEL(IsFd, 0),
         ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
         ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),

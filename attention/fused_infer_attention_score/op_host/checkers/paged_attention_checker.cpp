@@ -238,24 +238,14 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-            OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
-                tempBlockSize, fiaInfo.blockSize),
+                    OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
+                            tempBlockSize, fiaInfo.blockSize),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(tempD != compareD,
+            OP_LOGE(fiaInfo.opName, "When page attention enable, the axis D of %s(%u) should be %u",
+                inputName.c_str(), tempD, compareD),
             return ge::GRAPH_FAILED);
-        
-        if (fiaInfo.inputKvType == ge::DT_INT4) {
-            OP_CHECK_IF(tempD != compareD,
-                OP_LOGE(fiaInfo.opName, "When page attention enable, if input kv dataType is INT32, "
-                    "the axis D of %s(%u) should be %u, "
-                    "if input kv dataType is INT4, the axis D of %s(%u) should be %u",
-                    inputName.c_str(), tempD / NUM8, compareD / NUM8,
-                    inputName.c_str(), tempD, compareD),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF(tempD != compareD,
-                OP_LOGE(fiaInfo.opName, "When page attention enable, the axis D of %s(%u) should be %u",
-                    inputName.c_str(), tempD, compareD),
-                return ge::GRAPH_FAILED);
-        }
     } else { // [blockNums, N, D1, blocksize, D0]
         tempN = tempShape.GetDim(DIM_NUM_1);
         tempD1 = tempShape.GetDim(DIM_NUM_2);
@@ -494,6 +484,16 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                     "blockSize(%d) should be %u or %u.",
                     fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8),
             return ge::GRAPH_FAILED);
+
+        // fp8 gqa 仅支持blocksize等于128
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD &&
+            fiaInfo.blockSize != NUM_128,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, when page attention enable, "
+                    "blockSize(%d) should be %u.",
+                    fiaInfo.blockSize, NUM_128),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -507,6 +507,11 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
+            return ge::GRAPH_FAILED);
+    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+        OP_CHECK_IF(dimNum != DIM_NUM_4, OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
+                    "PA BnBsH and NZ are not supported."),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
