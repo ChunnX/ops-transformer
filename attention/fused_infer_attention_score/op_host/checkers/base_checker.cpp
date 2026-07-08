@@ -42,15 +42,23 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
     return ge::GRAPH_SUCCESS;
 }
 
+static int64_t get_ns_ts() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
 ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
+        std::cout << "[DEBUGGING] if 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
         if ((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end())) {
             OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(),
                 ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
             return ge::GRAPH_FAILED;
         }
+        std::cout << "[DEBUGGING] if 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
     }
     return ge::GRAPH_SUCCESS;
 }
