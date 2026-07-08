@@ -151,8 +151,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
-            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
+            <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制，非连续场景下B不能大于256。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
@@ -167,8 +167,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
-            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li></ul>
+            <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制，非连续场景下B不能大于256。</li></ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
