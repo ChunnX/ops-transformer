@@ -10,6 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
+    set(sparse_attention_score_prefill_depends attention/common CACHE INTERNAL "Dependencies for sparse_attention_score_prefill")
     target_sources(op_host_aclnnExc PRIVATE
         sparse_attention_score_prefill_def.cpp
     )

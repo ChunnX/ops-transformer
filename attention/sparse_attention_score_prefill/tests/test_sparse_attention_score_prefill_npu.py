@@ -97,6 +97,9 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         f"[npu] batch={batch} q={q_seqlens} kv={kv_seqlens} top_k={top_k} "
         f"kv_centric_vs_npu max_diff={max_diff:.6f} mean_diff={mean_diff:.6f}")
 
+    print("npu_out_cpu:", npu_out_cpu)
+    print("kv_centric:", kv_centric)
+
     self.assertFalse(
         torch.any(torch.isnan(npu_out_cpu.float())),
         "NPU output contains NaN")

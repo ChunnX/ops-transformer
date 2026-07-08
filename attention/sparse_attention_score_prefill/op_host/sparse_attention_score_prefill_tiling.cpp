@@ -165,7 +165,7 @@ ge::graphStatus SASAPrefillTiling::CalculateTaskSplit(gert::TilingContext *conte
     uint32_t totalTaskP1 = numKvBlocks_ * kvHeads_;
     uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;
     uint32_t totalTaskMax = std::max(totalTaskP1, totalTaskP2);
-    blockDim_ = std::min(totalTaskMax, std::max(aicNum_, aivNum_));
+    blockDim_ = std::min(totalTaskMax, aicNum_);
     if (blockDim_ == 0) {
         blockDim_ = 1;
     }
@@ -176,13 +176,17 @@ ge::graphStatus SASAPrefillTiling::CalculateTaskSplit(gert::TilingContext *conte
 ge::graphStatus SASAPrefillTiling::CalculateWorkSpace(gert::TilingContext *context)
 {
     (void)context;
-    uint64_t oBytes = static_cast<uint64_t>(groupSize_) * embeddingSize_ * sizeof(float);
-    partialSize_ = oBytes + static_cast<uint64_t>(groupSize_) * sizeof(float);
+    uint64_t slotOElems = static_cast<uint64_t>(groupSize_) * embeddingSize_;
+    uint64_t slotStatElems = static_cast<uint64_t>(groupSize_);
+    uint64_t taskSlots = static_cast<uint64_t>(totalQTokens_) * kvHeads_ * topK_;
 
-    // User workspace only stores Phase1 partials consumed by Phase2:
-    // [totalQTokens, kvHeads, topK, partialSize]. Reverse-index tensors are
-    // independent GM inputs and must not be counted here.
-    uint64_t userWorkspaceSize = static_cast<uint64_t>(totalQTokens_) * kvHeads_ * topK_ * partialSize_;
+    // accumOut | softmaxMax | softmaxSum (separate buffers).
+    // O_partial: [totalQ, kvHeads, topK, groupSize, D] fp32.
+    // max/sum:   [totalQ, kvHeads, topK, groupSize] fp32 (compact per slot).
+    accumOutSize_ = taskSlots * slotOElems;
+    lseStatSize_ = taskSlots * slotStatElems;
+    uint64_t userWorkspaceSize =
+        (accumOutSize_ + lseStatSize_ * 2U) * sizeof(float);
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
@@ -205,7 +209,8 @@ ge::graphStatus SASAPrefillTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_totalTaskNumP2(totalQTokens_ * kvHeads_);
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_innerPrecise(innerPrecise_);
-    tilingData_->set_partialSize(partialSize_);
+    tilingData_->set_accumOutSize(accumOutSize_);
+    tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
     tilingData_->set_tilingKey(SASA_PREFILL_BF16_D128_TILING);
     context->SetTilingKey(SASA_PREFILL_BF16_D128_TILING);

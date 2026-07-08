@@ -18,6 +18,7 @@
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_ub_a5.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a5.hpp"
 #endif

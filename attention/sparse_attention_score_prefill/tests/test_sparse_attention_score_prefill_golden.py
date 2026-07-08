@@ -11,8 +11,8 @@ Golden reference tests for sparse_attention_score_prefill (KV-Gather-Q).
 
 Based on sparse_attention_score decode bf16 golden helpers, extended with:
 1. Host dense packed-row CSR (k2q_row_ptr / k2q_q_indices / k2q_slot_indices)
-2. Phase1 KV-block outer loop: QK + SM + PV only; workspace stores O_tmp(fp32, row-normalized) + LSE
-3. Phase2 LSE logsumexp combine across topK partials (design doc §7.2, same as kernel)
+2. Phase1 KV-block outer loop: QK + SM + PV only; workspace stores O_partial(fp32) + max + sum
+3. Phase2 IFA-style combine: CopyAccumOutIn O/rowSum + ComputeScaleValue scale + ReduceFinalRes
 """
 
 import math
@@ -194,44 +194,57 @@ def _softmax_p_from_scores_fp32(s_fp32):
 
 
 def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value):
-  """Single KV block: QK -> SM -> PV. Returns row-normalized O_tmp and LSE."""
-  s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t())
-  #print("s_fp32:", s_fp32[0][:16])
-  s_fp32 = s_fp32* scale_value
+  """Single KV block: QK -> SM -> PV. Returns unnormalized O_partial, rowMax, rowSum."""
+  s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()) * scale_value
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)
-  #print("p_bf16:", p_bf16[0][:16])
-  #print("row_sum_fp32:", row_sum_fp32[:16])
-
+  #print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t())[0][:128])
+  #print("p_bf16:", p_bf16.shape, p_bf16[0][:128])
   o_unnorm_fp32 = torch.matmul(p_bf16.float(), v_bf16.float())
-  print("o_unnorm_fp32:", o_unnorm_fp32[0][:16])
-  o_norm_fp32 = o_unnorm_fp32 / row_sum_fp32.unsqueeze(1).clamp_min(1e-20)
-  lse_fp32 = row_max_fp32 + torch.log(row_sum_fp32.clamp_min(1e-20))
-  lse_fp32 = torch.where(row_sum_fp32 > 0, lse_fp32, torch.full_like(lse_fp32, float('-inf')))
-  return o_norm_fp32, lse_fp32
+  row_max_fp32 = torch.where(
+      row_sum_fp32 > 0, row_max_fp32, torch.full_like(row_max_fp32, float('-inf')))
+  row_sum_fp32 = torch.where(row_sum_fp32 > 0, row_sum_fp32, torch.zeros_like(row_sum_fp32))
+  return o_unnorm_fp32, row_max_fp32, row_sum_fp32
 
 
-def _combine_partials_lse_ws(o_norm_slots, lse_slots):
-  """Combine topK workspace partials (O_tmp + LSE) via LSE logsumexp weighting.
+# Match kernel ComputeScaleValue_VF init / invalid threshold.
+NEG_INF_LSE = -3.4028235e38
+FLT_MAX_NEW = 3.402823466e38
 
-  Matches kernel block_epilogue_rescale_o_prefill_arch35 and design doc §7.2.
-  O_tmp is row-normalized partial output; LSE = rowMax + log(rowSum).
+
+def _compute_scale_weights(max_slots, sum_slots):
+  """Match ComputeScaleValue_VF (softmaxLseFlag=False).
+
+  scale[k] = rowSum[k] * exp(rowMax[k] - global_max) / sum_j(...)
+  Intended for accumOut already divided by rowSum (IFA / CopyAccumOutIn path).
   """
-  valid = torch.isfinite(lse_slots)
-  if not torch.any(valid):
+  global_max = max_slots.max()
+  if not torch.isfinite(global_max) or global_max <= -FLT_MAX_NEW:
+    return torch.zeros_like(sum_slots)
+
+  scaled = sum_slots * torch.exp(max_slots - global_max)
+  total = scaled.sum()
+  if total <= 0:
+    return torch.zeros_like(sum_slots)
+  return scaled / total
+
+
+def _combine_partials_max_sum_ws(o_partial_slots, max_slots, sum_slots, debug=False):
+  """Combine topK workspace partials via IFA ComputeScaleValue + ReduceFinalRes.
+
+  Phase1 stores unnormalized O_partial = P*V and per-row rowMax/rowSum.
+  Phase2 CopyAccumOutIn: O_norm = O_partial / rowSum (invalid rowSum<=0 -> 0).
+  ReduceFinalRes: out = sum(scale[k] * O_norm[k]).
+  """
+  scale = _compute_scale_weights(max_slots, sum_slots)
+  print("scale:", scale)
+  if scale.sum() <= 0:
     return None
 
-  lse_v = lse_slots[valid]
-  o_norm_v = o_norm_slots[valid]
-
-  max_lse = lse_v.max()
-  weights = torch.exp(lse_v - max_lse)
-  weight_sum = weights.sum()
-  if weight_sum <= 0:
-    return None
-
-  lse_global = max_lse + torch.log(weight_sum)
-  weights = torch.exp(lse_v - lse_global)
-  return (weights.unsqueeze(-1) * o_norm_v).sum(dim=0)
+  valid = sum_slots > 0
+  o_norm = torch.zeros_like(o_partial_slots)
+  if torch.any(valid):
+    o_norm[valid] = o_partial_slots[valid] / sum_slots[valid].unsqueeze(-1)
+  return (scale.unsqueeze(-1) * o_norm).sum(dim=0)
 
 
 # ---------------------------------------------------------------------------
@@ -593,9 +606,9 @@ def cpu_golden_prefill_phase1(
     block_size, top_k, scale_value,
 ):
   """
-  Phase1 golden: QK + SM + PV only; write workspace partials (O_tmp row-normalized, LSE).
+  Phase1 golden: QK + SM + PV only; write workspace partials (O_partial, max, sum).
 
-  Mirrors kernel Phase1 workspace layout; LSE combine is deferred to Phase2.
+  Mirrors kernel Phase1 workspace layout; combine/rescale deferred to Phase2.
   """
   total_q_tokens, num_q_heads, d = query.shape
   kv_heads = key.shape[2]
@@ -615,10 +628,12 @@ def cpu_golden_prefill_phase1(
     k2q_q_indices_np = np.asarray(k2q_q_indices)
     k2q_slot_indices_np = np.asarray(k2q_slot_indices)
 
-  ws_o_tmp = torch.zeros(total_q_tokens, kv_heads, top_k, group_size, d, dtype=torch.float32)
-  ws_lse = torch.full(
+  ws_o = torch.zeros(total_q_tokens, kv_heads, top_k, group_size, d, dtype=torch.float32)
+  ws_max = torch.full(
       (total_q_tokens, kv_heads, top_k, group_size), float('-inf'), dtype=torch.float32)
-  # Workspace layout per partial (bytes): O_tmp[groupSize,D] fp32 + LSE[groupSize]
+  ws_sum = torch.zeros(
+      (total_q_tokens, kv_heads, top_k, group_size), dtype=torch.float32)
+  # Workspace layout per partial (bytes): O_partial[groupSize,D] fp32 + max[groupSize] + sum[groupSize]
 
   total_rows = int(k2q_row_ptr_np.shape[1] - 1)
   total_task_num_p1 = total_rows * kv_heads
@@ -678,18 +693,19 @@ def cpu_golden_prefill_phase1(
       if causal_valid_len == 0:
         continue
 
-      o_norm, lse = _bf16_block_qk_sm_pv(
+      o_partial, row_max, row_sum = _bf16_block_qk_sm_pv(
           q_row_bf16, k_block[:causal_valid_len], v_block[:causal_valid_len], scale_value)
 
-      ws_o_tmp[q_token, kv_head_idx, slot_k] = o_norm
-      ws_lse[q_token, kv_head_idx, slot_k] = lse
+      ws_o[q_token, kv_head_idx, slot_k] = o_partial
+      ws_max[q_token, kv_head_idx, slot_k] = row_max
+      ws_sum[q_token, kv_head_idx, slot_k] = row_sum
 
-  return ws_o_tmp, ws_lse
+  return ws_o, ws_max, ws_sum
 
 
-def cpu_golden_prefill_phase2(ws_o_tmp, ws_lse, top_k, kv_heads, group_size, d):
-  """Phase2: LSE logsumexp combine over topK workspace partials per (qToken, kvHead)."""
-  total_q_tokens = ws_o_tmp.shape[0]
+def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d, debug=False):
+  """Phase2: O/rowSum + ComputeScaleValue scale + ReduceFinalRes over topK partials."""
+  total_q_tokens = ws_o.shape[0]
   num_q_heads = kv_heads * group_size
   output = torch.zeros(total_q_tokens, num_q_heads, d, dtype=torch.bfloat16)
   total_task_num_p2 = total_q_tokens * kv_heads
@@ -699,9 +715,13 @@ def cpu_golden_prefill_phase2(ws_o_tmp, ws_lse, top_k, kv_heads, group_size, d):
     kv_head_idx = task_idx % kv_heads
     q_head_start = kv_head_idx * group_size
     for gh in range(group_size):
-      slot_o_tmp = ws_o_tmp[q_token, kv_head_idx, :, gh, :]
-      slot_lse = ws_lse[q_token, kv_head_idx, :, gh]
-      combined = _combine_partials_lse_ws(slot_o_tmp, slot_lse)
+      slot_o = ws_o[q_token, kv_head_idx, :, gh, :]
+      slot_max = ws_max[q_token, kv_head_idx, :, gh]
+      slot_sum = ws_sum[q_token, kv_head_idx, :, gh]
+      if debug:
+        print(f"[phase2] q={q_token} kvHead={kv_head_idx} gh={gh}")
+      combined = _combine_partials_max_sum_ws(
+          slot_o, slot_max, slot_sum, debug=debug)
       if combined is not None:
         output[q_token, q_head_start + gh, :] = combined.to(torch.bfloat16)
 
@@ -810,11 +830,12 @@ def cpu_golden_prefill_bf16(
     query, key, value, k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
     block_table, actual_seq_lengths, actual_seq_lengths_kv,
     block_size, top_k, scale_value,
+    debug_phase2=False,
 ):
-  """Full two-phase prefill golden: Phase1 QK/SM/PV -> workspace; Phase2 LSE combine."""
+  """Full two-phase prefill golden: Phase1 QK/SM/PV -> workspace; Phase2 IFA combine."""
   kv_heads = key.shape[2]
 
-  ws_o_tmp, ws_lse = cpu_golden_prefill_phase1(
+  ws_o, ws_max, ws_sum = cpu_golden_prefill_phase1(
       query, key, value,
       k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
       block_table, actual_seq_lengths, actual_seq_lengths_kv,
@@ -823,7 +844,8 @@ def cpu_golden_prefill_bf16(
   group_size = query.shape[1] // kv_heads
   d = query.shape[2]
   return cpu_golden_prefill_phase2(
-      ws_o_tmp, ws_lse, top_k, kv_heads, group_size, d)
+      ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d,
+      debug=debug_phase2)
 
 
 def make_case(batch, q_seqlens, kv_seqlens, q_heads, kv_heads, head_dim=128,
@@ -934,6 +956,8 @@ class TestSparseAttentionScorePrefillGolden(unittest.TestCase):
         data["q_seqlens"], data["kv_seqlens"],
         block_size, top_k, data["scale_value"],
         data["select_num_idx"])
+    print("two_phase:", two_phase)
+    print("qcentric:", qcentric)
 
     self.assertFalse(torch.any(torch.isnan(two_phase.float())), "two-phase output contains NaN")
     self.assertFalse(torch.all(two_phase == 0), "two-phase output is all zeros")
