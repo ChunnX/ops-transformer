@@ -22,10 +22,10 @@
 - **位置**：`ffn_wb_scan_token_info.h:100-122`，仅 block0 轮询 `readyNum==A` 后 break。
 - **判定**：分离部署 RECV 协议固有设计（FFN worker 等 attention worker 置位），与 A2 byte 一致移植，依赖上游契约。**非新增缺陷**。逻辑正确（DataCopyPad 每 session 1 flag padding 到 32B，ReduceSum 求和，全 ready 退出）。低。建议：长期可加最大轮询次数兜底（非本次范围）。
 
-### M2. k=0 守卫充分性（单核已修，多核待 NPU 覆盖）
-- 单核 NORM 路径（`group_listing.h` `groupListingDealFlag==0`）：已加 `validGatherIdxLength>0` 守卫，输出 `group_list[0]=[0,0]` 正确。
+### M2. k=0 守卫充分性 —— ✅ 已闭环（单核已修已验；多核经 dispatch 证明不可达）
+- 单核 NORM 路径（`group_listing.h` `groupListingDealFlag==0`）：已加 `validGatherIdxLength>0` 守卫，输出 `group_list[0]=[0,0]` 正确，NPU 8/8 二进制一致（穿刺3）。
 - `firstExpertId` 在 k=0 被赋脏值，但**全文件无读取（dead write）**，不外泄。安全。
-- 多核路径（`dealFlag==1`）：靠 `expertCountCompute` 中 `count>0` 过滤 + 末尾 `(actualExpertTotalNum-1)*2+2` 索引在 actualExpertTotalNum=0 时恰好落 0 → 产 `[0,0]`（正确但索引算术略脆）。**多核 k=0 未 NPU 实测**（probe 只覆盖单核）→ 泛化补一条多核 k=0 用例。
+- **多核路径（`dealFlag==1`）k=0 不可达（dispatch 级证明，非"未测"）**：主线 `ffn_worker_batching_apt.cpp:83` `if (validGatherIdxLength > GROUP_LISTING_MULTI_CORE_LENGTH) dealFlag=1`，`GROUP_LISTING_MULTI_CORE_LENGTH=512`（`ffn_wb_common.h:58`，正值）。k=0 即 `validGatherIdxLength==0`，`0>512` 恒假 → **k=0 必然走单核** dealFlag==0（已修已验路径）。"多核+k=0" 两条件互斥、状态不可构造。故无需另造多核 k=0 用例。详见 `issues/issue_20260708_group-listing-kzero-dirty-expertid_01.md` 行动项3结论。
 
 ### 确认 PASS 项
 - **P1 Tiling 校验完整性 ✅**：spec `boundary_conditions` 全部错误契约都有 `OP_CHECK→GRAPH_FAILED`：int8 dtype(:124)、x 1维(:131)、expert_num∈(0,8192](:143)、max_out_shape len=4(:150)、A∈(0,1024](:158)、BS>0(:161)、K∈(0,64](:164)、H>0(:167)、token_dtype∈[0,2](:175)、need_schedule∈[0,1](:183)、layer_num∈[0,expert_num](:191)。与新增 6 条 arch35 负路径 UT(E1-E6)对应。

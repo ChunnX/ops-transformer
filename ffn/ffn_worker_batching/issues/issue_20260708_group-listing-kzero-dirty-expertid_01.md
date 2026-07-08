@@ -2,7 +2,7 @@
 
 - **发现阶段**: 迭代二 穿刺3（probe_iter2_boundary_kzero_samebin，NORM/100/fp16/单核，Ascend950DT_9584/arch35）
 - **严重度**: 中（边界正确性缺陷，稳定复现；迭代三 k=0 用例必现）
-- **状态**: 已定位根因 + 已验证单行修复（穿刺工程内验证通过），待迭代三整合到主线 arch35 头
+- **状态**: ✅ 已修复（主线 arch35 头单行守卫已落，单核 k=0 NPU 8/8 二进制一致）；多核 k=0（行动项3）经 dispatch 逻辑证明**不可达**（见下方「行动项 3 结论」），非真空点
 - **影响文件（主线）**: `op_kernel/arch35/ffn_wb_group_listing.h`（arch22 `op_kernel/ffn_wb_group_listing.h` 同源，同缺陷，需一并核对）
 
 ## 现象
@@ -61,5 +61,5 @@ if (validGatherIdxLength > 0 && curExpertIdOffset < expertNum) {
 
 1. 主线 `op_kernel/arch35/ffn_wb_group_listing.h` 落地上述守卫。
 2. 核对 arch22 `op_kernel/ffn_wb_group_listing.h` 是否同缺陷（同源代码）；若 A2 也存在，需评估是否属既有行为（A2 对拍基线本身是否已含该脏值）——若 A2 base 也产 [expertNum,0]，则 A5 "对齐 A2" 与 "对齐 spec [0,0]" 冲突，需回 Architect 裁决基线口径。
-3. 多核 group_listing 路径（`groupListingDealFlag==1`，`Compute`/`ProcessExpertCount`）在 k=0 时的行为需另行穿刺确认（本穿刺 shape 走单核 group_listing 分支，未覆盖多核分支的 k=0）。
+3. ~~多核 group_listing 路径在 k=0 时的行为需另行穿刺确认~~ → **✅ 已结论：dispatch 逻辑证明不可达，无需穿刺**。主线 `op_kernel/ffn_worker_batching_apt.cpp:83`（及 probe kernel 同逻辑）：`if (validGatherIdxLength > GROUP_LISTING_MULTI_CORE_LENGTH) { groupListingDealFlag = 1; }`，其中 `GROUP_LISTING_MULTI_CORE_LENGTH = 512`（`ffn_wb_common.h:58`，正值）。k=0 即 `validGatherIdxLength==0`，`0 > 512` 恒假 → **k=0 必然走单核 `dealFlag==0` 路径**（本 issue 已修守卫、已 NPU 8/8 验证的那条）。"多核 + k=0" 两条件互斥、状态不可构造，故非真空点。此为比"造用例穿刺"更强的 dispatch 级证明。
 4. UT 增加 k=0 用例断言 `group_list == 全 0`。
