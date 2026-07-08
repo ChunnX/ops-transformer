@@ -62,6 +62,19 @@ def flash_attn_metadata(
         mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
 ) -> torch.Tensor:
+    raise NotImplementedError("flash_attn_metadata requires an NPU backend kernel")
+
+
+@flash_attn_metadata.register_kernel("npu")
+def flash_attn_metadata_npu(
+        num_heads_q: int, num_heads_kv: int, head_dim: int,
+        cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+        seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+        batch_size: Optional[int] = None,
+        max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
+        mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
+        layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
+) -> torch.Tensor:
     op_module = flash_attn_op_builder.load()
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
@@ -98,6 +111,24 @@ def flash_attn_metadata_fake(
 
 @custom_op("cann_ops_transformer.flash_attn", mutates_args=())
 def flash_attn(
+        q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+        block_table: Optional[torch.Tensor] = None,
+        cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+        seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+        sinks: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+        metadata: Optional[torch.Tensor] = None,
+        softmax_scale: Optional[float] = 1.0,
+        mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
+        max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
+        layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
+        return_softmax_lse: Optional[bool] = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    raise NotImplementedError("flash_attn requires an NPU backend kernel")
+
+
+@flash_attn.register_kernel("npu")
+def flash_attn_npu(
         q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
         block_table: Optional[torch.Tensor] = None,
         cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
