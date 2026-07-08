@@ -39,6 +39,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     int64_t preTokens,
     int64_t nextTokens,
     int64_t softmaxLseFlag,
+    int64_t quantMode,
+    double dstTypeMax,
     const aclTensor *attentionOut,
     aclOpExecutor *executor);
 
