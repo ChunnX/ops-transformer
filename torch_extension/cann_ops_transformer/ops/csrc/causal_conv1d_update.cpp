@@ -13,7 +13,10 @@
  * \brief Torch bridge — decode / update, delegates to aclnnCausalConv1dUpdate.
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {

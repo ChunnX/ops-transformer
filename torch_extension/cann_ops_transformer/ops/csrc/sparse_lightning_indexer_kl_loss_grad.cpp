@@ -8,7 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <string>
 #include <tuple>
 #include "aclnn_common.h"
@@ -37,7 +40,7 @@ at::Tensor SparseLightningIndexerKlLossGradMetadata(
     }
 
     at::Tensor output =
-        torch::empty({SLI_KL_LOSS_GRAD_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+        at::empty({SLI_KL_LOSS_GRAD_METADATA_SIZE}, at::dtype(at::kInt).device(outputDevice));
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensKVal = get_valid_tensor(cuSeqlensK, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);

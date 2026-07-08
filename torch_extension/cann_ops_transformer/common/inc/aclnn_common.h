@@ -27,6 +27,8 @@
 #include <type_traits>
 #include <unordered_map>
 #include <ATen/Tensor.h>
+#include <ATen/ScalarOps.h>
+#include <ATen/Functions.h>
 #include <acl/acl_base.h>
 #include <acl/acl_rt.h>
 #include <c10/core/StorageImpl.h>
@@ -433,7 +435,7 @@ inline at::Tensor CopyTensorHostToDevice(const at::Tensor &cpu_tensor)
 
 inline at::Tensor CopyScalarToDevice(const c10::Scalar &cpu_scalar, at::ScalarType scalar_data_type)
 {
-    return CopyTensorHostToDevice(scalar_to_tensor(cpu_scalar).to(scalar_data_type));
+    return CopyTensorHostToDevice(at::scalar_to_tensor(cpu_scalar).to(scalar_data_type));
 }
 
 inline aclTensor *ConvertType(const at::Tensor &at_tensor)
@@ -829,7 +831,7 @@ inline void Release(aclTensorList *p)
 
 inline const c10::optional<at::Tensor> get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
 {
-    return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
+    return tensor_opt.has_value() ? tensor_opt : at::empty({0}, at::dtype(at::kInt).device(device));
 };
 
 template <typename T>

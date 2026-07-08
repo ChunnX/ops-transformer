@@ -14,7 +14,10 @@
  *
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <acl/acl_rt.h>
 #include "hccl_common.h"
 

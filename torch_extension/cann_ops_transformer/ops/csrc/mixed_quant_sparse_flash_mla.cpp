@@ -12,7 +12,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -59,7 +62,7 @@ at::Tensor MixedQuantSparseFlashMlaMetadata(
         outputDevice = cmpTopkLength.value().device();
     }
 
-    at::Tensor output = torch::empty({MQSMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    at::Tensor output = at::empty({MQSMLA_METADATA_SIZE}, at::dtype(at::kInt).device(outputDevice));
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensOriKvVal = get_valid_tensor(cuSeqlensOriKv, outputDevice);
     auto cuSeqlensCmpKvVal = get_valid_tensor(cuSeqlensCmpKv, outputDevice);
@@ -132,7 +135,7 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
         // 不返回时tensor传空
         softmaxLseSize = {};
     }
-    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
+    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(at::kFloat));
     if (!softmaxLse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
     } else {
