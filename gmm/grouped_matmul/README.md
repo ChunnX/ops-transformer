@@ -122,15 +122,15 @@ GroupedMatmul 默认提供确定性实现。
 - x/weight 中每组 Tensor 的最后一维 < 65536。
   - $x_i$ 最后一维：x 不转置时为 K 轴，x 转置时为 M 轴。
   - $weight_i$ 最后一维：weight 不转置时为 N 轴，weight 转置时为 K 轴。
-- x/weight 转置时对应 Tensor 必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
-- weight 为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ 格式要求。
+- x/weight 转置时对应 Tensor 必须 [非连续](../../docs/zh/context/非连续的Tensor.md)。
+- weight 为 [FRACTAL_NZ](../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ 格式要求。
 - perTokenScaleOptional：通常仅 1 维，长度与 x 的 M 一致。仅支持 x/weight/out 均为单 Tensor 场景。
 - groupListOptional：out 中 TensorList 长度为 1 时，groupList 约束输出数据有效范围，未指定部分不参与更新。
 - groupListType=0：groupListOptional 须为非负单调非递减数列（累积和）。
   groupListType=1：须为非负数列（各组大小）。
   groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
 
-> 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#7-%E7%BA%A6%E6%9D%9F%E8%AF%B4%E6%98%8E)。
+> 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#7-约束说明)。
 
 ---
 
@@ -138,4 +138,4 @@ GroupedMatmul 默认提供确定性实现。
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
-| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#83-%E7%A4%BA%E4%BE%8B%E4%BB%A3%E7%A0%81%E7%B4%A2%E5%BC%95) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
+| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#83-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
