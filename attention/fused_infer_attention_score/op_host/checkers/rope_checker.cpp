@@ -57,7 +57,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
     OP_CHECK_IF((fiaInfo.ropeHeadDim != NUM_64),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "query_rope",
-                    ToStringRaw(fiaInfo.opParamInfo.queryRope.tensor->GetStorageShape()).c_str(),
+                    ToString(fiaInfo.opParamInfo.queryRope.tensor->GetStorageShape()).c_str(),
                     "When rope exists, the d axis of rope must be 64"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -189,7 +189,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
         uint32_t ropeN = static_cast<uint32_t>(ropeShape.GetDim(ropeDimNum - 1) / fiaInfo.ropeHeadDim);
         OP_CHECK_IF(tmpN != ropeN,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        fiaInfo.opName, inputRopeName.c_str(), ToStringRaw(ropeShape).c_str(),
+                        fiaInfo.opName, inputRopeName.c_str(), ToString(ropeShape).c_str(),
                         ("The N axis of " + inputRopeName + " must be equal to " + inputName).c_str()),
                     return ge::GRAPH_FAILED);
     }
@@ -366,7 +366,7 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo) co
     if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
         OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope and key_rope",
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query_rope and key_rope", "empty",
                                                            "When rope exists, queryRope or keyRope cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
@@ -380,12 +380,12 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo) c
     }
     // 不支持 prefix
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_shared_prefix", "not empty",
                                                       "When query_rope is not empty, key_shared_prefix must be empty"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", "not empty",
                                                       "When query_rope is not empty, pse_shift must be empty"),
                 return ge::GRAPH_FAILED);
 
@@ -398,12 +398,12 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo) c
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
         // 不支持左padding
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_padding_size",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query_padding_size", "not empty",
                                                   "When query_rope is not empty, query_padding_size must be empty"),
             return ge::GRAPH_FAILED);
         // 不支持tensorlist
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key", "TensorList",
                                                           "When query_rope is not empty, key cannot be TensorList"),
                     return ge::GRAPH_FAILED);
         // 不支持后量化
@@ -424,12 +424,12 @@ ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo)
     }
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_padding_size and kv_padding_size",
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query_padding_size and kv_padding_size", "not empty",
             "In MLA decode scenario, query_padding_size and kv_padding_size must both be empty"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key", "not empty",
                                                       "When query_rope is not empty, key cannot be TensorList"),
                 return ge::GRAPH_FAILED);
 
@@ -440,7 +440,7 @@ ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo)
 {
     // 不支持伪量化
     OP_CHECK_IF(fiaInfo.opParamInfo.queryRope.tensor != nullptr || fiaInfo.opParamInfo.keyRope.tensor != nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "query_rope",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query_rope", "not empty",
                                                       "In antiquant mode, query_rope must be empty"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -457,7 +457,7 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
     constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
 
     if (fiaInfo.s1Size < NUM1) {
-        std::string shapeStr = ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape());
+        std::string shapeStr = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", shapeStr.c_str(),
                                               "In Decode MLA scenario, query sequence length must be positive");
         return ge::GRAPH_FAILED;
@@ -466,7 +466,7 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
     OP_CHECK_IF(enableFullQuant_ && (fiaInfo.s1Size > maxQuerySeqLenForMLAFullquant),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "query",
-                    ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                    ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
                     "In MLA decode fullquant scenario, the sequence length of query must be within the range [1, 16]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -482,15 +482,15 @@ ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo) const
     OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "query",
-                    ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                    "In MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
+                    ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                    "in MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((*fiaInfo.opParamInfo.kvHeadNums != NUM1),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "key",
-                    ToStringRaw(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
-                    "In MLA decode scenario, the N axis of key must be 1"),
+                    ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
+                    "in MLA decode scenario, the N axis of key must be 1"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
