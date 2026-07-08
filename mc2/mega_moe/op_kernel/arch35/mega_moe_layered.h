@@ -301,8 +301,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
+    PRINTF("==compareCount_==:%u", compareCount_);
     maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32));
     // 每个 win 槽位再追加 32B 存 count(源卡 SendMaskCal 同步算好), 须与 PeermemInfo 的 maskSlotSize 一致。
+    PRINTF("==maskAlignSize_==:%u", maskAlignSize_);
     maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
     mxQuantScaleNumAlignPerToken_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
     mxQuantTokenAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
@@ -567,10 +569,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
         return;
     }
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
-
+    PRINTF("==aivCoreIdx_==:%u", aivCoreIdx_);
+    PRINTF("==blockAivNum_==:%u", blockAivNum_);
     for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts);
-         curRankId += blockAivNum_) {
-        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex) {
+         curRankId += blockAivNum_) { // 按卡处理
+        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex) { // 按专家处理
             int32_t curExpertId = static_cast<int32_t>(curRankId * expertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
