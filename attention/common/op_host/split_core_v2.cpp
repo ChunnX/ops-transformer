@@ -779,12 +779,21 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     // 根据shape判断是否要开FD
     if (param.streamK && result.fdRes.fdNum > 0) {
         splitContext.splitParam.streamK = false;
-        CalcSplitPlan(result.usedCoreNum, INT64_MAX, splitContext, tmpResult);
+        FAMetaData bestNoFdResult{coreNum, result.vecCubeRatio};
+        bestNoFdResult.maxCost = INT64_MAX;
+        for (uint32_t i = minCore; i <= maxCore; ++i) {
+            CalcSplitPlan(i, bestNoFdResult.maxCost, splitContext, tmpResult);
+            if (tmpResult.maxCost < bestNoFdResult.maxCost) {
+                CopyTmpResult(tmpResult, bestNoFdResult);
+            }
+            ClearTmpResult(tmpResult);
+        }
         uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
-        if (!CheckChooseWithFd(tmpResult.maxCost, result.maxCost, std::min(maxFdSize, param.mBaseSize), param)) {
-            CopyTmpResult(tmpResult, result);
+        if (!CheckChooseWithFd(bestNoFdResult.maxCost, result.maxCost, std::min(maxFdSize, param.mBaseSize), param)) {
+            CopyTmpResult(bestNoFdResult, result);
         }
     }
+    
     // 3、存在FD任务，对FD进行负载均衡分配
     if (result.fdRes.fdNum > 0U) {
         SplitFD(result);
