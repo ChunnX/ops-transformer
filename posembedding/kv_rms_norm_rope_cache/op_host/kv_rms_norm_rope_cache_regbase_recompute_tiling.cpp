@@ -43,6 +43,7 @@ constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 constexpr static int64_t BLOCK_SIZE = 32;
 constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
 constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
+constexpr static int64_t RECOMPUTE_INDEX_BUFFER_BYTES = 32;   // kernel GetIndex 用的 index UB, 需从 UB 预算预留
 
 static const std::vector<std::string> inputNames = {
     "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
@@ -337,7 +338,8 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
 
-    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
+    int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES
+                          - RECOMPUTE_INDEX_BUFFER_BYTES;
     int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
 
     OP_CHECK_IF(
@@ -362,6 +364,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     int64_t ubFactorDkTail = dk_ - ubFactor * ubFactorDkLoopCountFloor;
 
     tilingData_.set_blockFactor(blockFactor);
+    tilingData_.set_usedCoreNum(usedCoreNum_);
     tilingData_.set_ubFactor(ubFactor);
     tilingData_.set_ubFactorDvTail(ubFactorDvTail);
     tilingData_.set_ubFactorDvLoopCountCeil(ubFactorDvLoopCountCeil);
@@ -379,12 +382,16 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
 ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
-    context_->SetBlockDim(usedCoreNum_);
+    // 满核启动: 让本算子占满整片 AI Core, 避免跨进程共核时被 SIMT 算子分时复用同一核(aivec UB 越界根因)。
+    // 多出来的核(blockIdx >= usedCoreNum)在 kernel 里空转, 仅参与末尾 SyncAll 屏障, 把核占到 kernel 结束。
+    context_->SetBlockDim(coreNum_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = DEFAULT_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-    return ge::GRAPH_SUCCESS;
+    // batch_mode: 核间同步(SyncAll)算子必须设置该调度模式
+    uint32_t batchMode = 1U;
+    return context_->SetScheduleMode(batchMode);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(KvRmsNormRopeCache, KvRmsNormRopeCacheRegbaseRecomputeTiling, TEMPLATE_D_RECOMPUTE_PRIORITY);
