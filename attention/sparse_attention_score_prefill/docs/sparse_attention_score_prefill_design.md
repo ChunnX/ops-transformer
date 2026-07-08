@@ -9,8 +9,8 @@
 1. Phase 1 在 Cube 侧完成 `QK + softmax + PV` 的 partial 计算。
 2. Phase 1 以 `1 logical KV block × 1 KV head` 为 task 粒度。
 3. Q token 通过 host 提供的反向索引 gather，Q 在 GM 中可能非连续，因此 Q 需要逐行搬运到连续的片上临时区后参与 matmul。
-4. Phase 1 将每个 `(qToken, kvHead, slotK)` 的 `O_tmp`（按 row 归一化）与 `LSE` 写入 workspace。
-5. Phase 2 在 Vector 侧读取每个 Q 的 topK partial，通过 LSE logsumexp 加权 combine，写最终 `attention_out`。
+4. Phase 1 将每个 `(qToken, kvHead, slotK)` 的 `O_partial`（未归一化 P×V）、`rowMax`、`rowSum` 写入 workspace；**不在 Phase 1 做 `O / rowSum`**。
+5. Phase 2 在 Vector 侧读取每个 Q 的 topK partial，复用 IFA FlashDecode 路径（`CopyLseIn` → `ComputeScaleValue` → `CopyAccumOutIn`（`O/rowSum`）→ `ReduceFinalRes`）完成 rescale 与 combine，写最终 `attention_out`。
 6. Phase 1 与 Phase 2 在同一个 kernel 内执行，中间通过 `SyncAll` 做全局同步。
 
 稀疏选择关系由 host 预构建的反向索引张量表达；block 有效长度由 kernel 根据 `actual_seq_lengths_kv` 与 `blockSize` 在片上计算。
@@ -41,7 +41,7 @@
 1. Host 侧 forward 选块为 `select_idx[kvHeads, totalQTokens, topK]`（可用 global logical id 表达，构建 CSR 时转为 batch-local q2k）与 `select_num_idx[kvHeads, totalQTokens]`。
 2. **`totalPackedRows`** = `sum_b ceil(kv_seqlen[b]/blockSize)`，与 MSA/CUDA `build_k2q_csr` 一致；未选中的块对应 CSR 空行（`row_ptr[r+1]==row_ptr[r]`）。
 3. Phase1 task：`taskIdx = packedRow * kvHeads + kvHeadIdx`，其中 `packedRow` 由 `(batch, local_kv_block)` 按 MSA 规则打包。
-4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §2.4），再经 `block_table` 取 physical block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
+4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §5.1 / §6.1），再经 `block_table` 取 physical block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
 5. `csrStart = k2q_row_ptr[kvHeadIdx, packedRow]`，`csrEnd = k2q_row_ptr[kvHeadIdx, packedRow + 1]`，`numQTokens = csrEnd - csrStart`。
 6. `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`（global flattened q id），`slotK = k2q_slot_indices[...]`。
 7. `k2qNnzUpperBound = k2q_q_indices.shape[1]`，通常为 `totalQTokens * topK`。
@@ -75,6 +75,9 @@
 | `k2qNnzUpperBound` | `k2q_q_indices.shape[1]`，CSR 数据区每 head 的上界，通常 `totalQTokens * topK`。 |
 | `totalTaskNumP1` | Phase 1 task 数，`totalPackedRows * kvHeads`。 |
 | `totalTaskNumP2` | Phase 2 task 数，`totalQTokens * kvHeads`。 |
+| `accumOutSize` | workspace 中 O_partial float 元素总数，`totalQTokens * kvHeads * topK * groupSize * D`。 |
+| `lseStatSize` | workspace 中 softmaxMax 或 softmaxSum 各自 float 元素总数，`totalQTokens * kvHeads * topK * groupSize`。 |
+| `workSpaceSize` | `libapiWorkspaceSize + userWorkspace` 字节数。 |
 
 ### 3.2 blockDim 策略
 
@@ -103,43 +106,61 @@ for taskIdx = blockIdx; taskIdx < totalTaskNumP2; taskIdx += blockDim
 
 ## 4. Workspace 布局
 
-workspace 只保存 Phase 1 到 Phase 2 的 partial 数据，不保存反向索引表。
+workspace 只保存 Phase 1 到 Phase 2 的 partial 数据，不保存反向索引表。布局与 IFA FlashDecode 一致：**O / max / sum 三块独立 buffer**；max/sum 在 GM 中为 **紧凑连续** `float`（每 slot 长度 `groupSize`），Phase 2 读入 UB 时再展开为 IFA VF 所需的 32B 行对齐布局。
 
 ### 4.1 总大小
 
 ```text
-oBytes         = groupSize * D * sizeof(float)    # O_tmp 存 fp32（PV 累加精度），与 Q/K/V input dtype 无关
-oBytesAligned  = oBytes                          # 当前 tiling/kernel 无额外 padding；groupSize*D*4 恒为 4 字节对齐
-statBytes      = groupSize * sizeof(float)       # LSE[groupSize]
-partialSize    = oBytesAligned + statBytes
-userWorkspace  = totalQTokens * kvHeads * topK * partialSize
-workspaceSize  = libapiWorkspaceSize + userWorkspace
+slotOElems    = groupSize * D
+slotStatElems = groupSize                         # max/sum 每 slot 紧凑 float 个数
+taskSlots     = totalQTokens * kvHeads * topK
+
+accumOutSize  = taskSlots * slotOElems            # O_partial，fp32
+lseStatSize   = taskSlots * slotStatElems         # softmaxMax 或 softmaxSum 各一块
+
+userWorkspace = (accumOutSize + lseStatSize * 2) * sizeof(float)
+workspaceSize = libapiWorkspaceSize + userWorkspace
 ```
+
+tiling 字段：`accumOutSize`、`lseStatSize`（float 元素个数，非字节）。
 
 kernel 入口使用 `GetUserWorkspace(workspace)` 时，tiling 侧申请的 workspace 必须包含 `libapiWorkspaceSize`。
 
-Phase 1 启动前应将 workspace 中所有 partial 的 `LSE` 预置为 `-inf`（或保证未写入 slot 可被 Phase 2 识别为无效）。
-
-### 4.2 partial 内部布局
-
-每个 partial 对应一个 `(qToken, kvHeadIdx, slotK)`：
+GM 指针划分（顺序固定）：
 
 ```text
-partial_base = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
+accumOutGm   = userWorkspace + 0
+softmaxMaxGm = userWorkspace + accumOutSize * sizeof(float)
+softmaxSumGm = userWorkspace + (accumOutSize + lseStatSize) * sizeof(float)
+```
 
-partial_base + 0
-  O_tmp[groupSize, D]          # fp32，存按 row 归一化的 partial output（= sum(exp(S-rowMax)*V) / rowSum）
+Phase 1 启动前 **建议** 将 `softmaxMax` / `softmaxSum` 预置为无效：`rowMax[gh] = -inf`，`rowSum[gh] = 0`（未写入 slot 可被 Phase 2 识别为无效）。
 
-partial_base + oBytesAligned
-  LSE[groupSize]               # fp32，LSE[gh] = rowMax[gh] + log(rowSum[gh])
+**当前 Arch35 kernel 实现**：不在 kernel 入口对 workspace 做显式 memset；依赖 runtime 分配的 zero-fill（`rowSum=0` 通常成立，`rowMax` 可能为 0 而非 `-inf`）。无效 slot 主要依赖 `ComputeScaleValue_VF` 产生零 scale 跳过；Golden 侧显式将 `ws_max` 初始化为 `-inf`。
+
+### 4.2 逻辑 shape 与线性偏移
+
+对每个 `(qToken, kvHeadIdx)` task，topK 个 slot 在各自 buffer 内连续存放：
+
+```text
+taskIdx = qToken * kvHeads + kvHeadIdx
+
+# accumOut: [topK, groupSize, D]  fp32，未归一化 O_partial = P × V
+oBase(taskIdx, slotK) = taskIdx * topK * slotOElems + slotK * slotOElems
+O_partial[gh, d]      -> accumOutGm[oBase + gh * D + d]
+
+# softmaxMax / softmaxSum: [topK, groupSize]  fp32，紧凑存储
+statBase(taskIdx, slotK) = taskIdx * topK * slotStatElems + slotK * slotStatElems
+rowMax[gh]               -> softmaxMaxGm[statBase + gh]
+rowSum[gh]               -> softmaxSumGm[statBase + gh]
 ```
 
 注意：
 
-1. `O_tmp` 是 row 内 softmax 归一化后的 partial output，不是未归一化分子。
-2. `LSE` 是每个 Q head 一份，长度为 `groupSize`；无效 slot 为 `-inf`。
-3. `LSE` 起始地址必须 4 字节对齐。
-4. Phase 2 读取 topK partial 时，必须使用相同 `partialSize` 和 `oBytesAligned`。
+1. Phase 1 写入的 `O_partial = P×V` **未** 按 `rowSum` 归一化（与 IFA decode 不同：IFA 在 split 内 `RowDivs` 后写 `accumOut`）。Prefill 将 `/rowSum` **推迟到 Phase 2 的 `CopyAccumOutIn`**，再与 IFA 相同的 `ComputeScaleValue` scale 做 `ReduceFinalRes`。
+2. `rowMax` / `rowSum` 各为每个 Q head 一份，长度为 `groupSize`；无效 slot 语义为 `rowSum = 0`（Golden 另将 `rowMax = -inf`）。
+3. O 与 max/sum **不再** 打包在同一 `partialSize` 槽内；Phase 2 分别按上式寻址三块 buffer。
+4. Phase 2 `CopyLseIn`：从 GM 按 task 批量读 compact max/sum，`Broadcast` 展开为 IFA VF 所需的 `[topK, dealRow, 8]`；`ComputeScaleValue_VF` 会 **覆写** UB 中 `lseSum` 为 scale，故 `CopyAccumOutIn` 必须从 **`gmSoftmaxSum` 再读** 原始 `rowSum`。
 
 ## 5. Batch offset、packed row 与有效长度
 
@@ -155,7 +176,7 @@ for b in [0, batch):
   batchKvBlockOffset[b + 1] = batchKvBlockOffset[b] + ceil(kv_seqlen[b] / blockSize)
 ```
 
-**Phase1** 不直接使用跨 batch 展平的 `kvBlockIdx`，而是通过 §2.4 的 `(packedRow → batchIdx, localBlockIdx)` 定位 logical KV block：
+**Phase1** 不直接使用跨 batch 展平的 `kvBlockIdx`，而是通过 `(packedRow → batchIdx, localBlockIdx)` MSA coord 步进定位 logical KV block（§6.1）：
 
 ```text
 physicalBlock = block_table[batchIdx * maxBlocksPerBatch + localBlockIdx]
@@ -169,6 +190,8 @@ localQIdx = qToken - batchQOffset[qBatchIdx]
 ```
 
 `batchKvBlockOffset` 仍可用于 host 侧将 global logical block id 转为 batch-local id（构建 q2k/k2q CSR 时）。
+
+> **打包顺序澄清**：`batchKvBlockOffset` 是 host 侧 **row-major 累加**（按 batch 顺序累 `ceil(kv_seqlen/blockSize)`），仅用于 global logical block id ↔ batch-local id 互转，**不等于** Phase1 的 `packedRow`。Phase1 `packedRow` 采用 **column-major MSA 打包**：外层遍历 `localBlockIdx`，内层遍历 `batchIdx`，即顺序为 `(batch=0,blk=0), (batch=1,blk=0), ..., (batch=B-1,blk=0), (batch=0,blk=1), ...`。该顺序由 `InitPackedRowCoord` / `AdvancePackedRowCoord` 在 kernel 内增量步进实现，并与 golden `_build_packed_row_map` / `_init/_advance_packed_row_coord` 对齐。`totalPackedRows = sum_b ceil(kv_seqlen[b]/blockSize)` 与打包顺序无关，两种打包下总数一致。
 
 ### 5.2 Block 有效长度
 
@@ -220,14 +243,12 @@ for taskIdx = blockIdx; taskIdx < totalTaskNumP1; taskIdx += blockDim
    - `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`。
    - 对每个 Q token，搬运其 `groupSize` 个 Q head：`query[qToken, kvHeadIdx * groupSize + gh, :]`。
    - Q 在 GM 中可能非连续，必须逐行搬运；搬入后在片上整理成连续矩阵 `Q_tile[M, D]`，其中 `M = qTile * groupSize`。
-7. Cube 执行：
-   - `S = Q_tile[M, D] × K[D, validSize]`
-   - `S` 乘 `scaleValue`。
-8. Vector 对 `S` 按 row 应用 causal mask 和有效长度 mask。
-9. Vector 对每 row 计算 `rowMax`、`rowSum`，并得到 `LSE = rowMax + log(rowSum)`。
-10. Vector 得到 softmax 权重 `P = exp(S - rowMax)`。
-11. Cube 或 Vector/Cube 组合执行 `O_unnorm = P[M, validSize] × V[validSize, D]`。
-12. Vector 将 `O_tmp = O_unnorm / rowSum` 与 `LSE` 写入 workspace。
+7. Cube 执行 `S = Q_tile[groupSize, D] × K[D, validSize]`（QK 按 block 全长 `validSize` 计分）。
+8. Vector softmax / PV 的有效 KV 长度为 `causalValidLen`（见 §6.4）：对 `S` 的前 `causalValidLen` 列做 online softmax（**当前实现以有效列长截断**，非显式写 `-inf` mask；Golden 对越界列显式置 `-inf`）。
+9. Vector 对每 row 计算 `rowMax`、`rowSum`（**不**合并为 LSE；`softmaxLseFlag=false`）。
+10. Vector 得到 `P = exp(S - rowMax)`（未除 `rowSum`），cast bf16 供 PV。
+11. Cube 执行 `O_partial = P[groupSize, causalValidLen] × V[causalValidLen, D]`，fixpipe 写 GM（**不做** `/rowSum`）。
+12. Vector 将 `rowMax`、`rowSum` 写入 workspace；`O_partial` 由 Cube PV 写入。
 
 ### 6.3 GQA 映射
 
@@ -256,40 +277,61 @@ causalValidLen = 0 if qPosition < kvStartPos
                  else min(validSize, qPosition - kvStartPos + 1)
 ```
 
-mask 规则：
+mask 规则（Golden 参考；kernel 等价地仅对前 `causalValidLen` 列做 softmax/PV）：
 
 ```text
-for col in [0, blockSize):
+for col in [0, validSize):
   if col >= validSize or col >= causalValidLen:
-    score[row, col] = -inf
+    score[row, col] = -inf   # Golden 显式 mask；kernel 以 causalValidLen 截断
 ```
 
-当 `causalValidLen == 0` 时，kernel/golden **跳过写入**该 partial，依赖 workspace 预置 `LSE == -inf`，Phase 2 自动跳过：
+当 `causalValidLen == 0` 时，kernel/golden **跳过写入**该 partial，依赖 workspace 预置 `rowMax == -inf`、`rowSum == 0`，Phase 2 自动跳过：
 
 ```text
-# 不写入 workspace；slot 保持 LSE == -inf
+# 不写入 workspace；slot 保持 rowMax == -inf, rowSum == 0
 ```
 
 ### 6.5 workspace 写出
 
-Phase 1 每个 `(qToken, kvHeadIdx, slotK)` 写一个 partial：
+Phase 1 每个 `(qToken, kvHeadIdx, slotK)` 写入三块 buffer：
 
 ```text
 csrStart = k2q_row_ptr[kvHeadIdx, packedRow]
-slotK = k2q_slot_indices[kvHeadIdx, csrStart + qi]
-base  = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
+slotK    = k2q_slot_indices[kvHeadIdx, csrStart + qi]
+taskIdx  = qToken * kvHeads + kvHeadIdx
+
+oBase   = taskIdx * topK * groupSize * D + slotK * groupSize * D
+statBase = taskIdx * topK * groupSize + slotK * groupSize
 ```
 
 写出顺序：
 
 ```text
-O_tmp[gh, d] -> base + gh * D * sizeof(float) + d * sizeof(float)
-LSE[gh]      -> base + oBytesAligned + gh * sizeof(float)
+O_partial[gh, d] -> accumOutGm[oBase + gh * D + d]          # Cube PV fixpipe 写 GM
+rowMax[gh]       -> softmaxMaxGm[statBase + gh]             # Vector 连续 DataCopyPad
+rowSum[gh]       -> softmaxSumGm[statBase + gh]
 ```
 
-O 写 workspace 时按 Q 行逐行写，因为 Q token 是 gather 得到的，不能假设连续。
+O 写 workspace 时按 Q 行逐行写，因为 Q token 是 gather 得到的，不能假设连续。max/sum 按 subcore 负责的 `gh` 行连续写入对应 slot。
 
-## 7. Phase 2：Vector-only CombineScale
+## 7. Phase 2：Vector-only CombineScale（IFA FlashDecode 路径）
+
+Phase 2 实现与 `incre_flash_attention` 的 `FlashDecodeCompute` / `CombineSplitKVRes` 对齐，文件：`block_epilogue_rescale_o_prefill_arch35.hpp`。
+
+```text
+CopyLseIn(max, sum)
+  -> ComputeScaleValue_VF   # lseSum UB 覆写为 scale；softmaxLseFlag=false，不算 LSE
+  -> CopyAccumOutIn         # 读 O_partial，从 gmSoftmaxSum 读 rowSum，O_norm = O / rowSum
+  -> ReduceFinalRes_VF      # out += scale[k] * O_norm[k]
+  -> CopyFinalResOut
+```
+
+各步骤说明：
+
+- **`CopyLseIn`**：从 GM 读当前 task 的 compact `softmaxMax` / `softmaxSum`（逻辑 shape `[topK, groupSize]`）。当前实现：对 `startRow=0` 且 `dealRowCount×topK` 连续段做 `DataCopyPad`，再 `Broadcast` 到 UB 布局 `[topK, dealRow, 8]`（32B 行对齐）。**当前实现仅支持 `loopCount == 1`（即 `groupSize <= gSplitSize`）**：`CopyLseIn` 中 `taskBase` 未加 `startRow` 偏移、`blockLen = dealRowCount * topK * sizeof(float)` 假设整段连续，当 `groupSize > gSplitSize` 分多片 combine 时既漏掉 `startRow` 之后的行、又跨 split 拼接错误数据。大 `groupSize` 分片 `startRow` gather 路径待实现（与 §9 item 3 一致），在完成前应避免 `groupSize > gSplitSize` 的 shape。
+- **`ComputeScaleValue_VF`**：输入 UB 中 `(rowMax, rowSum)`，输出 **scale 权重** 写回 `lseSum` UB（与 IFA 相同公式，**不使用 LSE**）。
+- **`CopyAccumOutIn`**：按 split 索引 `j` 从 `accumOutGm` 读未归一化 `O_partial`；**必须从 `gmSoftmaxSum` 读取原始 `rowSum`**（因 `lseSum` UB 已被 scale 覆盖），对每 row 做 `O_norm = O_partial / rowSum`（当前 kernel 用 `Divs`；Golden 对 `rowSum<=0` 置 0）。
+- **`ReduceFinalRes_VF`**：对 topK 个 split 累加 `scale[j] * O_norm[j]` 到 `dst`。
 
 ### 7.1 Task 映射
 
@@ -305,43 +347,52 @@ kvHeadIdx = taskIdx % kvHeads
 attention_out[qToken, kvHeadIdx * groupSize + gh, :]
 ```
 
-### 7.2 Combine 公式（kernel 与 golden 共用 LSE logsumexp）
-
-对每个 `gh`，在 topK 个有效 partial 上：
+Phase 2 分核（仅 `__DAV_VEC__` 执行）：
 
 ```text
-LSE_global = logsumexp(LSE[k])   # 稳定实现：max(LSE) + log(sum(exp(LSE[k] - max(LSE))))
-
-weight[k] = exp(LSE[k] - LSE_global)
-
-out[d] = sum(weight[k] * O_tmp[k][d])
+FlashDecodeCompute(blockIdx, totalTaskNumP2, ...)
+# blockIdx = GetBlockIdx()；taskIdx 从 blockIdx stride，边界 totalTaskNumP2
 ```
 
-其中 `O_tmp[k]` 是 Phase 1 写入的 row 归一化 partial，`LSE[k] = rowMax[k] + log(rowSum[k])`。与旧版 online max/sum 公式数学等价：
+### 7.2 Combine 公式（kernel 与 golden 一致）
+
+对每个 `(qToken, kvHeadIdx, gh)`，在 topK 个 partial 上：
 
 ```text
-out = sum(exp(rowMax-rowMax_g)*rowSum*O_norm) / sum(exp(rowMax-rowMax_g)*rowSum)
-    = sum(exp(LSE-LSE_g)*O_norm)
+# Step A: ComputeScaleValue_VF（IFA split-KV，softmaxLseFlag=false）
+max_global = max_k(rowMax[k])
+
+scale[k] = rowSum[k] * exp(rowMax[k] - max_global)
+scale[k] /= sum_j scale[j]
+
+# Step B: CopyAccumOutIn（Prefill 相对 IFA Phase1 的 RowDivs）
+O_norm[k] = O_partial[k] / rowSum[k]     # rowSum 从 gmSoftmaxSum 读；无效时 Golden 置 0
+
+# Step C: ReduceFinalRes_VF
+out[d] = sum_k scale[k] * O_norm[k][d]
 ```
+
+等价于 IFA 在 split 内先 `O/rowSum` 再按相同 scale combine。Phase 1 GM 中 **`O_partial` 保持未归一化**；归一化发生在 Phase 2 `CopyAccumOutIn`。
 
 ### 7.3 无效 slot 处理
 
-Phase 2 通过 workspace 内容判断 slot 是否有效：
+无效 slot 语义：`rowSum[gh] <= 0`（Golden 同时设 `rowMax = -inf`）。
 
 ```text
-for slotK in [0, topK):
-  base = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
-  if LSE[gh] == -inf:    # 无效 slot
-    continue
-  # 参与 combine
+# Phase 1 未写入 -> workspace 保持初始值（Golden: rowMax=-inf, rowSum=0）
+# Phase 2:
+ComputeScaleValue_VF  -> 无效 slot 的 scale 为 0
+CopyAccumOutIn        -> Golden: O_norm=0；kernel 当前 Divs 未单独判 rowSum<=0
+ReduceFinalRes_VF     -> scale=0 时不贡献
 ```
+
+> **NaN 风险提示**：当前 kernel `CopyAccumOutIn` 对无效 slot（`rowSum == 0`）仍执行 `Divs(O_partial, 0)`，产生 `inf/nan`；随后 `ReduceFinalRes_VF` 中 `scale[k]=0 * O_norm=inf` 在 IEEE 754 下为 `nan`（非 0），会污染最终 `attention_out`。在 workspace 显式预置 `rowMax=-inf` 并对 `rowSum<=0` 显式置零（§9 item 1/2）完成前，不能仅依赖 `scale=0` 自动屏蔽无效 slot。当前测试用例规避该问题的前提是：被选中的 `(qToken, slotK)` 均满足 `causalValidLen > 0`，即不存在"被分配但未写入"的无效 slot。
 
 规则：
 
-1. Phase 1 仅对 CSR 中列出的 `(qToken, slotK)` 写入有效 partial。
-2. 未被 Phase 1 写入的 slot 保持 `LSE == -inf`，Phase 2 必须跳过。
-3. causal 全 mask 的 partial 不写入 workspace，slot 保持 `LSE == -inf`，Phase 2 自动跳过。
-4. 若上层保证每个 Q token 恰好有 `topK` 个有效 block 且全部写入，可省略额外判断，但该假设必须在调用侧明确。
+1. Phase 1 仅对 CSR 中且 `causalValidLen > 0` 的 `(qToken, slotK)` 写入有效 partial。
+2. 未被 Phase 1 写入的 slot 不参与有效 combine（依赖 `rowSum=0` → scale=0）。
+3. `causalValidLen == 0` 时跳过 Phase 1 写入，Phase 2 自动跳过。
 
 ### 7.4 输出写回
 
@@ -353,17 +404,21 @@ Phase 2 必须全在 Vector 侧完成，不再触发 Cube 计算。
 
 ## 8. CPU Golden 参考实现
 
-`tests/test_sparse_attention_score_prefill_golden.py` 与 kernel **任务划分、CSR 消费、MSA coord 步进、causal 规则** 对齐，数值路径略有不同：
+`tests/test_sparse_attention_score_prefill_golden.py` 与 kernel **任务划分、CSR 消费、MSA coord 步进、causal 规则、Phase2 combine** 对齐：
 
 | 项 | Kernel | CPU Golden |
 | --- | --- | --- |
 | Phase1 分核 | `taskIdx += blockDim` stride | `taskIdx` 顺序 0..totalTaskNumP1-1（等价 coreNum=1） |
 | coord | `Init/AdvancePackedRowCoord` inline | `_init/_advance_packed_row_coord` inline |
-| Phase1 partial 统计 | workspace 写 `O_tmp(fp32, row-normalized)` + `LSE` | 同 kernel |
-| Phase2 combine | LSE logsumexp over topK partials（§7.2） | 同 kernel（§7.2） |
-| QK/SM 中间精度 | QK 输出 fp32 S；SM 在 Vector fp32 | fp32 softmax；P cast bf16 供 PV |
+| Phase1 partial | `accumOut` + `softmaxMax` + `softmaxSum` 三块 GM | `ws_o / ws_max / ws_sum`，shape `[T,kvH,topK,...]` |
+| Phase1 O | 未归一化 `P×V` fp32 | 同左 |
+| Phase2 scale | `ComputeScaleValue_VF`（`softmaxLseFlag=false`） | `_compute_scale_weights` |
+| Phase2 O/rowSum | `CopyAccumOutIn` 从 `gmSoftmaxSum` 读 rowSum 再 `Divs` | `o_norm = o_partial / rowSum`（`rowSum<=0` 置 0） |
+| Phase2 combine | `ReduceFinalRes_VF` | `sum(scale * o_norm)` |
+| QK/SM 中间精度 | QK fp32 S；SM Vector fp32；P cast bf16 | fp32 softmax；P cast bf16 供 PV |
+| ws_max 初值 | 依赖 runtime zero-fill | 显式 `-inf` |
 
-Golden 不模拟 Cube tile 搬运；SM/PV 统计量在 fp32 计算，仅 P 矩阵 cast 为 bf16 以匹配 PV 输入 dtype。
+Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。
 
 另保留 `cpu_golden_prefill_qcentric_bf16` 作 Q-centric 交叉校验。
 
@@ -374,32 +429,35 @@ Golden 不模拟 Cube tile 搬运；SM/PV 统计量在 fp32 计算，仅 P 矩�
 1. 不应在 GM 上对每个元素重复读取 K/V 做点积。
 2. 不应对每个 `(qToken, qHead, d, n)` 用标量 C++ 循环模拟 QK 和 PV。
 3. 不应在 Phase 1 对同一 `(packedRow, kvHeadIdx)` task 的 K/V 反复从 GM 读取。
-4. Phase 2 必须能跳过无效 partial（`LSE == -inf` 或 causal 全 mask）。
+4. Phase 2 必须能跳过无效 partial（`rowMax == -inf` 或 `rowSum <= 0`，或 causal 全 mask）。
 
 当前 `sparse_attention_score_prefill_kernel_arch35.h` 已具备：
 
-- Phase1/2 按 `totalTaskNumP1/P2` stride 分核。
-- Phase1 `BlockMmadQK` / `BlockMmadPV` + `LoadKResident` / `LoadVResident` 按 block×head 复用 K/V。
-- MSA packed row coord 在 task 循环内增量步进（无 GM 查表、无 per-task 搜索）。
-- CSR 驱动 Q gather + causal mask + workspace 写出。
+- Phase1/2 按 `totalTaskNumP1/P2` stride 分核；Phase1 使用 `coreIdx = GetBlockIdx()`（VEC 侧 `/ GetSubBlockNum()`）。
+- Phase1 `BlockMmadQK` / `BlockMmadPV` + `LoadKResident` / `LoadVResident`；`PRE_LAUNCH=2` 流水。
+- MSA packed row coord 增量步进；CSR 驱动 Q gather + `causalValidLen` + workspace 写出。
+- Phase2 `block_epilogue_rescale_o_prefill_arch35.hpp`：IFA FlashDecode combine + **`CopyAccumOutIn` 从 GM 读 rowSum 做 O 归一化**。
 
-仍待完善（相对性能目标）：
+仍待完善：
 
 1. Q 仍逐 token gather，尚未 `qTile > 1` 批量拼 Q。
-2. Phase 2 无效 slot 跳过逻辑需与 workspace 清零策略一并验证。
-3. D/blockSize 以外 shape 的 tiling key 扩展。
-4. NPU 测试主要差在 golden 与 kernel 的 P cast 舍入及 Cube QK 累加精度。
+2. Kernel workspace 显式预置 `rowMax=-inf`（或 host 侧 memset）；`CopyAccumOutIn` 对 `rowSum<=0` 显式置零（与 Golden 对齐）。
+3. `CopyLseIn` 在 `groupSize > gSplitSize` 分片时按 `startRow` 正确 gather max/sum。
+4. Phase2 `GetBlockIdx` 与 Phase1 VEC 核映射关系统一验证（AIC/AIV 混合 blockDim）。
+5. D/blockSize 以外 shape 的 tiling key 扩展。
+6. 清理 Phase2 debug barrier / DumpPhase1OPartial 等临时代码。
+7. NPU 与 Golden 残差：P cast bf16 舍入、Cube QK 累加精度。
 
 ## 10. 后续 kernel 修改建议
 
 建议按以下顺序继续演进：
 
-1. Phase 1 扩展 `qTile > 1`：批量 gather Q，拼 `M = qTile * groupSize` 做 Cube QK/PV。
-2. 性能：
-- PRE_LAUNCH流水
-- double buffer
-- L1/L0 preload
+1. **正确性加固**：workspace 预置；`CopyAccumOutIn` 除零保护；`CopyLseIn` 大 `groupSize` 分片 gather。
+2. Phase 1 扩展 `qTile > 1`：批量 gather Q，拼 `M = qTile * groupSize` 做 Cube QK/PV。
+3. 性能：
+- PRE_LAUNCH 流水（已启用，可继续调优）
+- double buffer / L1/L0 preload
 - score/softmax UB 复用
 - 空 CSR 行 task 负载均衡
-- Regbase优化
-- QK、PV都是小矩阵乘，单次mmad可以完成
+- Regbase 优化
+- combine 阶段跳过无效 slot（当前主要依赖 scale=0）

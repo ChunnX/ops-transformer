@@ -3,7 +3,7 @@
  *
  * Block-level online softmax epilogue for prefill Phase1 (Arch35 / Atlas A5).
  *
- * Batch: ... -> CastTransdataDeconflict(ubP zN) -> LSE -> CopyUbZNToL1
+ * Batch: ... -> CastTransdataDeconflict(ubP zN) -> rowMax/rowSum -> CopyUbZNToL1
  * Each AIV owns its local UB rows (QK FixPipe already split S across vectors).
  */
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_PREFILL_ARCH35_HPP
@@ -43,18 +43,18 @@ public:
     static constexpr uint32_t FRACTAL_NZ_C0 = 32 / sizeof(ElementP);
     static constexpr uint32_t INPUT_BLOCK_NUM = 32 / sizeof(ElementP);
     static constexpr float MIN_VALUE_FP32 = -3.389531390315715675e+38f;
-    static constexpr float NEG_INF_LSE = -3.4028235e38f;
+    static constexpr float NEG_INF_ROW_MAX = -3.4028235e38f;
 
     __aicore__ inline
     BlockEpilogue() : scale_(0.0f) {}
 
     __aicore__ inline
     void Init(AscendC::LocalTensor<float> &ubTmpBuf,
-              AscendC::LocalTensor<float> &ubLseOut,
+              AscendC::LocalTensor<float> &ubRowMaxOut,
               AscendC::LocalTensor<float> &ubRowSumOut)
     {
         tmpBuf_ = ubTmpBuf;
-        lseBuf_ = ubLseOut;
+        rowMaxBuf_ = ubRowMaxOut;
         rowSumBuf_ = ubRowSumOut;
     }
 
@@ -134,6 +134,7 @@ public:
             SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
             return;
         }
+        //AscendC::DumpTensor(ubSBuf, 123, 128);
 
         uint32_t numRowsRound = RoundUp(numRows, FLOAT_BLOCK_SIZE);
         AscendC::Muls(
@@ -141,25 +142,24 @@ public:
             static_cast<int32_t>(numRows * sColsAligned));
         AscendC::PipeBarrier<PIPE_V>();
 
-        AscendC::LocalTensor<float> rowMaxUb = tmpBuf_;
         AscendC::LocalTensor<float> tvUb = tmpBuf_[TV_UB_OFFSET];
         AscendC::LocalTensor<float> tvScratch = tmpBuf_[TV_UB_OFFSET + REDUCE_SCRATCH_OFFSET];
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
 
-        CalcRowMaxTail(ubSBuf, rowMaxUb, tvUb, tvScratch,
+        CalcRowMaxTail(ubSBuf, rowMaxBuf_, tvUb, tvScratch,
             numRows, numRowsRound, validSize, sColsAligned);
-        SubtractRowMaxAndExp(ubSBuf, rowMaxUb, tvUb,
+        SubtractRowMaxAndExp(ubSBuf, rowMaxBuf_, tvUb,
             numRows, numRowsRound, validSize, sColsAligned);
         CalcRowSumTail(ubSBuf, rowSumBuf_, tvUb, tvScratch,
             numRows, numRowsRound, validSize, sColsAligned);
-        CalcLse(rowMaxUb, rowSumBuf_, lseBuf_, numRows);
 
         uint32_t n = validSize;
         auto l1PTile = GetTile(l1PTensor,
             tla::MakeCoord(AscendC::GetSubBlockIdx() * mCopyOffset, 0), tla::MakeShape(m, n));
 
         uint32_t rowsAligned = RoundUp(numRows, C0_NUM_PER_FRACTAL);
+        //AscendC::DumpTensor(ubSBuf, 456, 128);
         if constexpr (P_CAST_COLS == 128) {
             CastExpToUbZN<P_CAST_COLS>(ubSBuf, ubPBuf, rowsAligned);
         }
@@ -167,10 +167,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetVecCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         WaitVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-        // if (pDumpId != 0U && m > 0U) {
-        //     AscendC::PipeBarrier<PIPE_V>();
-        //     AscendC::DumpTensor(ubPBuf, pDumpId, 16);
-        // }
+        //AscendC::DumpTensor(ubPBuf, 123, 128);
         CopyUbZNToL1(l1PTile, ubPBuf, numRows, rowsAligned, groupSize, validSize);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
         SetVecCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);   
@@ -384,35 +381,9 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void CalcLse(const AscendC::LocalTensor<float> &rowmaxUb,
-                 const AscendC::LocalTensor<float> &rowsumUb,
-                 AscendC::LocalTensor<float> &lseUb,
-                 uint32_t numRows)
-    {
-        SetVecMask(static_cast<int32_t>(numRows));
-        AscendC::Ln<float, false>(
-            lseUb, rowsumUb,
-            static_cast<uint64_t>(0), 1,
-            AscendC::UnaryRepeatParams(1, 1, 8, 8));
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add<float, false>(
-            lseUb, lseUb, rowmaxUb,
-            static_cast<uint64_t>(0), 1,
-            AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::SetVectorMask<int8_t>(static_cast<uint64_t>(-1), static_cast<uint64_t>(-1));
-
-        for (uint32_t row = 0; row < numRows; row++) {
-            if (rowsumUb.GetValue(row) <= 0.0f) {
-                lseUb.SetValue(row, NEG_INF_LSE);
-            }
-        }
-    }
-
     float scale_;
     AscendC::LocalTensor<float> tmpBuf_;
-    AscendC::LocalTensor<float> lseBuf_;
+    AscendC::LocalTensor<float> rowMaxBuf_;
     AscendC::LocalTensor<float> rowSumBuf_;
 };
 

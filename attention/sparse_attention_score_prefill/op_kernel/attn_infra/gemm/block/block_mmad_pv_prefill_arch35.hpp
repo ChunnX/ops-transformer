@@ -1,8 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  *
- * Prefill PV matmul (KV-centric). Cross-core sync / O split aligned with
- * block_mmad_pv_arch35_ABf16_C_to_UB.hpp.
+ * Prefill PV matmul (KV-centric). L0C fixpipe once to GM O_partial (no dual-subcore split).
  */
 #ifndef GEMM_BLOCK_MMAD_PV_PREFILL_ARCH35_HPP
 #define GEMM_BLOCK_MMAD_PV_PREFILL_ARCH35_HPP
@@ -33,9 +32,9 @@ struct BlockMmadPVPrefillArch35 {
     using LayoutTagV = layout::RowMajor;
     using LayoutTagO = layout::RowMajor;
 
-    using TileCopy = Gemm::Tile::PackedTileCopyTlaToUB<
+    using TileCopy = Gemm::Tile::PackedTileCopyTla<
         ArchTag, ElementP, LayoutTagP, ElementV, LayoutTagV,
-        ElementO, LayoutTagO, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
+        ElementO, LayoutTagO, void>;
 
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
@@ -149,18 +148,17 @@ struct BlockMmadPVPrefillArch35 {
 
     template <class TensorO>
     __aicore__ inline
-    void operator()(TensorO &ubOTensor,
+    void operator()(TensorO &oTensor,
                     uint32_t groupSize, uint32_t validSize, uint32_t D,
-                    Arch::CrossCoreFlag &smToMm2Flag, Arch::CrossCoreFlag &mm2ToReFlag)
+                    Arch::CrossCoreFlag &smToMm2Flag)
     {
         uint32_t M = groupSize;
         uint32_t N = D;
         uint32_t K = validSize;
         WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
-        using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorO>;
-        CopyL0CToDst copyL0CToDstSub0;
-        CopyL0CToDst copyL0CToDstSub1;
+        using CopyL0CToGm = typename TileCopy::template CopyL0CToDst<TensorO>;
+        CopyL0CToGm copyL0CToGm;
 
         auto l1PLayout = tla::MakeLayout<ElementP, LayoutTagL1A>(M, K);
         auto l1PTensorTla = tla::MakeTensor(l1PTensor_, l1PLayout, Arch::PositionL1{});
@@ -226,25 +224,19 @@ struct BlockMmadPVPrefillArch35 {
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
             }
-            if (nL0Itr == 0) {
-                WaitCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
-            }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             uint32_t mFixPAligned8 = RoundUp(M, 8U);
-            uint32_t mPerSubCore = mFixPAligned8 / 2U;
             uint32_t nFixPAligned8 = RoundUp(nAct, 8U);
-            auto ubOTile = GetTile(ubOTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned8));
-            auto l0CTileSub0 = GetTile(l0CTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nAct));
-            auto l0CTileSub1 = GetTile(l0CTensorTla,
-                tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, nAct));
-            copyL0CToDstSub0(ubOTile, l0CTileSub0, false);
-            copyL0CToDstSub1(ubOTile, l0CTileSub1, true);
+            // GM O_partial layout is [groupSize, D]; only write valid M rows (not mFixPAligned8)
+            // to avoid fixpipe overflow into the next slot / softmaxMax buffer.
+            auto oTile = GetTile(oTensor,
+                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(M, nFixPAligned8));
+            auto l0CTile = GetTile(l0CTensorTla,
+                tla::MakeCoord(0, 0), tla::MakeShape(mFixPAligned8, nAct));
+            copyL0CToGm(oTile, l0CTile);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
-        SetCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
     }
 };
 

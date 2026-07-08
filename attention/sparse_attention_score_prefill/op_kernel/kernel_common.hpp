@@ -25,7 +25,8 @@ struct SparseAttentionScorePrefillTilingData {
     uint32_t totalTaskNumP2;
     float scaleValue;
     uint32_t innerPrecise;
-    uint64_t partialSize;
+    uint64_t accumOutSize;
+    uint64_t lseStatSize;
     uint64_t workSpaceSize;
     uint64_t tilingKey;
 };

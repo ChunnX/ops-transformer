@@ -49,6 +49,29 @@ public:
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2U;
     static constexpr uint32_t P_L1_BUF_NUM = PRE_LAUNCH + 1U;
 
+    static constexpr uint32_t FP32_ONE_BLOCK_SIZE = 8U;
+
+    __aicore__ inline
+    uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
+    {
+        return static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx;
+    }
+
+    __aicore__ inline
+    uint64_t SlotOOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK) const
+    {
+        return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotOElems_
+            + static_cast<uint64_t>(slotK) * slotOElems_;
+    }
+
+    __aicore__ inline
+    uint64_t SlotStatOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK, uint32_t rowGh) const
+    {
+        return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotStatElems_
+            + static_cast<uint64_t>(slotK) * slotStatElems_
+            + static_cast<uint64_t>(rowGh);
+    }
+
     __aicore__ inline
     void InitSyncFlags()
     {
@@ -85,8 +108,6 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(0);
         AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(1);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(5);
-        AscendC::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(6);
 #endif
     }
 
@@ -110,10 +131,6 @@ public:
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(1);
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(16);
         AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(17);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(5);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(21);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(6);
-        AscendC::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_FIX>(22);
 #endif
 #ifdef __DAV_VEC__
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -136,12 +153,16 @@ public:
     __aicore__ inline
     static uint32_t VecRowSplit(uint32_t groupSize)
     {
-        return RoundUp(groupSize, 8U) / 2U;
+        uint32_t half = RoundUp(groupSize, 8U) / 2U;
+        return (half > groupSize) ? groupSize : half;
     }
 
     __aicore__ inline
     static uint32_t VecNumRows(uint32_t groupSize)
     {
+        if (groupSize <= 1U) {
+            return (AscendC::GetSubBlockIdx() == 0U) ? groupSize : 0U;
+        }
         uint32_t split = VecRowSplit(groupSize);
         return (AscendC::GetSubBlockIdx() == 0U) ? split : (groupSize - split);
     }
@@ -180,10 +201,16 @@ public:
         gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
-        AscendC::GlobalTensor<ElementWorkspaceO> gWorkspaceO;
-        gWorkspaceO.SetGlobalBuffer((__gm__ ElementWorkspaceO *)params.workSpace);
-        AscendC::GlobalTensor<float> gWorkspaceF;
-        gWorkspaceF.SetGlobalBuffer((__gm__ float *)params.workSpace);
+
+        uint64_t wsOffset = 0U;
+        AscendC::GlobalTensor<ElementWorkspaceO> gAccumOut;
+        gAccumOut.SetGlobalBuffer((__gm__ ElementWorkspaceO *)(params.workSpace + wsOffset));
+        wsOffset += accumOutSize_ * sizeof(float);
+        AscendC::GlobalTensor<float> gSoftmaxMax;
+        gSoftmaxMax.SetGlobalBuffer((__gm__ float *)(params.workSpace + wsOffset));
+        wsOffset += lseStatSize_ * sizeof(float);
+        AscendC::GlobalTensor<float> gSoftmaxSum;
+        gSoftmaxSum.SetGlobalBuffer((__gm__ float *)(params.workSpace + wsOffset));
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -198,9 +225,12 @@ public:
 #endif
         Phase1KvCentricCompute(
             coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
-            gK2qSlotIndices, gBlockTable, gWorkspaceO, gWorkspaceF);
+            gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll();
-        //Phase2CombineScale(coreIdx, coreNum, gO, gWorkspaceO, gWorkspaceF);
+        DumpPhase1OPartial(gAccumOut, gSoftmaxMax, gSoftmaxSum, gO);
+#ifdef __DAV_VEC__
+        Phase2CombineScale(AscendC::GetBlockIdx(), gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+#endif
         ReleaseSyncFlags();
     }
 
@@ -222,9 +252,10 @@ private:
         totalTaskNumP1_ = tilingData->totalTaskNumP1;
         totalTaskNumP2_ = tilingData->totalTaskNumP2;
         scaleValue_ = tilingData->scaleValue;
-        partialSize_ = tilingData->partialSize;
-        uint64_t oBytes = static_cast<uint64_t>(groupSize_) * embed_ * sizeof(ElementWorkspaceO);
-        oBytesAligned_ = oBytes;
+        accumOutSize_ = tilingData->accumOutSize;
+        lseStatSize_ = tilingData->lseStatSize;
+        slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
+        slotStatElems_ = static_cast<uint64_t>(groupSize_);
     }
 
     __aicore__ inline
@@ -304,6 +335,65 @@ private:
         return (maxLen < validSize) ? maxLen : validSize;
     }
 
+    __aicore__ inline
+    void CopyPartialStatsToGm(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                              AscendC::GlobalTensor<float> &gSoftmaxSum,
+                              AscendC::LocalTensor<float> &rowMaxLocal,
+                              AscendC::LocalTensor<float> &rowSumLocal,
+                              uint64_t lseOffset,
+                              uint32_t rowOffset,
+                              uint32_t rowCount)
+    {
+        if (rowCount == 0U) {
+            return;
+        }
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+        AscendC::DataCopyPad(
+            gSoftmaxMax[lseOffset + rowOffset], rowMaxLocal,
+            {1, static_cast<uint16_t>(rowCount * sizeof(float)), 0, 0});
+        AscendC::DataCopyPad(
+            gSoftmaxSum[lseOffset + rowOffset], rowSumLocal,
+            {1, static_cast<uint16_t>(rowCount * sizeof(float)), 0, 0});
+    }
+
+    // Debug: copy O_partial / max / sum after Phase1 + SyncAll.
+    __aicore__ inline
+    void DumpPhase1OPartial(AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
+                            AscendC::GlobalTensor<float> &gSoftmaxMax,
+                            AscendC::GlobalTensor<float> &gSoftmaxSum,
+                            AscendC::GlobalTensor<ElementO> &gO)
+    {
+        (void)gAccumOut;
+#ifdef __DAV_VEC__
+        if (AscendC::GetBlockIdx() != 0U) {
+            return;
+        }
+        if (lseStatSize_ == 0U) {
+            return;
+        }
+        static constexpr uint32_t PHASE1_O_DUMP_ELEMS = 8U;
+        static constexpr uint32_t PHASE1_STAT_DUMP_ELEMS = 8U;
+        AscendC::LocalTensor<float> ubDump =
+            resource.ubBuf.template GetBufferByByte<float>(0);
+        uint32_t totalQTokens = totalTaskNumP2_ / kvHeads_;
+        for (uint32_t qToken = 0U; qToken < totalQTokens; ++qToken) {
+            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < kvHeads_; ++kvHeadIdx) {
+                for (uint32_t slotK = 0U; slotK < topK_; ++slotK) {
+                    uint64_t oOff = SlotOOffset(qToken, kvHeadIdx, slotK);
+                    uint64_t lseOff = SlotStatOffset(qToken, kvHeadIdx, slotK, 0U);
+                    //AscendC::DumpTensor(gAccumOut[oOff], 123, PHASE1_O_DUMP_ELEMS);
+                    /*AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::DumpTensor(ubDump, 456U, PHASE1_O_DUMP_ELEMS);
+                    AscendC::DumpTensor(gSoftmaxMax[lseOff], 123U, PHASE1_STAT_DUMP_ELEMS);
+                    AscendC::DumpTensor(gSoftmaxSum[lseOff], 456U, PHASE1_STAT_DUMP_ELEMS);*/
+                }
+            }
+        }
+#endif
+    }
+
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
     __aicore__ inline
     void Phase1KvCentricCompute(
@@ -315,18 +405,16 @@ private:
         AscendC::GlobalTensor<int32_t> const &gK2qQIndices,
         AscendC::GlobalTensor<int32_t> const &gK2qSlotIndices,
         AscendC::GlobalTensor<int32_t> const &gBlockTable,
-        AscendC::GlobalTensor<ElementWorkspaceO> &gWorkspaceO,
-        AscendC::GlobalTensor<float> &gWorkspaceF)
+        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
+        AscendC::GlobalTensor<float> &gSoftmaxMax,
+        AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
         uint32_t mPerSubCore = VecRowSplit(groupSize_);
         uint32_t sColMax = blockSize_;
-        uint32_t oColAligned = RoundUp(embed_, 16u);
 
 #ifdef __DAV_CUBE__
         uint32_t mAligned = RoundUp(mPerSubCore, 16u);
-        uint32_t rowNumRound = RoundUp(groupSize_, 16u);
         uint32_t ubSStageElems = mAligned * sColMax;
-        uint32_t ubOStageElems = rowNumRound * oColAligned;
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
@@ -337,50 +425,39 @@ private:
         blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, groupSize_);
 
         AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
-        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
-            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES + ubOStageElems * sizeof(ElementOTmp) * i);
         }
 
         int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
         auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAligned, sColMax);
-        auto ubOLayout = tla::MakeLayout<ElementOTmp, LayoutO>(rowNumRound, oColAligned);
 #endif
 #ifdef __DAV_VEC__
-        uint32_t rowNumRound = RoundUp(groupSize_, 16u);
         uint32_t vecRows = VecNumRows(groupSize_);
         uint32_t vecRowOffset = VecGlobalRowOffset(groupSize_);
         uint32_t mAligned = RoundUp(VecRowSplit(groupSize_), 16u);
         uint32_t ubSStageElems = mAligned * sColMax;
-        uint32_t ubOStageElems = rowNumRound * oColAligned;
         uint32_t vecUbPStageElems = (RoundUp(vecRows, 16U) + 1U) * sColMax;
 
         AscendC::LocalTensor<float> ubSTensor[UB_S_OTMP_BUF_STAGES];
-        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
         AscendC::LocalTensor<ElementP> ubPBuf[UB_S_OTMP_BUF_STAGES];
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<float>(ubSStageElems * sizeof(float) * i);
-            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES + ubOStageElems * sizeof(ElementOTmp) * i);
             ubPBuf[i] = resource.ubBuf.template GetBufferByByte<ElementP>(
                 ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
-                + ubOStageElems * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES
                 + vecUbPStageElems * sizeof(ElementP) * i);
         }
         uint32_t ubWsMetaOffset = ubSStageElems * sizeof(float) * UB_S_OTMP_BUF_STAGES
-            + ubOStageElems * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES
             + vecUbPStageElems * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
-        AscendC::LocalTensor<float> ubLseStage[P_L1_BUF_NUM];
+        AscendC::LocalTensor<float> ubRowMaxStage[P_L1_BUF_NUM];
         AscendC::LocalTensor<float> ubRowSumStage[P_L1_BUF_NUM];
         AscendC::LocalTensor<float> ubTmpBuf =
             resource.ubBuf.template GetBufferByByte<float>(
                 ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * P_L1_BUF_NUM);
         for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
-            ubLseStage[i] = resource.ubBuf.template GetBufferByByte<float>(
+            ubRowMaxStage[i] = resource.ubBuf.template GetBufferByByte<float>(
                 ubWsMetaOffset + RoundUp(vecRows, 16U) * sizeof(float) * 2U * i);
-            ubRowSumStage[i] = ubLseStage[i][RoundUp(vecRows, 16U)];
+            ubRowSumStage[i] = ubRowMaxStage[i][RoundUp(vecRows, 16U)];
         }
 
         EpilogueOnlineSoftmax epilogueSoftmax;
@@ -483,13 +560,27 @@ private:
                         blockMmadQK(gmQTensor, ubSTensorTla, groupSize_, validSize, embed_, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
-                        epilogueSoftmax.Init(ubTmpBuf, ubLseStage[l1PBufId], ubRowSumStage[l1PBufId]);
+                        epilogueSoftmax.Init(ubTmpBuf, ubRowMaxStage[l1PBufId], ubRowSumStage[l1PBufId]);
                         auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(groupSize_, causalValidLen);
                         auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
+                        //if (vecRows > 0)
+                        //    AscendC::DumpTensor(ubSTensor[ubSBufId], 12, 8);
                         epilogueSoftmax(
                             ubSTensor[ubSBufId], ubPBuf[ubSBufId], l1PTensor, groupSize_, vecRows,
                             causalValidLen, sColsAligned,
                             mm1ToSmFlag, smToMm2Flag);
+                        //if (vecRows > 0)
+                        //    AscendC::DumpTensor(ubPBuf[ubSBufId], 34, 8);
+                        uint32_t slotK = static_cast<uint32_t>(
+                            gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+                        uint64_t lseOffset = SlotStatOffset(qToken, kvHeadIdx, slotK, vecRowOffset);
+                        CopyPartialStatsToGm(
+                            gSoftmaxMax, gSoftmaxSum, ubRowMaxStage[l1PBufId], ubRowSumStage[l1PBufId],
+                            lseOffset, 0U, vecRows);
+                        //if (vecRows > 0)
+                        //    AscendC::DumpTensor(ubRowMaxStage[l1PBufId], 56, 8);
+                        //if (vecRows > 0)
+                        //    AscendC::DumpTensor(ubRowSumStage[l1PBufId], 78, 8);
 #endif
                     }
                 }
@@ -503,59 +594,19 @@ private:
                         gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
                     uint32_t causalValidLenDe = CalcCausalValidLen(qToken, validSize, kvStartPos);
                     if (causalValidLenDe != 0U) {
-                        uint64_t wsBytes = (static_cast<uint64_t>(qToken) * kvHeads_ * topK_
-                            + kvHeadIdx * topK_ + slotK) * partialSize_;
-                        uint64_t wsOOff = wsBytes / sizeof(ElementWorkspaceO);
-                        uint64_t wsFOff = (wsBytes + oBytesAligned_) / sizeof(float);
+                        uint64_t wsOOff = SlotOOffset(qToken, kvHeadIdx, slotK);
 
-                        uint32_t ubOTmpBufId = qiDe % UB_S_OTMP_BUF_STAGES;
                         uint32_t l1PBufIdDe = qiDe % P_L1_BUF_NUM;
                         uint32_t smToMm2FlagId = l1PBufIdDe + UB_S_OTMP_BUF_STAGES;
-                        uint32_t mm2ToReFlagId = ubOTmpBufId + UB_S_OTMP_BUF_STAGES + P_L1_BUF_NUM;
                         Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
-                        Arch::CrossCoreFlag mm2ToReFlag(mm2ToReFlagId);
 
 #ifdef __DAV_CUBE__
-                        auto ubOTensorTla = tla::MakeTensor(
-                            ubOTmpTensor[ubOTmpBufId], ubOLayout, Arch::PositionUB{});
+                        auto gmOLayout = tla::MakeLayout<ElementWorkspaceO, LayoutO>(groupSize_, embed_);
+                        auto gmOTensor = tla::MakeTensor(
+                            gAccumOut[wsOOff], gmOLayout, Arch::PositionGM{});
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
-                        blockMmadPV(ubOTensorTla, groupSize_, causalValidLenDe, embed_,
-                            smToMm2Flag, mm2ToReFlag);
-#endif
-#ifdef __DAV_VEC__
-                        if (vecRows > 0U) {
-                            Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
-                            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-                            AscendC::printf("33333333333333333333333: ubOTmpBufId: %d, vecRowOffset * oColAligned:%d, %f\n",
-                                ubOTmpBufId, vecRowOffset * oColAligned, ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned].GetValue(0));
-                            /*AscendC::DumpTensor(
-                                ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
-                                789 + qiDe, 16);*/
-                            int32_t dLen = static_cast<int32_t>(embed_);
-                            for (uint32_t gh = 0; gh < vecRows; gh++) {
-                                float rowSum = ubRowSumStage[l1PBufIdDe].GetValue(gh);
-                                if (rowSum > 0.0f) {
-                                    float invSum = 1.0f / rowSum;
-                                    AscendC::Muls(
-                                        ubOTmpTensor[ubOTmpBufId][(vecRowOffset + gh) * oColAligned],
-                                        ubOTmpTensor[ubOTmpBufId][(vecRowOffset + gh) * oColAligned],
-                                        invSum, dLen);
-                                }
-                            }
-                            AscendC::DataCopy(
-                                gWorkspaceF[wsFOff + vecRowOffset], ubLseStage[l1PBufIdDe], vecRows);
-                            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-                            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-                            AscendC::DataCopy(
-                                gWorkspaceO[wsOOff + static_cast<uint64_t>(vecRowOffset) * embed_],
-                                ubOTmpTensor[ubOTmpBufId][vecRowOffset * oColAligned],
-                                vecRows * embed_);
-                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
-                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-                        } else {
-                            Arch::CrossCoreWaitFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
-                            Arch::CrossCoreSetFlag<Arch::CROSS_CORE_SYNC_MODE_4, PIPE_V>(mm2ToReFlag);
-                        }
+                        blockMmadPV(gmOTensor, groupSize_, causalValidLenDe, embed_, smToMm2Flag);
+                        //AscendC::DumpTensor(gAccumOut[wsOOff], 789 + qiDe, 8);
 #endif
                     }
                 }
@@ -567,41 +618,25 @@ private:
         }
     }
 
-    // Phase 2: Vector-only LSE logsumexp combine across topK partials (§7.2).
+    // Phase 2: FlashDecode-style combine (IFA FlashDecodeCompute / CombineSplitKVRes).
     __aicore__ inline
     void Phase2CombineScale(
-        uint32_t coreIdx, uint32_t coreNum,
+        uint32_t tmpBlockIdx,
         AscendC::GlobalTensor<ElementO> &gO,
-        AscendC::GlobalTensor<ElementWorkspaceO> &gWorkspaceO,
-        AscendC::GlobalTensor<float> &gWorkspaceF)
+        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
+        AscendC::GlobalTensor<float> &gSoftmaxMax,
+        AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
 #ifdef __DAV_VEC__
-        uint32_t accBytes = groupSize_ * embed_ * sizeof(float);
-        uint32_t tmpBytes = embed_ * sizeof(float) + 64 * sizeof(float);
-        AscendC::LocalTensor<float> ubAccBuf =
+        AscendC::LocalTensor<float> ubBase =
             resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::LocalTensor<float> ubTmpBuf =
-            resource.ubBuf.template GetBufferByByte<float>(accBytes);
-        AscendC::LocalTensor<float> ubMetaBuf =
-            resource.ubBuf.template GetBufferByByte<float>(accBytes + tmpBytes);
 
         EpilogueRescaleO epilogueRescaleO;
-        epilogueRescaleO.Init(ubAccBuf, ubTmpBuf, ubMetaBuf, embed_, groupSize_);
-
-        for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
-            uint32_t qToken = taskIdx / kvHeads_;
-            uint32_t kvHeadIdx = taskIdx % kvHeads_;
-            uint32_t qHeadStart = kvHeadIdx * groupSize_;
-
-            uint64_t wsBase = (static_cast<uint64_t>(qToken) * kvHeads_ * topK_
-                + kvHeadIdx * topK_) * partialSize_;
-
-            epilogueRescaleO(
-                gWorkspaceO, gWorkspaceF, gO,
-                qToken, kvHeadIdx, qHeadStart,
-                groupSize_, embed_, topK_, kvHeads_, qHeads_,
-                partialSize_, oBytesAligned_, wsBase);
-        }
+        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_);
+        epilogueRescaleO.FlashDecodeCompute(
+            tmpBlockIdx, totalTaskNumP2_,
+            gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+            qHeads_, kvHeads_);
 #endif
     }
 
@@ -621,8 +656,10 @@ private:
     uint32_t totalTaskNumP1_;
     uint32_t totalTaskNumP2_;
     float scaleValue_;
-    uint64_t partialSize_;
-    uint64_t oBytesAligned_;
+    uint64_t accumOutSize_;
+    uint64_t lseStatSize_;
+    uint64_t slotOElems_;
+    uint64_t slotStatElems_;
 
     AscendC::GlobalTensor<int32_t> gActualQseqlen_;
     AscendC::GlobalTensor<int32_t> gActualKvseqlen_;

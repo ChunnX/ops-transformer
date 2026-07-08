@@ -33,7 +33,8 @@ TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP1);
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP2);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, innerPrecise);
-TILING_DATA_FIELD_DEF(uint64_t, partialSize);
+TILING_DATA_FIELD_DEF(uint64_t, accumOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, lseStatSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 END_TILING_DATA_DEF;
@@ -88,7 +89,8 @@ private:
     const int32_t *kvSeqLenList_ = nullptr;
 
     uint64_t workSpaceSize_ = 0;
-    uint64_t partialSize_ = 0;
+    uint64_t accumOutSize_ = 0;
+    uint64_t lseStatSize_ = 0;
 
     uint32_t blockDim_ = 20;
     uint32_t aivNum_ = 0;
