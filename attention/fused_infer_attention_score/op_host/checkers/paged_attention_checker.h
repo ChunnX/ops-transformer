@@ -41,7 +41,6 @@ private:
     ge::graphStatus CheckBlockTableShapeSize(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSize(const FiaTilingInfo &fiaInfo);
 
-
     ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo);
@@ -56,7 +55,7 @@ private:
 
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
         const std::string& inputName);
-    ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo);
 };
 

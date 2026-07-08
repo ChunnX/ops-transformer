@@ -32,7 +32,6 @@ struct FiaTilingKeyInfo {
     uint64_t quantMode = 31;
     bool hasAttenMask = false;
     bool hasRope = false;
-    // bool isPa = false;
     uint64_t KvLayoutType = 0;
     bool isFd = false;
     bool emptyTensor = false;
