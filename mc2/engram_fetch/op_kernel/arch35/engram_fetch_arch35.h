@@ -49,7 +49,7 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len, uint32_t &tileIdx);
+    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void CopyContextToUb();
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen);
     __aicore__ inline void ScatterByRank(uint32_t batchLen);
@@ -73,10 +73,7 @@ private:
     int64_t numTokens_{0};
     int64_t hiddenBytes_{0};
 
-    AscendC::TBuf<> pingBuf_;
-    AscendC::TBuf<> pongBuf_;
-    int32_t ppEvtMte2ToMte3_[2] = {0, 0};
-    int32_t ppEvtMte3ToMte2_[2] = {0, 0};
+    AscendC::TQueBind<AscendC::TPosition::VECIN, AscendC::TPosition::VECOUT, 2> relayQue_;
     AscendC::TBuf<> indicesBuf_;
     AscendC::TBuf<> hcommBuf_;
     AscendC::TBuf<> rankCountsBuf_;
@@ -115,12 +112,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     AscendC::LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, TILE_BYTES);
-    tpipe_->InitBuffer(pongBuf_, TILE_BYTES);
-    ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
-    ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
-    ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-    ppEvtMte3ToMte2_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+    tpipe_->InitBuffer(relayQue_, 2, TILE_BYTES);
 
     uint32_t countsBufSize = AscendC::Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankCountsBuf_, countsBufSize);
@@ -287,7 +279,6 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
     uint32_t localIdxStart = rankId_ * numEntriesPerRank;
     uint32_t rankStart = rankOffsets(rankId_);
     uint32_t cnt = rankCounts(rankId_);
-    uint32_t tileIdx = 0;
     for (uint32_t b = participantIdx; b < cnt; b += numParticipants) {
         uint32_t i = tokenIdxInRank(rankStart + b);
         int32_t globalIdx = indicesLocal(i);
@@ -296,14 +287,9 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
                       + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-        LocalCopySlice(dst, src, hiddenBytes, tileIdx);
+        LocalCopySlice(dst, src, hiddenBytes);
     }
-    if (tileIdx >= 1U) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-    }
-    if (tileIdx >= 2U) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
-    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart)
@@ -322,6 +308,7 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
     uint32_t rankStart = rankOffsets(ownerRank);
     uint32_t cnt = rankCounts(ownerRank);
     uint32_t pendingReadCount = 0;
+    uint32_t threshold = READ_COMMIT_FIRST_THRESHOLD;
 
     for (uint32_t b = 0; b < cnt; b++) {
         uint32_t i = tokenIdxInRank(rankStart + b);
@@ -333,9 +320,10 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
                                 + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
         hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
         pendingReadCount++;
-        if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
+        if (pendingReadCount >= threshold) {
             hcomm_.Commit(hcommHandleLocal(ownerRank));
             pendingReadCount = 0;
+            threshold = READ_COMMIT_THRESHOLD;
         }
     }
 
@@ -358,11 +346,8 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart
     }
 }
 
-__aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len,
-                                                           uint32_t &tileIdx)
+__aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    AscendC::LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
-    AscendC::LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
     AscendC::GlobalTensor<uint8_t> srcGm;
     AscendC::GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
@@ -372,21 +357,15 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
     uint64_t off = 0;
     while (off < len) {
         uint64_t thisLen = (len - off > TILE_BYTES) ? tileLen : (len - off);
-        uint32_t bufIdx = tileIdx % 2U;
-        AscendC::LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
 
-        if (tileIdx >= 2U) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
-        }
-
+        AscendC::LocalTensor<uint8_t> tmp = relayQue_.AllocTensor<uint8_t>();
         AscendC::DataCopy(tmp, srcGm[off], thisLen);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
+        relayQue_.EnQue<uint8_t>(tmp);
+        tmp = relayQue_.DeQue<uint8_t>();
         AscendC::DataCopy(dstGm[off], tmp, thisLen);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
+        relayQue_.FreeTensor<uint8_t>(tmp);
 
         off += thisLen;
-        tileIdx++;
     }
 }
 } // namespace Mc2Kernel
