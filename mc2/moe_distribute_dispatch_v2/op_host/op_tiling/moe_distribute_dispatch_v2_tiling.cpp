@@ -80,6 +80,10 @@ constexpr int64_t K_MAX = 16;
 constexpr int64_t FULLMESH_K_MAX = 12;
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
+// A5前缀和临时区位于recvCnt工作区之后，分为数据区和同步标记区
+constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
+constexpr uint64_t A5_CUMSUM_MAX_CORE_NUM = 32U;
+constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
 constexpr int64_t H_MIN = 1024;
@@ -1779,6 +1783,11 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *no
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    if (mc2tiling::GetSocVersion(context) == "Ascend950") {
+        // A5为前缀和同步标记预留空间
+        workSpaces[0] += A5_CUMSUM_WS_FLAG_OFFSET +
+            static_cast<uint64_t>(aivNum) * A5_CUMSUM_MAX_CORE_NUM * UB_ALIGN_VAL;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
