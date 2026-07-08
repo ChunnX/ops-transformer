@@ -23,7 +23,7 @@
 - 计算公式：
 
   $$
-  yRef_i=x_i\times weight_i + y_i
+  yRef_i^{out}=x_i\times weight_i + yRef_i^{in}
   $$
 
 ## 函数原型
@@ -120,16 +120,6 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>y（aclTensor）</td>
-      <td>输入</td>
-      <td>表示原地累加的输入矩阵，Device侧的aclTensor类型，公式中的y。</td>
-      <td>-</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>transposeX（bool）</td>
       <td>输入</td>
       <td>表示x矩阵是否转置，Host侧的布尔值。</td>
@@ -172,7 +162,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListType（int64_t）</td>
+      <td>group_list_type（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，目前仅支持两个取值。</td>
       <td>
@@ -188,8 +178,8 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     </tr>
     <tr>
       <td>yRef（aclTensor）</td>
-      <td>输出</td>
-      <td>表示原地累加的输入矩阵y的引用（与y完全相同），公式中的yRef</td>
+      <td>输入/输出</td>
+      <td>表示原地累加的输入输出矩阵，Device侧的aclTensor类型，公式中的yRef。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -239,18 +229,18 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的x、weight、groupList、y、yRef是空指针。</td>
+      <td>传入的x、weight、groupList、yRef是空指针。</td>
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>x、weight、groupList、y、yRef的数据类型或数据格式不在支持的范围之内。</td>
+      <td>x、weight、groupList、yRef的数据类型或数据格式不在支持的范围之内。</td>
     </tr>
       <td>x与weight的数据类型不一致。</td>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
-      <td>x、weight、y、yRef的shape不满足矩阵乘限制要求。</td>
+      <td>x、weight、yRef的shape不满足矩阵乘限制要求。</td>
     </tr>
   </tbody></table>
 
@@ -279,8 +269,8 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 - x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型组合为：
-  - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
-  - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
+  - x为FLOAT16、weight为FLOAT16、yRef为FLOAT32。
+  - x为BFLOAT16、weight为BFLOAT16、yRef为FLOAT32。
 
 ## 调用示例
 
