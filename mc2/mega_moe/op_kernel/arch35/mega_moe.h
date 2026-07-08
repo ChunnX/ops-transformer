@@ -1340,10 +1340,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm1()
 
         int32_t dummySync = 0;
         uint16_t dummyPingpong = 0;
-        MegaMoeImpl::GroupMatmul2<MXFP8_E4M3_COMM_QUANT, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleOutType, QuantScaleOutType>(
-            params_, problemShape, gmm1AddrInfo, shareBlockIdx_, dummySync,
-            0, dummyPingpong, sharedIdx);
+        MegaMoeImpl::Detail::GroupMatmulSharedExpert<QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleOutType, QuantScaleOutType>(problemShape, gmm1AddrInfo);
         PipeBarrier<PIPE_ALL>();
     }
 }
@@ -1472,10 +1470,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertGmm2()
 
         int32_t dummySync = 0;
         uint16_t dummyPingpong = 0;
-        MegaMoeImpl::GroupMatmul2<MXFP8_E4M3_COMM_QUANT, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleOutType, QuantScaleOutType>(
-            params_, problemShape, gmm2AddrInfo, shareBlockIdx_, dummySync,
-            0, dummyPingpong, sharedIdx);
+        MegaMoeImpl::Detail::GroupMatmulSharedExpert<QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleOutType, QuantScaleOutType>(problemShape, gmm2AddrInfo);
         PipeBarrier<PIPE_ALL>();
     }
 }

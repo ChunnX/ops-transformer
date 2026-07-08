@@ -117,9 +117,6 @@ __aicore__ inline void WaitForUpstreamReady(
     const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
 {
     if constexpr (Policy::IS_GMM1) {
-        if (gmmAddrInfo.dispatchToGmm1Flag == nullptr) {
-            return;
-        }
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
@@ -129,9 +126,6 @@ __aicore__ inline void WaitForUpstreamReady(
             }
         }
     } else {
-        if (gmmAddrInfo.swigluToGmm2Flag == nullptr) {
-            return;
-        }
         BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
@@ -592,10 +586,80 @@ __aicore__ inline void GroupMatmulImplGeneric(
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
-} // namespace Detail
 
 // =================================================================================================
-// GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
+// GroupMatmulSharedExpert: 纯 AIC matmul，输出到 GM，无 flag 同步、无 AIV 交互
+// 用于共享专家 GMM1/GMM2，复用 Config/Layout 体系
+// =================================================================================================
+template <typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmulSharedExpert(
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo)
+{
+    if constexpr (g_coreType != AscendC::AIC) { return; }
+
+    using Config = Detail::Config<false, Detail::Gmm2Policy, MXFP8_E4M3_COMM_QUANT,
+        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
+    auto config = Config::BuildProblemConfig(problemShape);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t tileNum = scheduler.GetTileNum();
+    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t blockNum = GetBlockNum();
+
+    auto layouts = Config::BuildLayouts(config);
+
+    using BlockMmad = typename Config::BlockMmad;
+    BlockMmad blockMmad;
+    bool enableL0CPingPong = false;
+    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
+    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ typename Config::BiasType*>(0UL)), layouts.bias);
+    auto gmC = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layouts.c);
+
+    for (uint32_t loopIdx = blockIdx; loopIdx < tileNum; loopIdx += blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t kLoc = Get<K_VALUE>(blockCoord);
+
+        auto gmBlockA = gmA.Slice(
+            Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA = gmScaleA.Slice(
+            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+        auto gmBlockB = gmB.Slice(
+            Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(
+            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+        auto gmBlockC = gmC.Slice(
+            Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+
+        typename BlockMmad::BlockShape singleShape{
+            Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
+    }
+}
+} // namespace Detail
 // =================================================================================================
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false>
