@@ -12,7 +12,10 @@
 #include <cstring>
 #include <tuple>
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 #if __has_include("aclnnop/aclnn_moe_token_permute_v2.h")
 #include "aclnnop/aclnn_moe_token_permute_v2.h"
