@@ -20,7 +20,6 @@
 #define ASCENDC_MHC_POST_H
 
 #include "kernel_operator.h"
-#include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_post_tiling_data.h"
 #include "mhc_post_tiling_key.h"
