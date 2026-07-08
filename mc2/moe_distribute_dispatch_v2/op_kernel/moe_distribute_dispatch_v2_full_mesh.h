@@ -1062,7 +1062,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tbufPool0.InitBuffer(inQueue, BUFFER_NUM, hAlignSize_);
     tbufPool1.InitBuffer(inQueueCleanBuf, BUFFER_NUM * hAlignSize_);
     // 由于MX以及PERGROUP量化在计算scales时每次搬入256字节数据，所以在token搬入前需要对空间填0，避免引入脏数据
-    if constexpr ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT)) {
+    if constexpr ((QuantMode == MX_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT) ||
+        (QuantMode == MX_QUANT_CLIP)) {
         LocalTensor<uint8_t> inTensor8 = inQueueCleanBuf.Get<uint8_t>();
         Duplicate(inTensor8, QUANT_PADDING_VALUE, BUFFER_NUM * hAlignSize_);
     }

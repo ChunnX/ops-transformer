@@ -341,10 +341,10 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTenso
     __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)castFp8LocalTensor.GetPhyAddr();
     __ubuf__ uint16_t* mxScaleLocalAddr =
         (__ubuf__ uint16_t*)castFp8LocalTensor[processLen].GetPhyAddr();
-    quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
+    Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
     // 计算scales并填充
-    quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-    quant::ComputeFp8Data<ExpandXType, Fp8Type,
+    Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+    Quant::ComputeFp8Data<ExpandXType, Fp8Type,
         AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
         srcAddr, halfScaleLocalAddr, outLocalAddr, processLen); // 计算量化后的expandx并填充
 }
@@ -365,8 +365,8 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<flo
     __ubuf__ fp8_e8m0_t *srcPtr0 = (__ubuf__ fp8_e8m0_t *)scaleDivFp8Tensor_.GetPhyAddr();
     __ubuf__ T *tokenPtr0 = (__ubuf__ T *)castFp8LocalTensor_.GetPhyAddr();
     __ubuf__ float *sumDstPtr = (__ubuf__ float *)sumTensor.GetPhyAddr();
-    uint32_t bf16RepeatSize = quant::GetVRegSizeDispatch() / sizeof(bfloat16_t);
-    uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float);
+    uint32_t bf16RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(bfloat16_t);
+    uint32_t fp32RepeatSize = Quant::GetVRegSizeDispatch() / sizeof(float);
     uint16_t repeatTimes = Ceil(scaleLen, bf16RepeatSize);
     uint16_t fp32RepeatTimes = Ceil(tokenLen, fp32RepeatSize);
     uint16_t repeatTimes2 = Ceil(scaleLen * 2, fp32RepeatSize);

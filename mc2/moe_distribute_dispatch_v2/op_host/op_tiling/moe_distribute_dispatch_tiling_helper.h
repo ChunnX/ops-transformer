@@ -62,6 +62,7 @@ enum class QuantModeA5 : uint32_t {
     PERTOKEN_DYNAMIC_QUANT = 2,
     PERGROUP_DYNAMIC_QUANT = 3,
     MX_QUANT = 4,
+    MX_QUANT_CLIP = 5,
     BUTT
 };
 
@@ -83,7 +84,9 @@ const std::map<std::pair<QuantModeA5, ge::DataType>, RealModeA5> QUANT_MODE_MAP 
     {{QuantModeA5::MX_QUANT, ge::DT_FLOAT8_E5M2}, RealModeA5::MX_SCALES},
     {{QuantModeA5::MX_QUANT, ge::DT_FLOAT8_E4M3FN}, RealModeA5::MX_SCALES},
     {{QuantModeA5::MX_QUANT, ge::DT_FLOAT4_E2M1}, RealModeA5::MX_SCALES},
-    {{QuantModeA5::MX_QUANT, ge::DT_FLOAT4_E1M2}, RealModeA5::MX_SCALES}
+    {{QuantModeA5::MX_QUANT, ge::DT_FLOAT4_E1M2}, RealModeA5::MX_SCALES},
+    {{QuantModeA5::MX_QUANT_CLIP, ge::DT_FLOAT8_E5M2}, RealModeA5::MX_SCALES},
+    {{QuantModeA5::MX_QUANT_CLIP, ge::DT_FLOAT8_E4M3FN}, RealModeA5::MX_SCALES}
 };
 
 // Supported x datatype in nonquant mode, the same as expandX
