@@ -153,13 +153,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
             <li>由于tensorlist限制，非连续场景下B不能大于256。</li>
-            <li>key仅支持首轴非连续。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>value</td>
@@ -170,12 +169,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
             <li>由于tensorlist限制，非连续场景下B不能大于256。</li></ul>
-            <li>value仅支持首轴非连续。</li>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -2148,13 +2146,6 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tbody>
     </table>
     
-</details>
-
-<details>
-
-<summary>key、value首轴非连续场景约束：</summary>
-&nbsp;&nbsp;仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
-
 </details>
 
 ## 调用示例

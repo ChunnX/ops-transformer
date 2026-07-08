@@ -48,11 +48,6 @@ namespace optiling{
     END_TILING_DATA_DEF
     REGISTER_TILING_DATA_CLASS(splitNodeOp, splitNode)
 
-    BEGIN_TILING_DATA_DEF(StridesConstInfo)
-    TILING_DATA_FIELD_DEF(uint64_t, bnStride)
-    END_TILING_DATA_DEF
-    REGISTER_TILING_DATA_CLASS(StridesConstInfoOp, StridesConstInfo)
-
     BEGIN_TILING_DATA_DEF(FAInferTilingData)
     TILING_DATA_FIELD_DEF(uint32_t, numHeads)
     TILING_DATA_FIELD_DEF(uint32_t, embeddingSize)
@@ -88,8 +83,6 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
     TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
     TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
-    TILING_DATA_FIELD_DEF_STRUCT(StridesConstInfo, keyStrides)
-    TILING_DATA_FIELD_DEF_STRUCT(StridesConstInfo, valueStrides)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
@@ -161,8 +154,6 @@ namespace optiling{
         bool decodingFlag = false;
         bool kvcacheNzFlag = false;
         string layout;
-        uint64_t keyBnStride = 0;
-        uint64_t valueBnStride = 0;
     };
 
     class FAInferTiling {
@@ -272,8 +263,6 @@ namespace optiling{
         faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
         faTilingData.set_pseQ(faInfo_.pseQ);
         faTilingData.set_pseKv(faInfo_.pseKv);
-        faTilingData.keyStrides.set_bnStride(faInfo_.keyBnStride);
-        faTilingData.valueStrides.set_bnStride(faInfo_.valueBnStride);
     }
 
     uint64_t FAInferTiling::GetTilingKey()
