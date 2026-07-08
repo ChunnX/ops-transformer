@@ -780,7 +780,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::QuantDyn
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ float* scaleOutLocalAddr = (__ubuf__ float*)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
     
-        quant::ComputePerTileDynamic<XType, YOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(srcAddr,
+        Quant::ComputePerTileDynamic<XType, YOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(srcAddr,
             smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
     }
 }
@@ -798,9 +798,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::QuantDyn
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleLocalAddr = (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_)].GetPhyAddr();
 
-        quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
-        quant::ComputeScale<YOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum); // 计算scales并填充
-        quant::ComputeFp8Data<XType, YOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        Quant::ComputeScale<YOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum); // 计算scales并填充
+        Quant::ComputeFp8Data<XType, YOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
             srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_); // 计算量化后的expandx并填充
     }
 }
