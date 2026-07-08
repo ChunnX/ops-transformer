@@ -79,8 +79,8 @@ namespace {
     constexpr int64_t FULLMESH_K_MAX = 12;
     constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
     constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
-    // cumsum 状态区从 win 区迁移到 workspace 后需额外预留的空间（按32核预算，A3/A5共用）
-    // cumsum 区从 workspace + SYSTEM_NEED_WORKSPACE 处开始，只需加 CAL 区 + FLAG 区
+    // cumsum 状态区从 win 区迁移到用户 workspace 后需额外预留的空间（按32核预算，A3/A5共用）
+    // cumsum 区在 recvCnt workspace 后，只需加 CAL 区 + FLAG 区
     constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
     constexpr uint64_t CUMSUM_MAX_CORE_NUM = 32U;
     constexpr uint64_t UB_ALIGN_VAL = 32U;
@@ -1553,7 +1553,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *no
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
-    // cumsum 状态区：CAL 区 + FLAG 区（紧跟在系统保留区之后）
+    // cumsum 状态区：CAL 区 + FLAG 区（紧跟在 recvCnt workspace 之后）
     workSpaces[0] += CUMSUM_WS_FLAG_OFFSET +
         static_cast<uint64_t>(aivNum) * CUMSUM_MAX_CORE_NUM * UB_ALIGN_VAL;
     return ge::GRAPH_SUCCESS;

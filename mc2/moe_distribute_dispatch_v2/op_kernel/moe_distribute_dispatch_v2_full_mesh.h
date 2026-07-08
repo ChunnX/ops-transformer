@@ -46,6 +46,7 @@ namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL;  // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
+constexpr uint64_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U; // 核间软同步偏移地址
 constexpr int32_t  FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256 / sizeof(int32_t);
@@ -60,8 +61,7 @@ constexpr uint32_t DATA_TO_CNT_TIME_RATIO = 4U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
-// cumsum 状态区从 win 区迁移到 workspace，避免核数放开到32后 win 状态区溢出
-constexpr uint64_t CUMSUM_WS_BASE_OFFSET = 16UL * 1024UL * 1024UL; // workspace 内 16MB 偏移，避开系统保留区
+// cumsum 状态区从 win 区迁移到用户 workspace，避免核数放开到32后 win 状态区溢出
 constexpr uint64_t CUMSUM_WS_CAL_OFFSET = 0UL;
 // 按32核预算的 CAL 区大小（32*32*32=32KB），已按1KB对齐
 constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL;
@@ -498,12 +498,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SetDataStatus();
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut;
-    recvCntWorkspaceGM_ = workspaceGM;
+    recvCntWorkspaceGM_ = AscendC::GetUserWorkspace(workspaceGM);
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
     selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGM_));
+    uint64_t recvCntWsSize = static_cast<uint64_t>(aivNum_) * static_cast<uint64_t>(rscvStatusNum_) *
+                             sizeof(int32_t);
+    uint64_t cumsumWsBaseOffset = Ceil(recvCntWsSize, WORKSPACE_ELEMENT_OFFSET) * WORKSPACE_ELEMENT_OFFSET;
     cumsumWsGMTensor_.SetGlobalBuffer(
-        (__gm__ float*)((__gm__ uint8_t*)(recvCntWorkspaceGM_) + CUMSUM_WS_BASE_OFFSET));
+        (__gm__ float*)((__gm__ uint8_t*)(recvCntWorkspaceGM_) + cumsumWsBaseOffset));
     windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
