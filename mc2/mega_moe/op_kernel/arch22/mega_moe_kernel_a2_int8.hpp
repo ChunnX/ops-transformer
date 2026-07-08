@@ -1524,7 +1524,6 @@ private:
             // DAfterCombineSize: combine 接收数据区BF16，bs × topK × h × sizeof(int16_t)，FFN过后的数据
             int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
 
-
             // WinIn: 纯从前向后布局 (front-to-back)，与 A3 对齐
             // RESERVED → A → perTokenScale → D → flag → TPE
             offsetA = RESERVED_SPACE_SIZE;
