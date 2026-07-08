@@ -719,20 +719,6 @@ def liv2_output_single(params, is_batch = False):
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     
-    if layout_query == "TND":
-        if seqused_q is not None:
-            max_seqlen_q = max(seqused_q).item()
-        else:
-            seqlen = []
-            for b_idx in range(batch_size):
-                seqlen.append(cu_seqlens_q[b_idx + 1] - cu_seqlens_q[b_idx])
-            max_seqlen_q = max(seqlen).item()
-    else:
-        if seqused_q is not None:
-            max_seqlen_q = max(seqused_q).item()
-        else:
-            max_seqlen_q = q_seq
-    
     if layout_key == "TND":
         if seqused_k is not None:
             max_seqlen_k = max(seqused_k).item()
