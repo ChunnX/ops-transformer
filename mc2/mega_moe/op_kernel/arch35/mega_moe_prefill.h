@@ -156,6 +156,7 @@ private:
                                             Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     static constexpr int32_t UNPERMUTE_BATCH_LEN = 1024;  // k∈[1,8192], topK∈[2,8], 每 token topK×6B, 1024 安全
+    static constexpr int32_t DISPATCH_RECV_BATCH_LEN = 4096;  // 收侧每 batch route item 数，匹配标准 bs=512*topK=8
 
     // ── UB tensor（与主线共用名，但大 bs 路径下大小按 batch 级而非全量 routeItemNum）──
     LocalTensor<int32_t> topkIndexTensor_;          // 收侧: 每 batch 重建的全局 route item index
@@ -643,19 +644,14 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::DispatchB
     // triple ring buffer: DISPATCH_BUFFER_NUM 条 * 32B，逐 token 即时写 GM
     uint32_t tripleReserveSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) *
         static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
-    uint32_t fixedBytes = expertTokenCntTensorSize + cumsumInfoTensorSize + sendCntTensorSize +
-        copyTmpTotalSize + expertTokenNumsOutTensorSize + tripleReserveSize;
 
-    // ── 用 UB 余量反推 recvRouteBatchLen_ ──
-    int64_t ubAvailable = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
-    int64_t ubForBatch = ubAvailable - static_cast<int64_t>(fixedBytes);
-    // 随 batch 线性增长: maskBatch(1/8B) + validTopkIndex(4B) + topkIndex(4B)
-    int64_t batchLenByUb = ubForBatch * 8 / ((4 + 4) * 8 + 1);
-    int64_t batchLenCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t batchLen = batchLenByUb < batchLenCap ? batchLenByUb : batchLenCap;
-    batchLen = batchLen / ALIGN_256 * ALIGN_256;
-    batchLen = batchLen < ALIGN_256 ? ALIGN_256 : batchLen;
-    recvRouteBatchLen_ = static_cast<int32_t>(batchLen);
+    // ── 固定 batchLen（后续以模板参数形式传入）──
+    recvRouteBatchLen_ = DISPATCH_RECV_BATCH_LEN;
+    if (recvRouteBatchLen_ > static_cast<int32_t>(sendTotalNum_)) {
+        recvRouteBatchLen_ = static_cast<int32_t>(sendTotalNum_);
+    }
+    recvRouteBatchLen_ = static_cast<int32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(recvRouteBatchLen_), static_cast<int64_t>(ALIGN_256)));
     recvRouteBatchNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvRouteBatchLen_)));
 
@@ -670,7 +666,7 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::DispatchB
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr,
         sendCntTensorSize / sizeof(int32_t));
     uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
-    uint32_t maskBatchSize = static_cast<uint32_t>(recvRouteBatchLen_ / 8);
+    uint32_t maskBatchSize = static_cast<uint32_t>(recvRouteBatchLen_ / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     maskBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint8_t));
     maskBatchU32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint32_t));
     uint32_t validTopkIndexTensorAddr = maskBatchAddr + maskBatchSize;
