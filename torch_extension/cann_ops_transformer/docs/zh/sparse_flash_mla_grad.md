@@ -106,11 +106,11 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **softmax_lse**（`Tensor`）：必选参数，注意力正向计算的输出lse，支持非连续，数据格式支持ND，数据类型支持`float32`。`layout_q`为BSND时shape为[B,N2,S1,G]，当`layout_q`为TND时shape为[N2,T1,G]，B：与query的B保持一致；N2：1；S1：与query的S1保持一致；G：N1/N2；T1：B × S1。
 
-- **ori_kv**（`Tensor`）：可选参数，对应公式中的$oriKv$，支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`，`layout_kv`为BSND时shape为[B,S2,N2,D]，当`layout_kv`为TND时shape为[T2,N2,D]，B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2；当前不支持传None。
+- **ori_kv**（`Tensor`）：可选参数，对应公式中的$oriKv$，支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`，`layout_kv`为BSND时shape为[B,S2,N2,D]，当`layout_kv`为TND时shape为[T2,N2,D]，B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2。Atlas A2/A3 不支持传 None；Ascend 950PR/Ascend 950DT 支持传 None。
 
 - **cmp_kv**（`Tensor`）：可选参数，对应公式中的$cmpkv$，支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`，`layout_kv`为BSND时shape为[B,S3,N2,D]，当`layout_kv`为TND时shape为[T3,N2,D]，B：与query的B保持一致；S3：支持泛化；N2：1；D：512；T3：B × S3；传None时按照公式中的SWA场景计算。
 
-- **ori_sparse_indices**（`Tensor`）：可选参数，对应oriKv部分的topk（暂不支持），支持非连续，数据格式支持ND，数据类型支持`int32`，`layout_q`为BSND时shape为[B,S1,N2,K1]，当`layout_q`为TND时shape为[T1,N2,K1]，B：与query的B保持一致；S1：与query的S1保持一致；N2：1；K1：支持泛化；T1：B × S1；当前仅支持传None。
+- **ori_sparse_indices**（`Tensor`）：可选参数，对应oriKv部分的topk，支持非连续，数据格式支持ND，数据类型支持`int32`，`layout_q`为BSND时shape为[B,S1,N2,K1]，当`layout_q`为TND时shape为[T1,N2,K1]，B：与query的B保持一致；S1：与query的S1保持一致；N2：1；K1：支持泛化；T1：B × S1。Atlas A2/A3 不支持；Ascend 950PR/Ascend 950DT 支持。
 
 - **cmp_sparse_indices**（`Tensor`）：可选参数，对应公式中的$topkIndices$，支持非连续，数据格式支持ND，数据类型支持`int32`，`layout_q`为BSND时shape为[B,S1,N2,K2]，当`layout_q`为TND时shape为[T1,N2,K2]，B：与query的B保持一致；S1：与query的S1保持一致；N2：1；K2：支持泛化；T1：B × S1；若cmp_kv不为None，此时cmp_sparse_indices不为None时按照SCFA场景计算，为None时按照CFA场景计算；若cmp_kv为None，则cmp_sparse_indices只能为None，此时按SWA场景计算。
 
@@ -132,9 +132,9 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cmp_topk_length**（`Tensor`）：可选参数，表示每行query对应的cmp_kv实际可选的topk长度，数据类型支持`int32`，shape为`[B,S1,N2]`（BSND）或`[T1,N2]`（TND）。当 cmp_mask_mode=0 且 cmp_sparse_indices 不为 None 时必须传入且必须为准确值。Atlas A2/A3 当前不支持（需传 None）；Ascend 950PR/Ascend 950DT 支持。
 
-- **sinks**（`Tensor`）：可选参数，表示注意力下沉tensor，数据类型支持`float32`，支持非连续，数据格式支持ND，shape为[N1]，当前不支持传None。
+- **sinks**（`Tensor`）：可选参数，表示注意力下沉tensor，数据类型支持`float32`，支持非连续，数据格式支持ND，shape为[N1]。Atlas A2/A3 不支持传 None；Ascend 950PR/Ascend 950DT 支持。
 
-- **metadata**（`Tensor`）：可选参数，表示tiling下沉的aicpu算子输出结果，当前仅支持传None。
+- **metadata**（`Tensor`）：可选参数，表示tiling下沉的aicpu算子输出结果。Atlas A2/A3 仅支持传 None；Ascend 950PR/Ascend 950DT 必须传（由 `sparse_flash_mla_grad_metadata` 生成）。
 
 - **softmax_scale**（`double`）：可选参数，代表缩放系数，数据类型支持`double`，默认值：1.0 / sqrt(D)。
 
