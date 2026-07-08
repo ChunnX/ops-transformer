@@ -13,7 +13,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -50,7 +53,7 @@ at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_
         outputDevice = cmpResidualK.value().device();
     }
 
-    at::Tensor output = torch::empty({LI_V2_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    at::Tensor output = at::empty({LI_V2_METADATA_SIZE}, at::dtype(at::kInt).device(outputDevice));
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensKVal = get_valid_tensor(cuSeqlensK, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);
