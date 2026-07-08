@@ -55,9 +55,9 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
 
-        // _apt entry (arch35/distribute_barrier_extend_apt.cpp).
-        OpAICoreConfig aicore_config_apt;
-        aicore_config_apt.DynamicCompileStaticFlag(true)
+        // _a5 entry (arch35/distribute_barrier_extend_a5.cpp).
+        OpAICoreConfig aicore_config_a5;
+        aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -66,9 +66,9 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_true")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-            .ExtendCfgInfo("opFile.value", "distribute_barrier_extend_apt");
+            .ExtendCfgInfo("opFile.value", "distribute_barrier_extend_a5");
 
-        this->AICore().AddConfig("ascend950", aicore_config_apt);
+        this->AICore().AddConfig("ascend950", aicore_config_a5);
     }
 };
 
