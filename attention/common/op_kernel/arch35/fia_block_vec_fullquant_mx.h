@@ -168,7 +168,7 @@ public:
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
+        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);

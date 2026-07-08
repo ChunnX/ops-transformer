@@ -93,6 +93,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
+    MaskReg preg_compare_max;
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -199,6 +200,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
         Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
         Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_input_max, vreg_min, preg_all);
+        Select(vreg_input_max, vreg_min, vreg_input_max, preg_compare_max);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
@@ -428,6 +431,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
+    MaskReg preg_compare_max;
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -534,6 +538,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
         Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_input_max, vreg_min, preg_all);
+        Select(vreg_input_max, vreg_min, vreg_input_max, preg_compare_max);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max,
                                                                  1);
     }
