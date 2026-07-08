@@ -18,6 +18,7 @@
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
 #include "err/ops_err.h"
+#include "tiling/platform/platform_ascendc.h"
 #include "../op_kernel/recurrent_gated_delta_rule_tiling_data.h"
 
 namespace optiling {
@@ -86,6 +87,7 @@ protected:
     RecurrentGatedDeltaRuleTilingData tilingData_;
     RecurrentGatedDeltaRuleInfo inputParams_;
     ge::DataType stateDtype_ = ge::DT_BF16;
+    platform_ascendc::SocVersion socVersion_;
 };
 
 } // namespace optiling

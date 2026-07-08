@@ -15,6 +15,7 @@
 
 #include "arch35/chunk_gated_delta_rule.h"
 #include "chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_tiling_key.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -33,7 +34,7 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
     CGDRInitParams initParams{
         query, key, value, beta, initialState, seqlens, gOptional,
         out, finalState};
-    if (TILING_KEY_IS(10)) {
+    if (TILING_KEY_IS(TILING_KEY_CGDR_FP32_STATE)) {
         CGDR<bfloat16_t, float, float> op(&pipe, &tilingData);
         op.Init(initParams, user);
         op.Process();

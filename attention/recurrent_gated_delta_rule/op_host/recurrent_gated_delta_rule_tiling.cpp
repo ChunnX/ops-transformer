@@ -65,6 +65,7 @@ void RecurrentGatedDeltaRuleTiling::InitCompileInfo()
     const auto &ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo_.ubSize);
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+    socVersion_ = ascendcPlatform.GetSocVersion();
 
     if (compileInfo_.aivNum <= 0) {
         OP_LOGE(context_->GetNodeName(), "aivNum <= 0");
@@ -218,6 +219,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
     OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32."),
                 return ge::GRAPH_FAILED);
+    if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGE(context_->GetNodeName(), "FP32 state is only supported on Ascend950.");
+        return ge::GRAPH_FAILED;
+    }
     stateDtype_ = stateDtype;
 
     auto actSeqlensDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
