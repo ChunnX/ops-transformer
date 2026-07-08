@@ -42,7 +42,11 @@ public:
     {
         bs = tilingData_->bs;
         blockFactor = tilingData_->blockFactor; // 每个核需要处理的行数
-        if (this->blockIdx == (this->useCoreNum - 1)) {
+        // 满核启动: blockIdx >= usedCoreNum 的核没有行可算, 仅在末尾参与 SyncAll 屏障占核,
+        // 防止空闲核被其它进程的 SIMT 算子分时复用而触发 aivec UB 越界。
+        if (this->blockIdx >= static_cast<uint32_t>(tilingData_->usedCoreNum)) {
+            blockFactor = 0;
+        } else if (this->blockIdx == (tilingData_->usedCoreNum - 1)) {
             blockFactor = bs - this->blockIdx * tilingData_->blockFactor; // 尾核需要处理的行数
         }
         this->reciprocal = tilingData_->reciprocal;
@@ -2393,6 +2397,9 @@ public:
             // for Rope
             Rope(xDimOffset, rowIdx, cosSinOffset, kCacheRowOffset);
         }
+        // 满核屏障: 所有核(含空转核)在此汇合, 把整片 AI Core 占用到 kernel 结束,
+        // 关闭跨进程共核窗口。需配合 host 侧 SetScheduleMode(batch_mode)。
+        SyncAll();
     }
 
 private:

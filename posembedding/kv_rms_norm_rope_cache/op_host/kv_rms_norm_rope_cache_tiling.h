@@ -128,6 +128,7 @@ TILING_DATA_FIELD_DEF(int64_t, cacheMode);
 TILING_DATA_FIELD_DEF(int64_t, dk);
 TILING_DATA_FIELD_DEF(int64_t, dv); // 计算rmsnorm的D
 TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, usedCoreNum); // 实际有行可算的核数(满核启动时之外的核空转只参与SyncAll)
 TILING_DATA_FIELD_DEF(int64_t, ubFactor);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorDvTail);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorDvLoopCountCeil);
