@@ -144,7 +144,7 @@ static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     // 同步flag
     int64_t offsetFlag = epWorldSize * ALIGN_512;  // CrossRankSync所用空间
     if (!isA3) {
-        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant)
+        // A2: dispatch flag (EP×E×64B) + allgather flag (EP×64B)
         int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
         int64_t allgatherFlag = epWorldSize * 64;
         offsetFlag += dispatchFlag + allgatherFlag;
