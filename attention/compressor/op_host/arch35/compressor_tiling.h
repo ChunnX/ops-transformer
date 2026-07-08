@@ -304,7 +304,6 @@ private:
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;
     ge::graphStatus CheckEmptyTensor() const;
-    ge::graphStatus CheckScenarioConsistency() const;
     ge::graphStatus CheckBlockDimConstrain() const;
 
     size_t ubSize_ = 0;
