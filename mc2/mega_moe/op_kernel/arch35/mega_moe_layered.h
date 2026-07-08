@@ -248,6 +248,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
+
+    PRINTF("==maxOutputSize_==:%u", maxOutputSize_);
     maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
         static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
@@ -299,13 +301,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     dispatchWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
-    compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
-        static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
-    PRINTF("==compareCount_==:%u", compareCount_);
-    maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32));
+    compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), // sendTotalNum_ = 32K
+        static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t); // 128K 256对齐后/4 = 32K
+    PRINTF("==compareCount_==:%u\n", compareCount_); // 32K
+    maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32)); // 4K 32对齐
     // 每个 win 槽位再追加 32B 存 count(源卡 SendMaskCal 同步算好), 须与 PeermemInfo 的 maskSlotSize 一致。
-    PRINTF("==maskAlignSize_==:%u", maskAlignSize_);
-    maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
+    PRINTF("==maskAlignSize_==:%u\n", maskAlignSize_);
+    maskSlotSize_ = maskAlignSize_ + static_cast<uint32_t>(ALIGN_32); // 4K + 32B
     mxQuantScaleNumAlignPerToken_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
     mxQuantTokenAlignBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / A_ELEMS_PER_BYTE),
         static_cast<uint32_t>(ALIGN_256)) * sizeof(ActivationType);
@@ -428,6 +430,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     hcomm_.Init(hcommTensor_, ALIGN_512);
 
     // 计算 resetTensor 大小（与原逻辑一致）
+    PRINTF("==expertPerRank_==:%u\n", expertPerRank_);
     uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
