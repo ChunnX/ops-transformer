@@ -701,6 +701,8 @@ inline void SectionStreamKImpl::ScheduleFd(uint32_t aivNum, SectionStreamKImplRe
         totalFDLoad += result.s2SplitNum[i] * result.mSize[i];
     }
     // 计算每个核处理的load
+    uint32_t emptyVectorNum = aivNum - result.fdTaskNum;
+    uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum));
     uint32_t curCoreIndex = 0U;
 
     // 1. 计算全局平均负载，向上取整避免核负载为0
@@ -708,19 +710,27 @@ inline void SectionStreamKImpl::ScheduleFd(uint32_t aivNum, SectionStreamKImplRe
     // 3. 计算当前归约任务每个核的平均行数，向上取整，避免行数为0
     // 4. 重新计算正确的核数，避免因为向上平均行数导致有核为空
     for (uint32_t i = 0; i < result.fdTaskNum; ++i) {
-        uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum - curCoreIndex));
+        if (emptyVectorNum == 0U) {
+            result.taskIdx[curCoreIndex] = i;
+            result.mStart[curCoreIndex] = 0U;
+            result.mLen[curCoreIndex] = result.mSize[i];
+            curCoreIndex++;
+            continue;
+        }
+
         uint32_t curVecNum = std::max(1U,
             static_cast<uint32_t>(static_cast<uint64_t>(result.s2SplitNum[i] * result.mSize[i]) / averageLoad));
         uint32_t curAvgMSize = CeilDiv(result.mSize[i], static_cast<uint32_t>(curVecNum));
         curVecNum = CeilDiv(result.mSize[i], curAvgMSize);
+        curVecNum = std::min(curVecNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
 
         for (uint32_t vid = 0; vid < curVecNum; vid++) {
             result.taskIdx[curCoreIndex] = i;
             result.mStart[curCoreIndex] = vid * curAvgMSize;
             result.mLen[curCoreIndex] = (vid < curVecNum - 1U) ? curAvgMSize : (result.mSize[i] - vid * curAvgMSize);
-            totalFDLoad -= result.mLen[curCoreIndex] * result.s2SplitNum[i];
             curCoreIndex++;
         }
+        emptyVectorNum -= (curVecNum - 1U);    // 1: 空余核不包含FD自身的核，要-1
     }
     result.usedVecNum = curCoreIndex;
 }
