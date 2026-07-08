@@ -144,8 +144,10 @@ public:
                                     outQueue_.EnQue(bf16Init);
                                     CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
                                 }
-                                CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                             }
+                        }
+                        if (cId == 0) {
+                            CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
