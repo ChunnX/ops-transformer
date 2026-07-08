@@ -19,6 +19,7 @@
 |    接口名   |   说明     |  确定性说明（A2/A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ------------------- | ------------------- |
 |[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)|FlashAttention非量化注意力计算。|-|默认支持确定性计算|
+|[grouped_matmul_activation_quant](../../torch_extension/cann_ops_transformer/docs/zh/grouped_matmul_activation_quant.md)|融合GMM、激活函数和量化算子，完成分组矩阵乘、激活和量化计算，输出量化结果及量化因子。|-|默认确定性实现|
 |[lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)|基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。|默认确定性实现|-|
 |[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)|lightning_indexer接口的前置接口，用于计算lightning_indexer的负载均衡。|默认确定性实现|默认确定性实现|
 |[mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|

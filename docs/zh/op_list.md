@@ -638,6 +638,16 @@
   </tr>
   <tr>
     <td>gmm</td>
+    <td><a href="../../gmm/grouped_matmul_activation_quant/README.md">grouped_matmul_activation_quant</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>融合GMM、激活函数和量化算子，完成分组矩阵乘、激活和量化计算，输出量化结果及量化因子。</td>
+  </tr>
+  <tr>
+    <td>gmm</td>
     <td><a href="../../gmm/grouped_matmul_finalize_routing/README.md">grouped_matmul_finalize_routing</a></td>
     <td>✓</td>
     <td>✓</td>
