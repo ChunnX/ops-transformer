@@ -121,12 +121,12 @@ bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::IsCapable()
     }
 
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        if (isMaxWorkspace_) {
+            return false;
+        }
         if (isTndSABHit(context_)) {
             float keep_prob = fBaseParams.keepProb;
             float epsilon = 1e-10f;
-            if (isMaxWorkspace_) {
-                return false;
-            }
             auto dropMask = context_->GetOptionalInputDesc(DROP_MASK);
             if ((fBaseParams.d == SPECIAL_HEADDIM_128) && (fBaseParams.b >= B_1) && (fBaseParams.b <= B_16) &&
                 (fBaseParams.g >= G_4) && (fBaseParams.t1 == fBaseParams.t2) &&
