@@ -127,7 +127,7 @@ class SymmBuffer:
 
 def get_mega_moe_ccl_buffer_size(
     ep_world_size: int, num_experts: int, num_max_tokens_per_rank: int,
-    num_topk: int, hidden: int,
+    num_topk: int, hidden: int, *,
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
     combine_quant_mode: int = 0, comm_alg: str = ""
 ) -> int:

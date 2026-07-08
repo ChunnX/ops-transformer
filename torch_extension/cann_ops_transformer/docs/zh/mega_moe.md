@@ -462,7 +462,7 @@
 - get_mega_moe_ccl_buffer_size：
 
 ```python
-get_mega_moe_ccl_buffer_size(ep_world_size, num_experts, num_max_tokens_per_rank, num_topk, hidden, dispatch_quant_mode=0, dispatch_quant_out_dtype=28, combine_quant_mode=0, comm_alg="") -> int
+get_mega_moe_ccl_buffer_size(ep_world_size, num_experts, num_max_tokens_per_rank, num_topk, hidden, *, dispatch_quant_mode=0, dispatch_quant_out_dtype=28, combine_quant_mode=0, comm_alg="") -> int
 ```
 
 - get_symm_buffer_for_mega_moe：
