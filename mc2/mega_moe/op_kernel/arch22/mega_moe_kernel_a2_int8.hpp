@@ -1244,7 +1244,7 @@ private:
         AscendC::SyncAll<true>();
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::RESET_TOKEN_PER_EXPERT);
         ResetTokenPerExpert(params, params.EP * AlignUp(params.EP * params.expertPerRank, 128));
- 	    AscendC::SyncAll<true>();
+        AscendC::SyncAll<true>();
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CROSS_RANK_SYNC);
         // shmem.InitStatusTargetSum();
         {
