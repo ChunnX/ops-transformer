@@ -130,12 +130,12 @@ static bool CheckQuantModeAndDtype(int64_t quantMode, const aclTensor *query, co
             return CheckQuantParams(query, key, value, qScale, kScale, vScale,
                                     DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT,
                                     quantMode, "FP8_E4M3FN", "FP32");
-        case MXFP4_QUANT: // quantMode=2: QKV=FP4_E2M1, scales=FP8_E8M0
+        case MXFP4_OCP_QUANT: case MXFP4_CX_QUANT: // quantMode=2/3: QKV=FP4_E2M1, scales=FP8_E8M0
             return CheckQuantParams(query, key, value, qScale, kScale, vScale,
                                     DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT8_E8M0,
                                     quantMode, "FP4_E2M1", "FP8_E8M0");
         default:
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid quantMode %ld, must be 0/1/2.", quantMode);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid quantMode %ld, must be 0/1/2/3.", quantMode);
             return false;
     }
 }
@@ -316,8 +316,8 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-    } else if (quantMode == MXFP4_QUANT) {
-        // mxfp4: scale 维度按 layout 校验, TND=4维, BNSD/BSND=5维
+    } else if (quantMode == MXFP4_OCP_QUANT || quantMode == MXFP4_CX_QUANT) {
+        // mxfp4(OCP/CX): scale 维度按 layout 校验, TND=4维, BNSD/BSND=5维
         qDequantScaleOptional = l0op::Contiguous(qDequantScaleOptional, executor);
         CHECK_RET(qDequantScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         kDequantScaleOptional = l0op::Contiguous(kDequantScaleOptional, executor);
@@ -344,12 +344,11 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise, int64_t quantM
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    // 只有 quantMode=2 (mxfp4) 需要 dstTypeMax,合法取值:0 或 [6.0, 12.0]
-    if (quantMode == MXFP4_QUANT) {
+    // 只有 quantMode=2/3 (mxfp4 OCP/CX) 需要 dstTypeMax,合法取值:0 或 [6.0, 12.0]
+    if (quantMode == MXFP4_CX_QUANT) {
         bool valid = (dstTypeMax == 0.0) || (dstTypeMax >= 6.0 && dstTypeMax <= 12.0);
         if (!valid) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "quantMode 2 (mxfp4) requires dstTypeMax = 0 or in [6, 12], got %f.", dstTypeMax);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quantMode 3 (mxfp4 CX) requires dstTypeMax = 0 or in [6, 12], got %f.", dstTypeMax);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
