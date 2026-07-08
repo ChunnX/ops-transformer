@@ -136,7 +136,7 @@ softmaxSumGm = userWorkspace + (accumOutSize + lseStatSize) * sizeof(float)
 
 Phase 1 启动前 **建议** 将 `softmaxMax` / `softmaxSum` 预置为无效：`rowMax[gh] = -inf`，`rowSum[gh] = 0`（未写入 slot 可被 Phase 2 识别为无效）。
 
-**当前 Arch35 kernel 实现**：不在 kernel 入口对 workspace 做显式 memset；依赖 runtime 分配的 zero-fill（`rowSum=0` 通常成立，`rowMax` 可能为 0 而非 `-inf`）。无效 slot 主要依赖 `ComputeScaleValue_VF` 产生零 scale 跳过；Golden 侧显式将 `ws_max` 初始化为 `-inf`。
+**当前 Arch35 kernel 实现**：kernel 入口由 VEC 侧显式初始化 workspace 的 `softmaxMax` / `softmaxSum` 连续区域（`InitWorkspaceStats`，`sparse_attention_score_prefill_kernel_arch35.h`）。在 `InitSyncFlags()` 之后、`SyncAll<false>()` 之前调用：UB 上各 `Duplicate` 一次（`ubMax<-(-inf)`、`ubSum<-0`），单次循环按 `WS_INIT_CHUNK`（4096 fp32）分块同时 `DataCopyPad` 写 `softmaxMax` 与 `softmaxSum`（尾块按 `lseStatSize_ % WS_INIT_CHUNK` 长度处理）；各 VEC sub-block 按 chunk 下标 stride 分核。末尾 `PipeBarrier<PIPE_ALL>`，由随后的 `SyncAll<false>()` 兼作 init 完成屏障。CUBE 核空转。`accumOut` 不预置（Phase2 `ReduceFinalRes` 的 `lseMaxBuf_ <= NEG_INF_LSE` 跳过非法 split）。Golden 侧亦显式将 `ws_max` 初始化为 `-inf`。
 
 ### 4.2 逻辑 shape 与线性偏移
 
@@ -350,9 +350,15 @@ attention_out[qToken, kvHeadIdx * groupSize + gh, :]
 Phase 2 分核（仅 `__DAV_VEC__` 执行）：
 
 ```text
-FlashDecodeCompute(blockIdx, totalTaskNumP2, ...)
-# blockIdx = GetBlockIdx()；taskIdx 从 blockIdx stride，边界 totalTaskNumP2
+coreIdx  = GetBlockIdx()   # VEC 线性 AIV id，范围 [0, GetBlockNum()*GetSubBlockNum())
+coreNum  = GetBlockNum() * GetSubBlockNum()   # GetBlockNum() 为 AIC block 数（AIV 数的一半）
+for taskIdx = coreIdx; taskIdx < totalTaskNumP2; taskIdx += coreNum:
+    FlashDecodeCompute(taskIdx, totalTaskNumP2, ...)
 ```
+
+> 历史实现曾单次调用 `FlashDecodeCompute(GetBlockIdx(), ...)` 且无循环，
+> 导致 `totalTaskNumP2 > AIV 数` 时尾部 `(qToken, kvHead)` 不被 combine（输出恒 0）。
+> 另曾误用 `stride = GetBlockNum()`（仅为 block 数），实际应乘 `GetSubBlockNum()`。
 
 ### 7.2 Combine 公式（kernel 与 golden 一致）
 
@@ -379,14 +385,16 @@ out[d] = sum_k scale[k] * O_norm[k][d]
 无效 slot 语义：`rowSum[gh] <= 0`（Golden 同时设 `rowMax = -inf`）。
 
 ```text
-# Phase 1 未写入 -> workspace 保持初始值（Golden: rowMax=-inf, rowSum=0）
+# Phase 1 未写入 -> workspace 保持初始值（kernel: rowMax=-inf, rowSum=0，由 InitWorkspaceStats 预置）
 # Phase 2:
-ComputeScaleValue_VF  -> 无效 slot 的 scale 为 0
-CopyAccumOutIn        -> Golden: O_norm=0；kernel 当前 Divs 未单独判 rowSum<=0
-ReduceFinalRes_VF     -> scale=0 时不贡献
+CopyLseIn             -> 读 compact max/sum 到 UB，Broadcast 成 [topK, dealRow, 8]（无效 slot: rowMax=-FLT_MAX, rowSum=0）
+ComputeScaleValue_VF  -> 读 lseMax（只读不改）算 scale，写回 lseSum UB；无效 slot 的 scale 为 0
+ReduceFinalRes_VF     -> 按 split j 从 UB 读 lseMaxBuf_[j*dealRow*8]（slot 首行 rowMax）：
+                         <= NEG_INF_LSE 则该 slot 非法，跳过 CopyAccumOutIn 与 ReduceFinalRes_VF；
+                         scale[j]==0 不贡献
 ```
 
-> **NaN 风险提示**：当前 kernel `CopyAccumOutIn` 对无效 slot（`rowSum == 0`）仍执行 `Divs(O_partial, 0)`，产生 `inf/nan`；随后 `ReduceFinalRes_VF` 中 `scale[k]=0 * O_norm=inf` 在 IEEE 754 下为 `nan`（非 0），会污染最终 `attention_out`。在 workspace 显式预置 `rowMax=-inf` 并对 `rowSum<=0` 显式置零（§9 item 1/2）完成前，不能仅依赖 `scale=0` 自动屏蔽无效 slot。当前测试用例规避该问题的前提是：被选中的 `(qToken, slotK)` 均满足 `causalValidLen > 0`，即不存在"被分配但未写入"的无效 slot。
+> **非法 slot 跳过（UB 判 -inf）**：`ReduceFinalRes`（`block_epilogue_rescale_o_prefill_arch35.hpp`）在每个 split `j` 进入 `CopyAccumOutIn` 前，从 UB 的 `lseMaxBuf_[j * dealRowCount * FP32_ONE_BLOCK_SIZE]`（broadcast 布局 `[topK, dealRowCount, 8]`，split `j` 首行 rowMax）读标量。`CopyLseIn` 已把 GM compact max 读入 UB 并 Broadcast，`ComputeScaleValue_8_VF` 只读 `lseMax` 不覆写，故该值在 `ComputeScaleValue` 之后仍为原始 rowMax。`InitWorkspaceStats` 把未写入 slot 的 `rowMax` 预置为 `-FLT_MAX`（`NEG_INF_LSE = -3.4028235e38f`），而有效 slot 的 rowMax 是有限 score 派生值，故 `firstRowMax <= NEG_INF_LSE` 等价于 slot 非法。非法 split 直接 `continue`，不执行 `CopyAccumOutIn`（避免 `Divs(O, 0)` 产生 `inf/nan`）也不执行 `ReduceFinalRes_VF`（避免 stale UB 累加），依赖 `ComputeScaleValue` 已得 `scale[j]=0` 保证 0 贡献。`CopyAccumOutIn` 内部不做逐行除零 pad。该判断从 UB 读取，无 GM 往返。
 
 规则：
 
@@ -433,17 +441,18 @@ Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。
 
 当前 `sparse_attention_score_prefill_kernel_arch35.h` 已具备：
 
-- Phase1/2 按 `totalTaskNumP1/P2` stride 分核；Phase1 使用 `coreIdx = GetBlockIdx()`（VEC 侧 `/ GetSubBlockNum()`）。
+- Phase1/2 按 `totalTaskNumP1/P2` stride 分核；Phase1 使用 `coreIdx = GetBlockIdx()`（VEC 侧 `/ GetSubBlockNum()`）；Phase2 在 VEC 侧 `coreIdx = GetBlockIdx()`（线性 AIV id）、`coreNum = GetBlockNum() * GetSubBlockNum()` 循环覆盖全部 P2 任务。
 - Phase1 `BlockMmadQK` / `BlockMmadPV` + `LoadKResident` / `LoadVResident`；`PRE_LAUNCH=2` 流水。
 - MSA packed row coord 增量步进；CSR 驱动 Q gather + `causalValidLen` + workspace 写出。
-- Phase2 `block_epilogue_rescale_o_prefill_arch35.hpp`：IFA FlashDecode combine + **`CopyAccumOutIn` 从 GM 读 rowSum 做 O 归一化**。
+- Phase2 `block_epilogue_rescale_o_prefill_arch35.hpp`：IFA FlashDecode combine + **`CopyAccumOutIn` 从 GM 读 rowSum 做 O 归一化**；`ReduceFinalRes` 按 slot 首值 `rowSum[0]<=0` 跳过非法 split 的 `CopyAccumOutIn` / `ReduceFinalRes_VF`。
+- Kernel 入口 `InitWorkspaceStats`：VEC 侧显式预置 `softmaxMax=-inf` / `softmaxSum=0`。
 
 仍待完善：
 
 1. Q 仍逐 token gather，尚未 `qTile > 1` 批量拼 Q。
-2. Kernel workspace 显式预置 `rowMax=-inf`（或 host 侧 memset）；`CopyAccumOutIn` 对 `rowSum<=0` 显式置零（与 Golden 对齐）。
+2. ~~Kernel workspace 显式预置 `rowMax=-inf`；非法 slot 跳过~~ —— 已实现（`InitWorkspaceStats` + `ReduceFinalRes` 首值判断跳过 `CopyAccumOutIn`）。
 3. `CopyLseIn` 在 `groupSize > gSplitSize` 分片时按 `startRow` 正确 gather max/sum。
-4. Phase2 `GetBlockIdx` 与 Phase1 VEC 核映射关系统一验证（AIC/AIV 混合 blockDim）。
+4. ~~Phase2 `GetBlockIdx` 与 Phase1 VEC 核映射关系统一验证（AIC/AIV 混合 blockDim）~~ —— 已实现：`Phase2CombineScale` 改为 `subLinearIdx = GetBlockIdx()*GetSubBlockNum()+GetSubBlockIdx()`、`stride = GetBlockNum()*GetSubBlockNum()` 的循环，覆盖全部 `totalTaskNumP2` 任务，且区分两个 VEC 子核。
 5. D/blockSize 以外 shape 的 tiling key 扩展。
 6. 清理 Phase2 debug barrier / DumpPhase1OPartial 等临时代码。
 7. NPU 与 Golden 残差：P cast bf16 舍入、Cube QK 累加精度。
@@ -452,7 +461,7 @@ Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。
 
 建议按以下顺序继续演进：
 
-1. **正确性加固**：workspace 预置；`CopyAccumOutIn` 除零保护；`CopyLseIn` 大 `groupSize` 分片 gather。
+1. **正确性加固**：~~workspace 预置；`CopyAccumOutIn` 除零保护~~ —— 已完成；剩余 `CopyLseIn` 大 `groupSize` 分片 gather。
 2. Phase 1 扩展 `qTile > 1`：批量 gather Q，拼 `M = qTile * groupSize` 做 Cube QK/PV。
 3. 性能：
 - PRE_LAUNCH 流水（已启用，可继续调优）

@@ -50,6 +50,12 @@ public:
     static constexpr uint32_t P_L1_BUF_NUM = PRE_LAUNCH + 1U;
 
     static constexpr uint32_t FP32_ONE_BLOCK_SIZE = 8U;
+    // Workspace softmaxMax/softmaxSum init: -inf for rowMax, 0 for rowSum so that
+    // slots not written by Phase1 are treated as invalid by Phase2 combine.
+    static constexpr float WS_ROWMAX_INIT = -3.4028235e38f;
+    static constexpr float WS_ROWSUM_INIT = 0.0f;
+    static constexpr uint32_t WS_INIT_EVT = 5U;          // free V_MTE3/MTE3_V id on VEC
+    static constexpr uint32_t WS_INIT_CHUNK = 4096U;      // fp32 elems per chunk (multiple of 8)
 
     __aicore__ inline
     uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
@@ -216,6 +222,11 @@ public:
         uint32_t coreNum = AscendC::GetBlockNum();
 
         InitSyncFlags();
+        // VEC-side workspace init: prefill softmaxMax<-(-inf), softmaxSum<-0 so
+        // unwritten (invalid) slots are detected by Phase2. Placed before
+        // SyncAll<false> so that barrier doubles as the init-completion sync
+        // (no extra SyncAll needed). CUBE cores idle here.
+        InitWorkspaceStats(gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll<false>();
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
@@ -229,7 +240,7 @@ public:
         AscendC::SyncAll();
         DumpPhase1OPartial(gAccumOut, gSoftmaxMax, gSoftmaxSum, gO);
 #ifdef __DAV_VEC__
-        Phase2CombineScale(AscendC::GetBlockIdx(), gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+        Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
 #endif
         ReleaseSyncFlags();
     }
@@ -256,6 +267,45 @@ private:
         lseStatSize_ = tilingData->lseStatSize;
         slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
         slotStatElems_ = static_cast<uint64_t>(groupSize_);
+    }
+
+    // VEC-only: prefill contiguous softmaxMax<-(-inf) and softmaxSum<-0 in
+    // WS_INIT_CHUNK blocks (tail chunk uses remainder length). UB filled once
+    // per buffer; one loop writes both GM regions per chunk. Work split across
+    // VEC sub-blocks by chunk index.
+    __aicore__ inline
+    void InitWorkspaceStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                            AscendC::GlobalTensor<float> &gSoftmaxSum)
+    {
+        if (lseStatSize_ == 0U) {
+            return;
+        }
+#ifdef __DAV_VEC__
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t totalSubBlocks = AscendC::GetBlockNum() * subBlockNum;
+        uint32_t subLinearIdx = AscendC::GetBlockIdx() * subBlockNum + AscendC::GetSubBlockIdx();
+        uint32_t numFullChunks = static_cast<uint32_t>(lseStatSize_ / WS_INIT_CHUNK);
+        uint32_t tailElems = static_cast<uint32_t>(lseStatSize_ % WS_INIT_CHUNK);
+        uint32_t totalChunks = numFullChunks + (tailElems > 0U ? 1U : 0U);
+
+        AscendC::LocalTensor<float> ubMax = resource.ubBuf.template GetBufferByByte<float>(0);
+        AscendC::LocalTensor<float> ubSum = resource.ubBuf.template GetBufferByByte<float>(
+            WS_INIT_CHUNK * sizeof(float));
+        AscendC::Duplicate(ubMax, WS_ROWMAX_INIT, WS_INIT_CHUNK);
+        AscendC::Duplicate(ubSum, WS_ROWSUM_INIT, WS_INIT_CHUNK);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(WS_INIT_EVT);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(WS_INIT_EVT);
+
+        for (uint32_t chunkIdx = subLinearIdx; chunkIdx < totalChunks; chunkIdx += totalSubBlocks) {
+            uint64_t off = static_cast<uint64_t>(chunkIdx) * WS_INIT_CHUNK;
+            uint32_t cnt = (chunkIdx < numFullChunks) ? WS_INIT_CHUNK : tailElems;
+            uint16_t blockLen = static_cast<uint16_t>(cnt * sizeof(float));
+            AscendC::DataCopyPad(gSoftmaxMax[off], ubMax, {1, blockLen, 0, 0});
+            AscendC::DataCopyPad(gSoftmaxSum[off], ubSum, {1, blockLen, 0, 0});
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+#endif
     }
 
     __aicore__ inline
@@ -621,7 +671,6 @@ private:
     // Phase 2: FlashDecode-style combine (IFA FlashDecodeCompute / CombineSplitKVRes).
     __aicore__ inline
     void Phase2CombineScale(
-        uint32_t tmpBlockIdx,
         AscendC::GlobalTensor<ElementO> &gO,
         AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
         AscendC::GlobalTensor<float> &gSoftmaxMax,
@@ -633,10 +682,20 @@ private:
 
         EpilogueRescaleO epilogueRescaleO;
         epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_);
-        epilogueRescaleO.FlashDecodeCompute(
-            tmpBlockIdx, totalTaskNumP2_,
-            gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
-            qHeads_, kvHeads_);
+        // VEC: GetBlockIdx() is the linear AIV id in [0, GetBlockNum()*GetSubBlockNum());
+        // GetBlockNum() is the AIC block count (half of AIV count). Stride must cover
+        // all AIV sub-blocks, not blockNum alone.
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        uint32_t coreNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
+        if (coreNum == 0U) {
+            coreNum = 1U;
+        }
+        for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
+            epilogueRescaleO.FlashDecodeCompute(
+                taskIdx, totalTaskNumP2_,
+                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+                qHeads_, kvHeads_);
+        }
 #endif
     }
 
