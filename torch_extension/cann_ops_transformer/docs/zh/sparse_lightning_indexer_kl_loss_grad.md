@@ -128,8 +128,8 @@ sparse_lightning_indexer_kl_loss_grad(
 | attn_softmax_l1_norm | 必选输入 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | `float32` | 与 `sparse_indices` 一致。 |
 | cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
+| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
+| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
 | cmp_residual_k | 可选输入 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | `int32` | `[B]`。 |
 | metadata | 可选输入 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | `int32` | `[64]`。 |
 | layout_q | 可选属性 | `q` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
@@ -146,8 +146,8 @@ sparse_lightning_indexer_kl_loss_grad(
 | head_dim | 必选属性 | `q`、`k` 的最后一维 `D`。固定为 128。 | `int` | - |
 | cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度，当前 kernel 路径暂不使用。 | `int32` | `[B]`。 |
+| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
+| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
 | cmp_residual_k | 可选输入 | `mask_mode=3` 且 `cmp_ratio!=1` 时需要传入，用于还原压缩前 key 长度（`pre_compress_k_len = compressed_k_len * cmp_ratio + cmp_residual_k[b]`）。 | `int32` | `[B]`。 |
 | batch_size | 可选属性 | batch 大小。BSND 场景建议显式传入，TND 场景也可由 `cu_seqlens_q` 推导。 | `int` | - |
 | max_seqlen_q | 可选属性 | 单个 batch 中最大的 query 序列长度。 | `int` | - |
