@@ -90,7 +90,7 @@ constexpr uint32_t NUM3 = 3;
 constexpr uint32_t SOC_VER_950_CODE = 4;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
-constexpr uin32_t  TILE_SIZE_16 = 16;
+constexpr uint32_t  TILE_SIZE_16 = 16;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
 constexpr uint32_t D_SIZE_128 = 128;
