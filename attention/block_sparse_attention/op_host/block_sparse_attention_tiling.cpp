@@ -857,11 +857,13 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
-    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
-        // todo: 待验证
+    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128 && blockShapeY_ % TILE_SIZE_256 == 0) {
         kvBaseTile_ = TILE_SIZE_256;
+    } else if (blockShapeY_ % TILE_SIZE_128 == 0)
+    {
+        kvBaseTile_ = TILE_SIZE_128;
     } else {
-        kvBaseTile_ = (blockShapeY_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeY_;
+        kvBaseTile_ = blockShapeY_;
     }
 }
 
@@ -978,13 +980,13 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
     if (embeddingSizeAligned128 == D_SIZE_256) {
         // K矩阵开启2buf，D按256分割，S2按128分割
         // 可以证明，当Q常驻在L1时，无论D和kvBaseTile_为多少，均不会有QK的MTE2重复搬运
-        mm1L1TileN_ = kvBaseTileAligned;
+        mm1L1TileN_ = TILE_SIZE_128;
         mm1L1TileKRight_ = TILE_SIZE_256;
         kL1BufNum_ = DUO_BUF;
         // V矩阵D按256分割，kvBaseTile_不分割，指令提前于核间同步下发，是否开启db取决于kvBaseTile_的大小
         mm2L1TileN_ = TILE_SIZE_256;
         mm2L1TileKLeft_ = kvBaseTileAligned128;
-        vL1BufNum_ = TILE_SIZE_256 / kvBaseTileAligned128;
+        vL1BufNum_ = std::max(TILE_SIZE_256 / kvBaseTileAligned128, 1U);
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
         mm2L1TileKRight_ = kvBaseTileAligned128;
@@ -997,8 +999,8 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
         // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
-        vL1BufNum_ = DUO_BUF;
+        mm2L1TileKLeft_ = kvBaseTileAligned128;
+        vL1BufNum_ = (kvBaseTileAligned128 > TILE_SIZE_256) ? DUO_BUF : DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
         mm2L1TileKRight_ = kvBaseTileAligned128;
