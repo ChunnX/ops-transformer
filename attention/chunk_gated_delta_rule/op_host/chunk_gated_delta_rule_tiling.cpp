@@ -191,7 +191,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    tilingKey_ = tilingData_.stateIsFp32 ? 1 : 0;
+    tilingKey_ = tilingData_.stateIsFp32 ? 10 : 0;
 
     // 执行 matmul tiling
     if (DoMatmulTiling() != ge::GRAPH_SUCCESS) {
@@ -535,21 +535,21 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetOptionalInput()
 
 void ChunkGatedDeltaRuleTiling::PrintTilingData()
 {
-    OP_LOGD(context_->GetNodeName(), "aiCoreNum: [%ld]", tilingData_.aiCoreNum);
-    OP_LOGD(context_->GetNodeName(), "t: [%ld]", tilingData_.t);
-    OP_LOGD(context_->GetNodeName(), "nk: [%ld]", tilingData_.nk);
-    OP_LOGD(context_->GetNodeName(), "dk: [%ld]", tilingData_.dk);
-    OP_LOGD(context_->GetNodeName(), "nv: [%ld]", tilingData_.nv);
-    OP_LOGD(context_->GetNodeName(), "dv: [%ld]", tilingData_.dv);
-    OP_LOGD(context_->GetNodeName(), "b: [%ld]", tilingData_.b);
-    OP_LOGD(context_->GetNodeName(), "hasGamma: [%ld]", tilingData_.hasGamma);
-    OP_LOGD(context_->GetNodeName(), "chunkSize: [%ld]", tilingData_.chunkSize);
-    OP_LOGD(context_->GetNodeName(), "maxGroupLength: [%ld]", tilingData_.maxGroupLength);
-    OP_LOGD(context_->GetNodeName(), "interWorkspaceSz: [%ld]", tilingData_.interWorkspaceSz);
-    OP_LOGD(context_->GetNodeName(), "stageWorkspaceSz: [%ld]", tilingData_.stageWorkspaceSz);
-    OP_LOGD(context_->GetNodeName(), "stageOneParaNum: [%ld]", tilingData_.stageOneParaNum);
-    OP_LOGD(context_->GetNodeName(), "scale: [%f]", tilingData_.scale);
-    OP_LOGD(context_->GetNodeName(), "stateIsFp32: [%ld]", tilingData_.stateIsFp32);
+    OP_LOGE(context_->GetNodeName(), "aiCoreNum: [%ld]", tilingData_.aiCoreNum);
+    OP_LOGE(context_->GetNodeName(), "t: [%ld]", tilingData_.t);
+    OP_LOGE(context_->GetNodeName(), "nk: [%ld]", tilingData_.nk);
+    OP_LOGE(context_->GetNodeName(), "dk: [%ld]", tilingData_.dk);
+    OP_LOGE(context_->GetNodeName(), "nv: [%ld]", tilingData_.nv);
+    OP_LOGE(context_->GetNodeName(), "dv: [%ld]", tilingData_.dv);
+    OP_LOGE(context_->GetNodeName(), "b: [%ld]", tilingData_.b);
+    OP_LOGE(context_->GetNodeName(), "hasGamma: [%ld]", tilingData_.hasGamma);
+    OP_LOGE(context_->GetNodeName(), "chunkSize: [%ld]", tilingData_.chunkSize);
+    OP_LOGE(context_->GetNodeName(), "maxGroupLength: [%ld]", tilingData_.maxGroupLength);
+    OP_LOGE(context_->GetNodeName(), "interWorkspaceSz: [%ld]", tilingData_.interWorkspaceSz);
+    OP_LOGE(context_->GetNodeName(), "stageWorkspaceSz: [%ld]", tilingData_.stageWorkspaceSz);
+    OP_LOGE(context_->GetNodeName(), "stageOneParaNum: [%ld]", tilingData_.stageOneParaNum);
+    OP_LOGE(context_->GetNodeName(), "scale: [%f]", tilingData_.scale);
+    OP_LOGE(context_->GetNodeName(), "stateIsFp32: [%ld]", tilingData_.stateIsFp32);
 }
 
 // tiling 调度入口
