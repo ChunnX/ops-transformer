@@ -287,6 +287,81 @@ static bool ByteEqual(const uint8_t* golden, const uint8_t* actual, size_t n, co
 }
 
 // ---------------------------------------------------------------------------
+// 桶内集合相等比对（BucketSetEqual）
+// ---------------------------------------------------------------------------
+// 语义依据：生产多核 sort(KernelSortMaskMultiCore = A2 逐字节)对同专家 token 走
+// "每核 Sort + MrgSort 归并"，等专家键的 token 桶内顺序按归并序，不保证全局行号稳定序。
+// 而 golden 用 std::stable_sort（行号序）。两者桶内是【同一集合】仅顺序不同——单核路径
+// (Sort 全局稳定)恰好匹配 golden，多核归并序不匹配。逐位置比会误报。
+// 正确口径（对齐 A2 实际契约 + spec：专家分桶正确 + 桶内集合正确 + 计数正确，桶内序不约束）：
+//   按 sortedExpertIds 划分专家桶（npu/golden 专家序与逐专家计数已由 kernel 保证一致，
+//   否则先在此暴露），桶内把每 token 的 (sid,mbid,tid,eoff[,scale]) + y payload 打包成
+//   一条记录，规范排序后逐条比。任一路（含 y）在某桶内集合不一致即 FAIL。
+// 注：sortedExpertIds 的 npu 侧不直接输出，用 golden 的专家分桶边界（专家序两边一致，
+//     由 group_list 已比对保证）切分 npu 输出的相同 [0,vc) 区间。
+static bool BucketSetEqual(
+    const FwbGolden& g, const int32_t* nSid, const int32_t* nMbid, const int32_t* nTid,
+    const int32_t* nEoff, const uint8_t* nY, const float* nScale, int64_t payload,
+    bool hasScale)
+{
+    const int64_t vc = g.actualTokenNum;
+    // 每条 token 记录：绑定 5 路 id/scale + y payload，作为不可分整体
+    struct Rec {
+        int32_t sid, mbid, tid, eoff;
+        float scale;
+        const uint8_t* y;   // 指向该 token 的 payload 字节
+        int64_t payload;
+        bool hasScale;
+        // 规范序：先按 (tid,eoff,sid,mbid) 排（这四者由原始位置 p 唯一决定，是稳定的桶内键），
+        // 再按 y 字节兜底，保证同集合两侧规范序一致。
+        bool operator<(const Rec& o) const {
+            if (tid != o.tid) return tid < o.tid;
+            if (eoff != o.eoff) return eoff < o.eoff;
+            if (sid != o.sid) return sid < o.sid;
+            if (mbid != o.mbid) return mbid < o.mbid;
+            int c = std::memcmp(y, o.y, (size_t)payload);
+            if (c != 0) return c < 0;
+            if (hasScale && scale != o.scale) return scale < o.scale;
+            return false;
+        }
+        bool operator==(const Rec& o) const {
+            if (sid != o.sid || mbid != o.mbid || tid != o.tid || eoff != o.eoff) return false;
+            if (std::memcmp(y, o.y, (size_t)payload) != 0) return false;
+            if (hasScale && scale != o.scale) return false;
+            return true;
+        }
+    };
+    // 按 golden 专家桶边界切分（sortedExpertIds 升序分段）
+    int64_t i = 0;
+    while (i < vc) {
+        int32_t eid = g.sortedExpertIds[i];
+        int64_t j = i;
+        while (j < vc && g.sortedExpertIds[j] == eid) ++j;   // [i,j) 为专家 eid 的桶
+        std::vector<Rec> gb, nb;
+        gb.reserve(j - i); nb.reserve(j - i);
+        for (int64_t k = i; k < j; ++k) {
+            gb.push_back({g.sessionIds[k], g.microBatchIds[k], g.tokenIds[k], g.expertOffsets[k],
+                          hasScale ? g.dynamicScale[k] : 0.0f, &g.y[k * payload], payload, hasScale});
+            nb.push_back({nSid[k], nMbid[k], nTid[k], nEoff[k],
+                          hasScale ? nScale[k] : 0.0f, &nY[k * payload], payload, hasScale});
+        }
+        std::sort(gb.begin(), gb.end());
+        std::sort(nb.begin(), nb.end());
+        for (int64_t k = 0; k < (int64_t)gb.size(); ++k) {
+            if (!(gb[k] == nb[k])) {
+                LOG_PRINT("  [FAIL] 专家桶 eid=%d 内 token 集合不一致 (桶大小=%lld，第 %lld 条规范序记录不符)",
+                          eid, (long long)gb.size(), (long long)k);
+                return false;
+            }
+        }
+        i = j;
+    }
+    LOG_PRINT("  [PASS] 桶内集合一致 (%lld token, 按专家分桶规范序比对 y+ids%s)",
+              (long long)vc, hasScale ? "+scale" : "");
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // CPU Golden 自测：不变式（invariant）机器断言
 // ---------------------------------------------------------------------------
 // 校验参考模型自身语义正确性（与 spec.invariants / boundary 对齐）：
@@ -689,6 +764,16 @@ static bool RunCaseReal(const FwbCase& c, aclrtStream stream)
     aclrtMalloc(&dEoff, (size_t)Y * 4, ACL_MEM_MALLOC_HUGE_FIRST);
     aclrtMalloc(&dScale, (size_t)Y * 4, ACL_MEM_MALLOC_HUGE_FIRST);
     aclrtMalloc(&dAtn, 8, ACL_MEM_MALLOC_HUGE_FIRST);
+    // 输出缓冲 malloc 后清零：防长 batch 连跑跨用例残值污染（尤其 actual_token_num
+    // 读到上个用例的脏值表现为 INT_MIN+残值负数）。kernel 只写有效区，尾部/未写区靠此清零。
+    aclrtMemset(dY, yBytes, 0, yBytes);
+    aclrtMemset(dGroup, (size_t)c.expertNum * 2 * 8, 0, (size_t)c.expertNum * 2 * 8);
+    aclrtMemset(dSid, (size_t)Y * 4, 0, (size_t)Y * 4);
+    aclrtMemset(dMbid, (size_t)Y * 4, 0, (size_t)Y * 4);
+    aclrtMemset(dTid, (size_t)Y * 4, 0, (size_t)Y * 4);
+    aclrtMemset(dEoff, (size_t)Y * 4, 0, (size_t)Y * 4);
+    aclrtMemset(dScale, (size_t)Y * 4, 0, (size_t)Y * 4);
+    aclrtMemset(dAtn, 8, 0, 8);
 
     aclTensor* tY = CreateTensorRaw(dY, {Y, c.H}, YAclDtype(c.tokenDtype));
     aclTensor* tGroup = CreateTensorRaw(dGroup, {c.expertNum, 2}, ACL_INT64);
@@ -737,14 +822,14 @@ static bool RunCaseReal(const FwbCase& c, aclrtStream stream)
 
         if (hAtn != g.actualTokenNum) { LOG_PRINT("  [FAIL] actual_token_num golden=%lld npu=%lld",
                                                   (long long)g.actualTokenNum, (long long)hAtn); ok = false; }
-        ok &= ByteEqual(g.y.data(), hY.data(), (size_t)vc * payload, "y");
-        ok &= BitwiseEqual(g.sessionIds.data(), hSid.data(), (size_t)vc, "session_ids");
-        ok &= BitwiseEqual(g.microBatchIds.data(), hMbid.data(), (size_t)vc, "micro_batch_ids");
-        ok &= BitwiseEqual(g.tokenIds.data(), hTid.data(), (size_t)vc, "token_ids");
-        ok &= BitwiseEqual(g.expertOffsets.data(), hEoff.data(), (size_t)vc, "expert_offsets");
+        // actual_token_num（计数）与 group_list（升序 (eid,count) 聚合）与桶内顺序无关，严格逐位置比。
         ok &= BitwiseEqual(g.groupList.data(), hGroup.data(), (size_t)(g.groupListRows * 2), "group_list");
-        if (c.tokenDtype == 2)
-            ok &= BitwiseEqual((const int32_t*)g.dynamicScale.data(), (const int32_t*)hScale.data(), (size_t)vc, "dynamic_scale");
+        // y / session/micro/token/expert(/scale)：生产多核 sort(=A2) 桶内走 MrgSort 归并序、非全局
+        // 行号序，逐位置比会因桶内换位误报（详见 BucketSetEqual 注释）。改按专家桶【集合相等】比对：
+        // 验证每专家桶内 token 集合(含 y payload 与各 id/scale)完全一致，不约束桶内顺序 —— 对齐 A2
+        // 实际契约与 spec（专家分桶+计数精确+桶内集合正确）。单核路径桶内序天然=golden，同样通过。
+        ok &= BucketSetEqual(g, hSid.data(), hMbid.data(), hTid.data(), hEoff.data(),
+                             hY.data(), hScale.data(), payload, /*hasScale*/ c.tokenDtype == 2);
     }
 
     // --- 清理 ---
