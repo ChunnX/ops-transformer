@@ -252,10 +252,10 @@ __aicore__ inline void DrainUrmaConnections(
 }
 
 // =============================================
-// CombineSendTokenToRemote: 编排器 — 分核、VECCALC 分配、调用三阶段子函数
+// CombineSendTokenToRemote: single-core sender; multi-core scheduling is owned by the caller.
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline void CombineSendTokenToRemote(const Params& params)
+__aicore__ inline void CombineSendTokenToRemote(uint32_t aivIdx, uint32_t aivNum, const Params& params)
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
         sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
@@ -263,9 +263,6 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
-    // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
-    uint32_t aivIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t aivNum = GetBlockNum();
     uint32_t rankId = params.combineCommParams.rankId;
     uint32_t worldSize = params.tilingData->epWorldSize;
     uint32_t rankPerCore = worldSize / aivNum;
@@ -499,6 +496,88 @@ __aicore__ inline void CombineTokenGroup(
     
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+}
+
+__aicore__ inline void ComputeCombineCoreGrouping(uint32_t logicalCoreIdx, uint32_t numGroups, uint32_t totalCores,
+    uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
+{
+    uint32_t baseSize = totalCores / numGroups;
+    uint32_t remainder = totalCores % numGroups;
+    uint32_t boundary = remainder * (baseSize + 1);
+
+    if (logicalCoreIdx < boundary) {
+        myGroup = logicalCoreIdx / (baseSize + 1);
+        myIdxInGrp = logicalCoreIdx % (baseSize + 1);
+        myGrpSize = baseSize + 1;
+    } else {
+        uint32_t adjusted = logicalCoreIdx - boundary;
+        myGroup = remainder + adjusted / baseSize;
+        myIdxInGrp = adjusted % baseSize;
+        myGrpSize = baseSize;
+    }
+}
+
+template <int32_t CombineQuantMode>
+__aicore__ inline void ProcessCombineSingleCore(uint32_t logicalCoreIdxForGrouping,
+    uint32_t totalLogicalCoresForGrouping, uint32_t combineCounterSlotIdx, uint32_t combineCounterSlotNum,
+    uint32_t expertIdx, uint32_t rankId,
+    uint32_t k, uint32_t expertBeforeCnt, uint32_t mExpert, GM_ADDR gmm2OutAddr,
+    int64_t combineUbTensorSize, const Params& params)
+{
+    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(mExpert, MegaMoeImpl::L1_TILE_M_256);
+    if (tokenGroupsThisExpert == 0 || totalLogicalCoresForGrouping == 0) {
+        return;
+    }
+
+    uint32_t myGroup = 0;
+    uint32_t myIdxInGrp = 0;
+    uint32_t myGrpSize = 0;
+    ComputeCombineCoreGrouping(logicalCoreIdxForGrouping, tokenGroupsThisExpert, totalLogicalCoresForGrouping,
+        myGroup, myIdxInGrp, myGrpSize);
+    if (myGroup >= tokenGroupsThisExpert || myGrpSize == 0) {
+        return;
+    }
+
+    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k, MegaMoeImpl::L1_TILE_N);
+    AscendC::GlobalTensor<int32_t> gmm2CombineSyncCounter;
+    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
+    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
+        + expertIdx * combineCounterSlotNum * INT_CACHELINE
+        + combineCounterSlotIdx * INT_CACHELINE;
+    while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
+        int64_t st = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - st < 100) {
+        };
+    }
+
+    uint32_t nScale = Ops::Base::CeilDiv(k, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k + nScale, static_cast<uint32_t>(ALIGN_32));
+    uint32_t tokenStart = myGroup * MegaMoeImpl::L1_TILE_M_256;
+    uint32_t tokenCount = (MegaMoeImpl::L1_TILE_M_256 < mExpert - tokenStart) ?
+        MegaMoeImpl::L1_TILE_M_256 : mExpert - tokenStart;
+    uint32_t tokensPerCore = Ops::Base::CeilDiv(tokenCount, myGrpSize);
+    int32_t myTokenOffset = myIdxInGrp * tokensPerCore;
+    int32_t myTokenCount = 0;
+    if (myTokenOffset < static_cast<int32_t>(tokenCount)) {
+        myTokenCount = (tokensPerCore < tokenCount - myTokenOffset) ?
+            tokensPerCore : tokenCount - myTokenOffset;
+    }
+    if (myTokenCount <= 0) {
+        return;
+    }
+
+    AscendC::SetCtrlSpr<60, 60>(0);
+    int64_t offset = 0;
+    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
+    offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr
+        + (expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
+    PipeBarrier<PIPE_MTE2>();
+    CombineTokenGroup<CombineQuantMode, bfloat16_t>(
+        tokenStart + myTokenOffset, myTokenCount, k, expertIdx, rankId,
+        gmm2OutAddr, params, tripleTensor, combineUbTensorSize, offset, quantTokenSizeBytes);
 }
 
 }  // namespace MegaMoeCombineImpl

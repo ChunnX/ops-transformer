@@ -104,8 +104,8 @@ __aicore__ inline void NotifyCombineTileComplete(
     ComputeGroupRange(tokenGroupIdx, tokenGroupsThisExpert, participatingCores, grpCoreStart, grpCoreSize);
     int64_t baseOffset = static_cast<int64_t>(groupIdx) * blockAivNum * INT_CACHELINE;
     for (uint32_t i = grpCoreStart; i < grpCoreStart + grpCoreSize; i++) {
-        uint32_t physicalId = IsA8W4 ? (i * 2 + 1) : i;
-        AscendC::AtomicAdd(counterPtr + baseOffset + physicalId * INT_CACHELINE, int32_t(1));
+        uint32_t counterSlotIdx = IsA8W4 ? (i * 2 + 1) : i;
+        AscendC::AtomicAdd(counterPtr + baseOffset + counterSlotIdx * INT_CACHELINE, int32_t(1));
     }
 }
 
