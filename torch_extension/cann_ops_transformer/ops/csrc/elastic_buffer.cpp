@@ -13,9 +13,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
-#include <pybind11/stl.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <pybind11/functional.h>
 #include <chrono>
 #include <functional>
@@ -335,7 +336,7 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
         auto hcclRet =
             HcclChannelGetRemoteMemsFunc(commHandle, commContextStruct->hcommHandle[i], &memNum, &remoteMems, &memTags);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
-        // 取自己注册的buffer作为通信buffer
+        // 鍙栬嚜宸辨敞鍐岀殑buffer浣滀负閫氫俊buffer
         bool hasTargetMem = false;
         for (uint32_t j = 0; j < memNum; j++) {
             if (memTags == nullptr || remoteMems == nullptr) {

@@ -12,7 +12,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -59,7 +62,7 @@ at::Tensor MixedQuantSparseFlashMlaMetadata(
         outputDevice = cmpTopkLength.value().device();
     }
 
-    at::Tensor output = torch::empty({MQSMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    at::Tensor output = at::empty({MQSMLA_METADATA_SIZE}, at::dtype(at::kInt).device(outputDevice));
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensOriKvVal = get_valid_tensor(cuSeqlensOriKv, outputDevice);
     auto cuSeqlensCmpKvVal = get_valid_tensor(cuSeqlensCmpKv, outputDevice);
@@ -89,7 +92,7 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
                                                 std::string layoutKvStr, const uint64_t &ropeHeadDim,
                                                 bool returnSoftmaxLse)
 {
-    printf("construct_mixed_quant_sparse_flash_mla_atten_out_tensor 开始\n");
+    printf("construct_mixed_quant_sparse_flash_mla_atten_out_tensor 瀵偓婵獑n");
     TORCH_CHECK(layoutQStr == "BSND" || layoutQStr == "TND", "The layout of query only support BSND and TND, but got ",
                 layoutQStr);
     for (auto i = 0; i < q.sizes().size(); i++) {
@@ -115,28 +118,28 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
     at::Tensor softmaxLse;
 
     if (!attenOut.defined()) {
-        printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作失败\n");
+        printf("[aclnnMixedQuantSparseFlashMla] atten_out 閸掓湹缍旀径杈Е\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作完成\n");
+        printf("[aclnnMixedQuantSparseFlashMla] atten_out 閸掓湹缍旂€瑰本鍨歕n");
     }
 
     if (returnSoftmaxLse) {
         if (layoutQStr == "BSND") {
-            // 对齐 Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
+            // 鐎靛綊缍?Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
             softmaxLseSize = {q.size(DIM_0), oriKv.size(DIM_2), q.size(DIM_1), q.size(DIM_2) / oriKv.size(DIM_2)};
         } else {
-            // 对齐 Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
+            // 鐎靛綊缍?Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
             softmaxLseSize = {oriKv.size(DIM_1), q.size(DIM_0), q.size(DIM_2) / oriKv.size(DIM_2)};
         }
     } else {
-        // 不返回时tensor传空
+        // tensor not returned
         softmaxLseSize = {};
     }
-    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
+    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(at::kFloat));
     if (!softmaxLse.defined()) {
-        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
+        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 閸掓湹缍旀径杈Е\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作完成\n");
+        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 閸掓湹缍旂€瑰本鍨歕n");
     }
 
     return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
@@ -175,12 +178,12 @@ std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
     if (!attenOut.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out is nullptr!!!\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] atten_out 非空\n");
+        printf("[aclnnMixedQuantSparseFlashMla] atten_out 闂堢偟鈹朶n");
     }
     if (!softmaxLse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse is nullptr!!!\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 非空\n");
+        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 闂堢偟鈹朶n");
     }
 
     ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,

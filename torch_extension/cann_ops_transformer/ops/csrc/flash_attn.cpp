@@ -13,7 +13,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -89,7 +92,7 @@ FlashAttn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const c
     char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
     char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
 
-    // Python bool → C++ int64_t: pybind11 auto-converts return_softmax_lse (True→1, False→0) before reaching here
+    // Python bool 鈫?C++ int64_t: pybind11 auto-converts return_softmax_lse (True鈫?, False鈫?) before reaching here
     ACLNN_CMD(aclnnFlashAttn, q, k, v, blockTable, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, sinks, attnMask,
               metadata, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr,
               layoutOutPtr, returnSoftmaxLse, attentionOutput, softmaxLse);

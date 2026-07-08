@@ -13,14 +13,17 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
 using namespace at_npu::native;
 
 namespace {
-constexpr int64_t TAIL_DIM_ALIGN = 32; // x 尾轴 d 必须 32 对齐
+constexpr int64_t TAIL_DIM_ALIGN = 32; // x 灏捐酱 d 蹇呴』 32 瀵归綈
 constexpr int64_t QUANT_MODE_MIN = 0;
 constexpr int64_t QUANT_MODE_MAX = 3; // 0:MX-FP8 1:Normal 2:HiFloat8 3:MX-FP4
 } // namespace
@@ -28,7 +31,7 @@ constexpr int64_t QUANT_MODE_MAX = 3; // 0:MX-FP8 1:Normal 2:HiFloat8 3:MX-FP4
 void IndexerQuantCache(at::Tensor &cache, at::Tensor &cacheScale, const at::Tensor &x, const at::Tensor &slotMapping,
                        int64_t quantMode, bool roundScale, double xScale)
 {
-    // 入参校验
+    // 鍏ュ弬鏍￠獙
     TORCH_CHECK(cache.numel() > 0, "Tensor cache is empty.");
     TORCH_CHECK(cacheScale.numel() > 0, "Tensor cache_scale is empty.");
     TORCH_CHECK(x.dim() >= 2, "x should be at least 2-dim, but got ", x.dim());

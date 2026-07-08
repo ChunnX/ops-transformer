@@ -1,19 +1,22 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+聽* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 /*!
  * \file moe_distribute_dispatch.cpp
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -61,7 +64,7 @@ tensor_list NpuMoeDistributeDispatch(
     int64_t h = xSize[1];
     int64_t k = expertIdsSize[1];
 
-    // a2 expert_shard_type、shared_expert_rank_num 应为0
+    // a2 expert_shard_type銆乻hared_expert_rank_num 搴斾负0
     bool sharedFront = (expertShardType == 0);
     int64_t localMoeExpertNum = 1;
     int64_t globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
@@ -70,9 +73,9 @@ tensor_list NpuMoeDistributeDispatch(
     bool isSharedExpert = (sharedFront && epRankId < sharedExpertRankNum);
     if (isSharedExpert) {
         localMoeExpertNum = 1;
-        int64_t maxBs = globalBsReal / epWorldSize; // 前面已有拦截，保证ep_world_size > 0
+        int64_t maxBs = globalBsReal / epWorldSize; // 鍓嶉潰宸叉湁鎷︽埅锛屼繚璇乪p_world_size > 0
         int64_t rankNumPerSharedExpert =
-            sharedExpertRankNum / sharedExpertNum; // 前面已有拦截, 保证进入该分支时shared_expert_num > 0
+            sharedExpertRankNum / sharedExpertNum; // 鍓嶉潰宸叉湁鎷︽埅, 淇濊瘉杩涘叆璇ュ垎鏀椂shared_expert_num > 0
         int64_t maxSharedGroupNum = (epWorldSize + rankNumPerSharedExpert - 1) / rankNumPerSharedExpert;
         a = maxBs * maxSharedGroupNum;
     } else {

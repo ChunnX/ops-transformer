@@ -14,7 +14,10 @@
  *
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <acl/acl_rt.h>
 #include "hccl_common.h"
 
@@ -30,17 +33,17 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 
 enum class TopoType : uint32_t {
-    INTRA_SUPER_NODE = 0, // 超节点内通信（默认）
-    CROSS_SUPER_NODE = 1, // 跨超节点通信
+    INTRA_SUPER_NODE = 0, // 瓒呰妭鐐瑰唴閫氫俊锛堥粯璁わ級
+    CROSS_SUPER_NODE = 1, // 璺ㄨ秴鑺傜偣閫氫俊
 };
 
-// ======================== 通信上下文 ==========================
+// ======================== 閫氫俊涓婁笅鏂?==========================
 struct CommContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
-    uint64_t kfcContextAddr = 0; // 通信API所需的地址
+    uint64_t kfcContextAddr = 0; // 閫氫俊API鎵€闇€鐨勫湴鍧€
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
-    ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // ROCE或者URMA通信所需句柄
+    ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // ROCE鎴栬€匲RMA閫氫俊鎵€闇€鍙ユ焺
 };
 
 // ======================== Common Types and Utilities ========================
@@ -272,17 +275,17 @@ public:
         uint32_t *rankIdLists = nullptr;
         CommLink *linksList = nullptr;
 
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP; // 检查是否跨超节点
-        layerMap_ = {};                                 // 清空layerMap，准备重新检查
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP; // check cross super node
+        layerMap_ = {};                                 // clear layerMap
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             ASCEND_LOGI("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
 
-            // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
+            // 鍦ㄥ惊鐜唴璋冪敤HcclRankGraphGetRanksByLayer鑾峰彇褰撳墠灞傜殑鎵€鏈夊崱ID
             auto hcclRet =
                 HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
 
-            // 检查本卡与该层所有卡之间是否全部支持URMA协议
+            // 妫€鏌ユ湰鍗′笌璇ュ眰鎵€鏈夊崱涔嬮棿鏄惁鍏ㄩ儴鏀寔URMA鍗忚
             for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
                 if (rankIdLists[rankIdx] == srcRankId || layerMap_.find(rankIdLists[rankIdx]) != layerMap_.end()) {
                     continue;
@@ -295,13 +298,13 @@ public:
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
                     ASCEND_LOGI("Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
                                 layerList[layerIndex], rankIdLists[rankIdx], srcRankId);
-                    // 若不支持，则跳出循环
+                    // 鑻ヤ笉鏀寔锛屽垯璺冲嚭寰幆
                     return;
                 }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
         }
-        // 确认跨超组网
+        // 纭璺ㄨ秴缁勭綉
         topoType_ = TopoType::CROSS_SUPER_NODE;
         ASCEND_LOGI("Cross-server confirmed, use URMA protocol for cross-server communication");
     }
@@ -320,7 +323,7 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "CheckProtocolSupport Get rank ID failed, ret: ", hcclRet);
         ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
 
-        // 先获取整个通信域的卡数ranksize
+        // 鍏堣幏鍙栨暣涓€氫俊鍩熺殑鍗℃暟ranksize
         uint32_t rankSize = 0;
         hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
@@ -332,7 +335,7 @@ public:
                 HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
             bool allSupportUbMem = true;
-            // 检查本卡与该层所有卡之间是否全部支持protocol协议
+            // 妫€鏌ユ湰鍗′笌璇ュ眰鎵€鏈夊崱涔嬮棿鏄惁鍏ㄩ儴鏀寔protocol鍗忚
             for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
                 if (rankIdLists[rankId] == srcRankId || layerMap_.find(rankIdLists[rankId]) != layerMap_.end()) {
                     continue;
@@ -345,7 +348,7 @@ public:
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
                     ASCEND_LOGI("Layer %u does not support UB_MEM with rank %u, break loop", layerList[layerIndex],
                                 rankIdLists[rankId]);
-                    // 若不支持，则跳出循环
+                    // 鑻ヤ笉鏀寔锛屽垯璺冲嚭寰幆
                     allSupportUbMem = false;
                     break;
                 }
@@ -358,7 +361,7 @@ public:
             ASCEND_LOGI("Layer %u all support UB_MEM, rankNumPerUbDomain_: %u", layerList[layerIndex],
                         rankNumPerUbDomain_);
         }
-        // 跨超场景判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
+        // cross super node: rankNumPerUbDomain_ must be < ranksize and divide it
         if (rankNumPerUbDomain_ != 0 && rankNumPerUbDomain_ < rankSize) {
             TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
                         "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
@@ -556,7 +559,7 @@ public:
         return rankNumPerServer_;
     }
 
-    // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
+    // 璁板綍鏈崱涓庡叾浠栧崱鐨勯€氫俊灞傛暟锛宬ey涓哄叾浠栧崱鐨剅ankId锛寁alue涓洪€氫俊灞傛暟
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     uint32_t rankNumPerUbDomain_ = 0;
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
