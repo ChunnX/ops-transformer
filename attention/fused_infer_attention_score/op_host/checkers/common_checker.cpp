@@ -993,14 +993,6 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
                 "blockTable must be empty when D of query and key is not equal to D of value"),
             return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value"),
-        return false);
-    OP_CHECK_IF(fiaInfo.enableAlibiPse && fiaInfo.isQKVDDifferent,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value"),
-        return false);
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
         OP_LOGW(fiaInfo.opName, "When query input is not fp16,innerPrecise will not take effect");
