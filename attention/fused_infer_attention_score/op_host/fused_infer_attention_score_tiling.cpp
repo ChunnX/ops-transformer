@@ -2311,6 +2311,7 @@ static int64_t get_ns_ts() {
 
 FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
+    OP_LOGE(context, "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用前纳秒时间戳: %lld", get_ns_ts());
     OP_CHECK_IF(context == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR("FusedInferAttentionScore", "Tiling context is null."),
         return ge::GRAPH_FAILED);
@@ -2320,14 +2321,17 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
+        OP_LOGE(context, "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用前纳秒时间戳: %lld", get_ns_ts());
+        // std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
         return TilingFusedInferAttentionScoreV4(context);
-        std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
+        OP_LOGE(context, "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用后纳秒时间戳: %lld", get_ns_ts());
+        // std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
         return TilingFusedInferAttentionScore(context);
     }
+    OP_LOGE(context, "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用后纳秒时间戳: %lld", get_ns_ts());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2339,9 +2343,9 @@ __attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingIncreFlas
 __attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(
     gert::TilingContext *context)
 {
-    std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
+    // std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
     return DoOpTilingFusedInferAttentionScore(context);
-    std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
+    // std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
 }
 }
 } // namespace optiling
