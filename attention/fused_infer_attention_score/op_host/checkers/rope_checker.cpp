@@ -110,8 +110,11 @@ ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckShapeSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckShapeConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
+        return ge::GRAPH_SUCCESS;
+    }
     // check qk head dim and rope head dim
     if (ge::GRAPH_SUCCESS != CheckQDsizeSupport(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -138,7 +141,7 @@ ge::graphStatus RopeChecker::CheckShapeSupport(const FiaTilingInfo &fiaInfo)
 // check rope dtype 与 query/key的数据类型一致
 ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (enableNonQuant_) {
+    if (enableNonQuant_ && fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF((fiaInfo.inputQRopeType != fiaInfo.inputQType),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query_rope",
                                                           ToString(fiaInfo.inputQRopeType).c_str(),
@@ -542,9 +545,7 @@ ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckRopeDtypeConsistency(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo) ||
+    if (ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckKRopeContiguous(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
@@ -560,7 +561,9 @@ ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckRopeConsistency(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckRopeConsistency(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckShapeConsistency(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckRopeDtypeConsistency(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

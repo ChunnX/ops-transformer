@@ -49,7 +49,7 @@ private:
     ge::graphStatus CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckShapeSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckShapeConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQSSize(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckNSize(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckAxisSupport(const FiaTilingInfo &fiaInfo);

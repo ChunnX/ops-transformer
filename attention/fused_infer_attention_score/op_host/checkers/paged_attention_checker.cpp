@@ -728,8 +728,6 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
     }
     if (ge::GRAPH_SUCCESS != CheckSeqLengthKVExistence(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckKVLayout(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckBlockSizeSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckMaskShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckQDtypeSupport(fiaInfo)) {
@@ -747,6 +745,14 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
 
 ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (ge::GRAPH_SUCCESS != CheckBlockSizeSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
