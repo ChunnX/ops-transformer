@@ -2387,18 +2387,18 @@ static aclnnStatus FlashAttentionScoreGradV5GetWorkspace(
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    // 获取基本参数
+    // fagShape needed by Pre/Post even in isMaxWorkspace mode
     FagInShapeInfo fagShape;
-    if (!isMaxWorkspace) {
-        ret = GetInputShapeInfo(query, key, value, headNum, inputLayout, fagShape, actualSeqQLenOptional,
-            actualSeqKvLenOptional, keepProb);
+    ret = GetInputShapeInfo(query, key, value, headNum, inputLayout, fagShape, actualSeqQLenOptional,
+        actualSeqKvLenOptional, keepProb);
 
-        if (ret != ACLNN_SUCCESS) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The op [FlashAttentionScoreGrad] received bad params, "
-                    "the reason is: [GetInputShapeInfo failed when getting V5 workspace, see previous log for the input shape detail]");
-            return ret;
-        }
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "The op [FlashAttentionScoreGrad] received bad params, "
+                "the reason is: [GetInputShapeInfo failed when getting V5 workspace, see previous log for the input shape detail]");
+        return ret;
+    }
+    if (!isMaxWorkspace) {
         ret = isSupportMultiInput(query, queryRope, key, keyRope, value, attenMaskOptional, pseShiftOptional,
             dropMaskOptional, keepProb, fagShape, sparseMode);
         if (ret != ACLNN_SUCCESS) {
@@ -2438,22 +2438,14 @@ static aclnnStatus FlashAttentionScoreGradV5GetWorkspace(
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     FagShapeArray fagShapeArray;
     char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    if (!isMaxWorkspace) {
-        // reshape + PAD + Transpose
-        ret = PreFlashAttentionScoreGrad(&queryCngs, &keyCngs, &valueCngs, &dyCngs, &attentionInOptionalCngs, fagShape,
-            fagShapeArray, executor);
+    ret = PreFlashAttentionScoreGrad(&queryCngs, &keyCngs, &valueCngs, &dyCngs, &attentionInOptionalCngs, fagShape,
+        fagShapeArray, executor);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    if (softmaxInLayout != nullptr && strcmp(softmaxInLayout, "same_as_input") == 0) {
+        ret = TransposeSoftMaxTensor(&softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, fagShape, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        if (softmaxInLayout != nullptr && strcmp(softmaxInLayout, "same_as_input") == 0) {
-            ret = TransposeSoftMaxTensor(&softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, fagShape, executor);
-            CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        }
-        // 调整input layout
-        ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
-    } else {
-        for (size_t i = 0; i < strlen(inputLayout) && i < MAX_LAYOUT_SIZE - 1; i++) {
-            inputLayoutUnderTrans[i] = inputLayout[i];
-        }
     }
+    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
 
     // 调用FAG ascendc接口
     auto fagRes = l0op::FlashAttentionScoreGrad(
@@ -2471,11 +2463,8 @@ static aclnnStatus FlashAttentionScoreGradV5GetWorkspace(
         CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
               ACLNN_ERR_PARAM_NULLPTR);
     }
-    // transpose + slice + reshape + viewCopy
-    if (!isMaxWorkspace) {
-        ret = PostFlashAttentionScoreGrad(fagRes, &dqOut, &dqRopeOut, &dkOut, &dkRopeOut, &dvOut, &dpseOut,
-            &dsinkOut, fagShape, fagShapeArray, executor);
-    }
+    ret = PostFlashAttentionScoreGrad(fagRes, &dqOut, &dqRopeOut, &dkOut, &dkRopeOut, &dvOut, &dpseOut,
+        &dsinkOut, fagShape, fagShapeArray, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     return ACLNN_SUCCESS;
 }
@@ -2807,7 +2796,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
         paddingMaskOptional, attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional,
         attentionInOptional, sinkInOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional,
         qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb, preTokens, nextTokens, headNum,
-        inputLayout, innerPrecise, sparseMode, 1, dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, dpseOut,
+        inputLayout, innerPrecise, sparseMode, pseType, dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, dpseOut,
         dsinkOut, softmaxInLayout, workspaceSize, uniqueExecutor.get(), true);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 

@@ -235,8 +235,8 @@ protected:
         blockShapeY_ = blockShapeList[1];
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
-                          {k_batch_num, k_head_num, k_seq_len, q_head_dim},
-                          {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
+                          {k_batch_num, k_head_num, k_seq_len, k_head_dim},
+                          {v_batch_num, v_head_num, v_seq_len, v_head_dim}, q_group, context_);
     }
 
     ge::graphStatus GetPlatformInfo() override

@@ -85,7 +85,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -99,7 +99,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tensor</li>
-        <ul>
+        </ul>
       </td>
       <td>数据类型与hRes一致</td>
       <td>ND</td>
@@ -157,7 +157,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHRes</td>
@@ -168,7 +167,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHOut</td>
@@ -179,7 +177,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
       <td>√</td>
-      </tr>
     </tr>
     <tr>
       <td>gradHPost</td>
@@ -200,8 +197,8 @@ aclnnStatus aclnnMhcPostBackward(
       <td>-</td>
       <td>-</td>
       <td>-</td>
-      </tr>
-      <tr>
+    </tr>
+    <tr>
       <td>executor</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
@@ -210,9 +207,8 @@ aclnnStatus aclnnMhcPostBackward(
       <td>-</td>
       <td>-</td>
       <td>-</td>
-      </tr>
-    </tbody></table>
-
+    </tr>
+  </tbody></table>
 
 - **返回值：**
 
@@ -249,11 +245,10 @@ aclnnStatus aclnnMhcPostBackward(
         </tr>
   </tbody></table>
 
-
 ## aclnnMhcPostBackward
 
 - **参数说明：**
- 	 
+   
   <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
@@ -297,7 +292,6 @@ aclnnStatus aclnnMhcPostBackward(
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：参数说明中维度N的取值目前仅支持4，维度D的取值需要128对齐并且取值范围为[1,100000]。
 - <term>Ascend 950PR/Ascend 950DT</term>：参数说明中维度N的取值目前仅支持4、6和8。
-
 
 ## 调用示例
 

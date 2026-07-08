@@ -42,6 +42,21 @@ using ge::Status;
 using ge::Tensor;
 using ge::TensorDesc;
 
+namespace {
+constexpr int64_t BATCH = 1;
+constexpr int64_t SEQ_LEN = 4;
+constexpr int64_t HC_MULT = 4;
+constexpr int64_t HIDDEN_DIM = 4096;
+constexpr int64_t HC_MIX = HC_MULT * HC_MULT + 2 * HC_MULT;
+constexpr int64_t NUM_ITERS = 20;
+
+struct TestCase {
+    DataType xDtype;
+    bool needBackward;
+    const char *name;
+};
+} // namespace
+
 std::string GetTime()
 {
     time_t timep;
@@ -137,65 +152,104 @@ int AddDataInput(const std::string &name, uint32_t index, DataType dtype, const 
     return SUCCESS;
 }
 
-void SetOutputDesc(ge::op::MhcPreSinkhorn &op)
+void SetOutputDesc(ge::op::MhcPreSinkhorn &op, DataType xDtype, bool needBackward)
 {
-    constexpr int64_t batch = 1;
-    constexpr int64_t seqLen = 4;
-    constexpr int64_t hcMult = 4;
-    constexpr int64_t hiddenDim = 256;
-    constexpr int64_t hcMix = hcMult * hcMult + 2 * hcMult;
-    constexpr int64_t numIters = 20;
+    op.update_output_desc_hin(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HIDDEN_DIM}), FORMAT_ND, xDtype));
+    op.update_output_desc_hPost(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
+    op.update_output_desc_hRes(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MULT * HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
 
-    op.update_output_desc_hin(TensorDesc(ge::Shape({batch, seqLen, hiddenDim}), FORMAT_ND, ge::DT_BF16));
-    op.update_output_desc_hPost(TensorDesc(ge::Shape({batch, seqLen, hcMult}), FORMAT_ND, ge::DT_FLOAT));
-    op.update_output_desc_hRes(TensorDesc(ge::Shape({batch, seqLen, hcMult * hcMult}), FORMAT_ND, ge::DT_FLOAT));
-    op.update_output_desc_hPre(TensorDesc(ge::Shape({batch, seqLen, hcMult}), FORMAT_ND, ge::DT_FLOAT));
-    op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({batch, seqLen, hcMix}), FORMAT_ND, ge::DT_FLOAT));
-    op.update_output_desc_invRms(TensorDesc(ge::Shape({batch, seqLen, 1}), FORMAT_ND, ge::DT_FLOAT));
-    op.update_output_desc_sumOut(TensorDesc(ge::Shape({numIters * 2, batch, seqLen, hcMult}), FORMAT_ND,
-                                           ge::DT_FLOAT));
-    op.update_output_desc_normOut(TensorDesc(ge::Shape({numIters * 2, batch, seqLen, hcMult, hcMult}), FORMAT_ND,
-                                            ge::DT_FLOAT));
+    if (needBackward) {
+        op.update_output_desc_hPre(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MIX}), FORMAT_ND,
+                                                      ge::DT_FLOAT));
+        op.update_output_desc_invRms(TensorDesc(ge::Shape({BATCH, SEQ_LEN, 1}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_sumOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND,
+                                               ge::DT_FLOAT));
+        op.update_output_desc_normOut(TensorDesc(ge::Shape({NUM_ITERS * 2, BATCH, SEQ_LEN, HC_MULT, HC_MULT}),
+                                                FORMAT_ND, ge::DT_FLOAT));
+    } else {
+        op.update_output_desc_hPre(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_hcBeforeNorm(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_invRms(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_sumOut(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
+        op.update_output_desc_normOut(TensorDesc(ge::Shape({0}), FORMAT_ND, ge::DT_FLOAT));
+    }
 }
 
 int CreateGraph(std::vector<Tensor> &input_tensors, std::vector<Operator> &input_ops, std::vector<Operator> &outputs,
-                Graph &graph)
+                Graph &graph, const TestCase &testCase)
 {
-    auto mhc_pre_sinkhorn = ge::op::MhcPreSinkhorn("test_geir_mhc_pre_sinkhorn");
+    auto mhc_pre_sinkhorn = ge::op::MhcPreSinkhorn(testCase.name);
 
-    if (AddDataInput("x", 0, ge::DT_BF16, {1, 4, 4, 256}, graph, input_tensors, input_ops,
+    if (AddDataInput("x", 0, testCase.xDtype, {BATCH, SEQ_LEN, HC_MULT, HIDDEN_DIM}, graph, input_tensors, input_ops,
                      mhc_pre_sinkhorn) != SUCCESS) {
         return FAILED;
     }
-    if (AddDataInput("phi", 1, ge::DT_FLOAT, {24, 1024}, graph, input_tensors, input_ops,
+    if (AddDataInput("phi", 1, ge::DT_FLOAT, {HC_MIX, HC_MULT * HIDDEN_DIM}, graph, input_tensors, input_ops,
                      mhc_pre_sinkhorn) != SUCCESS) {
         return FAILED;
     }
     if (AddDataInput("alpha", 2, ge::DT_FLOAT, {3}, graph, input_tensors, input_ops, mhc_pre_sinkhorn) != SUCCESS) {
         return FAILED;
     }
-    if (AddDataInput("bias", 3, ge::DT_FLOAT, {24}, graph, input_tensors, input_ops, mhc_pre_sinkhorn) != SUCCESS) {
+    if (AddDataInput("bias", 3, ge::DT_FLOAT, {HC_MIX}, graph, input_tensors, input_ops, mhc_pre_sinkhorn) != SUCCESS) {
         return FAILED;
     }
 
-    mhc_pre_sinkhorn.set_attr_hc_mult(4);
-    mhc_pre_sinkhorn.set_attr_num_iters(20);
+    mhc_pre_sinkhorn.set_attr_hc_mult(HC_MULT);
+    mhc_pre_sinkhorn.set_attr_num_iters(NUM_ITERS);
     mhc_pre_sinkhorn.set_attr_hc_eps(1e-6f);
     mhc_pre_sinkhorn.set_attr_norm_eps(1e-6f);
-    mhc_pre_sinkhorn.set_attr_need_backward(true);
-    SetOutputDesc(mhc_pre_sinkhorn);
+    mhc_pre_sinkhorn.set_attr_need_backward(testCase.needBackward);
+    SetOutputDesc(mhc_pre_sinkhorn, testCase.xDtype, testCase.needBackward);
 
     outputs.push_back(mhc_pre_sinkhorn);
     return SUCCESS;
 }
 
-int main()
+int RunCase(Session &session, uint32_t graphId, const TestCase &testCase)
 {
-    Graph graph("mhc_pre_sinkhorn_geir_graph");
+    Graph graph(testCase.name);
     std::vector<Tensor> input_tensors;
     std::vector<Operator> input_ops;
     std::vector<Operator> output_ops;
 
+    printf("%s - INFO - [XIR]: Run case %s, x dtype: %d, need_backward: %d\n",
+           GetTime().c_str(), testCase.name, static_cast<int>(testCase.xDtype), testCase.needBackward);
+    Status ret = CreateGraph(input_tensors, input_ops, output_ops, graph, testCase);
+    if (ret != SUCCESS) {
+        return FAILED;
+    }
+    graph.SetInputs(input_ops).SetOutputs(output_ops);
+
+    std::map<AscendString, AscendString> graph_options = {};
+    ret = session.AddGraph(graphId, graph, graph_options);
+    if (ret != SUCCESS) {
+        printf("%s - ERROR - [XIR]: Add graph failed for case %s\n", GetTime().c_str(), testCase.name);
+        return FAILED;
+    }
+
+    std::vector<Tensor> output_tensors;
+    ret = session.RunGraph(graphId, input_tensors, output_tensors);
+    if (ret != SUCCESS) {
+        printf("%s - ERROR - [XIR]: Run graph failed for case %s\n", GetTime().c_str(), testCase.name);
+        ge::AscendString error_msg = ge::GEGetErrorMsgV2();
+        ge::AscendString warning_msg = ge::GEGetWarningMsgV2();
+        std::cout << "Error message: " << error_msg.GetString() << std::endl;
+        std::cout << "Warning message: " << warning_msg.GetString() << std::endl;
+        return FAILED;
+    }
+
+    printf("%s - INFO - [XIR]: Run graph success for case %s, output num: %zu\n",
+           GetTime().c_str(), testCase.name, output_tensors.size());
+    if (output_tensors.size() != 8) {
+        return FAILED;
+    }
+    return SUCCESS;
+}
+
+int main()
+{
     printf("%s - INFO - [XIR]: Start to initialize ge\n", GetTime().c_str());
     std::map<AscendString, AscendString> global_options = {{"ge.exec.deviceId", "0"}, {"ge.graphRunMode", "1"}};
     Status ret = ge::GEInitialize(global_options);
@@ -204,13 +258,6 @@ int main()
         return FAILED;
     }
 
-    ret = CreateGraph(input_tensors, input_ops, output_ops, graph);
-    if (ret != SUCCESS) {
-        ge::GEFinalize();
-        return FAILED;
-    }
-    graph.SetInputs(input_ops).SetOutputs(output_ops);
-
     std::map<AscendString, AscendString> build_options = {};
     auto session = new (std::nothrow) Session(build_options);
     if (session == nullptr) {
@@ -218,34 +265,20 @@ int main()
         return FAILED;
     }
 
-    std::map<AscendString, AscendString> graph_options = {};
-    constexpr uint32_t graph_id = 0;
-    ret = session->AddGraph(graph_id, graph, graph_options);
-    if (ret != SUCCESS) {
-        printf("%s - ERROR - [XIR]: Add graph failed\n", GetTime().c_str());
-        delete session;
-        ge::GEFinalize();
-        return FAILED;
-    }
+    std::vector<TestCase> testCases = {
+        {ge::DT_BF16, true, "mhc_pre_sinkhorn_bf16_need_backward_true"},
+        {ge::DT_BF16, false, "mhc_pre_sinkhorn_bf16_need_backward_false"},
+        {ge::DT_FLOAT16, true, "mhc_pre_sinkhorn_fp16_need_backward_true"},
+        {ge::DT_FLOAT16, false, "mhc_pre_sinkhorn_fp16_need_backward_false"},
+    };
 
-    std::vector<Tensor> output_tensors;
-    ret = session->RunGraph(graph_id, input_tensors, output_tensors);
-    if (ret != SUCCESS) {
-        printf("%s - ERROR - [XIR]: Run graph failed\n", GetTime().c_str());
-        ge::AscendString error_msg = ge::GEGetErrorMsgV2();
-        ge::AscendString warning_msg = ge::GEGetWarningMsgV2();
-        std::cout << "Error message: " << error_msg.GetString() << std::endl;
-        std::cout << "Warning message: " << warning_msg.GetString() << std::endl;
-        delete session;
-        ge::GEFinalize();
-        return FAILED;
-    }
-
-    printf("%s - INFO - [XIR]: Run graph success, output num: %zu\n", GetTime().c_str(), output_tensors.size());
-    if (output_tensors.size() != 8) {
-        delete session;
-        ge::GEFinalize();
-        return FAILED;
+    for (size_t i = 0; i < testCases.size(); ++i) {
+        ret = RunCase(*session, static_cast<uint32_t>(i), testCases[i]);
+        if (ret != SUCCESS) {
+            delete session;
+            ge::GEFinalize();
+            return FAILED;
+        }
     }
 
     delete session;
