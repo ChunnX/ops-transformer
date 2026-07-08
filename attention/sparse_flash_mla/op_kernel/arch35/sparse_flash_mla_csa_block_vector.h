@@ -23,7 +23,7 @@
 
 using AscendC::Reg::StoreDist;
 
-#include "flash_decode.h"
+#include "common/flash_decode.h"
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"

@@ -28,7 +28,11 @@
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 using AscendC::Reg::StoreDist;
-#include "../../../sparse_flash_mla/op_kernel/arch35/flash_decode.h"
+#if __has_include("../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h")
+#include "../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h"
+#else
+#include "../../sparse_flash_mla/arch35/common/flash_decode.h"
+#endif
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
@@ -1102,30 +1106,30 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     } else {
         if (runInfo.s2LoopCount == 0 && isSinks) {
             if (!runInfo.isS2Split || runInfo.isFirstS2SplitCore) {
-            // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
-            int64_t sinksOffset = 0;
-            if constexpr (!IS_SPLIT_G) {
-                sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
-            } else {
-                switch (constInfo.aivIdx % 4) {
-                    case 0:
-                        sinksOffset = 0;
-                        break;
-                    case 1:
-                        sinksOffset = 32;
-                        break;
-                    case 2:
-                        sinksOffset = 64;
-                        break;
-                    case 3:
-                        sinksOffset = 96;
-                        break;
-                    default:
-                        break;
+                // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
+                int64_t sinksOffset = 0;
+                if constexpr (!IS_SPLIT_G) {
+                    sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
+                } else {
+                    switch (constInfo.aivIdx % 4) {
+                        case 0:
+                            sinksOffset = 0;
+                            break;
+                        case 1:
+                            sinksOffset = 32;
+                            break;
+                        case 2:
+                            sinksOffset = 64;
+                            break;
+                        case 3:
+                            sinksOffset = 96;
+                            break;
+                        default:
+                            break;
+                    }
                 }
-            }
-            LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
-            InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
+                LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
+                InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
             } else {
                 // FD非首段split: 初始化maxUb=极小值, sumUb=0（不含sinks），走update模式等价于init
                 Duplicate(maxUb, this->negativeFloatScalar, runInfo.halfMRealSize);
