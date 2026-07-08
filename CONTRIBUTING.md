@@ -1,139 +1,435 @@
-# 贡献指南
+# QFA MXFP8 Pytest 代码适配 TTK 框架计划
 
-本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前。请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
+## 1. TTK 框架架构详解
 
-开发者准备本地代码与提交PR时需要重点关注如下几点：
+### 1.1 核心架构
 
-1. 提交PR时，请按照PR模板仔细填写本次PR的业务背景、目的、方案等信息。
-2. 若您的修改不是简单的bug修复，而是涉及到新增特性、新增接口、新增配置参数或者修改代码流程等，请务必先通过Issue进行方案讨论，以避免您的代码被拒绝合入。若您不确定本次修改是否可被归为“简单的bug修复”，亦可通过提交Issue进行方案讨论。
+TTK (Ops Test Tool Kit) 是华为 CANN 算子测试框架，通过 `python3 -m ttk e2e` 命令执行端到端测试。其核心设计是**插件系统**：算子开发者只需在 `tests/assets/` 目录下提供 4 个插件文件，TTK 框架自动加载并执行测试。
 
-开发者贡献场景主要包括：
+### 1.2 四大插件组件
 
-## 一、贡献新算子
+| 文件           | 位置                             | 注册字典              | 核心职责                                                       |
+| ------------ | ------------------------------ | ----------------- | ---------------------------------------------------------- |
+| `spec.py`    | `tests/assets/spec.py`         | `__spec__`        | 算子规格描述：定义 golden 函数、input 函数、tolerance、compare 函数          |
+| `golden.py`  | `tests/assets/impl/golden.py`  | `__golden__`      | CPU 参考实现：接收 NPU API 格式的输入，返回 CPU golden 输出                 |
+| `inputs.py`  | `tests/assets/impl/inputs.py`  | `__input__`       | 输入预处理：对 TTK 生成的随机输入进行合法性修正（如 sparse\_indices、block\_table） |
+| `compare.py` | `tests/assets/impl/compare.py` | `__compare__`（可选） | 自定义精度比较：替代 TTK 默认比较逻辑                                      |
 
-算子开发贡献流程如下：
+### 1.3 spec.py 结构详解
 
-![算子开发贡献流程](./docs/zh/figures/算子开发贡献流程.png "算子开发贡献流程图")
+`spec.py` 是 TTK 的入口文件，定义 `__spec__` 注册字典：
 
-如果您有全新的算子希望基于NPU进行设计与实现，欢迎在Issue中提出您的想法与设计方案。完整的贡献过程如下：
+```python
+import importlib.util
+from pathlib import Path
 
-### 1. 创建Issue需求
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
-新建 `Requirement|需求建议` 类 Issue，并阐明新增算子的设计方案。Issue一般需包含以下内容：
+def load_impl_module(stem):
+    path = ASSET_IMPL_DIR / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(f"qfa_assets_impl_{stem}_{abs(hash(path))}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-- **背景信息**  
-- **价值/作用**  
-- **设计方案**
+golden_module = load_impl_module("golden")
+inputs_module = load_impl_module("inputs")
 
-请在提交的Issue中评论`/assign @yourself` 认领该任务。
+class QuantFlashAttnSpec:
+    golden = golden_module.cpu_quant_flash_attn          # CPU golden 函数引用
+    customize_inputs = inputs_module.generate_qfa_inputs  # 输入预处理函数引用
+    tolerance = {                                          # 精度阈值
+        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.005, "atol": 0.000025},
+        "bfloat16": {"standard": "IsClose", "rtol": 0.0078125, "ptol": 0.005, "atol": 0.0001},
+    }
+    # 可选：自定义 compare 方法
+    # def compare(*outputs, **kwargs):
+    #     return compare_module.compare(*outputs, ...)
 
-### 2. 需求评审
-
-Sig组将指派Committer对您提交的Issue进行评审并反馈修改意见。请在完成修改后，于Issue中@对应Committer。
-
-若需求被接纳，[sig成员](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)将为您分配合适的算子分类路径（如：`experimental/attention`），请将贡献的算子提交至`experimental`对应算子分类目录。
-
-### 3. PR提交  
-
-生态最简算子交付件如下：
-
-```
-${op_class}                                          # 算子分类
-├── ${op_name}                                       # 算子名
-│   ├── ${op_name}.cpp                               # 算子Kernel实现文件
-│   └── tests                                        
-│   │   ├── test_${op_name}.py                       # 算子测试文件
-│   ├── CMakeLists.txt                               # 算子编译配置文件
-│   ├── README.md                                    # 算子README文档
-```
-
-PR上库要求：
-
-- 代码交付件：需提供算子Kernel实现、算子测试文件，开发过程参考[fast_kernel_launch_example](examples/fast_kernel_launch_example/README.md)。
-- 文档交付件：算子README文档为必选，其余文档可视情况提供。文档写作模板和规范参考[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
-- 精度要求：新贡献算子需满足精度标准，具体请参见[生态算子开源精度标准](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)。
-- 合规检查：
-  - 代码是否符合《[C++ 编程规范](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》
-  - 代码是否编译通过
-  - Markdown文档语法是否符合规范
-  - 使用git进行代码提交前，可以参考[pre-commit工具使用说明](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/develop/pre-commit_guide.md)来使您的代码提交更合规高效。
-- 贡献目录：按sig成员意见提交至指定目录下`experimental/${op_class}`，可参考已有算子文件放置规则。
-- PR提交：通过`git`命令提交目标分支PR，检查PR标题是否清晰、PR描述是否规范（指明更改内容和原因、是否关联对应Issue）、是否签署CLA。
-
-如果您希望贡献项目标准算子，其交付件比生态算子更丰富，包括Kernel、Tiling实现等，贡献指导可参考[附录](#附录)。
-
-### 4. CI门禁
-
-通过评论 `compile` 指令触发开源仓门禁，并依据CI检测结果进行修改，目前CI门禁包含以下检查项：
-
-- 代码编译
-- 静态检查（如涉及codecheck误报，请提交给sig成员屏蔽）
-- UT测试
-- 冒烟测试
-
-门禁通过后，请在关联的Issue中@指派的Committer。
-
-### 5. Committer检视
-
-Committer检视后将反馈检视意见，请根据意见修改，完成后@指派的Committer。
-
-### 6. Maintainer合入
-
-Committer检视通过后，标注 `/lgtm`标签。Maintainer将在1天内进行最终审核，确认无问题后，将标注 `/approve` 标签合入PR。
-
-## 二、算子Bug修复
-
-如果您在本项目中发现了某些算子Bug，希望对其进行修复，欢迎您新建Issue进行反馈和跟踪处理。
-
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Bug-Report|缺陷反馈` 类Issue对Bug进行描述，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行处理。
-
-## 三、算子优化
-
-如果您对本项目中某些算子实现有泛化性增强/性能优化思路，希望着手实现这些优化点，欢迎您对算子进行优化贡献。
-
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Requirement|需求建议` 类Issue对优化点进行说明，并提供您的设计方案，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行跟踪优化。
-
-## 四、文档纠错
-
-如果您在本项目中发现某些算子文档描述错误，欢迎您新建Issue进行反馈和修复，文档规范参考[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
-
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Documentation|文档反馈` 类Issue指出对应文档的问题，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您纠正对应文档描述。
-
-## 五、帮助解决他人Issue
-
-如果社区中他人遇到的问题您有合适的解决方法，欢迎您在Issue中发表评论交流，帮助他人解决问题和痛点，共同优化易用性。
-
-如果对应Issue需要进行代码修改，您可以在Issue评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您，跟踪协助解决问题。
-
-## 附录
-
-项目标准算子交付件如下：
-
-```
-${op_class}                                          # 算子分类
-├── ${op_name}                                       # 算子名
-│   ├── op_host                                      # 算子定义、Tiling相关实现
-│   │   ├── ${op_name}_def.cpp                       # 算子定义文件
-│   │   ├── ${op_name}_tiling.cpp                    # 算子Tiling实现文件
-│   │   └── CMakeLists.txt
-│   ├── op_kernel                                    # 算子Kernel目录
-│   │   ├── ${op_name}.cpp                           # Kernel入口文件，包含主函数和调度逻辑
-│   │   ├── ${op_name}.h                             # Kernel实现文件，定义Kernel头文件，包含函数说明、结构定义、逻辑实现
-│   │   ├── ${op_name}_tiling_data.h                 # TilingData文件，存储Tiling策略相关配置信息
-│   │   └── ${op_name}_tiling_key.h                  # TilingKey文件，定义Tiling策略的key，标识不同划分方式
-│   ├── CMakeLists.txt                               # 算子编译配置文件，保留原文件即可
-│   └── README.md                                    # 算子说明文档
-│   └── tests                                        # 算子测试文件
-│   │   ├── ut                                       # 算子UT测试文件
+__spec__ = {
+    "torch_npu.quant_flash_attn_metadata": QuantFlashAttnSpec,  # 算子 API 名称
+}
 ```
 
-PR上库要求：
+**关键设计点：**
 
-- 代码交付件：需提供op_host算子Tiling实现、op_kernel算子Kernel实现、算子UT测试文件，开发过程请参考[算子开发指南](docs/zh/develop/aicore_develop_guide.md)。
-- 文档交付件：算子README文档为必选，其余文档可视情况提供。文档写作模板和规范请参见[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
-- 合规检查：
-  - 代码是否符合《[C++ 编程规范](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》、是否符合标准算子基础编程规范
-  - 代码是否编译通过
-  - Markdown文档语法是否符合规范
-- 贡献目录：按sig成员意见提交至指定目录下`experimental/${op_class}`，可参考已有算子文件放置规则。
-- PR提交：通过`git`命令提交目标分支PR，检查PR标题是否清晰、PR描述是否规范（指明更改内容和原因、是否关联对应Issue）、是否签署CLA。
+* `__spec__` 字典的 key 是算子的 torch\_npu API 名称（如 `"torch_npu.npu_sparse_flash_attention"`）
+
+* Spec 类的 `golden` 属性直接引用 impl/golden.py 中的函数
+
+* `customize_inputs` 属性引用 impl/inputs.py 中的函数
+
+* `tolerance` 定义每种 dtype 的精度标准
+
+* `compare` 是可选的类方法，用于自定义比较逻辑
+
+### 1.4 golden.py 结构详解
+
+`golden.py` 定义 `__golden__` 注册字典和 CPU golden 函数：
+
+```python
+__golden__ = {
+    "e2e": {
+        "torch_npu.npu_sparse_flash_attention": "cpu_sparse_flash_attention"
+    }
+}
+```
+
+**关键设计模式：**
+
+1. **复用 pytest golden**：PR #8185 的核心模式是 `load_pytest_golden_module()` — 通过 `importlib.util` 动态加载 `tests/pytest/` 下的 golden 文件，避免代码重复
+2. **TTK 适配层**：golden.py 中只写 TTK API → pytest golden 的适配代码（layout 转换、PA→BNSD 转换、量化 scale 处理等）
+3. **函数签名匹配 NPU API**：golden 函数的参数名和顺序与 NPU 算子 API 一致，TTK 框架会按 CSV 中的参数名自动映射
+
+### 1.5 inputs.py 结构详解
+
+`inputs.py` 定义 `__input__` 注册字典和输入预处理函数：
+
+```python
+__input__ = {
+    "e2e": {
+        "torch_npu.npu_sparse_flash_attention": "generate_valid_sparse_indices"
+    }
+}
+```
+
+**关键职责：**
+
+* 对 TTK 随机生成的输入进行合法性修正（如 sparse\_indices 填充有效值、block\_table 随机填充、量化 scale 初始化）
+
+* 函数签名与 NPU API 一致，TTK 框架传入所有输入张量和属性参数
+
+* 使用 `**kwargs` 接收额外参数
+
+* 直接修改传入的张量（in-place 操作），不需要返回值
+
+### 1.6 compare.py 结构详解（可选）
+
+`compare.py` 定义自定义比较逻辑，用于替代 TTK 默认的 IsClose 比较：
+
+```python
+def compare(*outputs, scores=None):
+    # outputs = [npu_out1, npu_out2, ..., golden_out1, golden_out2, ...]
+    # 前半是 NPU 输出，后半是 golden 输出
+    half = len(outputs) // 2
+    npu_outputs = outputs[:half]
+    golden_outputs = outputs[half:]
+    ...
+```
+
+**适用场景：**
+
+* TopK 索引比较（LI/QLI 算子）
+
+* Attention 输出需要按 valid token 区域比较
+
+* 不同输出需要不同精度阈值
+
+### 1.7 数据流
+
+```
+CSV 测试用例 → TTK 解析 → 生成随机输入张量 → inputs.py 预处理 →
+    → NPU 执行（e2e 模式） → NPU 输出
+    → golden.py CPU 计算 → CPU golden 输出
+    → compare.py / TTK 默认比较 → 结果 CSV
+```
+
+### 1.8 E2E 模式
+
+PR #8185 中所有注册字典都使用 `"e2e"` 子字典（而非 `"kernel"` 或 `"aclnn"`），说明这是端到端测试模式：
+
+```bash
+python3 -m ttk e2e -i ${test_csv} -o ${result_csv} --plugin ${ops_test_path} -c --pc=8
+```
+
+E2E 模式下 TTK 会：
+
+1. 从 CSV 读取算子名称和参数
+2. 调用 `torch_npu.xxx()` 算子 API 执行 NPU 计算
+3. 调用 `__spec__` 中注册的 golden 函数计算 CPU 参考
+4. 调用 `__spec__` 中注册的 compare 函数或使用 tolerance 进行比较
+
+## 2. 当前状态分析
+
+### 2.1 quant\_flash\_attn 目录结构
+
+```
+attention/quant_flash_attn/
+├── op_api/          # C++ 算子 API 实现
+├── op_host/         # C++ tiling 实现
+├── op_kernel/       # C++ kernel 实现
+└── tests/
+    └── pytest/      # 当前只有 pytest 测试
+        └── fia_fullquant_mxfp8_test/
+            ├── common/
+            │   ├── fia_fullquant_mxfp8_golden.py  # 已重构为双算子
+            │   ├── golden_cache.py
+            │   ├── perf_parser.py
+            │   ├── result_compare_method.py
+            │   └── test_runner.py
+            ├── conftest.py
+            ├── fia_fullquant_mxfp8_paramset_*.py
+            ├── test_fia_fullquant_mxfp8_*.py
+            └── pytest.ini
+```
+
+**缺失：** 没有 `tests/assets/` 目录，没有 TTK 插件文件。
+
+### 2.2 QFA 双算子接口
+
+QFA 是双算子模式，需要两次 NPU 调用：
+
+1. `torch_npu.quant_flash_attn_metadata()` → 返回 metadata tensor
+2. `quant_flash_attn()` → 返回 (attn\_out, lse)
+
+**TTK E2E 模式的挑战：** TTK 的 e2e 模式通常只调用单个算子 API。QFA 是双算子，需要特殊处理。
+
+### 2.3 QFA 算子 API 名称
+
+根据 `quant_flash_attn.py` 的实现：
+
+* 第一个算子：`torch_npu.quant_flash_attn_metadata`（通过 `torch_npu.npu_quant_flash_attn_metadata` 注册）
+
+* 第二个算子：`quant_flash_attn`（Python 函数，内部调用 `torch_npu.npu_quant_flash_attn`）
+
+## 3. 适配方案
+
+### 3.1 目录结构
+
+```
+attention/quant_flash_attn/tests/
+├── pytest/                          # 保留现有 pytest 测试（不修改）
+│   └── fia_fullquant_mxfp8_test/
+└── assets/                          # 新增 TTK 插件目录
+    ├── spec.py                      # 算子规格描述
+    └── impl/
+        ├── golden.py                # CPU golden 适配层
+        ├── inputs.py                # 输入预处理
+        └── compare.py              # 自定义精度比较（可选）
+```
+
+### 3.2 spec.py
+
+```python
+"""TestSpec adapter for QuantFlashAttn assets."""
+
+import importlib.util
+from pathlib import Path
+
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
+
+def load_impl_module(stem):
+    path = ASSET_IMPL_DIR / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(
+        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+golden_module = load_impl_module("golden")
+inputs_module = load_impl_module("inputs")
+compare_module = load_impl_module("compare")
+
+class QuantFlashAttnSpec:
+    golden = golden_module.cpu_quant_flash_attn
+    customize_inputs = inputs_module.generate_qfa_inputs
+    tolerance = {
+        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.005, "atol": 0.000025},
+        "bfloat16": {"standard": "IsClose", "rtol": 0.0078125, "ptol": 0.005, "atol": 0.0001},
+    }
+
+    def compare(*outputs, **kwargs):
+        return compare_module.compare(*outputs)
+
+__spec__ = {
+    "torch_npu.npu_quant_flash_attn_metadata": QuantFlashAttnSpec,
+}
+```
+
+**注意：** `__spec__` 的 key 使用 `torch_npu.npu_quant_flash_attn_metadata`，因为这是 QFA 双算子的入口算子。TTK e2e 模式会调用这个算子获取 metadata，然后需要额外逻辑调用 `quant_flash_attn`。
+
+### 3.3 golden.py
+
+**核心设计：复用 pytest golden，只写适配层。**
+
+golden.py 的 `cpu_quant_flash_attn` 函数需要：
+
+1. 接收 TTK 传入的 NPU API 格式参数（与 `quant_flash_attn_metadata` + `quant_flash_attn` 的参数一致）
+2. 将参数转换为 pytest golden 的 `Network.forward()` 所需格式
+3. 调用 pytest golden 的 CPU 计算逻辑
+
+**关键适配点：**
+
+* TTK 传入的 Q/K/V 是 FP8 量化后的张量 + descale scale
+
+* pytest golden 的 `cpu_mxfp8_golden()` 接收的是 FP32 的 Q/K/V + 量化参数
+
+* 需要在 golden.py 中做 FP8→FP32 反量化，然后调用 pytest golden
+
+**函数签名设计：**
+
+```python
+def cpu_quant_flash_attn(
+    query, key, value,
+    query_descale_scale, key_descale_scale, value_descale_scale,
+    quant_mode,
+    *,
+    cu_seqlens_q=None, cu_seqlens_kv=None,
+    seqused_q=None, seqused_kv=None,
+    mask_mode=None,
+    layout_q=None, layout_kv=None, layout_out=None,
+    block_table=None, pa_block_size=None,
+    scale=None,
+    **kwargs):
+```
+
+**适配逻辑：**
+
+1. FP8→FP32 反量化：`q_float = query.float() * query_descale_scale`
+2. Layout 转换：TTK 传入的 layout 字符串 → pytest golden 的 layout 格式
+3. 序列长度转换：TTK 的 `cu_seqlens_q`/`seqused_q` → pytest golden 的 `actual_seq_lengths_q`
+4. PA 模式：TTK 的 PA KV cache → BNSD 格式
+5. 调用 pytest golden 的 `cpu_mxfp8_golden()` 或 `Network.forward()`
+
+### 3.4 inputs.py
+
+**核心职责：对 TTK 随机生成的输入进行合法性修正。**
+
+```python
+__input__ = {
+    "e2e": {
+        "torch_npu.npu_quant_flash_attn_metadata": "generate_qfa_inputs"
+    }
+}
+
+def generate_qfa_inputs(
+    query, key, value,
+    query_descale_scale, key_descale_scale, value_descale_scale,
+    quant_mode,
+    *,
+    cu_seqlens_q=None, cu_seqlens_kv=None,
+    seqused_q=None, seqused_kv=None,
+    mask_mode=None,
+    layout_q=None, layout_kv=None, layout_out=None,
+    block_table=None, pa_block_size=None,
+    scale=None,
+    **kwargs):
+    # 1. 填充 cu_seqlens / seqused
+    # 2. PA 模式：随机填充 block_table
+    # 3. 量化 scale 初始化（避免全零）
+    # 4. FP8 张量范围修正
+```
+
+### 3.5 compare.py
+
+**QFA 输出是 (attn\_out, lse)，需要分别比较：**
+
+```python
+def compare(*outputs, **kwargs):
+    # outputs = [npu_attn_out, npu_lse, golden_attn_out, golden_lse]
+    half = len(outputs) // 2
+    npu_outputs = outputs[:half]
+    golden_outputs = outputs[half:]
+
+    # attn_out: 使用 IsClose 比较，考虑 valid token 区域
+    # lse: 使用更宽松的阈值比较
+    attn_result = attn_compare(npu_outputs[0], golden_outputs[0])
+    lse_result = lse_compare(npu_outputs[1], golden_outputs[1])
+    return [attn_result, lse_result]
+```
+
+### 3.6 双算子 E2E 模式的特殊处理
+
+**问题：** TTK e2e 模式通常只调用单个算子，但 QFA 需要双算子调用。
+
+**解决方案（参考 PR #8185 模式）：**
+
+PR #8185 中所有算子都是单算子 API（`npu_sparse_flash_attention`、`npu_lightning_indexer` 等）。QFA 的双算子模式需要特殊处理：
+
+**方案 A：在 golden.py 中模拟双算子流程**
+
+* golden 函数内部先计算 metadata（CPU 模拟 tiling），再计算 attention
+
+* TTK 只需调用一次 golden 函数，golden 内部完成双算子的完整流程
+
+* `__spec__` 注册在 `torch_npu.npu_quant_flash_attn_metadata` 上
+
+**方案 B：TTK 调用 Python 封装函数**
+
+* 在 `quant_flash_attn.py` 中已有 `quant_flash_attn()` Python 函数，内部调用双算子
+
+* TTK e2e 模式可以直接调用这个 Python 函数
+
+* `__spec__` 注册在 Python 函数名上
+
+**推荐方案 A**，因为：
+
+1. 与 PR #8185 的模式一致（golden 函数内部完成完整计算流程）
+2. TTK e2e 模式下 NPU 执行会调用 `quant_flash_attn_metadata` + `quant_flash_attn` 双算子
+3. golden 函数只需返回最终结果 (attn\_out, lse)
+
+## 4. 实施步骤
+
+### Step 1: 创建目录结构
+
+* 创建 `attention/quant_flash_attn/tests/assets/`
+
+* 创建 `attention/quant_flash_attn/tests/assets/impl/`
+
+### Step 2: 编写 spec.py
+
+* 定义 `QuantFlashAttnSpec` 类
+
+* 注册 `__spec__` 字典
+
+* 加载 impl 模块
+
+### Step 3: 编写 golden.py
+
+* 实现 `load_pytest_golden_module()` 加载 `fia_fullquant_mxfp8_golden.py`
+
+* 实现 FP8→FP32 反量化适配
+
+* 实现 layout/序列长度/PA 转换适配
+
+* 实现 `cpu_quant_flash_attn()` golden 函数
+
+* 注册 `__golden__` 字典
+
+### Step 4: 编写 inputs.py
+
+* 实现 `generate_qfa_inputs()` 输入预处理函数
+
+* 处理 cu\_seqlens/seqused 填充
+
+* 处理 block\_table 随机填充
+
+* 处理量化 scale 初始化
+
+* 注册 `__input__` 字典
+
+### Step 5: 编写 compare.py（可选）
+
+* 实现 attn\_out 和 lse 的分别比较
+
+* 处理 valid token 区域比较
+
+* 处理不同精度阈值
+
+### Step 6: 验证
+
+* 确保 TTK 能正确加载插件
+
+* 确保 golden 函数输出与 pytest golden 一致
+
+* 确保 inputs 预处理后的输入合法
+
+## 5. 关键决策与假设
+
+1. **复用 pytest golden**：遵循 PR #8185 模式，golden.py 只写适配层，核心计算逻辑复用 `fia_fullquant_mxfp8_golden.py`
+2. **E2E 模式**：使用 `"e2e"` 子字典注册，与 PR #8185 一致
+3. **双算子处理**：golden 函数内部模拟完整双算子流程，TTK 只调用一次 golden
+4. **compare.py**：QFA 输出有 attn\_out 和 lse 两个输出，需要自定义 compare 分别处理
+5. **不修改 pytest 测试**：TTK 插件与 pytest 测试并存，互不影响
+6. **FP8 反量化**：TTK 传入 FP8 张量，golden.py 需先反量化再调用 pytest golden
+
