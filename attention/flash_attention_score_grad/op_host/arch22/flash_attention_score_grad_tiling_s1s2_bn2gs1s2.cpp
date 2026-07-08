@@ -1147,6 +1147,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoSplit()
 ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoSparse()
 {
     if (isMaxWorkspace_) {
+        fBaseParams.blockOuter = fBaseParams.coreNum;
         return ge::GRAPH_SUCCESS;
     }
     if (fBaseParams.isSparse) {

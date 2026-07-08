@@ -191,10 +191,10 @@ protected:
     ge::graphStatus ProcessTndToBsh();
     bool tnd2bsh = false;
     ge::graphStatus GetMaxWorkspaceFlag();
+    bool isMaxWorkspace_ = false;
 
 private:
     FuzzyBaseInfoParams fBaseParams;
-    bool isMaxWorkspace_ = false;
 };
 
 } // namespace optiling
