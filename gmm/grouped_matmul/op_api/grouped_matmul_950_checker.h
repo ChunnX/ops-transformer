@@ -44,6 +44,7 @@ private:
         size_t bias = 0;
     };
 
+    aclnnStatus CheckTuningConfig() const;
     aclnnStatus CheckGeneralQuantShape() const;
     aclnnStatus CheckQuantCasesFormat() const;
     aclnnStatus CheckWeightNzSpecialParams() const;
