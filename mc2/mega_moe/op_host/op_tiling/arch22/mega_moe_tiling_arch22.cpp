@@ -243,7 +243,7 @@ static ge::graphStatus CheckCombineQuantModeAttr(const int64_t *ptr)
     return ge::GRAPH_SUCCESS;
 }
 
-// 校验 num_max_token_per_rank，需要从 x shape 获取 bs
+// 校验 num_max_tokens_per_rank，需要从 x shape 获取 bs
 static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context, const int64_t *ptr)
 {
     OP_TILING_CHECK(ptr == nullptr,
@@ -252,10 +252,10 @@ static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(*ptr < bs,
-        OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be >= bs(%ld), but got %ld.",
+        OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be >= bs(%ld), but got %ld.",
             bs, *ptr), return GRAPH_FAILED);
     OP_TILING_CHECK(*ptr < MIN_BS || *ptr > MAX_BS,
-        OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
+        OP_LOGE(K_INNER_DEBUG, "num_max_tokens_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
             MIN_BS, MAX_BS, *ptr), return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -885,9 +885,17 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
     } else {
         uint32_t weight1ListLen = GetDynamicInputTensorListLen(context, WEIGHT_SCALES1_INDEX);
         uint32_t weight2ListLen = GetDynamicInputTensorListLen(context, WEIGHT_SCALES2_INDEX);
-        OP_TILING_CHECK(weight1ListLen != 0U ||  weight2ListLen != 0U,
+        // 若tensor为空placeholder（shape为0，由CreateEmptyTensor创建），视为未提供
+        bool hasWeight1Scale = (weight1ListLen > 0U) &&
+            (context->GetDynamicInputDesc(WEIGHT_SCALES1_INDEX, 0) != nullptr) &&
+            (context->GetDynamicInputShape(WEIGHT_SCALES1_INDEX, 0)->GetStorageShape().GetDim(0) > 0);
+        bool hasWeight2Scale = (weight2ListLen > 0U) &&
+            (context->GetDynamicInputDesc(WEIGHT_SCALES2_INDEX, 0) != nullptr) &&
+            (context->GetDynamicInputShape(WEIGHT_SCALES2_INDEX, 0)->GetStorageShape().GetDim(0) > 0);
+        OP_TILING_CHECK(hasWeight1Scale || hasWeight2Scale,
             OP_LOGE(K_INNER_DEBUG, "weight_scale is only supported for INT8/INT4 data type, "
-                "but got w1DataType=%d", w1DataType),
+                "but got w1DataType=%d, got weight1ListLen=%d, weight2ListLen=%d",
+                w1DataType, weight1ListLen, weight2ListLen),
             return GRAPH_FAILED);
     }
 
@@ -908,9 +916,17 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
     } else {
         uint32_t bias1ListLen = GetDynamicInputTensorListLen(context, BIAS1_INDEX);
         uint32_t bias2ListLen = GetDynamicInputTensorListLen(context, BIAS2_INDEX);
-        OP_TILING_CHECK(bias1ListLen != 0U ||  bias2ListLen != 0U,
+        // 若tensor为空placeholder（shape为0，由CreateEmptyTensor创建），视为未提供
+        bool hasBias1 = (bias1ListLen > 0U) &&
+            (context->GetDynamicInputDesc(BIAS1_INDEX, 0) != nullptr) &&
+            (context->GetDynamicInputShape(BIAS1_INDEX, 0)->GetStorageShape().GetDim(0) > 0);
+        bool hasBias2 = (bias2ListLen > 0U) &&
+            (context->GetDynamicInputDesc(BIAS2_INDEX, 0) != nullptr) &&
+            (context->GetDynamicInputShape(BIAS2_INDEX, 0)->GetStorageShape().GetDim(0) > 0);
+        OP_TILING_CHECK(hasBias1 || hasBias2,
             OP_LOGE(K_INNER_DEBUG, "bias is only supported for INT4 data type, "
-                "but got w1DataType=%d", w1DataType),
+                "but got w1DataType=%d, got bias1ListLen=%d, bias2ListLen=%d",
+                w1DataType, bias1ListLen, bias2ListLen),
             return GRAPH_FAILED);
     }
 
