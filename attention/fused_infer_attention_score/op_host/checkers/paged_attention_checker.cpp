@@ -482,40 +482,6 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
                 fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
             return ge::GRAPH_FAILED);
     }
-    } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-        if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
-            fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
-            OP_LOGE(fiaInfo.opName,
-            "In antiquant scenario, when page attention enable, if kvCache datatype is %s, "
-            "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
-            DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
-            fiaInfo.blockSize, blockSizeAlign, blockSizeAlign, BLOCK_SIZE_MAX),
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
-        if ((fiaInfo.s1Size > NUM1) &&
-            (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
-             fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
-            OP_LOGE(fiaInfo.opName,
-            "In antiquant scenario, when page attention enable, if kvCache datatype is %s, "
-            "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
-            DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
-            fiaInfo.blockSize, blockSizeAlign, blockSizeAlign, BLOCK_SIZE_MAX),
-            return ge::GRAPH_FAILED;
-        }
-        // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-        if ((fiaInfo.s1Size == NUM1) &&
-            (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
-             fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
-            OP_LOGE(fiaInfo.opName,
-            "In antiquant scenario, when page attention enable, if kvCache datatype is %s, "
-            "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
-            DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
-            fiaInfo.blockSize, blockSizeAlign, blockSizeAlign, BLOCK_SIZE_MAX),
-            return ge::GRAPH_FAILED;
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 

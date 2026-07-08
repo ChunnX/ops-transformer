@@ -367,28 +367,22 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Gt1(const FiaTilingI
     int64_t keyAntiquantMode, int64_t valueAntiquantMode)
 { // Q_S > 1，per-channel(per-tensor)模式，key/value，仅支持INT8
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8) {
-            std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+            OP_LOGE(fiaInfo.opName,
+                "The datatype of key/value(%s) is not INT8. "
+                "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1 and "
                 "keyAntiquantMode is per-channel(per-tensor) mode and valueAntiquantMode is "
-                "per-channel(per-tensor) mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
-            OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "per-channel(per-tensor) mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8) {
-            std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
-                "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8. "
+                "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1, "
+                "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else { // 其余量化模式在Q_S > 1时均为非法
         OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
             " prefix is enabled and Q_S > 1.", keyAntiquantMode, valueAntiquantMode);
@@ -403,105 +397,85 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr) {
-        // 若不存在keyAntiquantScaleTensor和valueAntiquantScaleTensor，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
         if (keyAntiquantScaleTensorDimNum == DIM_NUM_1) {
-            if (fiaInfo.inputKvType != ge::DT_INT8) {
-                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
-                    "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.";
-                OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
                 OP_LOGE(fiaInfo.opName,
-                "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-                "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                    "The datatype of key/value(%s) is not INT8. "
+                    "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
+                    "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
+                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
                 return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED;
-            }
         } else {
-            if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
-                std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
-                    ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode "
-                    "is per-channel mode.";
-                OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
                 OP_LOGE(fiaInfo.opName,
-                "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-                "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                    "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
+                    "The datatype of key/value only support INT8 or INT4(INT32) when "
+                    "prefix is enabled, Q_S = 1, "
+                    "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-channel mode.",
+                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
                 return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED;
-            }
         }
-    } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) { // per-token模式，支持INT8或INT4(INT32)
-        if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
-            std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
-                ", S of query is 1, keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+    } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
+                "The datatype of key/value only support INT8 or INT4(INT32) when "
+                "prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
-    } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) { // per-tensor-head模式，仅支持INT8
-        if (fiaInfo.inputKvType != ge::DT_INT8) {
-            std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
-                    "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is per-tensor-head mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+    } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8. "
+                "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is "
+                "per-tensor-head mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
-            std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
-                ", S of query is 1, keyAntiquantMode is per-token-head mode and valueAntiquantMode "
-                    "is per-token-head mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
+                "The datatype of key/value only support INT8 or INT4(INT32) when "
+                "prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-token-head mode and valueAntiquantMode is per-token-head mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8) {
-            std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
-                    "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is per-tensor-PA mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8. "
+                "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is "
+                "per-tensor-PA mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8) {
-            std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
-                    "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is per-token-head-PA mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8. "
+                "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is "
+                "per-token-head-PA mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-        if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
-            std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
-                ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.";
-            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
             OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
+                "The datatype of key/value only support INT8 or INT4(INT32) when "
+                "prefix is enabled, Q_S = 1, "
+                "keyAntiquantMode is per-channel mode and valueAntiquantMode is "
+                "per-token mode.",
+                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-            return ge::GRAPH_FAILED;
-        }
     } else {
-        // 其余量化模式在Q_S=1均为非法
         OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
                 " prefix is enabled and Q_S = 1.", keyAntiquantMode, valueAntiquantMode);
         return ge::GRAPH_FAILED;
