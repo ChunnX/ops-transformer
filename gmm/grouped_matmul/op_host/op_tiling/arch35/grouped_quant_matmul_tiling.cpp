@@ -1166,7 +1166,7 @@ ge::graphStatus GroupedQmmTiling::DoOpTiling()
 
 ge::graphStatus GroupedQmmTiling::DoLibApiTiling()
 {
-    CalBasicBlock();
+    CalBasicBlock(inputParams_.mSize);
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.M = inputParams_.mSize;
@@ -1275,11 +1275,11 @@ void GroupedQmmTiling::PrintQuantParams()
     OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
 }
 
-void GroupedQmmTiling::CalBasicBlock()
+void GroupedQmmTiling::CalBasicBlock(uint64_t effectiveM)
 {
     bool isGBQuantMode = inputParams_.aQuantMode == optiling::QuantMode::PERGROUP_MODE &&
                          inputParams_.bQuantMode == optiling::QuantMode::PERBLOCK_MODE;
-    basicTiling_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256));
+    basicTiling_.baseM = std::min(effectiveM, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256));
     basicTiling_.baseM = !inputParams_.transA ?
                              CeilAlign(basicTiling_.baseM, CUBE_BLOCK) :
                              CeilAlign(basicTiling_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));

@@ -243,7 +243,7 @@ protected:
     {
         return "GroupedMatmul";
     }
-    void CalBasicBlock();
+    void CalBasicBlock(uint64_t effectiveM);
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
     bool SetGroupNum(uint32_t groupListIndex);
