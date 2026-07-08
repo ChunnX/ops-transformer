@@ -827,6 +827,8 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             qk_dtype = torch.int8
         elif qk_dtype == 'FLOAT8_E4M3FN':
             qk_dtype = torch.float8_e4m3fn
+        elif qk_dtype == 'uint8':
+            qk_dtype = torch.uint8
 
         if dequant_dtype == 'FP16':
             dequant_dtype = torch.float16
@@ -854,6 +856,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             weights_datarange = ast.literal_eval(weights_datarange)
         if output_idx_offset is not None:
             output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = [int(x) for x in output_idx_offset]
             if layout_query == "TND":
                 output_idx_offset_size = q_t_size * 1
             else:
@@ -1064,6 +1067,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
 
     elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
+        blockFusion = None
         k_max_s2 = math.floor(max(act_seq_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
         key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(torch.float)
@@ -1185,6 +1189,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             "weights": weights,
             "query_dequant_scale": query_dequant_scale,
             "key_dequant_scale": key_dequant_scale,
+            "blockFusion": blockFusion,
             "cu_seqlens_query": cu_seqlens_query,
             "cu_seqlens_key": cu_seqlens_key,
             "seqused_q": seqused_q_tensor,

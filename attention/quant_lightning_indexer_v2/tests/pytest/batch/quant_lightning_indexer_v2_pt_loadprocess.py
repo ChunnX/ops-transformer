@@ -44,6 +44,21 @@ def test_qliv2_process(filepath, device_id=0):
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
+    if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+        blockFusion = test_data['blockFusion'].npu()
+        block_num = params[9]
+        block_size = params[8]
+        head_dim = params[7]
+        k_head_num = params[6]
+        dequant_dtype_str = params[11]
+        if dequant_dtype_str == 'FP16':
+            dequant_dtype = torch.float16
+        elif dequant_dtype_str == 'FP32':
+            dequant_dtype = torch.float32
+        else:
+            dequant_dtype = torch.float16
+        key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+        key_dequant_scale = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
     if test_data['actual_seq_lengths_query'] is not None:
         actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     else:
