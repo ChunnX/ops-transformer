@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -38,3 +38,7 @@ from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .dense_lightning_indexer_softmax_lse_v2 import (
+    dense_lightning_indexer_softmax_lse_v2,
+    dense_lightning_indexer_softmax_lse_v2_metadata,
+)
