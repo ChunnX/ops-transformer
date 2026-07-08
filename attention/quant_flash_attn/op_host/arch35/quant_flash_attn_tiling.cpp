@@ -129,6 +129,8 @@ void QuantFlashAttnTilingImpl::SplitPolicy()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
+    auto sOuter = sOuterFactor_ * platformInfo_.cvRatio;
+    auto sInner = sInnerFactor_;
     auto dSize = qfaInfo_->qkHeadDim;
     auto dVsize = qfaInfo_->vHeadDim;
 
@@ -138,6 +140,10 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
         dSize = DSIZE_128;
     } else if (dSize <= DSIZE_256) {
         dSize = DSIZE_256;
+    } else if (dSize <= DSIZE_512) {
+        dSize = DSIZE_512;
+    } else if (dSize <= DSIZE_576) {
+        dSize = DSIZE_576;
     }
 
     if (dVsize <= DSIZE_64) {
@@ -146,16 +152,16 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
         dVsize = DSIZE_128;
     } else if (dVsize <= DSIZE_256) {
         dVsize = DSIZE_256;
+    } else if (dVsize <= DSIZE_512) {
+        dVsize = DSIZE_512;
     }
 
-    if (dSize == DSIZE_64 && dVsize == DSIZE_64) {
+    if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
-    } else if (dSize == DSIZE_128 && dVsize == DSIZE_128) {
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(qfaInfo_->opName, "qkHeadDim/vHeadDim",
-            (std::to_string(qfaInfo_->qkHeadDim) + "/" + std::to_string(qfaInfo_->vHeadDim)).c_str(),
-            "Only D64/DV64 and D128/DV128 with S1Aligned128/S2Aligned512 are supported");
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
 }
 
@@ -191,13 +197,12 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
     tilingKeyInfo_.hasAttenMask = (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK));
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.isFd = flashDecodeFlag_;
-    tilingKeyInfo_.emptyTensor = false;
     tilingKeyInfo_.isReconstructTemp = true;
 }
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = QFA_QUANT_MODE_MXFP8_FP32;
+    tilingKeyInfo_.quantMode = static_cast<uint64_t>(QfaQuantMode::MXFP8_FP32);
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()
@@ -206,15 +211,15 @@ void QuantFlashAttnTilingImpl::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask,
                                     tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-                                    tilingKeyInfo_.emptyTensor, tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(qfaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(qfaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, quantMode: %llu, "
-            "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, isReconstructTemp: %u.",
+            "hasAttenMask: %u, kvLayoutType: %llu, isFd: %u, isReconstructTemp: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.isReconstructTemp);
 }
 
 void QuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)

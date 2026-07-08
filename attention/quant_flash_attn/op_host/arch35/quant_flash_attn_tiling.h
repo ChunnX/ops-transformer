@@ -25,8 +25,6 @@
 namespace optiling {
 namespace quant_flash_attn {
 
-constexpr uint64_t QFA_QUANT_MODE_MXFP8_FP32 = 1;
-
 struct QfaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t config = 0;
@@ -34,7 +32,6 @@ struct QfaTilingKeyInfo {
     bool hasAttenMask = false;
     uint64_t kvLayoutType = 0;
     bool isFd = false;
-    bool emptyTensor = false;
     bool isReconstructTemp = false;
 };
 

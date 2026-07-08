@@ -16,7 +16,7 @@
 #ifndef QUANT_FLASH_ATTN_KERNEL_FULLQUANT_MX_H_
 #define QUANT_FLASH_ATTN_KERNEL_FULLQUANT_MX_H_
 
-#include "quant_flash_attn_public_define_arch35.h"
+#include "../utils/quant_flash_attn_common_def.h"
 #include "quant_flash_attn_block_cube_fullquant_mx.h"
 #include "quant_flash_attn_block_vec_fullquant_mx.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
@@ -129,11 +129,11 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.actualSeqLenSize);
-        qActSeqLensParser.Init(cuSeqLensGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
+        cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.cuSeqLensQSize);
+        qActSeqLensParser.Init(cuSeqLensGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
 
-        cuSeqLensGmKv.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.actualSeqLenKVSize);
-        kvActSeqLensParser.Init(cuSeqLensGmKv, constInfo.actualSeqLenKVSize, constInfo.s2Size);
+        cuSeqLensGmKv.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize);
+        kvActSeqLensParser.Init(cuSeqLensGmKv, constInfo.cuSeqLensKVSize, constInfo.s2Size);
 
         InitMMResBuf(workspace);
 
@@ -225,12 +225,12 @@ public:
             constInfo.realN2Size = constInfo.n2Size;
             constInfo.realGSize = constInfo.gSize;
         }
-        constInfo.actualSeqLenSize = qfaBaseParams.cuSeqLensQSize;
-        constInfo.actualSeqLenKVSize = qfaBaseParams.cuSeqLensKVSize;
+        constInfo.cuSeqLensQSize = qfaBaseParams.cuSeqLensQSize;
+        constInfo.cuSeqLensKVSize = qfaBaseParams.cuSeqLensKVSize;
         constInfo.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
         constInfo.isKvContinuous = qfaBaseParams.isKvContinuous != 0;
         constInfo.coreNum = qfaBaseParams.coreNum;
-        constInfo.outputLayout = static_cast<FIA_LAYOUT>(qfaBaseParams.outputLayout);
+        constInfo.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
             qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
@@ -372,7 +372,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+            if (constInfo.cuSeqLensKVSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);

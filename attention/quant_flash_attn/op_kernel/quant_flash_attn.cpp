@@ -14,6 +14,7 @@
  */
 
 #include "kernel_operator.h"
+#include "arch35/quant_flash_attn_entry_regbase.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
 
@@ -21,7 +22,7 @@ using namespace AscendC;
 using namespace optiling;
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode,
-          bool hasAttenMask, uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool isReconstructTemp>
+          bool hasAttenMask, uint8_t KvLayoutType, bool isFd, bool isReconstructTemp>
 __global__ __aicore__ void
 quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                  __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,

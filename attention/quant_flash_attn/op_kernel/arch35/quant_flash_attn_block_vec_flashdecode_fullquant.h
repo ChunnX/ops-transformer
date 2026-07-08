@@ -22,7 +22,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "quant_flash_attn_public_define_arch35.h"
+#include "../utils/quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_post_quant_gs1.h"
 
@@ -165,8 +165,8 @@ public:
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->keyPtr = key;
 
-        qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
-        kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
+        qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
+        kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.cuSeqLensKVSize, constInfo.s2Size);
 
         if constexpr (POST_QUANT) {
             InitPostQuant(quantScale2, quantOffset2);
@@ -313,38 +313,38 @@ protected:
                         .gS1DealSize = dealRowCount,
                         .dDealSize = (uint32_t)constInfo.dSizeV};
 
-        if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        if (constInfo.outputLayout == FA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize,
                                               false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize,
                                               false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+                                              constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+                                              constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -396,7 +396,7 @@ protected:
     __aicore__ inline void CalcPreNextTokens()
     {
         actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+        if (constInfo.cuSeqLensKVSize == 0 && !constInfo.isKvContinuous) {
             actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
         } else {
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);

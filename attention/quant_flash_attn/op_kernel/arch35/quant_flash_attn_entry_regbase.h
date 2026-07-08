@@ -26,11 +26,9 @@
 #include "kernel_operator.h"
 #endif
 
-#include "quant_flash_attn_public_define_arch35.h"
+#include "../utils/quant_flash_attn_utils.h"
+#include "../utils/quant_flash_attn_common_def.h"
 #include "quant_flash_attn_kernel_fullquant_mx.h"
-#include "quant_flash_attn_block_cube_fullquant_mx.h"
-#include "quant_flash_attn_block_vec_fullquant_mx.h"
-#include "quant_flash_attn_block_vec_flashdecode_fullquant.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "quant_flash_attn_tiling_data.h"
 
@@ -67,14 +65,13 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
     constexpr bool isFdConst = false;
     constexpr PseTypeEnum pseModeConst = PseTypeEnum::PSE_NONE_TYPE;
     constexpr bool enableKVPrefixConst = false;
-    constexpr bool emptyTensorConst = false;
 
     // 2. 推导编译期常量
     constexpr TPosition bmm2OutPos =
-        GetC2Position(dVTemplateType,
-                      UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, hasRopeConst,
-                                              (uint32_t)s1TemplateType == 64),
-                      ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
+        BaseApi::GetC2Position(dVTemplateType,
+                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, hasRopeConst,
+                                                                (uint32_t)s1TemplateType == 64),
+                               ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     // prefill(isFd=false) → useDn=true; decode(isFd=true) → useDn=false
     constexpr bool useDn = !isFdConst;
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);

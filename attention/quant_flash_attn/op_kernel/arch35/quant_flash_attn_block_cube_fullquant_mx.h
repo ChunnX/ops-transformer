@@ -222,21 +222,21 @@ public:
                                          __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                          __gm__ uint8_t *dequantScaleValue)
     {
-        if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+        if (constInfo.cuSeqLensQSize != 0) {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.cuSeqLensQSize);
         }
-        if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGmKv.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
+        if (constInfo.cuSeqLensKVSize != 0) {
+            actualSeqLengthsGmKv.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.cuSeqLensKVSize);
         }
         if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
         InitQBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size, constInfo.dSize,
-                    actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryGm, query);
+                    actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, queryGm, query);
 
         InitQScaleBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                         constInfo.dSize / MXFP_GROUP_SIZE, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                         constInfo.dSize / MXFP_GROUP_SIZE, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize,
                          queryScaleGm, dequantScaleQuery);
 
         keyPtr = key;
@@ -247,25 +247,25 @@ public:
             ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
             __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
             // constInfo需要增加一个strides参数传入init中，该参数的值通过tiling传递进来
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
                          constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
                          constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
-            InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+            InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
                              constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
                              dequantScaleKey, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
             InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, actualSeqLengthsGmKv,
-                             constInfo.actualSeqLenKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
+                             constInfo.cuSeqLensKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
                              constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
                              constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
         }
 
         if constexpr (HAS_ROPE) {
             InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                        constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
-            InitKRopeBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                        constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, queryRopeGm, queryRope);
+            InitKRopeBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope,
                          constInfo.kRopeStrides.bnStride, constInfo.kRopeStrides.n2Stride);
         }
@@ -637,7 +637,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
         keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
         keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGmKv,
-                                    constInfo.actualSeqLenKVSize);
+                                    constInfo.cuSeqLensKVSize);
     }
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
@@ -647,7 +647,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
         valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
         valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGmKv,
-                                      constInfo.actualSeqLenKVSize);
+                                      constInfo.cuSeqLensKVSize);
     }
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)

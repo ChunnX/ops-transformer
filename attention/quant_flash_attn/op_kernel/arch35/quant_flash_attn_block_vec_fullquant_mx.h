@@ -24,7 +24,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "quant_flash_attn_public_define_arch35.h"
+#include "../utils/quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 
@@ -185,8 +185,8 @@ public:
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
-        qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.cuSeqLensQSize);
+        qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
 
         if constexpr (HAS_MASK) {
             attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
@@ -875,38 +875,38 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
-        if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        if (constInfo.outputLayout == FA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize, false, 0);
+                                              constInfo.cuSeqLensQSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize, false, 0);
+                                              constInfo.cuSeqLensQSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
-                                              actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        } else if (constInfo.outputLayout == FA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
-                                              actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }

@@ -17,78 +17,54 @@
 #define TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
 
 #include "ascendc/host_api/tiling/template_argument.h"
+#include "../utils/quant_flash_attn_common_def.h"
 #include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "quant_flash_attn_tiling_data.h"
 
 using namespace optiling;
 
-#define ASCENDC_TPL_5_BW 5
-#define ASCENDC_TPL_10_BW 10
-
-#define InOutLayoutType_BNSD_BNSD 1
-#define InOutLayoutType_BSH_BSH 0
-#define InOutLayoutType_TND_TND 2
-
-#define KvLayoutType_NO_PA 0
-#define KvLayoutType_PA_BBH 1
-#define KvLayoutType_PA_BNBD 2
-#define KvLayoutType_PA_NZ 3
-
-#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
-#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
-
-#define false 0
-#define true 1
-
 ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
-    //    bit 8-1 InOutLayoutType(InputLayoutType-OutputLayoutType)
-    //    0: InOutLayoutType_BNSD_BNSD
-    //    1: InOutLayoutType_BSH_BSH (BSND shares same layout as BSH)
+    //    InOutLayoutType (8-bit)
+    //    0: InOutLayoutType_BSH_BSH
+    //    1: InOutLayoutType_BNSD_BNSD
     //    2: InOutLayoutType_TND_TND
     ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 255),
-    //    bit 18-9 Config(S1,S2,D,DV)
-    //   27: Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64
-    //   28: Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128
+    //    Config (10-bit)
+    //    0: Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64
+    //    1: Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128
     ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1023),
-    //    bit 23-19 QuantMode
-    //    1: QFA_MXFP8_FP32 (PD-merged)
+    //    QuantMode (5-bit)
+    //    1: QFA_MXFP8_FP32
     ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
-    //    bit 24 HasAttenMask
-    //    0: false
-    //    1: true
+    //    HasAttenMask
+    //    false / true
     ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
-    //    bit 26-25 KvLayoutType
+    //    KvLayoutType (2-bit)
     //    0: KvLayoutType_NO_PA
     //    1: KvLayoutType_PA_BBH
     //    2: KvLayoutType_PA_BNBD
     //    3: KvLayoutType_PA_NZ
     ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
-    //    bit 27 IsFd
-    //    0: false
-    //    1: true
+    //    IsFd
+    //    false / true
     ASCENDC_TPL_BOOL_DECL(IsFd, false, true),
-    //    bit 28 EmptyTensor
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(EmptyTensor, false, true),
-    //    bit 29 IsReconstructTemp
-    //    0: false
-    //    1: true
+    //    IsReconstructTemp
+    //    false / true
     ASCENDC_TPL_BOOL_DECL(IsReconstructTemp, false, true),
 );
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
-                             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
+            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
+            Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
+            Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32),
         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
-                             KvLayoutType_PA_NZ),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST,
+            KvLayoutType_NO_PA, KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, false),
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)
     ),

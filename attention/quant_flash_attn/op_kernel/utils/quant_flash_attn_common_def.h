@@ -4,7 +4,7 @@
   * CANN Open Software License Agreement Version 2.0 (the "License").
   * Please refer to the License for details. You may not use this file except in compliance with the License.
   * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
   * See LICENSE in the software repository for the full text of the License.
   */
 
@@ -16,20 +16,301 @@
 #ifndef QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define QUANT_FLASH_ATTN_COMMON_DEF_H_
 
+static constexpr uint32_t FIA_SYNC_MODE2 = 2;
+static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
+static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
+static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
+static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
+static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
+static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
+static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
+static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+static constexpr float FLOAT_ZERO = 0;
+static constexpr float FLOAT_MAX = 3.402823466e+38F;
+static constexpr float FLOAT_INF = 3e+99;
+
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
 
-#define InOutLayoutType_BNSD_BNSD 1
-#define InOutLayoutType_BSH_BSH 0
-#define InOutLayoutType_TND_TND 2
+enum class FA_LAYOUT : uint32_t {
+    BSH = 0,
+    BSND = 0,
+    BNSD = 1,
+    NZ = 2,
+    TND = 3,
+    NBSD = 4,
+    NTD = 5
+};
+
+enum class inferFaLayOutTypeEnum {
+    None = 0,
+    LAYOUT_BSH = 1,
+    LAYOUT_SBH = 2,
+    LAYOUT_BNSD = 3,
+    LAYOUT_TND = 4,
+    LAYOUT_NTD_TND = 5,
+    LAYOUT_NTD = 6
+};
+
+enum class inferDTemplateType {
+    Aligned16 = 16,
+    Aligned32 = 32,
+    Aligned48 = 48,
+    Aligned64 = 64,
+    Aligned80 = 80,
+    Aligned96 = 96,
+    Aligned128 = 128,
+    Aligned160 = 160,
+    Aligned192 = 192,
+    Aligned256 = 256,
+    Aligned512 = 512,
+    Aligned576 = 576,
+    NotAligned,
+};
+
+enum class inferS1TemplateType {
+    Aligned16 = 16,
+    Aligned32 = 32,
+    Aligned64 = 64,
+    Aligned128 = 128,
+    Aligned256 = 256,
+    NotAligned,
+};
+
+enum class inferS2TemplateType {
+    Aligned16 = 16,
+    Aligned32 = 32,
+    Aligned64 = 64,
+    Aligned128 = 128,
+    Aligned256 = 256,
+    Aligned512 = 512,
+    Aligned1024 = 1024,
+    NotAligned,
+};
+
+// q_out layout → (inputLayout, outputLayout)
+//   0=BSND → (BSH, BSH)
+//   1=BNSD → (BNSD, BNSD)
+//   2=TND  → (TND, TND)
+static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[3][2] = {
+    {inferFaLayOutTypeEnum::LAYOUT_BSH, inferFaLayOutTypeEnum::LAYOUT_BSH},
+    {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
+    {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
+};
+
+// q_out layout
+//   0: BSND (BSND排布与BSH一样)
+//   1: BNSD
+//   2: TND
+#define InOutLayoutType_BSND 0
+#define InOutLayoutType_BNSD 1
+#define InOutLayoutType_TND 2
+// backward compat
+#define InOutLayoutType_BSH_BSH InOutLayoutType_BSND
+#define InOutLayoutType_BNSD_BNSD InOutLayoutType_BNSD
+#define InOutLayoutType_TND_TND InOutLayoutType_TND
 
 #define KvLayoutType_NO_PA 0
 #define KvLayoutType_PA_BBH 1
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
 
+struct ConfigParams {
+    inferS1TemplateType s1;
+    inferS2TemplateType s2;
+    inferDTemplateType d;
+    inferDTemplateType dv;
+};
+
+static constexpr ConfigParams ConfigValue[] = {
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128},
+};
+
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
+
+#define QFA_MXFP8_FP32 1
+
+#define false 0
+#define true 1
+
+struct FDparamsX {
+    uint32_t fdCoreEnable;
+    uint32_t fdBN2Idx;
+    uint32_t fdMIdx;
+    uint32_t fdS2SplitNum;
+    uint32_t mStart;
+    uint32_t mLen;
+    uint32_t fdWorkspaceIdx;
+};
+
+enum class FiaKernelType : uint8_t {
+    NO_QUANT = 0,
+    ANTI_QUANT,
+    FULL_QUANT
+};
+
+struct RunInfoX {
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    bool isValid = false;
+    bool isChangeBatch = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t gIdx = 0;
+    uint32_t s1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint32_t realN2Idx = 0;
+    uint64_t actS1Size = 1;
+    uint64_t actS2Size = 1;
+    uint32_t actMSize = 0;
+    uint32_t actMSizeAlign32;
+    uint32_t actVecMSize;
+    uint32_t vecMbaseIdx;
+
+    uint32_t actSingleLoopS2Size = 0;
+    uint32_t actSingleLoopS2SizeAlign;
+    bool isS2SplitCore = false;
+    uint32_t faTmpOutWsPos = 0;
+
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint64_t qPaddingBeginOffset = 0;
+    uint64_t kvPaddingBeginOffset = 0;
+};
+
+struct StridesConstInfo {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
+struct CommonConstInfo {
+    uint32_t bSize;
+    uint64_t t1Size;
+    uint64_t t2Size;
+    uint32_t dSize;
+    uint32_t dSizeV;
+    uint32_t dBasicBlock;
+    uint32_t dSizeRope = 0;
+    uint32_t gSize;
+    uint32_t n2Size;
+    uint32_t realGSize;
+    uint32_t realN2Size;
+    uint64_t s1Size;
+    uint64_t s2Size;
+    uint64_t cuSeqLensQSize;
+    uint64_t cuSeqLensKVSize;
+    uint64_t seqUsedQSize;
+    uint64_t seqUsedKvSize;
+
+    StridesConstInfo keyStrides;
+    StridesConstInfo valueStrides;
+    StridesConstInfo kRopeStrides;
+    StridesConstInfo kScaleStrides;
+    StridesConstInfo vScaleStrides;
+
+    uint32_t bN2Start;
+    uint32_t bN2End;
+    uint32_t gS1OStart;
+    uint32_t gS1OEnd;
+    uint32_t s2OStart;
+    uint32_t s2OEnd;
+    uint32_t coreFirstTmpOutWsPos;
+
+    uint32_t sparseMode;
+    uint32_t attenMaskBatch;
+    uint32_t attenMaskS1Size;
+    uint32_t attenMaskS2Size;
+    int64_t preTokens;
+    int64_t nextTokens;
+    bool isExistRowInvalid;
+    float scaleValue;
+
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t coreNum;
+
+    bool enableS1OutSplit;
+    uint32_t totalSize;
+
+    uint32_t accumOutSize;
+    uint32_t logSumExpSize;
+
+    FA_LAYOUT outputLayout;
+    bool needInitOutput;
+};
+
+struct PAConstInfo {
+    uint32_t blockSize;
+    uint32_t maxBlockNumPerBatch;
+    uint32_t paLayoutType;
+};
+
+struct LseConstInfo {
+    bool isSoftmaxLseEnable;
+};
+
+struct SinkConstInfo {
+    bool learnableSinkFlag = false;
+};
+
+struct PseConstInfo {
+    uint32_t pseShiftByBatch;
+    int64_t pseS1Size;
+    int64_t pseS2Size;
+    uint32_t pseStride;
+};
+
+struct TensorListConstInfo {
+    bool isKvContinuous;
+};
+
+struct PostQuantConstInfo {
+    bool isPostQuantPerChnl;
+    bool isPostQuantBF16;
+    bool isPostQuantOffsetExist;
+    float postQuantScaleValue;
+    float postQuantOffsetValue;
+};
+
+struct LeftPaddingConstInfo {
+    bool isQHasLeftPadding;
+    bool isKVHasLeftPadding;
+    int64_t queryRightPaddingSize;
+    int64_t kvRightPaddingSize;
+};
+
+struct SysPrefixConstInfo {
+    bool isActualSharedPrefixLenNull = true;
+    int64_t actualKVPrefixSize = 0;
+    int64_t kvPrefixSize = 0;
+    int64_t prefixLoopCount = 0;
+};
+
+template <FiaKernelType>
+struct ConstInfo_t;
+
+template <>
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
+                                                PAConstInfo,
+                                                LseConstInfo,
+                                                SinkConstInfo,
+                                                PseConstInfo,
+                                                TensorListConstInfo,
+                                                PostQuantConstInfo,
+                                                LeftPaddingConstInfo,
+                                                SysPrefixConstInfo {};
 
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_
