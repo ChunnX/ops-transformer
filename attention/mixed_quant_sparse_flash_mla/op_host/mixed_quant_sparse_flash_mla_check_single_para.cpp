@@ -59,13 +59,14 @@ const std::map<std::string, std::vector<MQSMLALayout>> LAYOUT_SUPPORT_MAP = {
 
 template <typename T>
 void MQSMLATilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                             const std::string &name) const
+                                              const std::string &name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
 
-ge::graphStatus MQSMLATilingCheck::CheckDimNumInLayoutSupport(const MQSMLALayout &layout, const gert::StorageShape *shape,
-                                                             const std::string &name) const
+ge::graphStatus MQSMLATilingCheck::CheckDimNumInLayoutSupport(const MQSMLALayout &layout,
+                                                              const gert::StorageShape *shape,
+                                                              const std::string &name) const
 {
     const auto &dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
@@ -77,8 +78,8 @@ ge::graphStatus MQSMLATilingCheck::CheckDimNumInLayoutSupport(const MQSMLALayout
 }
 
 ge::graphStatus MQSMLATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                     const std::vector<size_t> &expectDimNumList,
-                                                     const std::string &name) const
+                                                      const std::vector<size_t> &expectDimNumList,
+                                                      const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -94,8 +95,8 @@ ge::graphStatus MQSMLATilingCheck::CheckDimNumSupport(const gert::StorageShape *
 }
 
 ge::graphStatus MQSMLATilingCheck::CheckShapeNumSupport(const gert::StorageShape *shape,
-                                                       const std::vector<int64_t> &expectShapeNumList,
-                                                       const std::string &name) const
+                                                        const std::vector<int64_t> &expectShapeNumList,
+                                                        const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -111,7 +112,7 @@ ge::graphStatus MQSMLATilingCheck::CheckShapeNumSupport(const gert::StorageShape
 }
 
 void MQSMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                            const ge::DataType &actualDtype, const std::string &name) const
+                                             const ge::DataType &actualDtype, const std::string &name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -125,7 +126,7 @@ void MQSMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &ex
 }
 
 ge::graphStatus MQSMLATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                    const std::string &name) const
+                                                     const std::string &name) const
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
@@ -142,7 +143,7 @@ ge::graphStatus MQSMLATilingCheck::CheckDtypeSupport(const gert::CompileTimeTens
 
 template <typename T>
 void MQSMLATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                             const std::string &name, const std::string subName) const
+                                              const std::string &name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -157,7 +158,7 @@ void MQSMLATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumber
 
 
 void MQSMLATilingCheck::LogErrorLayoutSupport(const std::vector<MQSMLALayout> &expectLayoutList,
-                                             const MQSMLALayout &actualLayout, const std::string &name) const
+                                              const MQSMLALayout &actualLayout, const std::string &name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {

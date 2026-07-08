@@ -87,7 +87,8 @@ size_t MQSMLATilingCheck::GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout 
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t MQSMLATilingCheck::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const
+uint32_t MQSMLATilingCheck::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis,
+                                       const MQSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }

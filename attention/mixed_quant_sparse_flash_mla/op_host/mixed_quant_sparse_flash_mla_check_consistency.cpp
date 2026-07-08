@@ -28,7 +28,7 @@ static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
 ge::graphStatus MQSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
-                                                        const ge::DataType &expectDtype, const std::string &name) const
+                                                         const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
@@ -39,7 +39,7 @@ ge::graphStatus MQSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &act
 }
 
 ge::graphStatus MQSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                      const MQSMLALayout &layout, const std::string &name) const
+                                                       const MQSMLALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.", MQSMLALayoutToSerialString(layout).c_str(),
@@ -56,8 +56,8 @@ ge::graphStatus MQSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const ger
 }
 
 ge::graphStatus MQSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
-                                                   const QSMLATilingShapeCompareParam &param,
-                                                   const MQSMLALayout &layout) const
+                                                    const QSMLATilingShapeCompareParam &param,
+                                                    const MQSMLALayout &layout) const
 {
     if (layout == MQSMLALayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
@@ -73,7 +73,7 @@ ge::graphStatus MQSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
 }
 
 ge::graphStatus MQSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &param, const gert::Shape &shape,
-                                               const MQSMLALayout &layout, const std::string &name) const
+                                                const MQSMLALayout &layout, const std::string &name) const
 {
     gert::Shape shapeExpected;
     if (GetExpectedShape(shapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -346,7 +346,8 @@ ge::graphStatus MQSMLATilingCheck::CheckLayoutQKvConsistency() const
     if (kvLayout_ != MQSMLALayout::PA_BBND) {
         OP_CHECK_IF(qLayout_ != kvLayout_,
                     OP_LOGE(opName_, "When kv layout is not PA_BBND, q layout(%s) must be same as kv layout(%s).",
-                            MQSMLALayoutToSerialString(qLayout_).c_str(), MQSMLALayoutToSerialString(kvLayout_).c_str()),
+                            MQSMLALayoutToSerialString(qLayout_).c_str(),
+                            MQSMLALayoutToSerialString(kvLayout_).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

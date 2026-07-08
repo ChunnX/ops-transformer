@@ -249,7 +249,8 @@ size_t MQSMLAInfoParser::GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t MQSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const
+uint32_t MQSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis,
+                                      const MQSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -293,7 +294,7 @@ ge::graphStatus MQSMLAInfoParser::GetGSize()
 }
 
 ge::graphStatus MQSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
-                                                     const std::string &name) const
+                                                      const std::string &name) const
 {
     if ((tensor == nullptr)) {
         OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", MQSMLALayoutToSerialString(layout).c_str(),
