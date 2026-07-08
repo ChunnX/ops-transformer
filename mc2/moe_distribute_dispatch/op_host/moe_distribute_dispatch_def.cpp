@@ -116,9 +116,9 @@ public:
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
         .ExtendCfgInfo("opFile.value", "moe_distribute_dispatch_a3");
 
-    // A5 (arch35): dedicated kernel entry (opFile -> arch35/..._apt.cpp)
-    OpAICoreConfig aicore_config_apt;
-    aicore_config_apt.DynamicCompileStaticFlag(true)
+    // A5 (arch35): dedicated kernel entry (opFile -> arch35/..._a5.cpp)
+    OpAICoreConfig aicore_config_a5;
+    aicore_config_a5.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
         .DynamicShapeSupportFlag(true)
@@ -128,11 +128,11 @@ public:
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_true")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-        .ExtendCfgInfo("opFile.value", "moe_distribute_dispatch_apt");
+        .ExtendCfgInfo("opFile.value", "moe_distribute_dispatch_a5");
 
     this->AICore().AddConfig("ascend910b", aicore_config_a2);
     this->AICore().AddConfig("ascend910_93", aicore_config_a3);
-    this->AICore().AddConfig("ascend950", aicore_config_apt);
+    this->AICore().AddConfig("ascend950", aicore_config_a5);
     this->MC2().HcclGroup({"group_ep", "group_tp"});
   }
 };
