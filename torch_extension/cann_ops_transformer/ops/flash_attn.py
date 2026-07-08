@@ -7,12 +7,11 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional
+from typing import Optional, Tuple
 import torch
 import torch_npu
-from torch.library import impl
+from torch.library import custom_op
 from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 FA_METADATA_SIZE = 1024
 FA_METADATA_OP_NAME = "flash_attn_metadata"
@@ -44,104 +43,16 @@ class FlashAttenOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return [
-            "flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
-            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None,"
-            "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
-            "int? mask_mode=None, int? win_left=None, int? win_right=None, "
-            "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
-
-            "flash_attn(Tensor q, Tensor k, Tensor v,"
-            "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
-            "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
-            "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None,"
-            "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1,"
-            "int max_seqlen_q=-1, int max_seqlen_kv=-1,"
-            "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\","
-            "bool return_softmax_lse=False) -> (Tensor, Tensor)"
-        ]
+        return None
 
     def register_meta(self):
-        """
-        Registers the Meta implementation (Shape/Dtype inference).
-        Essential for Autograd and FakeTensor support.
-        """
-        @torch.library.register_fake("cann_ops_transformer::" + FA_METADATA_OP_NAME)
-        def flash_attn_metadata_meta(
-            num_heads_q: int, num_heads_kv: int, head_dim: int,
-            cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
-            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
-            batch_size: Optional[int] = None,
-            max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
-            mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
-            layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
-        ):
-            metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
-            return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
-
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def flash_attn_meta(
-            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
-            block_table: Optional[torch.Tensor] = None,
-            cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
-            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
-            sinks: Optional[torch.Tensor] = None,
-            attn_mask: Optional[torch.Tensor] = None,
-            metadata: Optional[torch.Tensor] = None,
-            softmax_scale: Optional[float] = 1.0,
-            mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
-            max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
-            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
-            return_softmax_lse: Optional[bool] = False
-        ):
-            if layout_q == "TND":
-                t_size = q.size(0)
-                n_size = q.size(1)
-                d_size = v.size(2)
-                softmax_out_size = (n_size, t_size)
-            elif layout_q == "BSND":
-                b_size = q.size(0)
-                s_size = q.size(1)
-                n_size = q.size(2)
-                d_size = v.size(3)
-                softmax_out_size = (b_size, n_size, s_size)
-            else:
-                b_size = q.size(0)
-                n_size = q.size(1)
-                s_size = q.size(2)
-                d_size = v.size(3)
-                softmax_out_size = (b_size, n_size, s_size)
-
-            if layout_out == "TND":
-                torch._check(
-                    layout_q == "TND",
-                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
-                )
-                attention_out_size = (t_size, n_size, d_size)
-            elif layout_out == "BNSD":
-                torch._check(
-                    layout_q == "BNSD",
-                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
-                )
-                attention_out_size = (b_size, n_size, s_size, d_size)
-            else:
-                torch._check(
-                    layout_q != "TND",
-                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
-                )
-                attention_out_size = (b_size, s_size, n_size, d_size)
-
-            return (
-                     torch.empty(attention_out_size, dtype=q.dtype, device='meta'),
-                     torch.empty(softmax_out_size, dtype=q.dtype, device='meta')
-                 )
+        pass
 
 
-# Instantiate the builder
 flash_attn_op_builder = FlashAttenOpBuilder()
 
 
-@impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
+@custom_op("cann_ops_transformer.flash_attn_metadata", mutates_args=())
 def flash_attn_metadata(
         num_heads_q: int, num_heads_kv: int, head_dim: int,
         cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
@@ -150,11 +61,7 @@ def flash_attn_metadata(
         max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
         mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
-    ):
-    """
-    Dispatcher implementation: NPU.
-    'PrivateUse1' is dispatch key for custom NPU backends.
-    """
+) -> torch.Tensor:
     op_module = flash_attn_op_builder.load()
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
@@ -168,15 +75,15 @@ def flash_attn_metadata(
 
     metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
- 
+
     return op_module.flash_attn_metadata(cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                                              num_heads_q, num_heads_kv, head_dim,
-                                              batch_size, max_seqlen_q, max_seqlen_kv,
-                                              mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)
+                                          num_heads_q, num_heads_kv, head_dim,
+                                          batch_size, max_seqlen_q, max_seqlen_kv,
+                                          mask_mode, win_left, win_right, layout_q, layout_kv, layout_out, output)
 
 
-@torch.library.register_kernel("cann_ops_transformer::" + FA_METADATA_OP_NAME, None)
-def flash_attn_metadata_fallback(
+@flash_attn_metadata.register_fake
+def flash_attn_metadata_fake(
         num_heads_q: int, num_heads_kv: int, head_dim: int,
         cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
         seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
@@ -184,18 +91,12 @@ def flash_attn_metadata_fallback(
         max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
         mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
-    ):
-    # 处理所有 tensor 都为 None 的情况
-    return flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
-                               cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                               batch_size, max_seqlen_q,
-                               max_seqlen_kv,
-                               mask_mode, win_left,
-                               win_right, layout_q,
-                               layout_kv, layout_out)
+) -> torch.Tensor:
+    metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
+    return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
 
-@impl(AS_LIBRARY, flash_attn_op_builder.name, "PrivateUse1")
+@custom_op("cann_ops_transformer.flash_attn", mutates_args=())
 def flash_attn(
         q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
         block_table: Optional[torch.Tensor] = None,
@@ -209,11 +110,7 @@ def flash_attn(
         max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
         layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
         return_softmax_lse: Optional[bool] = False
-    ):
-    """
-    dispatcher implementation for NPU.
-    'PrivateUse1' is the combine key for custom NPU backends.
-    """
+) -> Tuple[torch.Tensor, torch.Tensor]:
     op_module = flash_attn_op_builder.load()
     return op_module.flash_attn(
         q, k, v,
@@ -228,3 +125,61 @@ def flash_attn(
         max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv, layout_out,
         return_softmax_lse)
+
+
+@flash_attn.register_fake
+def flash_attn_fake(
+        q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+        block_table: Optional[torch.Tensor] = None,
+        cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+        seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None,
+        sinks: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+        metadata: Optional[torch.Tensor] = None,
+        softmax_scale: Optional[float] = 1.0,
+        mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
+        max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
+        layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
+        return_softmax_lse: Optional[bool] = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if layout_q == "TND":
+        t_size = q.size(0)
+        n_size = q.size(1)
+        d_size = v.size(2)
+        softmax_out_size = (n_size, t_size)
+    elif layout_q == "BSND":
+        b_size = q.size(0)
+        s_size = q.size(1)
+        n_size = q.size(2)
+        d_size = v.size(3)
+        softmax_out_size = (b_size, n_size, s_size)
+    else:
+        b_size = q.size(0)
+        n_size = q.size(1)
+        s_size = q.size(2)
+        d_size = v.size(3)
+        softmax_out_size = (b_size, n_size, s_size)
+
+    if layout_out == "TND":
+        torch._check(
+            layout_q == "TND",
+            lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
+        )
+        attention_out_size = (t_size, n_size, d_size)
+    elif layout_out == "BNSD":
+        torch._check(
+            layout_q == "BNSD",
+            lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
+        )
+        attention_out_size = (b_size, n_size, s_size, d_size)
+    else:
+        torch._check(
+            layout_q != "TND",
+            lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
+        )
+        attention_out_size = (b_size, s_size, n_size, d_size)
+
+    return (
+        torch.empty(attention_out_size, dtype=q.dtype, device='meta'),
+        torch.empty(softmax_out_size, dtype=q.dtype, device='meta')
+    )
