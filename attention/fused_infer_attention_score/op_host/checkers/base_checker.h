@@ -16,7 +16,6 @@
 #ifndef BASE_CHECKER_H
 #define BASE_CHECKER_H
 
-#include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
 
@@ -48,7 +47,7 @@ protected:
         const gert::Stride *Strides, int32_t &index) const;
 
     // public funcs
-    std::string DataTypeToSerialString(ge::DataType type);
+    std::string DataTypeToSerialString(ge::DataType type) const;
 
 protected:
     bool enableNonQuant_ = false;

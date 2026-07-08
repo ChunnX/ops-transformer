@@ -13,11 +13,9 @@
  * \brief
  */
 
-#include <map>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
 #include "softmax_lse_checker.h"
@@ -44,7 +42,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo
 }
 
 // CheckParaExistence
-ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInfo &fiaInfo)
+ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInfo &fiaInfo) const
 {
     // When softmaxLseFlag is true, both the SoftmaxLse shape and the lseOut tensor must not be null.
     if (fiaInfo.softmaxLseFlag) {
@@ -59,7 +57,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
 }
 
 // CheckCrossFeature
-ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo) const
 {
     // When softmaxLseFlag is true and emptyTensorFlag is false:
     // -If the LayOut is TND, the shape must have 3 dimensions (matching TN1).

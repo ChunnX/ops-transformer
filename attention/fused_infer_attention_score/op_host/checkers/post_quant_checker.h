@@ -16,8 +16,6 @@
 #ifndef POST_QUANT_CHECKER_H
 #define POST_QUANT_CHECKER_H
 
-#include <map>
-#include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
@@ -37,15 +35,15 @@ public:
 private:
     // 公共校验函数
     ge::graphStatus CheckSingleDtype(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckExistenceQuantScale2(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureAttenOut(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckExistenceQuantScale2(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureAttenOut(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckFeatureLayout(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureOutputEqual(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureLayout(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureOutputEqual(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo) const;
 private:
 };
 
