@@ -31,8 +31,7 @@ public:
         Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
     {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
-        // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5；GetDataTypeSize对该dtype返回0，
-        // 会导致公式化性能模型出现×0/÷0(CommTime恒为常数、InverseCommTime/GetLinearThresholdLen除零)。
+        // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5
         // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
         // (复用HCCL现成子字节机制，CommTime/InverseCommTime/GetLinearThresholdLen均经GetRealDtypeSizes()取0.5)；
         // matmul侧inMatrixADtypeSize置1(L2占用按2x高估，避免0导致memUsage/kLength退化为0)。
@@ -45,9 +44,8 @@ public:
             mmInfo_.inMatrixBDtypeSize = 1;
             // fp4属量化dtype, 但公共层 SetCalcType 不识别fp4(ConvertGeTypeToMmType无fp4映射→DT_MAX),
             // 致 calcType_=FP16、CUBE_CALC_PER_CYCLE_MAP 查表落空→computesPerCycle 退回默认4096
-            // (fp8 拿到 8192), totalMatmulTime 被高估2x。此处把fp4归类为QUANT并覆盖 computesPerCycle
-            // =2*COMPUTES_PER_CYCLE(=8192), 与fp8查表结果一致; calcType_=QUANT 同时让 L2_PARAMETER_MAP
-            // 命中 "4_1_1_1_2"(frontUtil也与fp8对齐)。GetMachineParameters 已在基类构造时按FP16跑过, 此处覆盖。
+            // (fp8 拿到 8192), totalMatmulTime 被高估4x。此处把fp4归类为QUANT并覆盖 computesPerCycle
+            // =4*COMPUTES_PER_CYCLE(=16384);。GetMachineParameters 已在基类构造时按FP16跑过, 此处覆盖。
             matmulPerf_.calcType_ = MatmulCalcType::QUANT;
             matmulPerf_.mmShapeInfo_.computesPerCycle =
                 FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
