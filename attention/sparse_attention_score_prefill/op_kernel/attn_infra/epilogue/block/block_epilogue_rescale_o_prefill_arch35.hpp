@@ -171,9 +171,12 @@ private:
         AscendC::LocalTensor<bfloat16_t> tmpSinkUb;
         bool softmaxLseFlag = false;
         bool learnableSinkFlag = false;
+        AscendC::DumpTensor(lseMaxLocal, 123, 64);
+        AscendC::DumpTensor(lseSumLocal, 456, 64);
         FaVectorApi::ComputeScaleValue_VF(
             tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf_,
             dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
+        //AscendC::DumpTensor(lseSumLocal, 123, 64);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -207,6 +210,8 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
 
         // lseSumBuf_ already holds scale after ComputeScaleValue; rowSum from GM.
+        // Slot validity is checked once per split in ReduceFinalRes (first stat value),
+        // so only valid slots reach here and rowSum > 0 is guaranteed.
         uint64_t statBase = TaskStatBase(qToken, kvHeadIdx);
         for (uint32_t r = 0U; r < dealRowCount; ++r) {
             uint32_t gh = startRow + r;
@@ -230,7 +235,23 @@ private:
                         AscendC::GlobalTensor<T> &gmAccumOut,
                         AscendC::GlobalTensor<T> &gmSoftmaxSum)
     {
+        // Slot validity check from UB (no GM round-trip). After CopyLseIn +
+        // ComputeScaleValue, lseMaxBuf_ holds the per-slot rowMax in broadcast
+        // layout [topK, dealRowCount, FP32_ONE_BLOCK_SIZE] (topK outer, each
+        // scalar replicated 8x). ComputeScaleValue_8_VF reads lseMax but does not
+        // overwrite it, so the values are intact. InitWorkspaceStats prefills
+        // -FLT_MAX (NEG_INF_LSE) for slots Phase1 never wrote; a valid slot's
+        // rowMax is a finite score-derived value, so firstRowMax <= NEG_INF_LSE
+        // discriminates the whole slot. Skip CopyAccumOutIn + ReduceFinalRes_VF
+        // for invalid splits; scale[j]==0 from ComputeScaleValue so they
+        // contribute 0 anyway, and skipping avoids Divs-by-zero and stale-UB
+        // accumulation.
         for (uint32_t j = 0; j < actualCombineLoopSize_; ++j) {
+            uint32_t maxOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE;
+            float firstRowMax = lseMaxBuf_[maxOff].GetValue(0);
+            if (firstRowMax <= NEG_INF_LSE) {
+                continue;
+            }
             CopyAccumOutIn(
                 qToken, kvHeadIdx, j, startRow, dealRowCount,
                 gmAccumOut, gmSoftmaxSum, accumOutBuf_);
