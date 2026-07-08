@@ -149,10 +149,15 @@
 2. **安装自定义算子包**
    
     ```bash
+    # 首先到自定义算子包生成目录下
+    cd build_out/
+    # 然后安装自定义算子包
     ./cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
     
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/latest/opp。注意自定义算子包不支持卸载。
+
+    若安装自定义算子包时有类似“environment variable ASCEND_CUSTOM_OPP_PATH=/xxx: is set and has multiple path in it(colon inside), which will cause the custom op installed incorrectly. Please use the	--install-path option to specify an installation path instead.”的报错信息，说明ASCEND_CUSTOM_OPP_PATH路径在环境中被提前设置，需要unset这个环境变量后再重新安装自定义算子包。
 
 **本地验证** 
 
