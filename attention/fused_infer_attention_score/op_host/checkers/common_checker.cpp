@@ -232,8 +232,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
                 std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
             std::string reason = "The values of Batch of key and B of key_rope must be the "
                 "same in the tensorlist scenario.";
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "Batch of key and B of key_rope",
-                valuesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect values %s. Reason: %s.", "Batch of key and B of key_rope", valuesStr.c_str(), reason.c_str());
             return false;
         }
     }
@@ -245,8 +244,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape());
             std::string reason = "H of key in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis H of key in the 1st tensor in the tensorlist scenario.";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardVH) {
@@ -254,16 +252,14 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "H of value in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis H of value in the 1st tensor in the tensorlist scenario.";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) { // k_s != v_s
             std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                 ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "S of key must be equal to S of value.";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value",
-                shapesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and value", shapesStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
@@ -271,8 +267,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope.";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and key_rope",
-                    shapesStr.c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and key_rope", shapesStr.c_str(), reason.c_str());
                 return false;
             }
         }
@@ -297,8 +292,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
                 std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
             std::string reason = "The values of Batch of key and B of key_rope must be the "
                 "same in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "Batch of key and B of key_rope",
-                valuesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect values %s. Reason: %s.", "Batch of key and B of key_rope", valuesStr.c_str(), reason.c_str());
             return false;
         }
     }
@@ -306,8 +300,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
     if (tmpNKv != standardN) {
         std::string reason = "N of key 1st tensor must be equal to numKeyValueHeads: " +
             std::to_string(tmpNKv);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key 1st tensor",
-            ToString(fiaInfo.kCache[0]->GetStorageShape()).c_str(), reason.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "key 1st tensor", ToString(fiaInfo.kCache[0]->GetStorageShape()).c_str(), reason.c_str());
         return false;
     }
 
@@ -321,8 +314,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
             std::string reason = "N of key and value in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to num_key_value_heads: " + std::to_string(standardN) +
                 " in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD) {
@@ -330,8 +322,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape());
             std::string reason = "D of key in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis D of key in the 1st tensor in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD) {
@@ -339,8 +330,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "D of value in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis D of value in the 1st tensor in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != // 2: Obtain the second dimension
@@ -348,8 +338,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
             std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                 ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "S of key must be equal to S of value";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value",
-                shapesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and value", shapesStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
@@ -357,8 +346,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and key_rope",
-                    shapesStr.c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and key_rope", shapesStr.c_str(), reason.c_str());
                 return false;
             }
         }
@@ -381,8 +369,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
                 std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
             std::string reason = "The values of Batch of key and B of key_rope must be the "
                 "same in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "Batch of key and B of key_rope",
-                valuesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect values %s. Reason: %s.", "Batch of key and B of key_rope", valuesStr.c_str(), reason.c_str());
             return false;
         }
     }
@@ -390,8 +377,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
     if (tmpNKv != standardN) {
         std::string reason = "N of key 1st tensor must be equal to num_key_value_heads: " +
             std::to_string(tmpNKv);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key 1st tensor",
-            ToString(fiaInfo.kCache[0]->GetStorageShape()).c_str(), reason.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "key 1st tensor", ToString(fiaInfo.kCache[0]->GetStorageShape()).c_str(), reason.c_str());
         return false;
     }
 
@@ -405,8 +391,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
             std::string reason = "N of key and value in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to num_key_value_heads: " + std::to_string(standardN) +
                 " in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD) {
@@ -414,8 +399,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape());
             std::string reason = "D of key in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis D of key in the 1st tensor in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD) {
@@ -423,16 +407,14 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
             std::string shapeStr = ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "D of value in the " + std::to_string(tmpIdx + 1) +
                 "th tensor must be equal to axis D of value in the 1st tensor in the tensorlist scenario";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, paramName.c_str(),
-                shapeStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", paramName.c_str(), shapeStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) {
             std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                 ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "S of key must be equal to S of value";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value",
-                shapesStr.c_str(), reason.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and value", shapesStr.c_str(), reason.c_str());
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
@@ -440,8 +422,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope";
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and key_rope",
-                    shapesStr.c_str(), reason.c_str());
+                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key and key_rope", shapesStr.c_str(), reason.c_str());
                 return false;
             }
         }
@@ -1295,8 +1276,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
     if (!fiaInfo.isOutQuantEnable && !enableFullQuant_) {
         if (queryDataType != attenOutDataType) {
             std::string dtypeMsg = ToString(queryDataType) + " and " + ToString(attenOutDataType);
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
-                dtypeMsg.c_str(), "The dtypes of query and attention_out must be the same.");
+            OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect dtypes %s. Reason: %s.", "query and attention_out", dtypeMsg.c_str(), "The dtypes of query and attention_out must be the same.");
             return ge::GRAPH_FAILED;
         }
     }

@@ -421,8 +421,7 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
 
     if (fiaInfo.s1Size < NUM1) {
         std::string shapeStr = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", shapeStr.c_str(),
-                                              "In Decode MLA scenario, query sequence length must be positive");
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "query", shapeStr.c_str(), "In Decode MLA scenario, query sequence length must be positive");
         return ge::GRAPH_FAILED;
     }
 

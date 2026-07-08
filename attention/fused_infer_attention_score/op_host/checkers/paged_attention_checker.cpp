@@ -179,16 +179,14 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &
     int64_t tempBlockSize = tempShape.GetDim(DIM_NUM_1);
     int64_t tempH = tempShape.GetDim(DIM_NUM_2);
     if (tempBlockSize != fiaInfo.blockSize) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-            ("When page attention is enabled, blockSize of " + inputName +
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, blockSize of " + inputName +
                 " must be " + std::to_string(fiaInfo.blockSize)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (fiaInfo.inputKvType == ge::DT_INT4) {
         if (tempH != fiaInfo.n2Size * compareD) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled, if input kv dataType is INT32, the axis H of " +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, if input kv dataType is INT32, the axis H of " +
                     inputName + " must be " + std::to_string(fiaInfo.n2Size * compareD / NUM8) +
                     "; if input kv dataType is INT4, the axis H of " + inputName +
                     " must be " + std::to_string(fiaInfo.n2Size * compareD)).c_str());
@@ -196,8 +194,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &
         }
 
         if (tempH > H_LIMIT) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled and layout is BSH, if input kv dataType is INT32, "
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled and layout is BSH, if input kv dataType is INT32, "
                     "the axis H of " + inputName + " cannot be greater than " +
                     std::to_string(H_LIMIT / NUM8) + "; if input kv dataType is INT4, "
                     "the axis H of " + inputName + " cannot be greater than " +
@@ -206,8 +203,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &
         }
     } else {
         if (tempH != fiaInfo.n2Size * compareD) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled, if input kv dataType is INT32, the axis H of " +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, if input kv dataType is INT32, the axis H of " +
                     inputName + " must be " + std::to_string(fiaInfo.n2Size * compareD / NUM8) +
                     "; if input kv dataType is INT4, the axis H of " + inputName +
                     " must be " + std::to_string(fiaInfo.n2Size * compareD)).c_str());
@@ -215,8 +211,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &
         }
 
         if (tempH > H_LIMIT) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled and layout is BSH, if input kv dataType is INT32, "
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled and layout is BSH, if input kv dataType is INT32, "
                     "the axis H of " + inputName + " cannot be greater than " +
                     std::to_string(H_LIMIT / NUM8) + "; if input kv dataType is INT4, "
                     "the axis H of " + inputName + " cannot be greater than " +
@@ -237,22 +232,19 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape4D(const FiaTilingInfo &
     int64_t tempD = tempShape.GetDim(DIM_NUM_3);
 
     if (tempN != fiaInfo.n2Size) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-            ("When page attention is enabled, the axis N of kvCache must be " +
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, the axis N of kvCache must be " +
                 std::to_string(fiaInfo.n2Size)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (tempBlockSize != fiaInfo.blockSize) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-            ("When page attention is enabled, blockSize of kvCache must be " +
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, blockSize of kvCache must be " +
                 std::to_string(fiaInfo.blockSize)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (tempD != compareD) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-            ("When page attention is enabled, the D axis of " + inputName +
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When page attention is enabled, the D axis of " + inputName +
                 " must be " + std::to_string(compareD)).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -266,8 +258,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTil
     uint32_t d0Size = NUM_16;
     if (fiaInfo.inputKvType == ge::DT_INT4) {
         if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of kvCache "
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of kvCache "
                     "must be " + std::to_string(d0Size / NUM8) +
                     "; if input kv dataType is INT4, the last dim of " + inputName +
                     " must be " + std::to_string(d0Size)).c_str());
@@ -275,8 +266,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTil
         }
     } else {
         if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of kvCache "
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of kvCache "
                     "must be " + std::to_string(d0Size / NUM8) +
                     "; if input kv dataType is INT4, the last dim of " + inputName +
                     " must be " + std::to_string(d0Size)).c_str());
@@ -288,8 +278,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTil
             std::string(QuantModeToSerialString(fiaInfo.quantMode)) + " " +
             std::string(SituationToSerialString(fiaInfo.ropeMode)) +
             " situation, the third dim of kvCache must be " + std::to_string(compareD / d0Size);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(),
-            shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -321,8 +310,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZNonAntiquant(const Fia
             std::string(QuantModeToSerialString(fiaInfo.quantMode)) + " " +
             std::string(SituationToSerialString(fiaInfo.ropeMode)) +
             " situation, the last dim of kvCache must be " + std::to_string(d0Size);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(),
-            shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -331,8 +319,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZNonAntiquant(const Fia
             std::string(QuantModeToSerialString(fiaInfo.quantMode)) + " " +
             std::string(SituationToSerialString(fiaInfo.ropeMode)) +
             " situation, the third dim of kvCache must be " + std::to_string(compareD / d0Size);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(),
-            shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", inputName.c_str(), shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -444,16 +431,13 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
                 std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", and must be within the range [" +
                 std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " + std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) +
                 "]";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "blockSize",
-                                                  std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "blockSize", std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
         if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
             fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + " in range of [" +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + " in range of [" +
                     std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
                     std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
@@ -463,8 +447,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
         if ((fiaInfo.s1Size > NUM1) &&
             (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
                                       " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
                                       std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
@@ -473,8 +456,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
         if ((fiaInfo.s1Size == NUM1) &&
             (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
                                       " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
                                       std::to_string(BLOCK_SIZE_MAX) + "]");
             return ge::GRAPH_FAILED;
@@ -488,8 +470,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
     if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
         if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
             fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
                                           " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
                                           std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
@@ -497,8 +478,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
     } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
         if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
             fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
                                           " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
                                           std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
@@ -508,8 +488,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
         if ((fiaInfo.s1Size > NUM1) &&
             (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
                                           " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
                                           std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
@@ -518,8 +497,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
         if ((fiaInfo.s1Size == NUM1) &&
             (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. It should be %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
                                           " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
                                           std::to_string(BLOCK_SIZE_MAX) + "]");
             return ge::GRAPH_FAILED;
@@ -552,8 +530,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
             std::to_string(blockSizeAlign) + " and in range of [" +
             std::to_string(blockSizeAlign) + ", " + std::to_string(BLOCK_SIZE_MAX) +
             "] if kvCache datatype is " + DataTypeToSerialString(fiaInfo.inputKvType);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
-            std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "block_size", std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
