@@ -72,6 +72,8 @@ private:
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     constexpr static MicroAPI::CastTrait castTraitF16ToI8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
 };
 
 template <typename T, typename QuantT>
@@ -184,7 +186,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
+                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(
                     (MicroAPI::RegTensor<int4x2_t> &)outRegI4, (MicroAPI::RegTensor<half> &)outRegPackedHalf,
                     maskRegInLoop);
                 MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
@@ -263,7 +265,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
+                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(
                     (MicroAPI::RegTensor<int4x2_t> &)outRegI4, (MicroAPI::RegTensor<half> &)outRegPackedHalf,
                     maskRegInLoop);
                 MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
