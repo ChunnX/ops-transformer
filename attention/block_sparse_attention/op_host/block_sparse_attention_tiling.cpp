@@ -28,6 +28,9 @@ using namespace std;
 constexpr int NUM_1 = 1;
 constexpr int NUM_2 = 2;
 constexpr int NUM_64 = 64;
+// mxfp4 默认 dstTypeMax:CX 方案 dstTypeMax=0 时默认 log2(6.0),OCP 方案固定 2.0
+constexpr float MXFP4_DEFAULT_DST_TYPE_MAX_LOG2 = 2.584962500721156f;
+constexpr float MXFP4_OCP_DST_TYPE_MAX = 2.0f;
 
 constexpr int DIM_0 = 0;
 constexpr int DIM_1 = 1;
@@ -110,8 +113,14 @@ std::unordered_map<std::string, std::string> inputLayoutMapQ2Kv = {{"TND", "TND"
 enum QuantMode : int64_t {
     NO_QUANT = 0,
     FP8_QUANT = 1,
-    MXFP4_QUANT = 2,
+    MXFP4_OCP_QUANT = 2,
+    MXFP4_CX_QUANT = 3,
 };
+
+// 判断是否为 mxfp4 量化(OCP 或 CX)
+static bool IsMxfp4Quant(int64_t qm) {
+    return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
+}
 
 static std::string DataTypeToString(ge::DataType dataType)
 {
@@ -492,7 +501,7 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (quantMode_ == MXFP4_QUANT && (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
+    if (IsMxfp4Quant(quantMode_) && (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "(quantMode:%d)mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", quantMode_, embeddingSize_);
         return ge::GRAPH_FAILED;
@@ -513,7 +522,7 @@ ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContex
         }
     }
     // V3 新增:mxfp4 (DT_FLOAT4_E2M1) 输入时,attentionOut 必须为 bfloat16
-    if (quantMode_ == MXFP4_QUANT) {
+    if (IsMxfp4Quant(quantMode_)) {
         attentionOutDataType_ = bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetDataType();
         if (attentionOutDataType_ != ge::DT_BF16) {
             OP_LOGE(bsaContext->GetNodeName(),
@@ -712,7 +721,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     // V3 新增:mxfp4 要求 blockShapeX 为 64 的倍数
-    if (quantMode_ == MXFP4_QUANT && blockShapeX_ % 64 != 0) {
+    if (IsMxfp4Quant(quantMode_) && blockShapeX_ % 64 != 0) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "mxfp4 requires blockShapeX to be multiple of 64, but got %u.", blockShapeX_);
         return ge::GRAPH_FAILED;
@@ -801,7 +810,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
             return ge::GRAPH_FAILED;
         }
-    } else if (quantMode_ == MXFP4_QUANT) {
+    } else if (IsMxfp4Quant(quantMode_)) {
         return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
@@ -825,12 +834,12 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
     }
     const auto *scaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
     if (scaleShape == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode == 2) mxfp4 dequantScale (index=%d) must not be nullptr.", parameterIndex);
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 dequantScale (index=%d) must not be nullptr.", parameterIndex);
         return ge::GRAPH_FAILED;
     }
     auto &storageShape = scaleShape->GetStorageShape();
     if (storageShape.GetDimNum() != DIM_NUM_5) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode == 2) mxfp4 scale must be 5D, got %zuD.", storageShape.GetDimNum());
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4  scale must be 5D, got %zuD.", storageShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
@@ -859,8 +868,7 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
     auto checkDim = [&](uint32_t expected, int idx) -> bool {
         uint32_t actual = static_cast<uint32_t>(storageShape.GetDim(idx));
         if (actual != expected) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "(quantMode == 2)  mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
+            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
                     idx, isBNSD ? "BNSD" : "BSND", parameterIndex, expected, actual);
             return false;
         }
@@ -1029,12 +1037,14 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     } else {
         dstTypeMax_ = *dstTypeMaxPtr;
     }
-    if (quantMode_ == MXFP4_QUANT) {
+    if (quantMode_ == MXFP4_CX_QUANT) {
         if (dstTypeMax_ == 0.0f) {
-            dstTypeMax_ = 2.0f;
+            dstTypeMax_ = MXFP4_DEFAULT_DST_TYPE_MAX_LOG2;
         } else {
             dstTypeMax_ = std::log2(dstTypeMax_);
         }       
+    } else if (quantMode_ == MXFP4_OCP_QUANT) {
+        dstTypeMax_ = MXFP4_OCP_DST_TYPE_MAX;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1322,8 +1332,10 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
             tilingKey += 20;
         }
     }
-    if (quantMode_ == MXFP4_QUANT) {
+    if (quantMode_ == MXFP4_OCP_QUANT) {
          tilingKey += 30;
+    } else if (quantMode_ == MXFP4_CX_QUANT) {
+        tilingKey += 40;
     }
 
     // [位11-13] KV Layout（十亿位）
