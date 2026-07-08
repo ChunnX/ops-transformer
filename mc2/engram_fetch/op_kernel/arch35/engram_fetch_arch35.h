@@ -49,7 +49,7 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
+    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len, uint32_t &tileIdx);
     __aicore__ inline void CopyContextToUb();
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen);
     __aicore__ inline void ScatterByRank(uint32_t batchLen);
@@ -317,6 +317,7 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart
         uint32_t localIdxStart = rankId_ * numEntriesPerRank;
         uint32_t rankStart = rankOffsets(rankId_);
         uint32_t cnt = rankCounts(rankId_);
+        uint32_t tileIdx = 0;
         for (uint32_t b = participantIdx; b < cnt; b += numParticipants) {
             uint32_t i = tokenIdxInRank(rankStart + b);
             int32_t globalIdx = indicesLocal(i);
@@ -325,12 +326,19 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart
             GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
             GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
                           + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-            LocalCopySlice(dst, src, hiddenBytes);
+            LocalCopySlice(dst, src, hiddenBytes, tileIdx);
+        }
+        if (tileIdx >= 1U) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
+        }
+        if (tileIdx >= 2U) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
         }
     }
 }
 
-__aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
+__aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len,
+                                                           uint32_t &tileIdx)
 {
     AscendC::LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
     AscendC::LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
@@ -341,7 +349,6 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
 
     uint32_t tileLen = TILE_BYTES;
     uint64_t off = 0;
-    uint32_t tileIdx = 0;
     while (off < len) {
         uint64_t thisLen = (len - off > TILE_BYTES) ? tileLen : (len - off);
         uint32_t bufIdx = tileIdx % 2U;
@@ -359,13 +366,6 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
 
         off += thisLen;
         tileIdx++;
-    }
-
-    if (tileIdx >= 1U) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-    }
-    if (tileIdx >= 2U) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
     }
 }
 } // namespace Mc2Kernel
