@@ -100,6 +100,10 @@ TILING_DATA_FIELD_DEF(uint64_t, mm2OutSize);
 TILING_DATA_FIELD_DEF(uint64_t, updateSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 
+// V3 新增:量化参数
+TILING_DATA_FIELD_DEF(uint32_t, quantMode);
+TILING_DATA_FIELD_DEF(float, dstTypeMax);
+
 TILING_DATA_FIELD_DEF_STRUCT(BsaMask2IdxTiling, BsaMask2IdxTileInfo);
 TILING_DATA_FIELD_DEF_STRUCT(BsaBaseTiling, BsaBaseTileInfo);
 TILING_DATA_FIELD_DEF_STRUCT(BsaMmPhaseL1Tiling, BsaMmPhaseL1TileInfo);
@@ -186,6 +190,7 @@ private:
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
     ge::graphStatus ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex);
+    ge::graphStatus ValidateMxfp4DequantScale(gert::TilingContext *bsaContext, const int parameterIndex);
     ge::graphStatus ValidateQDequantScale(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateKDequantScale(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateVDequantScale(gert::TilingContext *bsaContext);
@@ -220,6 +225,9 @@ private:
     uint32_t maskType_ = 0;
     uint32_t innerPrecise_ = 1;  // 0=float32 softmax, 1=fp16 softmax
     bool softmaxLseFlag_ = false;
+    // V3 新增:量化参数
+    uint32_t quantMode_ = 0;
+    float dstTypeMax_ = 0.0f;
     
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;

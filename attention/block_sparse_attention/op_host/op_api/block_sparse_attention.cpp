@@ -63,6 +63,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     int64_t preTokens,
     int64_t nextTokens,
     int64_t softmaxLseFlag,
+    int64_t quantMode,
+    double dstTypeMax,
     const aclTensor *attentionOut,
     aclOpExecutor *executor)
 {
@@ -71,8 +73,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional,
            kDequantScaleOptional, vDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
-           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag);
-
+           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, quantMode, dstTypeMax);
+    
     const aclTensor *blockShapeOptionalTensor = nullptr;
     if (blockShapeOptional) {
         blockShapeOptionalTensor = ConvertIntArrayToTensor(blockShapeOptional, executor, DataType::DT_INT64);
@@ -99,7 +101,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
                                    static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
                                    static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
                                    static_cast<uint32_t>(preTokens), static_cast<int64_t>(nextTokens),
-                                   static_cast<int64_t>(softmaxLseFlag)));
+                                   static_cast<int64_t>(softmaxLseFlag), static_cast<int64_t>(quantMode), static_cast<float>(dstTypeMax)));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
@@ -114,7 +116,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
         OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
                 static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
                 static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
-                static_cast<int64_t>(softmaxLseFlag)));
+                static_cast<int64_t>(softmaxLseFlag), static_cast<int64_t>(quantMode), static_cast<float>(dstTypeMax)));
 
     return {attentionOutTensor, softmaxLseTensor};
 }
