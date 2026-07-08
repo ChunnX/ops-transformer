@@ -215,8 +215,10 @@ public:
             // corresponding head index of cur task
             // corresponding blockSparseMask gm offset of cur task
             // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
-            int64_t sparseMaskBOffset = static_cast<int64_t>(curBatch) * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
-            int64_t sparseMaskNOffset = static_cast<int64_t>(qHeadIdx) * xBlockNumAligned_ * yBlockNumAligned_;
+            int64_t sparseMaskBOffset =
+                static_cast<int64_t>(curBatch) * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
+            int64_t sparseMaskNOffset =
+                static_cast<int64_t>(qHeadIdx) * xBlockNumAligned_ * yBlockNumAligned_;
             int64_t sparseMaskXOffset = static_cast<int64_t>(xBlockIdx) * yBlockNumAligned_;
             int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
             // corresponding Q/K/V/O gm offset of cur task
