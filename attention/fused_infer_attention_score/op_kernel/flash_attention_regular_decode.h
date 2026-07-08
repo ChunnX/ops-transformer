@@ -402,7 +402,6 @@ namespace SplitFuse {
                                 (kvNIncreIdx == 0));
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
-
                             }
 #endif
                         }

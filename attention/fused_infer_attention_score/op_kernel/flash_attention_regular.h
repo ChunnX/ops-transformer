@@ -677,9 +677,9 @@ namespace SplitFuse {
                                 layoutKTemp,
                                 layOutS,
                                 actualBlockShapeQK,
-                                kvSIdx, 
-                                kvSLoopNumTotal, 
-                                pagedBlockSize, 
+                                kvSIdx,
+                                kvSLoopNumTotal,
+                                pagedBlockSize,
                                 strideK);
                         } else {
                             blockMmadQK(
@@ -691,9 +691,9 @@ namespace SplitFuse {
                                 layoutKTemp,
                                 layOutS,
                                 actualBlockShapeQK,
-                                kvSIdx, 
-                                kvSLoopNumTotal, 
-                                pagedBlockSize, 
+                                kvSIdx,
+                                kvSLoopNumTotal,
+                                pagedBlockSize,
                                 strideK);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
@@ -945,38 +945,38 @@ namespace SplitFuse {
                             static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
                             blockMmadPV(
-                            gP[gmOffsetP], 
-                            gV[gmOffsetV], 
-                            gOTmp[gmOffsetOTmp], 
-                            gBlockTable[blockBOffset],
-                            layoutPTemp, 
-                            layoutVTemp, 
-                            layoutOTmp, 
-                            actualBlockShapePV,
-                            nowkvSIdx, 
-                            kvSLoopNumTotal, 
-                            pagedBlockSize, 
-                            noSkipKvS, 
-                            strideV, 
-                            blockStackNum, 
-                            softmaxReady);
+                                gP[gmOffsetP],
+                                gV[gmOffsetV],
+                                gOTmp[gmOffsetOTmp],
+                                gBlockTable[blockBOffset],
+                                layoutPTemp,
+                                layoutVTemp,
+                                layoutOTmp,
+                                actualBlockShapePV,
+                                nowkvSIdx,
+                                kvSLoopNumTotal,
+                                pagedBlockSize,
+                                noSkipKvS,
+                                strideV,
+                                blockStackNum,
+                                softmaxReady);
                         } else {
                             blockMmadPV(
-                            gP[gmOffsetP], 
-                            gV[gmOffsetV], 
-                            gOTmp[gmOffsetOTmp], 
-                            gBlockTable,
-                            layoutPTemp, 
-                            layoutVTemp, 
-                            layoutOTmp, 
-                            actualBlockShapePV,
-                            nowkvSIdx, 
-                            kvSLoopNumTotal, 
-                            pagedBlockSize, 
-                            noSkipKvS, 
-                            strideV, 
-                            blockStackNum, 
-                            softmaxReady);
+                                gP[gmOffsetP],
+                                gV[gmOffsetV],
+                                gOTmp[gmOffsetOTmp],
+                                gBlockTable,
+                                layoutPTemp,
+                                layoutVTemp,
+                                layoutOTmp,
+                                actualBlockShapePV,
+                                nowkvSIdx,
+                                kvSLoopNumTotal,
+                                pagedBlockSize,
+                                noSkipKvS,
+                                strideV,
+                                blockStackNum,
+                                softmaxReady);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
