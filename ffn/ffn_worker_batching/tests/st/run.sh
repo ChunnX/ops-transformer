@@ -12,7 +12,7 @@
 #   bash run.sh            # Real 模式（NPU 执行 + 二进制一致比对，需安装 A5 算子包）
 #   bash run.sh --mock     # Mock 模式（CPU golden 自测，无需 NPU，迭代一验收口径）
 #
-# Real 模式前置：source /root/Ascend/ascend-toolkit/set_env.sh
+# Real 模式前置：source /home/zl/Ascend/ascend-toolkit/set_env.sh
 # ============================================================================
 set -e
 

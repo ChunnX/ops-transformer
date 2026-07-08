@@ -55,8 +55,9 @@ add_executable(test_aclnn_ffn_worker_batching test_aclnn_ffn_worker_batching.cpp
 if(NOT USE_MOCK)
     # 自定义算子 aclnn 头文件（算子包安装后生成，vendor 名以实际安装为准）
     find_path(CUSTOM_OP_INCLUDE_DIR
-        NAMES aclnn_ffn_worker_batching.h
+        NAMES aclnnop/aclnn_ffn_worker_batching.h aclnn_ffn_worker_batching.h
         PATHS
+            ${CANN_ROOT}/opp/vendors/custom_transformer/op_api/include
             ${CANN_ROOT}/opp/vendors/customize/op_api/include
             ${CANN_ROOT}/opp/vendors/ffn_worker_batching_custom/op_api/include
             /usr/local/Ascend/opp/vendors/customize/op_api/include
@@ -71,10 +72,12 @@ if(NOT USE_MOCK)
     target_include_directories(test_aclnn_ffn_worker_batching PRIVATE
         ${ASCENDCL_INCLUDE_DIRS}
         ${CUSTOM_OP_INCLUDE_DIR}
+        ${CUSTOM_OP_INCLUDE_DIR}/aclnnop
     )
 
     find_library(CUSTOM_OP_LIBRARY cust_opapi
         PATHS
+            ${CANN_ROOT}/opp/vendors/custom_transformer/op_api/lib
             ${CANN_ROOT}/opp/vendors/customize/op_api/lib
             ${CANN_ROOT}/opp/vendors/ffn_worker_batching_custom/op_api/lib
             /usr/local/Ascend/opp/vendors/customize/op_api/lib
@@ -84,12 +87,26 @@ if(NOT USE_MOCK)
         message(WARNING "cust_opapi library not found, relying on default opapi linkage")
     endif()
 
-    target_link_libraries(test_aclnn_ffn_worker_batching
-        ${ASCENDCL_LIBRARIES}
-        ${CANN_LIBRARIES}
-        ${CANN_ROOT}/lib64/libnnopbase.so
-        ${CUSTOM_OP_LIBRARY}
-    )
+    # 符号冲突修复：内置 libopapi.so 也定义了 aclnnFfnWorkerBatching* 符号
+    # （仅注册 ascend910b/ascend910_93，无 ascend950），会与自定义 vendor 的
+    # libcust_opapi.so 撞名。若内置库排在链接顺序前面，--as-needed 会把
+    # libcust_opapi.so 从 NEEDED 中丢弃，运行时解析到内置符号 → GetWorkspaceSize
+    # 阶段 SoC 校验失败返回 361001（SoC version ascend950 verification failed）。
+    # 因此必须把自定义库放在最前、并用 --no-as-needed 强制保留，使其 aclnn 符号胜出。
+    if(CUSTOM_OP_LIBRARY)
+        target_link_libraries(test_aclnn_ffn_worker_batching
+            -Wl,--no-as-needed ${CUSTOM_OP_LIBRARY} -Wl,--as-needed
+            ${ASCENDCL_LIBRARIES}
+            ${CANN_LIBRARIES}
+            ${CANN_ROOT}/lib64/libnnopbase.so
+        )
+    else()
+        target_link_libraries(test_aclnn_ffn_worker_batching
+            ${ASCENDCL_LIBRARIES}
+            ${CANN_LIBRARIES}
+            ${CANN_ROOT}/lib64/libnnopbase.so
+        )
+    endif()
 endif()
 
 install(TARGETS test_aclnn_ffn_worker_batching DESTINATION bin)
