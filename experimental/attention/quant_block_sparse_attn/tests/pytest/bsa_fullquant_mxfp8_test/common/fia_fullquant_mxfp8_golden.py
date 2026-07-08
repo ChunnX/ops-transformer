@@ -57,7 +57,9 @@ ACTUAL_SEQ_Q = [4]
 ACTUAL_SEQ_KV = [1024]
 
 ENABLE_PA = False
-BLOCK_SIZE = 512
+#BLOCK_SIZE = 512
+
+BLOCK_SIZE = 128
 
 SPARSE_MODE = 3
 FP8_DTYPE = torch.float8_e4m3fn
@@ -93,6 +95,8 @@ DATA_RANGE_K = 1.0
 DATA_RANGE_V = 1.0
 
 DEVICE_ID = 0
+
+SPARSE_BLOCK_SIZE = 128
 
 
 def _get_npu_fa_kwargs():
@@ -654,15 +658,19 @@ def generate_data():
 
     ############## sparse_indices begin
     if 1:
+        q_block = max(ACTUAL_SEQ_Q) / SPARSE_BLOCK_SIZE
+        kv_block = max(ACTUAL_SEQ_KV) / SPARSE_BLOCK_SIZE
         #sparse_indices_list = torch.randperm(B*N1*q_block*kv_block, dtype=torch.int32);
-        sparse_indices_list = torch.cat([torch.randperm(B*N1*q_block*kv_block, dtype=torch.int32) for _ in range(10)]);
+        sparse_indices_list = torch.cat([torch.randperm(kv_block, dtype=torch.int32) for _ in range(B*N1*q_block)])
         idx = 0
         for batch_idx in range(B):
             for n_idx in range(N1):
-                q_block = 
                 for q_block_idx in range(q_block):
-                    kv_block = 
+                    if q_block_idx > ACTUAL_SEQ_Q[batch_idx] / SPARSE_BLOCK_SIZE:
+                            sparse_indices_list[idx] = -1
                     for kv_block_idx in range(kv_block):
+                        if kv_block_idx > ACTUAL_SEQ_KV[batch_idx] / SPARSE_BLOCK_SIZE:
+                            sparse_indices_list[idx] = -1
                         sparse_indices[batch_idx, n_idx, q_block_idx, kv_block_idx] = sparse_indices_list[idx]
                         idx += 1
     ########## sparse_indices end
