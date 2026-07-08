@@ -440,8 +440,6 @@ __aicore__ inline void CombineQuantizedTokens(
 
     uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
     uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantTokenSize;
-
-    // 默认写远端win；Layered 远端先用workspace staging再URMA
     AscendC::GlobalTensor<QuantOutType> gmDst;
     GM_ADDR dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
     if constexpr (IsLayered) {
@@ -464,42 +462,6 @@ __aicore__ inline void CombineQuantizedTokens(
             params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr,
                 static_cast<uint64_t>(quantTokenSize));
         }
-    }
-}
-
-
-// =============================================
-// CombineQuantizedTokensByUrma：通过URMA将量化后的 token 发送到目标 rank
-// =============================================
-template <typename QuantOutType>
-__aicore__ inline void CombineQuantizedTokensByUrma(
-    uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
-    uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
-    LocalTensor<QuantOutType>& ubQuant, Params& params)
-{
-    int64_t quantRowSize = n + nScale;
-    uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
-    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
-    uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
-
-    AscendC::GlobalTensor<QuantOutType> gmRemoteD;
-    GM_ADDR dstPeermemPtr = params.workspaceInfo.combineSendDataPtr + static_cast<uint64_t>(toRankId) * quantRowSize * 
-                                params.tilingData->bs * params.tilingData->expertPerRank * sizeof(QuantOutType);
-    if(toRankId == rankId) {
-        dstPeermemPtr = params.epGmAddr + params.peermemInfo.URMACombineWinPtr;
-    }                            
-    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
-    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantRowSize;
-
-    AscendC::DataCopyExtParams singleCopyParams{
-        1, static_cast<uint32_t>(quantRowSize), 0, 0, 0};
-    AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
-    PipeBarrier<PIPE_ALL>();
-    if (toRankId != rankId) {
-        uint64_t channelHandle = GetUrmaCommHandle(params.peermemInfo.mc2Context, toRankId, rankId);
-        GM_ADDR srcAddr = dstPeermemPtr + dstBaseOffset * sizeof(QuantOutType);
-        GM_ADDR remoteAddr = GetUrmaAddrByRankId(params.peermemInfo.mc2Context, toRankId) + params.peermemInfo.URMACombineWinPtr + dstBaseOffset * sizeof(QuantOutType);
-        params.peermemInfo.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantRowSize * sizeof(QuantOutType));
     }
 }
 
