@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_v2_apt.cpp
+ * \file moe_distribute_dispatch_v2_a5.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeDispatchV2.
  */
 #if ASC_DEVKIT_MAJOR >= 9
@@ -19,7 +19,7 @@
 #endif
 #include "../moe_distribute_dispatch_v2.h"
 #include "../moe_distribute_dispatch_v2_full_mesh.h"
-#include "moe_distribute_dispatch_v2_apt_tiling_key.h"
+#include "moe_distribute_dispatch_v2_a5_tiling_key.h"
 #include "moe_distribute_dispatch_v2_a5_ccu.h"
 using namespace MoeDistributeDispatchA5Impl;
 using namespace Mc2Kernel;
