@@ -54,13 +54,23 @@
 
 namespace op_api {
 
-// ACL dtype ids for the MXFP4 (mxfp4) path. quant_mode=2 selects these:
+// ACL dtype ids for the MXFP4 (mxfp4) path. quant_mode in {2, 3} selects these:
 // q/k/v are uint8-disguised float4_e2m1fn_x2, descale tensors are
 // float8_e8m0fnu. The wrapper builds TensorWrapper(t, dtype) with these
 // values so the kernel sees ACL_FLOAT4_E2M1 / ACL_FLOAT8_E8M0 instead of
 // ACL_UINT8. Mirrors quant_flash_attn.cpp. make_wrapper is in aclnn_common.h:246.
 const int64_t FLOAT4_E2M1 = static_cast<int64_t>(296);
 const int64_t FLOAT8_E8M0 = static_cast<int64_t>(293);
+
+// Named constants mirroring the Python _QUANT_MODE + the CANN kernel's
+// QuantMode enum (block_sparse_attention_def.cpp). Plain enum (not enum class)
+// so values implicitly convert to int64_t — the type of the quant_mode parameter.
+enum QuantMode : int64_t {
+	NO_QUANT        = 0,
+	FP8_QUANT       = 1,
+	MXFP4_OCP_QUANT = 2,
+	MXFP4_CX_QUANT  = 3,
+};
 
 std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	const at::Tensor &query,
@@ -82,7 +92,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	int64_t next_tokens,
 	bool softmax_lse_flag,
 	int64_t quant_mode,
-	int64_t dst_type_max,
+	double dst_type_max,
 	const c10::optional<at::Tensor> &q_dequant_scale,
 	const c10::optional<at::Tensor> &k_dequant_scale,
 	const c10::optional<at::Tensor> &v_dequant_scale,
@@ -111,37 +121,38 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// quant_mode selects the quantization path and the kernel binary:
 	//   0 = no quantization (FP16/BF16)   → attentionOut = input dtype
 	//   1 = FP8 (float8_e4m3fn)           → attentionOut ∈ {FP16, BF16} (dequant)
-	//   2 = mxfp4 (float4_e2m1fn_x2, uint8-disguised) → attentionOut ∈ {BF16}
+	//   2 = mxfp4 OCP (float4_e2m1fn_x2, uint8-disguised) → attentionOut ∈ {BF16}
+	//   3 = mxfp4 CX (float4_e2m1fn_x2, uint8-disguised)  → attentionOut ∈ {BF16}
 	// The (input dtype → attentionOut dtype) pairing is what selects the kernel
 	// binary. There is no fp8/MXFP4 output binary, so allocating attentionOut as the
 	// input dtype made the op fail with "Cannot find binary".
 	const at::ScalarType q_scalar_type = query.scalar_type();
 	TORCH_CHECK(key.scalar_type() == q_scalar_type && value.scalar_type() == q_scalar_type,
 				"query/key/value must share the same dtype");
-	if (quant_mode == 0) {
+	if (quant_mode == NO_QUANT) {
 		TORCH_CHECK(q_scalar_type == at::kHalf || q_scalar_type == at::kBFloat16,
 					"quant_mode=0 requires query/key/value dtype to be float16 or bfloat16, "
 					"got ", q_scalar_type);
 		TORCH_CHECK(attention_out_dtype == q_scalar_type,
 					"attention_out_dtype must equal the input dtype for float16/bfloat16 inputs");
-	} else if (quant_mode == 1) {
+	} else if (quant_mode == FP8_QUANT) {
 		TORCH_CHECK(q_scalar_type == at::kFloat8_e4m3fn,
 					"quant_mode=1 requires query/key/value dtype to be float8_e4m3fn, "
 					"got ", q_scalar_type);
 		TORCH_CHECK(attention_out_dtype == at::kHalf || attention_out_dtype == at::kBFloat16,
 					"attention_out_dtype must be torch.float16 or torch.bfloat16 for float8_e4m3fn "
 					"inputs (the kernel dequantizes; there is no fp8 output binary)");
-	} else {  // quant_mode == 2
+	} else {  // quant_mode in {MXFP4_OCP_QUANT, MXFP4_CX_QUANT} — mxfp4 OCP/CX
 		// MXFP4 path: float4_e2m1fn_x2 disguised as uint8. The wrapper infers
 		// FLOAT4_E2M1 / FLOAT8_E8M0 from quant_mode (no caller-passed dtype args).
 		// Kernel dequantizes to bf16 only (no fp16 output binary for mxfp4).
 		TORCH_CHECK(q_scalar_type == at::kByte,
-					"quant_mode=2 requires query/key/value dtype to be uint8 "
+					"quant_mode in {2, 3} (mxfp4) requires query/key/value dtype to be uint8 "
 					"(float4_e2m1fn_x2 disguised as uint8), got ", q_scalar_type);
 		TORCH_CHECK(attention_out_dtype == at::kBFloat16,
 					"attention_out_dtype must be torch.bfloat16 for "
-					"float4_e2m1fn_x2 (uint8-disguised) inputs (kernel dequantizes; "
-					"there is no MXFP4 output binary and only bf16 is supported)");
+					"float4_e2m1fn_x2 (uint8-disguised, quant_mode in {2, 3}) inputs "
+					"(kernel dequantizes; there is no MXFP4 output binary and only bf16 is supported)");
 	}
 
 	// FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
@@ -163,24 +174,24 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// Dequant scale contract — three quant_mode branches:
 	//   • quant_mode=1 (FP8): q/k/v_dequant_scale are FP32 4-D reverse-quant
 	//     factors. Required. Passed to ACLNN as raw at::Tensor.
-	//   • quant_mode=2 (mxfp4): q/k/v_dequant_scale are descale tensors of
-	//     dtype float8_e8m0fnu (validated below). Required. Wrapped via
-	//     make_wrapper(..., FLOAT8_E8M0) at call time so the kernel resolves
+	//   • quant_mode in {2, 3} (mxfp4 OCP/CX): q/k/v_dequant_scale are descale
+	//     tensors of dtype float8_e8m0fnu (validated below). Required. Wrapped
+	//     via make_wrapper(..., FLOAT8_E8M0) at call time so the kernel resolves
 	//     the binary by ACL_FLOAT8_E8M0.
 	//   • quant_mode=0 (FP16/BF16): non-quantized path. Must NOT carry scales.
-	if (quant_mode == 1) {
+	if (quant_mode == FP8_QUANT) {
 		TORCH_CHECK(q_present,
 					"quant_mode=1 (FP8) requires q_dequant_scale, k_dequant_scale and "
 					"v_dequant_scale (FP32 4-D reverse-quant factors)");
-	} else if (quant_mode == 2) {
+	} else if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
 		// mxfp4 path: descale tensors mandatory.
 		TORCH_CHECK(q_present,
-					"quant_mode=2 (mxfp4) requires q_dequant_scale, k_dequant_scale and "
+					"quant_mode in {2, 3} (mxfp4) requires q_dequant_scale, k_dequant_scale and "
 					"v_dequant_scale as descale tensors");
 	} else {
 		TORCH_CHECK(!q_present,
 					"q/k/v_dequant_scale are only valid for quant_mode=1 (FP8) or "
-					"quant_mode=2 (mxfp4) inputs");
+					"quant_mode in {2, 3} (mxfp4) inputs");
 	}
 	// Contiguity applies to all paths. The FP32 dtype check is FP8-only:
 	// MXFP4 descale tensors keep their physical storage dtype (logical dtype
@@ -195,10 +206,10 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	check_dequant(v_dequant_scale, "v_dequant_scale");
 	// Dtype contract per quant_mode:
 	//   • quant_mode=1 (FP8): scales must be float32 (FP32 reverse-quant factors).
-	//   • quant_mode=2 (mxfp4): descale tensors must be float8_e8m0fnu (the kernel
+	//   • quant_mode in {2, 3} (mxfp4 OCP/CX): descale tensors must be float8_e8m0fnu (the kernel
 	//     resolves the binary by ACL_FLOAT8_E8M0; a wrong dtype makes it fail with
 	//     "Cannot find binary"). Mirrors moe_token_permute.cpp:104-110.
-	if (quant_mode == 1 && q_present) {
+	if (quant_mode == FP8_QUANT && q_present) {
 		TORCH_CHECK(q_dequant_scale->scalar_type() == at::kFloat,
 					"q_dequant_scale must be float32 for quant_mode=1 (FP8) inputs");
 		TORCH_CHECK(k_dequant_scale->scalar_type() == at::kFloat,
@@ -206,13 +217,13 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 		TORCH_CHECK(v_dequant_scale->scalar_type() == at::kFloat,
 					"v_dequant_scale must be float32 for quant_mode=1 (FP8) inputs");
 	}
-	if (quant_mode == 2 && q_present) {
+	if ((quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) && q_present) {
 		TORCH_CHECK(q_dequant_scale->scalar_type() == at::kFloat8_e8m0fnu,
-					"q_dequant_scale must be float8_e8m0fnu for quant_mode=2 (mxfp4) inputs");
+					"q_dequant_scale must be float8_e8m0fnu for quant_mode in {2, 3} (mxfp4) inputs");
 		TORCH_CHECK(k_dequant_scale->scalar_type() == at::kFloat8_e8m0fnu,
-					"k_dequant_scale must be float8_e8m0fnu for quant_mode=2 (mxfp4) inputs");
+					"k_dequant_scale must be float8_e8m0fnu for quant_mode in {2, 3} (mxfp4) inputs");
 		TORCH_CHECK(v_dequant_scale->scalar_type() == at::kFloat8_e8m0fnu,
-					"v_dequant_scale must be float8_e8m0fnu for quant_mode=2 (mxfp4) inputs");
+					"v_dequant_scale must be float8_e8m0fnu for quant_mode in {2, 3} (mxfp4) inputs");
 	}
 
 	// Pre-allocate outputs. Use at::empty with explicit sizes+options instead
@@ -227,7 +238,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// qDtypeRatio=2 for MXFP4, 1 otherwise). FP8/FP16/BF16 inputs keep
 	// query's shape unchanged.
 	at::Tensor attention_out;
-	if (quant_mode == 2) {
+	if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
 		auto out_sizes = query.sizes().vec();
 		out_sizes.back() *= 2;
 		attention_out = at::empty(out_sizes, query.options().dtype(attention_out_dtype));
@@ -272,7 +283,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// don't bind. Materialize the int64 LSE flag in a named local.
 	int64_t softmax_lse_flag_i64 = softmax_lse_flag ? 1 : 0;
 
-	// MXFP4 path (quant_mode=2): float4_e2m1fn_x2 is disguised as uint8. The
+	// MXFP4 path (quant_mode in {2, 3}): float4_e2m1fn_x2 is disguised as uint8. The
 	// kernel resolves the binary by ACL dtype, so we MUST wrap q/k/v with
 	// TensorWrapper that carries ACL_FLOAT4_E2M1 (via make_wrapper in
 	// aclnn_common.h:246) — passing the raw uint8 tensor would make the
@@ -284,20 +295,20 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	// Arg order must match aclnnBlockSparseAttentionV3GetWorkspaceSize() in
 	// attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v3.h.
 	// On the MXFP4 path the descale tensors are also wrapped with FLOAT8_E8M0
-	// (inferred from quant_mode=2) and passed to the same
+	// (inferred from quant_mode) and passed to the same
 	// qDequantScaleOptional slot; on the FP8/FP16/BF16 path the raw
 	// c10::optional<at::Tensor> is passed and yields nullptr when absent.
-	if (quant_mode == 2) {
+	if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
 		// MXFP4: pass TensorWrappers so the kernel sees ACL_FLOAT4_E2M1.
 		// q/k/v_dequant_scale (mandatory, validated above) are the descale
 		// tensors; their logical ACL dtype is FLOAT8_E8M0 (float8_e8m0fnu,
-		// inferred from quant_mode=2). Wrap them so the kernel resolves the
+		// inferred from quant_mode in {2, 3}). Wrap them so the kernel resolves the
 		// right binary — passing the raw at::Tensor would expose the
 		// physical storage dtype (e.g. uint8) and fail "Cannot find binary".
 		TensorWrapper q_wrapper = make_wrapper(query, FLOAT4_E2M1);
 		TensorWrapper k_wrapper = make_wrapper(key,   FLOAT4_E2M1);
 		TensorWrapper v_wrapper = make_wrapper(value, FLOAT4_E2M1);
-		// Descale tensors are mandatory for quant_mode=2 (validated above by
+		// Descale tensors are mandatory for quant_mode in {2, 3} (validated above by
 		// check_dequant), so dereferencing the optional is safe. make_wrapper takes
 		// const at::Tensor& (aclnn_common.h:246), not c10::optional<at::Tensor>.
 		TensorWrapper q_descale_wrapper = make_wrapper(*q_dequant_scale, FLOAT8_E8M0);
