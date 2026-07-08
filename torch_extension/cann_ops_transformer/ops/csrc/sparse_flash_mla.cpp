@@ -12,7 +12,10 @@
  * \brief
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -55,7 +58,7 @@ at::Tensor SparseFlashMlaMetadata(
         outputDevice = cmpTopkLength.value().device();
     }
 
-    at::Tensor output = torch::empty({SMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    at::Tensor output = at::empty({SMLA_METADATA_SIZE}, at::dtype(at::kInt).device(outputDevice));
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensOriKvVal = get_valid_tensor(cuSeqlensOriKv, outputDevice);
     auto cuSeqlensCmpKvVal = get_valid_tensor(cuSeqlensCmpKv, outputDevice);
@@ -121,17 +124,17 @@ std::tuple<at::Tensor, at::Tensor> MakeSparseFlashMlaOutputs(const at::Tensor &q
     at::Tensor attenOut = at::empty_like(q);
     at::Tensor softmaxLse;
     if (!returnSoftmaxLse) {
-        softmaxLse = at::empty({}, q.options().dtype(torch::kFloat32));
+        softmaxLse = at::empty({}, q.options().dtype(at::kFloat));
         return {attenOut, softmaxLse};
     }
 
     int64_t kvHeadNum = GetKvHeadNum(oriKv, cmpKv, layoutKvStr);
     if (layoutQStr == "BSND") {
         softmaxLse = at::empty({q.size(DIM_0), kvHeadNum, q.size(DIM_1), q.size(DIM_2) / kvHeadNum},
-                               q.options().dtype(torch::kFloat32));
+                               q.options().dtype(at::kFloat));
     } else {
         softmaxLse =
-            at::empty({kvHeadNum, q.size(DIM_0), q.size(DIM_1) / kvHeadNum}, q.options().dtype(torch::kFloat32));
+            at::empty({kvHeadNum, q.size(DIM_0), q.size(DIM_1) / kvHeadNum}, q.options().dtype(at::kFloat));
     }
     return {attenOut, softmaxLse};
 }

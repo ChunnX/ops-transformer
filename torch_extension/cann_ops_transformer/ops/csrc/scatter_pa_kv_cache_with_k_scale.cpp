@@ -13,7 +13,10 @@
  * \brief torch_npu适配：scatter_pa_kv_cache_with_k_scale算子的C++绑定
  */
 
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <torch/csrc/utils/pybind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "aclnn_common.h"
 
 namespace op_api {
