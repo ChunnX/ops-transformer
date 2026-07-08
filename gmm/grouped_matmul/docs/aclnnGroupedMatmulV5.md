@@ -291,8 +291,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ## 约束说明
 
-> "—" 表示该参数在当前场景下必须传空（nullptr）
-
 <a id="81-确定性计算"></a>
 
 ### 确定性计算
