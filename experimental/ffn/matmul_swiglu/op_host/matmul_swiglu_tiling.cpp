@@ -157,9 +157,6 @@ static ge::graphStatus RunMatmulTiling(
 // 计算块数/使用核数并写回 TilingData 各字段、设置 BlockDim 与 TilingKey。
 static void FillTilingData(gert::TilingContext* context, const SgmTilingParams& p, MatmulSwigluTilingData* tiling)
 {
-    int64_t baseM = tiling->mmTiling.get_baseM();
-    int64_t baseN = tiling->mmTiling.get_baseN();
-
     // 向量 SwiGLU 行内分块 tileN: 每列元素占 UB = gate(2*fp32) + up(2*fp32) + sig(fp32) +
     // y(2*xType) (in/out 队列双缓冲各 2 份, sig 单份)。留 16KB 余量, 对齐 256 列。
     constexpr int64_t UB_RESERVE = 16 * 1024;
@@ -175,29 +172,18 @@ static void FillTilingData(gert::TilingContext* context, const SgmTilingParams& 
         tileN = p.n;  // 小 N 或一块即可容纳: 整行不切分
     }
 
-    int64_t mBlockCnt = Ops::Base::CeilDiv(p.m, baseM);
-    int64_t nBlockCnt = Ops::Base::CeilDiv(p.n, baseN);
-    int64_t totalBlockCnt = mBlockCnt * nBlockCnt;
-    int64_t usedCore = totalBlockCnt < p.coreNum ? totalBlockCnt : p.coreNum;
-
     tiling->set_m(static_cast<uint64_t>(p.m));
     tiling->set_k(static_cast<uint64_t>(p.k));
     tiling->set_n(static_cast<uint64_t>(p.n));
     tiling->set_twoN(static_cast<uint64_t>(p.twoN));
-    tiling->set_baseM(static_cast<uint64_t>(baseM));
-    tiling->set_baseN(static_cast<uint64_t>(baseN));
-    tiling->set_mBlockCnt(static_cast<uint64_t>(mBlockCnt));
-    tiling->set_nBlockCnt(static_cast<uint64_t>(nBlockCnt));
-    tiling->set_totalBlockCnt(static_cast<uint64_t>(totalBlockCnt));
     tiling->set_hasBias(p.hasBias ? 1U : 0U);
-    tiling->set_transposeWeight(p.transposeWeight ? 1U : 0U);
-    tiling->set_usedCoreNum(static_cast<uint32_t>(usedCore));
     tiling->set_tileN(static_cast<uint32_t>(tileN));
 
     context->SetBlockDim(static_cast<uint32_t>(p.coreNum));
 
-    // 数据类型由 kernel 侧编译期 DTYPE_X 决定, 各 dtype 为独立二进制, 无需按 dtype 设不同 TilingKey。
-    context->SetTilingKey(0);
+    // transpose_weight 经 TilingKey 传递(0=非转置, 1=转置), kernel 侧作编译期模板参数, 避免运行时判断。
+    // dtype 由 kernel 侧编译期 DTYPE_X 决定, 各 dtype 独立二进制, 不占 TilingKey。
+    context->SetTilingKey(p.transposeWeight ? 1U : 0U);
 }
 
 static ge::graphStatus MatmulSwigluTilingFunc(gert::TilingContext* context)

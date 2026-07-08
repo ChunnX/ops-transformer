@@ -30,12 +30,13 @@ using namespace matmul;
 
 constexpr int32_t NUM_BUFFER = 2;  // 输入/输出队列双缓冲深度
 
-// xType: 输入/输出数据类型; cType: matmul 累加与中间数据类型(固定 fp32)
-template <typename xType, typename cType>
+// xType: 输入/输出数据类型; cType: matmul 累加与中间数据类型(固定 fp32);
+// TransposeW: weight 是否转置(编译期常量, 由 TilingKey 选择, 避免运行时判断)
+template <typename xType, typename cType, bool TransposeW>
 class MatmulSwigluImpl {
 public:
     using AType = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
-    using BType = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
+    using BType = MatmulType<TPosition::GM, CubeFormat::ND, xType, TransposeW>;
     using CTypeMm = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
     using BiasType = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
 
@@ -53,7 +54,6 @@ public:
         n_ = tilingData->n;
         twoN_ = tilingData->twoN;
         hasBias_ = (tilingData->hasBias == 1U);
-        transposeW_ = (tilingData->transposeWeight == 1U);
         tileN_ = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
 
         xGm_.SetGlobalBuffer((__gm__ xType*)x, m_ * k_);
@@ -76,7 +76,7 @@ public:
     {
         // ---- Phase 1: 标准 matmul, 完整 [M,2N] 写到 GM 中间 ----
         mm.SetTensorA(xGm_, false);
-        mm.SetTensorB(wGm_, transposeW_);
+        mm.SetTensorB(wGm_, TransposeW);
         if (hasBias_) {
             mm.SetBias(biasGm_);
         }
@@ -173,7 +173,6 @@ private:
     uint64_t twoN_ = 0;
     uint64_t tileN_ = 0;
     bool hasBias_ = false;
-    bool transposeW_ = false;
 };
 
 }  // namespace NsMatmulSwiglu

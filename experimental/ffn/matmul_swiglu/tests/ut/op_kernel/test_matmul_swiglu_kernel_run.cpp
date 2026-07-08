@@ -111,15 +111,8 @@ void RunKernelSmoke(int64_t M, int64_t K, int64_t N)
     td->k = K;
     td->n = N;
     td->twoN = twoN;
-    td->baseM = M;
-    td->baseN = N;
-    td->mBlockCnt = 1;
-    td->nBlockCnt = 1;
-    td->totalBlockCnt = 1;
     td->hasBias = 0;
-    td->transposeWeight = 0;
-    td->usedCoreNum = 1;
-    td->reserved = 0;
+    td->tileN = static_cast<uint32_t>(N);  // 小 N: 整行不切分。transpose 经 TilingKey(默认 0=非转置)
     FillCubeTiling(td->mmTiling, M, N, K);
 
     ICPU_RUN_KF(matmul_swiglu, 1, xGM, wGM, biasGM, yGM, workspace, tiling);

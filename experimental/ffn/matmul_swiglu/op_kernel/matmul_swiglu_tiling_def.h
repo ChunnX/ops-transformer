@@ -23,14 +23,7 @@ struct MatmulSwigluTilingData {
     uint64_t k;
     uint64_t n;
     uint64_t twoN;
-    uint64_t baseM;
-    uint64_t baseN;
-    uint64_t mBlockCnt;
-    uint64_t nBlockCnt;
-    uint64_t totalBlockCnt;
     uint32_t hasBias;
-    uint32_t transposeWeight;
-    uint32_t usedCoreNum;
     uint32_t tileN;  // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
     TCubeTiling mmTiling;
 };

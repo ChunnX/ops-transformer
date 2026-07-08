@@ -28,16 +28,10 @@ BEGIN_TILING_DATA_DEF(MatmulSwigluTilingData)
     TILING_DATA_FIELD_DEF(uint64_t, k);             // 收缩维 K
     TILING_DATA_FIELD_DEF(uint64_t, n);             // 单边宽度 N (= 输出列数)
     TILING_DATA_FIELD_DEF(uint64_t, twoN);          // 2N (= weight 的拼接列数 / bias 长度)
-    TILING_DATA_FIELD_DEF(uint64_t, baseM);         // 输出块行高 (matmul baseM)
-    TILING_DATA_FIELD_DEF(uint64_t, baseN);         // 输出块列宽 (matmul baseN)
-    TILING_DATA_FIELD_DEF(uint64_t, mBlockCnt);     // M 方向块数 = ceil(M/baseM)
-    TILING_DATA_FIELD_DEF(uint64_t, nBlockCnt);     // N 方向块数 = ceil(N/baseN)
-    TILING_DATA_FIELD_DEF(uint64_t, totalBlockCnt); // = mBlockCnt * nBlockCnt
     TILING_DATA_FIELD_DEF(uint32_t, hasBias);       // 是否带 bias
-    TILING_DATA_FIELD_DEF(uint32_t, transposeWeight);
-    TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);   // 参与计算的 cube 核数
     TILING_DATA_FIELD_DEF(uint32_t, tileN);         // 向量 SwiGLU 行内分块列数 (满足 UB 预算)
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling);  // 单边 [M, N, K] 的 cube tiling
+    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTiling);  // 完整 [M, 2N, K] 的 cube tiling
+    // 注: transpose_weight 经 TilingKey 传递(不占 TilingData), kernel 侧作编译期模板参数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MatmulSwiglu, MatmulSwigluTilingData)
