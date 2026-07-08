@@ -22,12 +22,16 @@ extern "C" __global__ __aicore__ void kv_rms_norm_rope_cache(
     GM_ADDR k_rope_scale, GM_ADDR c_kv_scale, GM_ADDR k_rope_offset,GM_ADDR c_kv_offset, GM_ADDR v, GM_ADDR k_cache_out,
     GM_ADDR c_kv_cache_out, GM_ADDR k_rope, GM_ADDR c_kv, GM_ADDR workspace, GM_ADDR tiling)
 {
+    // MIX_AIV_1_0 混合调度下 AIC 核也会进入 kernel 入口, 直接返回让其只占核不执行 AIV 代码。
+    if (g_coreType == AIC) {
+        return;
+    }
 #define GLOBAL_OVERFLOW_MODE_CTRL 60
 #if (__NPU_ARCH__ == 3510)
     int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
 #endif
     TPipe pipe;
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
 #if (__NPU_ARCH__ == 3510)
     AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(0);
 #endif
