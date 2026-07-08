@@ -332,9 +332,10 @@ ge::graphStatus BSATiling::CheckQKVDtype(gert::TilingContext *bsaContext)
     auto vDataType = vInputDesc->GetDataType();
 
     if (socVer_ == SOC_VER_950_CODE) {
-        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
+        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN &&
+            dataType_ != ge::DT_FLOAT4_E2M1) {
             OP_LOGE(bsaContext->GetNodeName(),
-                    "On chip 950, the supported dtype of query/key/value is float16, bfloat16 or float8_e4m3fn.");
+                    "On chip 950, the supported dtype of query/key/value is float16, bfloat16, float8_e4m3fn or float4_e2m1.");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -491,9 +492,9 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (quantMode_ == MXFP4_QUANT && (embeddingSize_ != 64 || embeddingSize_ != 128)) {
+    if (quantMode_ == MXFP4_QUANT && (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", embeddingSize_);
+                "(quantMode:%d)mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", quantMode_, embeddingSize_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
