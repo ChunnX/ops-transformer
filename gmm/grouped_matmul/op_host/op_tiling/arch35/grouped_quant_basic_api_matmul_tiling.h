@@ -49,6 +49,7 @@ private:
     ge::graphStatus CalScaleFactors();
     bool CanEnableThreeL1Buffer() const;
     GroupedMatmulTilingData::GMMQuantBasicApiTilingData tilingData_;
+    int64_t tuningConfig_ = 0L;
 };
 } // namespace optiling
 

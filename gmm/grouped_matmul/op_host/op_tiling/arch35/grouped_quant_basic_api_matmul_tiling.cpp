@@ -17,6 +17,9 @@ using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
+namespace {
+constexpr size_t TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX = 0;
+}
 namespace optiling {
 GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmTiling(context)
@@ -40,12 +43,27 @@ bool GroupedQmmBasicApiTiling::IsCapable()
 void GroupedQmmBasicApiTiling::Reset()
 {
     tilingData_ = GMMQuantBasicApiTilingData();
+    tuningConfig_ = 0L;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    return GroupedQmmTiling::GetShapeAttrsInfo();
+    OP_CHECK_IF(GroupedQmmTiling::GetShapeAttrsInfo() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "GetShapeAttrsInfo failed"), return ge::GRAPH_FAILED);
+    auto attrs = context_->GetAttrs();
+    const auto tuningConfigPtr =
+        attrs != nullptr ? attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG) : nullptr;
+    tuningConfig_ =
+        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX)
+            ? (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX]
+            : 0L;
+    OP_CHECK_IF(tuningConfig_ < 0 || static_cast<uint64_t>(tuningConfig_) > inputParams_.mSize,
+                OP_LOGE(context_->GetNodeName(), "Invalid tuningConfig_: %ld. Valid range: [0, mSize(%lu)]",
+                        tuningConfig_, inputParams_.mSize),
+                return ge::GRAPH_FAILED);
+    OP_LOGD(context_->GetNodeName(), "GMM A5 basic api tiling: tuning_config[0] is %ld.", tuningConfig_);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
