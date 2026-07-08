@@ -421,7 +421,11 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
 
     if (fiaInfo.s1Size < NUM1) {
         std::string shapeStr = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "query", shapeStr.c_str(), "In Decode MLA scenario, query sequence length must be positive");
+        OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
+        OP_LOGE(fiaInfo.opName,
+        "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.",
+        DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
+        return ge::GRAPH_FAILED);
         return ge::GRAPH_FAILED;
     }
 

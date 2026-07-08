@@ -145,34 +145,30 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_2);
             uint32_t valueSharedPrefixN = valueSharedPrefixShape.GetDim(DIM_NUM_2);
             uint32_t keyN = keyShape.GetDim(DIM_NUM_2);
-            if (keySharedPrefixD != keyD) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
-                std::string reason = "D of key_shared_prefix must be equal to the same axis of key "
-                    "when layout of key is BNSD or BSND.";
-                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key_shared_prefix and key", shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixD != valueSharedPrefixD) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape);
-                std::string reason = "D of key_shared_prefix must be equal to the same axis of "
-                    "valueSharedPrefix when layout of key is BNSD or BSND.";
-                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key_shared_prefix and value_shared_prefix", shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixN != keyN) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(keyShape);
-                std::string reason = "N of key_shared_prefix must be equal to the same axis of "
-                    "key when layout of key is BNSD or BSND.";
-                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key_shared_prefix and key", shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keySharedPrefixN != valueSharedPrefixN) {
-                std::string shapeStr = ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape);
-                std::string reason = "N of key_shared_prefix must be equal to the same axis of "
-                    "valueSharedPrefix when layout of key is BNSD or BSND.";
-                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect shapes %s. Reason: %s.", "key_shared_prefix and value_shared_prefix", shapeStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+            OP_CHECK_IF((keySharedPrefixD != keyD),
+                OP_LOGE(fiaInfo.opName,
+                    "The D axis of keySharedPrefix(%ld) and key(%ld) are different. "
+                    "The D axis of keySharedPrefix and key must be the same when "
+                    "the layout of key is BNSD or BSND.", keySharedPrefixD, keyD),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF((keySharedPrefixD != valueSharedPrefixD),
+                OP_LOGE(fiaInfo.opName,
+                    "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
+                    "The D axis of keySharedPrefix and valueSharedPrefix must be the same when "
+                    "the layout of key is BNSD or BSND.", keySharedPrefixD, valueSharedPrefixD),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF((keySharedPrefixN != keyN),
+                OP_LOGE(fiaInfo.opName,
+                    "The N axis of keySharedPrefix(%ld) and key(%ld) are different. "
+                    "The N axis of keySharedPrefix and key must be the same when "
+                    "the layout of key is BNSD or BSND.", keySharedPrefixN, keyN),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF((keySharedPrefixN != valueSharedPrefixN),
+                OP_LOGE(fiaInfo.opName,
+                    "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
+                    "The N axis of keySharedPrefix and valueSharedPrefix must be the same when "
+                    "the layout of key is BNSD or BSND.", keySharedPrefixN, valueSharedPrefixN),
+                return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
             OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
                 OP_LOGE(fiaInfo.opName,
@@ -375,22 +371,27 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Gt1(const FiaTilingI
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
                 "keyAntiquantMode is per-channel(per-tensor) mode and valueAntiquantMode is "
                 "per-channel(per-tensor) mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
                 "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else { // 其余量化模式在Q_S > 1时均为非法
-        std::string valueStr = std::to_string(keyAntiquantMode) + " and " + std::to_string(valueAntiquantMode);
-        std::string reason = "key_antiquant_mode(" + std::to_string(keyAntiquantMode) +
-            ") and value_antiquant_mode(" + std::to_string(valueAntiquantMode) + ") is "
-            "not supported when prefix is enabled and S of query > 1.";
-        OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect values %s. Reason: %s.", "key_antiquant_mode and value_antiquant_mode", valueStr.c_str(), reason.c_str());
+        OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
+            " prefix is enabled and Q_S > 1.", keyAntiquantMode, valueAntiquantMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -412,7 +413,11 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
             if (fiaInfo.inputKvType != ge::DT_INT8) {
                 std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
                     "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.";
-                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+                OP_LOGE(fiaInfo.opName,
+                "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+                "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                return ge::GRAPH_FAILED);
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -420,7 +425,11 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
                 std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
                     ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode "
                     "is per-channel mode.";
-                OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+                OP_LOGE(fiaInfo.opName,
+                "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+                "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                return ge::GRAPH_FAILED);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -428,14 +437,22 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
         if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
             std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
                 ", S of query is 1, keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) { // per-tensor-head模式，仅支持INT8
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
                     "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is per-tensor-head mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
@@ -443,36 +460,50 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
             std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
                 ", S of query is 1, keyAntiquantMode is per-token-head mode and valueAntiquantMode "
                     "is per-token-head mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
                     "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is per-tensor-PA mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
                     "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is per-token-head-PA mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
             std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
                 ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.";
-            OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect dtype %s. Reason: %s.", "key/value", ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+            OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+            OP_LOGE(fiaInfo.opName,
+            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
+            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+            return ge::GRAPH_FAILED);
             return ge::GRAPH_FAILED;
         }
     } else {
-        std::string valueStr = std::to_string(keyAntiquantMode) + " and " + std::to_string(valueAntiquantMode);
-        std::string reason = "key_antiquant_mode(" + std::to_string(keyAntiquantMode) + ") and "
-            "value_antiquant_mode(" + std::to_string(valueAntiquantMode) + ") is not supported "
-            "when prefix is enabled and S of query is 1.";
-        OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect values %s. Reason: %s.", "key_antiquant_mode and value_antiquant_mode", valueStr.c_str(), reason.c_str());
+        // 其余量化模式在Q_S=1均为非法
+        OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
+                " prefix is enabled and Q_S = 1.", keyAntiquantMode, valueAntiquantMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

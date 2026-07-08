@@ -16,6 +16,8 @@
 #ifndef FUSED_INFER_ATTENTION_SCORE_TILING_UTILS_H
 #define FUSED_INFER_ATTENTION_SCORE_TILING_UTILS_H
 
+#include "fused_infer_attention_score_tiling_constants.h"
+
 namespace optiling {
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T

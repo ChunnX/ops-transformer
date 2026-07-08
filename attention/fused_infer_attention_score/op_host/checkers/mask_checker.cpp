@@ -265,9 +265,13 @@ ge::graphStatus MaskChecker::CheckIFAMask2DShape(const FiaTilingInfo &fiaInfo, c
             };
             if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
                 == layoutSupportList.end()) {
-                OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect formats %s. Reason: %s.", "attention_mask", layoutStr.c_str(), "In gqa noquant situation, when rope is not enabled, qkHeadDim = vHeadDim and "
-                    "sparseMode is 0 or 1, the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
-                return ge::GRAPH_FAILED;
+                OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
+                    == layoutSupportList.end(),
+                    OP_LOGE(fiaInfo.opName,
+                        "In gqa noquant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, "
+                        "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
+                        layoutStr.c_str()),
+                    return ge::GRAPH_FAILED);
             }
         } else {
             OP_LOGE(fiaInfo.opName,
@@ -294,7 +298,8 @@ ge::graphStatus MaskChecker::CheckIFAMask3DShape(const FiaTilingInfo &fiaInfo, c
                 maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
         std::string shapeStr = ToString(maskShape->GetStorageShape());
         std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
+        fiaInfo.sparseMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -311,7 +316,8 @@ ge::graphStatus MaskChecker::CheckIFAMask4DShape(const FiaTilingInfo &fiaInfo, c
                 maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
         std::string shapeStr = ToString(maskShape->GetStorageShape());
         std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
+        fiaInfo.sparseMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -353,7 +359,8 @@ ge::graphStatus MaskChecker::CheckAndProcessTreeMask(const FiaTilingInfo &fiaInf
         std::string dimStr = std::to_string(attenMaskDim) + "D";
         std::string reasonMsg = "The shape dim of atten_mask must be 1D or 3D when sparse_mode = " +
                                 std::to_string(SPARSE_MODE_TREE);
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape dim %s. Reason: %s.", "atten_mask", dimStr.c_str(), reasonMsg.c_str());
+        OP_LOGE(fiaInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
+        fiaInfo.sparseMode);
         return ge::GRAPH_FAILED;
     }
     uint64_t sSize = 0;
@@ -380,9 +387,8 @@ ge::graphStatus MaskChecker::CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo,
 {
     if ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) &&
         fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect shape dim %s. Reason: %s.", "atten_mask", "2D", ("Attenmask does not support 2D when sparse mode is "
-                + std::to_string(fiaInfo.sparseMode)
-                + ". Please use 3D or 4D mask").c_str());
+        OP_LOGE(fiaInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
+        fiaInfo.sparseMode);
         return ge::GRAPH_FAILED;
     } else {
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
@@ -395,10 +401,14 @@ ge::graphStatus MaskChecker::CheckAndProcess2DMask(const FiaTilingInfo &fiaInfo,
                 std::string layout = layoutStr;
                 if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) ==
                     layoutSupportList.end()) {
-                    OP_LOGE(fiaInfo.opName, "Parameters %s of %s have incorrect formats %s. Reason: %s.", "attention_mask", layout.c_str(), "In gqa noquant situation, when rope is not used and "
-                        "qkHeadDim = vHeadDim and sparseMode is 0 or 1, "
-                        "the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
-                    return ge::GRAPH_FAILED;
+                    OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) ==
+                        layoutSupportList.end(),
+                        OP_LOGE(fiaInfo.opName,
+                            "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, "
+                            "when sparseMode = 0 or 1, "
+                            "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
+                            layout.c_str()),
+                        return ge::GRAPH_FAILED);
                 }
             } else {
                 OP_LOGE(fiaInfo.opName,
@@ -501,8 +511,8 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     // In PFA mode, the attenmask dimensions must be 2/3/4.
     // The allowed shape specifications for attenmask vary depending on the sparse mode.
     if ((!fiaInfo.attenMaskFlag) && (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
-        OP_LOGE(fiaInfo.opName, "Parameter %s of %s has incorrect value %s. Reason: %s.", "atten_mask", "empty", ("when sparse_mode is " + std::to_string(fiaInfo.sparseMode)
-                + " (not 0), atten_mask cannot be empty").c_str());
+        OP_LOGE(fiaInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
+        fiaInfo.sparseMode);
         return ge::GRAPH_FAILED;
     }
     if ((fiaInfo.isMaxWorkspace && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) ||
