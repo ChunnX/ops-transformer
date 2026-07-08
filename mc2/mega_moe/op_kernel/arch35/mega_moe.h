@@ -1155,6 +1155,26 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr,
         dataResFp32BufAlign / sizeof(float));
     uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
+
+    // ── batchLen（后续以模板参数形式传入）──
+    int32_t batchLen = UNPERMUTE_BATCH_LEN;
+    if (batchLen > coreLen) { batchLen = coreLen; }
+
+    // ── weight buffer（在 scale 之前，与 master 顺序一致）──
+    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr,
+        topKWeightsBufAlign / sizeof(float));
+    tempAddr += topKWeightsBufAlign;
+
+    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+        uint32_t tempBufAlign = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(batchLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+        topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr,
+            tempBufAlign / sizeof(bfloat16_t));
+        tempAddr += tempBufAlign;
+    }
+
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
         uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
@@ -1166,22 +1186,6 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
             (scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
-    }
-
-    // ── batchLen（后续以模板参数形式传入）──
-    int32_t batchLen = UNPERMUTE_BATCH_LEN;
-    if (batchLen > coreLen) { batchLen = coreLen; }
-
-    // ── weight buffer（at tempAddr，每批复用）──
-    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-    topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr,
-        topKWeightsBufAlign / sizeof(float));
-    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        uint32_t tempBufAlign = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(batchLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
-        topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr + topKWeightsBufAlign,
-            tempBufAlign / sizeof(bfloat16_t));
     }
 
     return batchLen;
