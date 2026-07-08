@@ -251,9 +251,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
 
     PRINTF("==maxOutputSize_==:%u", maxOutputSize_);
     maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
-        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
+        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));// 64K / 256 = 256
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
-        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
+        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE))); // 256 16B对齐
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
@@ -430,16 +430,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     hcomm_.Init(hcommTensor_, ALIGN_512);
 
     // 计算 resetTensor 大小（与原逻辑一致）
-    PRINTF("==expertPerRank_==:%u\n", expertPerRank_);
+    PRINTF("==expertPerRank_==:%u\n", expertPerRank_); // 64
     uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
-        static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
+        static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_)); // 64 * 16 + 256 + 16 * 56 = 2176B
+    PRINTF("==aicNum_==:%u", aicNum_);
+    PRINTF("==totalFlagInt32==:%u", totalFlagInt32);
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
                          ? static_cast<int64_t>(totalFlagInt32) : tokenGroupResetSize;
     }
+    PRINTF("==blockAivNum_==:%u", blockAivNum_);
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
+    PRINTF("==resetNumPerCore==:%u", resetNumPerCore);
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
 
