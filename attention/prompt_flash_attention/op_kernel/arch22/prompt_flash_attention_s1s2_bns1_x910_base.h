@@ -892,7 +892,7 @@ protected:
             LocalTensor<T> FinalResUb = bmm2ResUb.template ReinterpretCast<T>();
 
             PipeBarrier<PIPE_V>();
-            Cast(FinalResUb, bmm2ResUb, RoundMode::CAST_ROUND, bmm2ResUb.GetSize());
+            Cast(FinalResUb, bmm2ResUb, RoundMode::CAST_ROUND, bmm2ResUbSize / sizeof(computeType));
 
             SetFlag<HardEvent::V_MTE3>(attenOutCopyOut);
             WaitFlag<HardEvent::V_MTE3>(attenOutCopyOut);
