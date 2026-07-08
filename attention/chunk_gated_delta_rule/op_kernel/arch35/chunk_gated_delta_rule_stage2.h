@@ -224,23 +224,37 @@ public:
 
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
-        if (gOptional_) {
+        if constexpr (kIsFp32) {
+            if (!gOptional_) {
+                return;
+            }
             DataCacheCleanAndInvalid<float,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, tmpFloat);
+            float gVal = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, gVal);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-        } else {
-            lastGCum_.SetValue(0, 1.0f);
-        }
-        float tmpFloat = lastGCum_.GetValue(0);
-        if constexpr (kIsFp32) {
+            float tmpFloat = lastGCum_.GetValue(0);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
             PipeBarrier<PIPE_V>();
         } else {
+            if (gOptional_) {
+                DataCacheCleanAndInvalid<float,
+                                         CacheLine::SINGLE_CACHE_LINE,
+                                         DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+                float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
+                lastGCum_.SetValue(0, tmpFloat);
+                SetFlag<HardEvent::S_V>(S_V_EVENT);
+                WaitFlag<HardEvent::S_V>(S_V_EVENT);
+                Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            } else {
+                lastGCum_.SetValue(0, 1.0f);
+            }
+            float tmpFloat = lastGCum_.GetValue(0);
             auto stateIn = inQueue_.DeQue<bfloat16_t>();
             auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
             SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
