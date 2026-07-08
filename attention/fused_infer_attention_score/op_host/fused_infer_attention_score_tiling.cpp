@@ -2303,6 +2303,12 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+static int64_t get_ns_ts() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
 FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
@@ -2314,7 +2320,9 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
         return TilingFusedInferAttentionScoreV4(context);
+        std::cout << "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
@@ -2331,7 +2339,9 @@ __attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingIncreFlas
 __attribute__((visibility("default"))) ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(
     gert::TilingContext *context)
 {
+    std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用前纳秒时间戳： " << get_ns_ts() << std::endl;
     return DoOpTilingFusedInferAttentionScore(context);
+    std::cout << "[DEBUGGING] DoOpTilingFusedInferAttentionScore 调用后纳秒时间戳： " << get_ns_ts() << std::endl;
 }
 }
 } // namespace optiling
