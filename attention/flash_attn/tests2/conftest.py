@@ -1,0 +1,54 @@
+import logging
+
+import pytest
+import _pytest.terminal
+
+from test import _parse_stages, _collect_cases, _make_reporter, _setup_hookwrapper
+
+_setup_hookwrapper(_pytest.terminal)
+
+
+def pytest_addoption(parser):
+    parser.addoption("--stages", default="all",
+                     help="执行阶段, 逗号组合: all/gen/cpu/npu/gpu/compare/npuprof/npuprofop/gpuprof")
+    parser.addoption("--case-id", default="all", help="用例ID过滤, 逗号组合")
+    parser.addoption("--case-set", default="ci", help="用例集marker: ci/debug/func_rdv/perf_rdv")
+    parser.addoption("--graph-path", default=0, type=int, help="图模式路径(0=非图模式)")
+    parser.addoption("--verbose-diff", action="store_true", help="精度不达标时打印全部失败元素")
+    parser.addoption("--fail-analysis", action="store_true", default=True,
+                     help="精度不达标时输出失败分析报告")
+    parser.addoption("--keep-pt", action="store_true", default=True, help="保留中间pt产物")
+    parser.addoption("--report-interval", default=20, type=int, help="中间报告间隔")
+    parser.addoption("--load-pt", default=None, help="从pt加载inputs替代gen_inputs")
+    parser.addoption("--chunk-size", default=0, type=int, help="比对分块大小(0=不分块)")
+    parser.addoption("--num-workers", default=0, type=int, help="比对并行worker数(0=单进程)")
+    parser.addoption("--max-retries", default=0, type=int, help="NPU计算最大重试次数")
+
+
+def pytest_generate_tests(metafunc):
+    if "params" not in metafunc.fixturenames:
+        return
+    case_set = metafunc.config.getoption("--case-set")
+    case_id_opt = metafunc.config.getoption("--case-id")
+    cases, case_ids = _collect_cases(case_set, case_id_opt)
+    metafunc.parametrize("params", cases, ids=case_ids)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_logging(request):
+    level = request.config.getoption("--log-cli-level", default="INFO")
+    if isinstance(level, str):
+        level = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(level=level, format="%(message)s")
+
+
+@pytest.fixture(scope="session")
+def stages(request):
+    return _parse_stages(request.config.getoption("--stages"))
+
+
+@pytest.fixture(scope="session")
+def reporter(request):
+    rep = _make_reporter()
+    yield rep
+    rep.print_final()
