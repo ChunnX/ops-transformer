@@ -500,6 +500,89 @@ __aicore__ inline void CombineTokenGroup(
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 
+// =============================================
+// CombineQuantizedTokensLayered：Layered 版 CombineQuantizedTokens
+// 将量化后的 token 通过 URMA 发送到目标 rank
+// =============================================
+template <typename QuantOutType>
+__aicore__ inline void CombineQuantizedTokensLayered(
+    uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
+    uint32_t groupIdx, LocalTensor<int32_t>& tripleTensor,
+    LocalTensor<QuantOutType>& ubQuant, const Params& params)
+{
+    int64_t quantTokenSize = n + nScale;
+    uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
+    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
+    uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
+
+    uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantTokenSize;
+    GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) +
+        dstBaseOffset * sizeof(QuantOutType);
+
+    uint64_t channelHandle = GetUrmaCommHandle(
+        params.combineCommParams.mc2Context, toRankId, params.combineCommParams.rankId);
+    params.combineCommParams.hcomm->WriteNbi(
+        channelHandle, remoteAddr,
+        reinterpret_cast<GM_ADDR>(ubQuant.GetPhyAddr()),
+        static_cast<uint64_t>(quantTokenSize));
+}
+
+// =============================================
+// CombineTokenGroupLayered：Layered 版 CombineTokenGroup
+// 从 GMM2 输出读取数据，量化为 MXFP8 格式后通过 URMA 发送到目标 rank
+// =============================================
+template <uint8_t QuantMode, typename T>
+__aicore__ inline void CombineTokenGroupLayered(
+    uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx,
+    GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
+    int64_t ubTensorSize, int64_t offset, uint32_t quantTokenSizeBytes)
+{
+    LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
+    offset += ubTensorSize * sizeof(T);
+
+    uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
+    uint32_t floatTempSize = nScale + nScale / 2;
+    LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
+
+    GlobalTensor<T> gmm2OutGm;
+    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gmm2OutAddr));
+
+    using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT,
+        fp8_e4m3fn_t, fp8_e5m2_t>::type;
+
+    uint32_t singleTokenElems = (nAlign32 * sizeof(T) + quantTokenSizeBytes) / sizeof(T);
+    AscendC::DataCopyExtParams gm2UbParams{
+        static_cast<uint16_t>(1),
+        static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
+
+    for (uint32_t i = 0; i < tokenCount; i++) {
+        uint32_t pingPong = i % 2;
+        LocalTensor<T> ubBf16 = combineUbTensor[pingPong * singleTokenElems];
+        LocalTensor<T> ubQuantData = ubBf16[nAlign32];
+
+        // MTE2: read from GM
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+        AscendC::DataCopyExtParams cpParams = gm2UbParams;
+        AscendC::DataCopyPadExtParams<T> padParams{false, 0U, 0U, 0U};
+        AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], cpParams, padParams);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+
+        // V: quantize
+        QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
+
+        // MTE3: URMA send to remote rank
+        LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
+        CombineQuantizedTokensLayered<Fp8Type>(
+            i, 1, n, nScale, groupIdx, tripleTensor, ubQuantDataFp8, params);
+    }
+
+    // Wait for all URMA operations to complete
+    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+}
+
 }  // namespace MegaMoeCombineImpl
 
 #endif  // MEGA_MOE_COMBINE_SEND_H
