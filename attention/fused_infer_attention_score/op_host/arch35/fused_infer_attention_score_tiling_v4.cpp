@@ -26,6 +26,11 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+static int64_t get_ns_ts() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
 ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
     // Parse -> Check -> DoOpTiling
     FiaTilingInfo fiaInfo;
@@ -52,6 +57,7 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
         return ge::GRAPH_FAILED;
     }
 
+    OP_LOGW(context, "[DEBUGGING] TilingFusedInferAttentionScoreV4 调用后纳秒时间戳: %llu", get_ns_ts());
     return ge::GRAPH_SUCCESS;
 }
 
