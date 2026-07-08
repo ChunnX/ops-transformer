@@ -150,7 +150,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
             __VEC_SCOPE__
             {
                 MicroAPI::RegTensor<float> inReg, absReg, smoothReg, scaleValueReg, safeScaleValueReg;
-                MicroAPI::RegTensor<float> quantFactorReg, zeroReg, oneReg, sevenReg;
+                MicroAPI::RegTensor<float> quantFactorReg, zeroReg, oneReg;
                 MicroAPI::Duplicate(scaleValueReg, 0.0f);
                 MicroAPI::Duplicate(absReg, 0.0f);
                 MicroAPI::RegTensor<half> outRegF16;
@@ -176,16 +176,15 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                 MicroAPI::Abs(absReg, inReg, maskRegInLoop);
                 MicroAPI::Max(scaleValueReg, scaleValueReg, absReg, maskRegAll);
                 MicroAPI::ReduceMax(scaleValueReg, scaleValueReg, maskRegAll);
+                MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
                 MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegVL1);
                 MicroAPI::Duplicate(zeroReg, 0.0f, maskRegAll);
                 MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
-                MicroAPI::Duplicate(sevenReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegAll);
                 MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
-                MicroAPI::Div(quantFactorReg, sevenReg, safeScaleValueReg, maskRegVL1);
+                MicroAPI::Div(quantFactorReg, oneReg, safeScaleValueReg, maskRegVL1);
                 MicroAPI::Select(quantFactorReg, zeroReg, quantFactorReg, cmpMaskReg);
                 MicroAPI::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
 
-                MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
                 MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
                 MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL1);
 
@@ -211,7 +210,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg, safeScaleValueReg;
-        MicroAPI::RegTensor<float> quantFactorReg, zeroReg, oneReg, sevenReg;
+        MicroAPI::RegTensor<float> quantFactorReg, zeroReg, oneReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
         MicroAPI::RegTensor<int16_t> outRegI16;
@@ -248,15 +247,14 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
             MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / 127.0f, maskRegVL1);
         }
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
             MicroAPI::CompareScalar<float, CMPMODE::EQ>(cmpMaskReg, scaleValueReg, 0.0f, maskRegVL1);
             MicroAPI::Duplicate(zeroReg, 0.0f, maskRegAll);
             MicroAPI::Duplicate(oneReg, 1.0f, maskRegAll);
-            MicroAPI::Duplicate(sevenReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegAll);
             MicroAPI::Select(safeScaleValueReg, oneReg, scaleValueReg, cmpMaskReg);
-            MicroAPI::Div(quantFactorReg, sevenReg, safeScaleValueReg, maskRegVL1);
+            MicroAPI::Div(quantFactorReg, oneReg, safeScaleValueReg, maskRegVL1);
             MicroAPI::Select(quantFactorReg, zeroReg, quantFactorReg, cmpMaskReg);
             MicroAPI::Duplicate(quantFactorReg, quantFactorReg, maskRegAll);
-            MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
         }
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
         MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
@@ -568,7 +566,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
         float scaleOutVal = 0.0f;
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
             scaleOutVal = reduceMax * (1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE);
-            scaleTemp = (reduceMax != 0.0f) ? (DYNAMIC_QUANT_INT4_SYM_SCALE / reduceMax) : 0.0f;
+            scaleTemp = (scaleOutVal != 0.0f) ? (1.0f / scaleOutVal) : 0.0f;
         } else {
             scaleTemp = reduceMax / 127.0f;
         }
