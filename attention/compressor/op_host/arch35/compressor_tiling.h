@@ -214,7 +214,8 @@ struct CompressorContext {
     const char *opName;
     const char *opType;
     fe::PlatFormInfos *platformInfo;
-    
+    int batchConsistency;
+
     RequiredParaInfo x;
     RequiredParaInfo wkv;
     RequiredParaInfo wgate;

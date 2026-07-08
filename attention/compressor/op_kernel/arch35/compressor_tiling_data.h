@@ -46,6 +46,7 @@ namespace optiling {
         uint32_t kBaseSize = 0;
         uint32_t coreGroupNum = 0;
         uint32_t mLoopNum = 0;
+        int batchConsistency = 0;
         CompressorSplitCoreParams splitCoreParam[CMP_MAX_AIC_CORE_NUM];
     };
 
