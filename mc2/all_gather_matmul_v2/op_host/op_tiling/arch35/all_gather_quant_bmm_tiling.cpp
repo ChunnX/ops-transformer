@@ -154,7 +154,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be even in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
-    
     OP_TILING_CHECK((!args_.isBTrans),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
                                                 "x2 only support transpose"),
@@ -279,8 +278,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
             std::to_string(EVEN_ALIGN) + "]")
                                                         .c_str()),
             return ge::GRAPH_FAILED);
-        scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
-        OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     } else {
         OP_TILING_CHECK((scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) ||
             (scale2ThirdDim != EVEN_ALIGN),
@@ -292,9 +289,9 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
             std::to_string(EVEN_ALIGN) + "]")
                                                         .c_str()),
             return ge::GRAPH_FAILED);
-        scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
-        OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     }
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
 
