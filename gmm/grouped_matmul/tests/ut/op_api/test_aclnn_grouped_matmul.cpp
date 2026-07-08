@@ -24,6 +24,7 @@
 #include "../../../op_api/aclnn_grouped_matmul_v4.h"
 #include "../../../op_api/aclnn_grouped_matmul_v5.h"
 #include "../../../op_api/aclnn_grouped_matmul_weight_nz.h"
+#include "../../../op_api/grouped_matmul_950_checker.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
@@ -72,6 +73,25 @@ void SetupPlatformForCase(const string &socVersion)
     };
     auto it = socMap.find(socVersion);
     op::SetPlatformSocVersion(it == socMap.end() ? op::SocVersion::ASCEND910B : it->second);
+}
+
+TEST(grouped_matmul_950_checker_test, rejects_invalid_tuning_config)
+{
+    SetupPlatformForCase("Ascend950");
+    TensorListDesc x = BuildAclTensorListDesc("64:256", "INT8", "ND");
+    auto xTensorList = x.ToAclType();
+
+    const vector<int64_t> invalidTuningConfigs = {-1, 65};
+    for (const int64_t tuningConfig : invalidTuningConfigs) {
+        IntArrayDesc tuningConfigDesc(vector<int64_t>{tuningConfig});
+        auto tuningConfigArray = tuningConfigDesc.ToAclType();
+        gmm::GroupedMatmulParams params;
+        params.x = xTensorList.get();
+        params.tuningConfigOptional = tuningConfigArray.get();
+
+        EXPECT_EQ(gmm::AclnnGroupedMatmulDAV3510Checker<aclTensorList>(params).CheckGroupedMatmulDAV3510(),
+                  ACLNN_ERR_PARAM_INVALID);
+    }
 }
 
 struct GroupedMatmulOpApiCase {
