@@ -33,14 +33,15 @@ extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, G
     GET_TILING_DATA_WITH_STRUCT(optiling::MatmulSwigluTilingData, tilingDataIn, tiling);
     const optiling::MatmulSwigluTilingData* __restrict__ tilingData = &tilingDataIn;
     // 数据类型由编译期 DTYPE_X 决定; cube 累加固定 fp32。方案一: 单 matmul + 向量 SwiGLU。
-    // transpose_weight 经 TilingKey 选择编译期模板分支(1=转置, 0=非转置), 避免运行时判断。
-    if (TILING_KEY_IS(1)) {
-        NsMatmulSwiglu::MatmulSwigluImpl<DTYPE_X, float, true> op;
+    // transpose_weight 经 TilingKey 选择编译期模板分支(0=非转置, 1=转置), 避免运行时判断。
+    // 注: 每个 key 需显式 TILING_KEY_IS(编译期据此为各 key 登记 kernel 函数入口), 不能用 else 兜底。
+    if (TILING_KEY_IS(0)) {
+        NsMatmulSwiglu::MatmulSwigluImpl<DTYPE_X, float, false> op;
         REGIST_MATMUL_OBJ(&op.pipe, GetSysWorkSpacePtr(), op.mm, &tilingData->mmTiling);
         op.Init(x, weight, bias, y, userWs, tilingData);
         op.Process();
-    } else {
-        NsMatmulSwiglu::MatmulSwigluImpl<DTYPE_X, float, false> op;
+    } else if (TILING_KEY_IS(1)) {
+        NsMatmulSwiglu::MatmulSwigluImpl<DTYPE_X, float, true> op;
         REGIST_MATMUL_OBJ(&op.pipe, GetSysWorkSpacePtr(), op.mm, &tilingData->mmTiling);
         op.Init(x, weight, bias, y, userWs, tilingData);
         op.Process();
