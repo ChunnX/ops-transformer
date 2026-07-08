@@ -18,6 +18,7 @@
 #include "common/op_api/mc2_aclnn_util.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log_compat.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -25,8 +26,12 @@ using namespace op;
 extern "C" {
 #endif
 
+extern "C" uint64_t NnopbaseMsprofSysTime();
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 根据API定义，需要列出所能支持的所有dtype
 const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
@@ -611,6 +616,179 @@ bool IsCommModeValid(const char* commModePtr)
             "For A2, commMode only support nullptr or 'ai_cpu', but it is '%s'.", commModePtr);
     }
     return false;
+}
+
+void SetHcclServerTypeByCommMode(aclOpExecutor* executor, const char* apiName)
+{
+    if (executor == nullptr) {
+        return;
+    }
+    if (NnopbaseSetHcclServerType) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("A5 %s: NnopbaseHcclServerType, use CCU mode", apiName);
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("A5 %s: NnopbaseHcclServerType, use AICPU mode", apiName);
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            }
+        } else {
+            OP_LOGD("A2 %s: NnopbaseHcclServerType, use AICPU mode", apiName);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        }
+    }
+}
+
+aclnnStatus ParseCommModeAndSetUserHandle(const char* commMode, aclOpExecutor** executor, const char* apiName)
+{
+    if (executor == nullptr || *executor == nullptr || commMode == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    uint8_t commModeEnum = 0;
+    if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_CCU;
+    } else {
+        OP_LOGE_WITH_INVALID_ATTR(apiName, "commMode", commMode, "'ccu' or 'ai_cpu'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+    NnopbaseSetUserHandle(*executor, arg);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus LaunchInnerMatmulAllReduce(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream, const char* apiName)
+{
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
+        return ACLNN_ERR_INNER;
+    }
+    SetHcclServerTypeByCommMode(executor, apiName);
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "%s, This is an error in launch aicore", apiName);
+        return ACLNN_ERR_INNER;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus LaunchInnerMatmulAllReduceSimple(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream, const char* apiName)
+{
+    if (NnopbaseSetHcclServerType) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        }
+    }
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "%s, This is an error in launch aicore", apiName);
+        return ACLNN_ERR_INNER;
+    }
+    return ACLNN_SUCCESS;
+}
+
+size_t CeilDiv(size_t x, size_t y)
+{
+    if (y == 0) {
+        return 0;
+    }
+    return ((x - 1) / y + 1);
+}
+
+bool IsAntiquantScaleShapeValid(
+    const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize)
+{
+    const size_t scaleDimNum = scale->GetViewShape().GetDimNum();
+    const size_t x1DimNum = x1->GetViewShape().GetDimNum();
+    op::Shape outShape = output->GetViewShape();
+    if (antiquantGroupSize == 0) {
+        if ((scaleDimNum == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
+                                           scale->GetViewShape().GetDim(0) == outShape.GetDim(x1DimNum - 1))) ||
+            (scaleDimNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
+             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1DimNum - 1))) {
+            return true;
+        }
+        return false;
+    }
+
+    int64_t kValue = static_cast<int64_t>(CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1DimNum - 1)),
+        static_cast<size_t>(antiquantGroupSize)));
+    if (antiquantGroupSize > 0) {
+        if ((scaleDimNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
+             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1DimNum - 1))) {
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+aclnnStatus PrepareTransposedX2(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2,
+    const aclTensor*& transX2, const aclTensor*& transX2Scale, const char* apiName)
+{
+    auto tempX2 = x2;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
+        if (x2->GetTensor() == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "%s: Tensor of x2 is null.", apiName);
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        tempX2 = QuantMatmulAllReduceCopyTensor(x2);
+    }
+    transX2 = tempX2;
+    transX2Scale = x2Scale;
+    if (transposeX2) {
+        if (tempX2->GetTensor() == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "%s: Tensor is null.", apiName);
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
+        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
+            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+static bool IsAffineInconsistent(const aclTensor *affineTensor, bool isX2Transposed)
+{
+    if (affineTensor == nullptr) {
+        return false;
+    }
+    const auto affineTensorShape = affineTensor->GetViewShape();
+    if (affineTensorShape.GetDimNum() != DIM_LEN_TWO) {
+        return false;
+    }
+    if (affineTensorShape.GetDim(0) == 1 || affineTensorShape.GetDim(1) == 1) {
+        return false;
+    }
+    return (isX2Transposed && IsContiguous(affineTensor)) || (!isX2Transposed && !IsContiguous(affineTensor));
+}
+
+bool CheckContiguousAffine(const aclTensor* x2, const aclTensor* scale, const aclTensor* offset, const char* apiName)
+{
+    const bool isX2Transposed = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
+    const bool isArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+    const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
+    if ((!isArch3510) && (!isASCEND910B)) {
+        return true;
+    }
+    if (IsAffineInconsistent(scale, isX2Transposed)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "%s: When x2 is contiguous or transpose, scale should be consistent with it.", apiName);
+        return false;
+    }
+    if (IsAffineInconsistent(offset, isX2Transposed)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "%s: When x2 is contiguous or transpose, offset should be consistent with it.", apiName);
+        return false;
+    }
+    return true;
 }
 
 #ifdef __cplusplus

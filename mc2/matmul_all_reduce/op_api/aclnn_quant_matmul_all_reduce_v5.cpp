@@ -27,9 +27,6 @@ extern "C" {
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
@@ -228,31 +225,6 @@ static aclnnStatus CheckParams(
     return ACLNN_SUCCESS;
 }
 
-static const aclTensor* CopyTensor(const aclTensor* x2)
-{
-    uint64_t storageDimCount = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDimVec(storageDimCount);
-    for (size_t i = 0; i < storageDimCount; i++) {
-        storageDimVec[i] = x2->GetStorageShape().GetDim(i);
-    }
-    OP_LOGD("MatmulAllReduce, CopyTensor storageDimsNum=%lu.", storageDimCount);
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
-    auto stride = x2->GetViewStrides();
-    auto offset = x2->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
-    auto stgFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    if (stgFormat == Format::FORMAT_ND) {
-        OP_LOGD("MatmulAllReduce, CopyTensor format is ACL_FORMAT_ND.");
-        format = aclFormat::ACL_FORMAT_ND;
-    } else if (stgFormat == Format::FORMAT_FRACTAL_NZ) {
-        format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
-    }
-    return aclCreateTensor(
-        storageDimVec.data(), storageDimCount, dataType, stride.data(), offset, format, storageDimVec.data(),
-        storageDimCount, x2->GetTensor()->GetAddr());
-}
-
 aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, const aclTensor* commQuantScale1Optional,
@@ -283,27 +255,11 @@ aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
     aclTensor* scale = nullptr;
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
-    auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
-        if (x2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        tempX2 = CopyTensor(x2);
-    }
-    auto transX2 = tempX2;
-    auto transX2Scale = x2Scale;
-    if (transposeX2) {
-        if (tempX2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
-        // mxfp是3维scale，转置的是前两维，需要特殊判断，perblock场景复用判断转置接口
-        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
-        }
-    }
+    const aclTensor* transX2 = nullptr;
+    const aclTensor* transX2Scale = nullptr;
+    auto transRet = PrepareTransposedX2(x2, x2Scale, transposeX2, transX2, transX2Scale,
+        "aclnnQuantMatmulAllReduceV5");
+    CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
@@ -311,20 +267,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
         yDtype, commQuantMode, const_cast<char*>(commMode), output, workspaceSize, executor);
-    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr && commMode != nullptr) {
-        // SetUserHandle to pass comm_mode to aclnnQuantMatmulAllReduceV5
-        uint8_t commModeEnum = 0;
-        if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            OP_LOGE_WITH_INVALID_ATTR("aclnnQuantMatmulAllReduceV5GetWorkspaceSize", "commMode",
-                commMode, "'ccu' or 'ai_cpu'");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
-        NnopbaseSetUserHandle(*executor, arg);
+    if (ret == ACLNN_SUCCESS) {
+        auto commRet = ParseCommModeAndSetUserHandle(
+            commMode, executor, "aclnnQuantMatmulAllReduceV5GetWorkspaceSize");
+        CHECK_RET(commRet == ACLNN_SUCCESS, commRet);
     }
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -335,35 +281,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    if (executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
-        return ACLNN_ERR_INNER;
-    }
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            void *arg = NnopbaseGetUserHandle(executor);
-            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-            uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            }
-        } else {
-            OP_LOGD("A2 aclnnQuantMatmulAllReduceV5: NnopbaseHcclServerType, use AICPU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
-    OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV5 ret=%d.", ret);
-
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduce, This is an error in launch aicore.");
-        return ACLNN_ERR_INNER;
-    }
-
+    aclnnStatus ret = LaunchInnerMatmulAllReduce(
+        workspace, workspaceSize, executor, stream, "aclnnQuantMatmulAllReduceV5");
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ACLNN_SUCCESS;

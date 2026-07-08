@@ -27,7 +27,6 @@ static constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_BF16};
@@ -132,42 +131,6 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquan
     return true;
 }
 
-static size_t CeilDiv(size_t x, size_t y)
-{
-    if (y == 0) {
-        return 0;
-    } else {
-        return ((x - 1) / y + 1);
-    }
-}
-
-static bool IsAntiquantScaleShapeValid(
-    const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize)
-{
-    const size_t scaleLen = scale->GetViewShape().GetDimNum();
-    const size_t x1Len = x1->GetViewShape().GetDimNum();
-    op::Shape outShape = output->GetViewShape();
-    if (antiquantGroupSize == 0) {
-        if ((scaleLen == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
-                                         scale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) ||
-            (scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
-             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-            return true;
-        }
-        return false;
-    }
-
-    int64_t kValue = static_cast<int64_t>(CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize));
-    if (antiquantGroupSize > 0) {
-        if ((scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
-             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-            return true;
-        }
-        return false;
-    }
-    return false;
-}
-
 static bool CheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
     const aclTensor* x3, const aclTensor* output, int64_t antiquantGroupSize)
@@ -263,45 +226,6 @@ static bool CheckShape(
     return true;
 }
 
-namespace ContiguousCheckImpl {
-static bool IsAffineInconsistent(const aclTensor *affineTensor, bool transposeX2)
-{
-    if (affineTensor == nullptr) {
-        return false;
-    }
-    const auto affineTensorShape = affineTensor->GetViewShape();
-    if (affineTensorShape.GetDimNum() != DIM_LEN_TWO) {
-        return false;
-    }
-    if (affineTensorShape.GetDim(0) == 1 || affineTensorShape.GetDim(1) == 1) {
-        return false;
-    }
-    return (transposeX2 && IsContiguous(affineTensor)) || (!transposeX2 && !IsContiguous(affineTensor));
-}
-
-static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const aclTensor *offset)
-{
-    // check x2(weight) is transposed, scale and offset should also be transposed
-    const bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
-    const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
-    if ((!isNpuArch3510) && (!isASCEND910B)) {
-        return true;
-    }
-    if (IsAffineInconsistent(scale, transposeX2)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "scale", "inconsistent",
-            "The value of scale must be consistent with x2 when x2 is contiguous or transpose");
-        return false;
-    }
-    if (IsAffineInconsistent(offset, transposeX2)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "offset", "inconsistent",
-            "The value of offset must be consistent with x2 when x2 is contiguous or transpose");
-        return false;
-    }
-    return true;
-}
-} // namespace ContiguousCheckImpl
-
 static aclnnStatus CheckParams(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
     const aclTensor* antiquantOffset, const aclTensor* x3, const char* reduceOp, int64_t streamMode,
@@ -331,36 +255,9 @@ static aclnnStatus CheckParams(
         }
     }
     // 6. 检查连续性
-    CHECK_RET(ContiguousCheckImpl::CheckContiguous(x2, antiquantScale, antiquantOffset), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckContiguousAffine(x2, antiquantScale, antiquantOffset,
+        "aclnnWeightQuantMatmulAllReduce"), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
-}
-
-static const aclTensor* CopyTensor(const aclTensor* x2)
-{
-    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDims(storageDimsNum);
-    for (size_t i = 0; i < storageDimsNum; i++) {
-        storageDims[i] = x2->GetStorageShape().GetDim(i);
-    }
-    OP_LOGD("WeightQuantMatmulAllReduce, CopyTensor storageDimsNum is %lu.", storageDimsNum);
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(storageDimsNum, 1);
-    for (int64_t i = static_cast<int64_t>(storageDimsNum - DIM_LEN_TWO); i >= 0; i--) {
-        stride[i] = storageDims[i + 1] * stride[i + 1];
-    }
-    auto offset = x2->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
-    auto stgFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    if (stgFormat == Format::FORMAT_ND) {
-        OP_LOGD("WeightQuantMatmulAllReduce, CopyTensor format is ACL_FORMAT_ND");
-        format = aclFormat::ACL_FORMAT_ND;
-    } else if (stgFormat == Format::FORMAT_FRACTAL_NZ) {
-        format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
-    }
-    return aclCreateTensor(
-        storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
-        x2->GetTensor()->GetAddr());
 }
 
 aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
@@ -390,7 +287,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
         OP_LOGE_WITH_INVALID_INPUT("aclnnWeightQuantMatmulAllReduce", "x2");
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    auto copyX2 = CopyTensor(x2);
+    auto copyX2 = QuantMatmulAllReduceCopyTensor(x2);
     auto tempX2 = MatmulAllReduceIsWeightNZFormat(x2) ? copyX2 : x2;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     const char* commModePtr = "ai_cpu";
@@ -421,18 +318,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
-    OP_LOGD("WeightQuantMatmulAllReduce, aclnnWeightQuantMatmulAllReduce ret %d", ret);
-    if (ret != 0) {
-        OP_LOGE_LIBOPAPI_REPORT("aclnnWeightQuantMatmulAllReduce", "WeightQuantMatmulAllReduce, This is an error in launch aicore");
-        return ACLNN_ERR_INNER;
-    }
-
+    aclnnStatus ret = LaunchInnerMatmulAllReduceSimple(
+        workspace, workspaceSize, executor, stream, "aclnnWeightQuantMatmulAllReduce");
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ACLNN_SUCCESS;

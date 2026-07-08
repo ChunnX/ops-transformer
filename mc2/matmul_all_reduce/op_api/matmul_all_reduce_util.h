@@ -127,6 +127,21 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     const aclTensor* dequant, const aclTensor* pertokenScaleOptional, const char* group, const char* reduceOp,
     int64_t commTurn, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor);
 bool IsCommModeValid(const char* commModePtr);
+
+void SetHcclServerTypeByCommMode(aclOpExecutor* executor, const char* apiName);
+aclnnStatus ParseCommModeAndSetUserHandle(const char* commMode, aclOpExecutor** executor, const char* apiName);
+aclnnStatus LaunchInnerMatmulAllReduce(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream, const char* apiName);
+aclnnStatus LaunchInnerMatmulAllReduceSimple(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream, const char* apiName);
+
+aclnnStatus PrepareTransposedX2(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2,
+    const aclTensor*& transX2, const aclTensor*& transX2Scale, const char* apiName);
+size_t CeilDiv(size_t x, size_t y);
+bool IsAntiquantScaleShapeValid(
+    const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize);
+bool CheckContiguousAffine(const aclTensor* x2, const aclTensor* scale, const aclTensor* offset, const char* apiName);
+
 #ifdef __cplusplus
 }
 #endif
