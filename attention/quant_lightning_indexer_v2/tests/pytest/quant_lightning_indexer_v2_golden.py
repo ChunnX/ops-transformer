@@ -183,7 +183,7 @@ class GeneralizedQLIV2:
         y = torch.full(out_shape_bnsd, -1, dtype = torch.int32)
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
         y_value_np = np.full(out_shape_bnsd, -np.inf, dtype=np.float32)
-        
+
         prefix = 0
         for b_idx in range(batch_size):
             if self.layout_query == "TND":
@@ -211,7 +211,7 @@ class GeneralizedQLIV2:
                     curr_actualSeq_k = ks
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
-            
+
             self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
             self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
             self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
@@ -751,7 +751,7 @@ class GeneralizedQLIV2:
                 k_scale_shape[:-2] + [k_scale_shape[-2] * k_scale_shape[-1]])
         else:
             key_dequant_scale_flat = key_dequant_scale
-        
+
         # 将输入转化为BNSD
         if self.layout_query == "TND":
             q_bnsd_tensor = self.trans_shape_to_bnsd(query, layout_query, q_head_num, self.cu_seqlens_q)
@@ -1369,6 +1369,7 @@ def qliv2_output_single(params, is_batch = False):
                                                         return_value = return_value)
 
         npu_result = npu_result.cpu()
+        npu_topk_value = npu_topk_value.cpu()
         if output_idx_offset != None:
             output_idx_offset = output_idx_offset.cpu()
         npu_result, _ = torch.sort(npu_result)
@@ -1511,7 +1512,7 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = 
     tensor_shape_size = in_tensor.numel()
     if tensor_shape_size == 1.0:
         tensor_shape_size = int(tensor_shape_size)
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -1602,7 +1603,7 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
 def trans_hifuint8_tensor_to_float(in_tensor):
     tensor_shape = in_tensor.shape
     tensor_shape_size = in_tensor.numel()
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
