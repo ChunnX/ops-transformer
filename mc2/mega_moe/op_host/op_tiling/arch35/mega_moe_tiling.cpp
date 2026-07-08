@@ -265,10 +265,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                                   .c_str()),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(
-        moeExpertNum != expertPerRank * epWorldSize,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", std::to_string(moeExpertNum).c_str(),
-                                  (std::string("should equal ") + std::to_string(expertPerRank * epWorldSize)).c_str()),
+    int64_t moeExpertPerRank = moeExpertNum / epWorldSize;
+    OP_TILING_CHECK(expertPerRank < moeExpertPerRank,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertPerRank",
+            std::to_string(expertPerRank).c_str(),
+            (std::string("should >= moeExpertNum/epWorldSize = ") +
+             std::to_string(moeExpertPerRank)).c_str()),
         return ge::GRAPH_FAILED);
 
     // maskRecv Size
@@ -388,6 +390,12 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
     tilingData->clampLimit = *activationClampPtr;
+
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
+    int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
+    int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
+    tilingData->sharedExpertNum = static_cast<uint32_t>(
+        static_cast<int64_t>(tilingData->expertPerRank) - moeExpertPerRank);
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
@@ -594,14 +602,16 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     const int64_t expertTokenNumsDim0 = expertTokenNumsStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsDim0);
 
-    OP_TILING_CHECK(expertTokenNumsDim0 != expertPerRank,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "expertTokenNums",
-                        (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
-                        (std::string("The shape [dim0] of expertTokenNums must be equal to expertPerRank(") +
-                         std::to_string(expertPerRank) + ").")
-                            .c_str()),
-                    return ge::GRAPH_FAILED);
+    // expertTokenNums 仅报告路由专家的 token 数，不包含共享专家
+    auto attrs = context->GetAttrs();
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+    int64_t moeExpertPerRank = static_cast<int64_t>(*moeExpertNumPtr) / static_cast<int64_t>(*epWorldSizePtr);
+    OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",
+            (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
+            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(") + std::to_string(moeExpertPerRank) + ").").c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
