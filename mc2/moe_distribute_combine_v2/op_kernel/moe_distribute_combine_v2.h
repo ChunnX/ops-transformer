@@ -147,7 +147,7 @@ private:
     // 统一上下文持有器：v2 走 HcclOpParam，v3 走 Mc2MoeContext
     ContextHolder ctx_;
 
-    LocalTensor<ExpandXType> gmTpSendCountTensor_;
+    LocalTensor<ExpandXType> expandXInTensor_;
     LocalTensor<float> winTpSendCountFloatTensor_;
     LocalTensor<XType> outTensor_;
     LocalTensor<int32_t> elasticInfoTensor_;
@@ -213,7 +213,8 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> gmTpSendCountQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expandXInAndOutQueue_;
+    TQue<QuePosition::VECIN, 1> expandXInQueue_;
     TQue<QuePosition::VECOUT, 1> xOutQueue_;
     TBuf<> readStateBuf_;
     TBuf<> expertScalesBuf_;
@@ -504,7 +505,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
     #endif
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
     if constexpr (QuantMode > UNQUANT) {
-        tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, hExpandXAlignSize_);   // 28K 存储搬入token
+        tpipe_->InitBuffer(expandXInQueue_, BUFFER_NUM, hExpandXAlignSize_);   // 28K 存储搬入token
         uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, tokenScaleAlign32Size);              // 28K 输出token搬运
         tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);                              // 28K blockReduceMax计算及后续Cast计算，256对齐
@@ -522,7 +523,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
         quantInst_.SetQuantInitParams(winTpSendCountFloatTensor_, fp16CastTensor_, absFloatTensor_,
             reduceMaxFloatTensor_, scaleDupLocalTensor_);
     } else {
-        tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, hExpandXAlign32Size_);   // 28K 存储搬入token
+        tpipe_->InitBuffer(expandXInAndOutQueue_, BUFFER_NUM, hExpandXAlign32Size_);   // 28K 存储搬入token
     }
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
@@ -806,32 +807,34 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
     DataCopyExtParams xScaleCopyParams{1U, static_cast<uint32_t>(tokenScaleCnt_ * sizeof(ExpandXType)), 0U, 0U, 0U};
     if constexpr (QuantMode > UNQUANT) {
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
+        expandXInTensor_ = expandXInQueue_.AllocTensor<ExpandXType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        LocalTensor<uint8_t> singleByteTok = gmTpSendCountTensor_.template ReinterpretCast<uint8_t>();
+        LocalTensor<uint8_t> singleByteTok = expandXInTensor_.template ReinterpretCast<uint8_t>();
         // 由于MX量化在计算scales时每次搬入256字节数据，所以在token搬入前需要对空间填0，避免引入脏数据
         if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
             Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(ExpandXType));
         }
         SyncFunc<AscendC::HardEvent::V_MTE2>();
 #endif
-        DataCopyPad(gmTpSendCountTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
-        gmTpSendCountQueue_.EnQue(gmTpSendCountTensor_);
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.DeQue<ExpandXType>();
+        DataCopyPad(expandXInTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
+        expandXInQueue_.EnQue(expandXInTensor_);
+
+        expandXInTensor_ = expandXInQueue_.DeQue<ExpandXType>();
         sendLocalTensor_ = xOutQueue_.AllocTensor<ExpandXType>();
-        quantInst_.QuantProcess(sendLocalTensor_, gmTpSendCountTensor_);
+        quantInst_.QuantProcess(sendLocalTensor_, expandXInTensor_);
+        expandXInQueue_.FreeTensor<ExpandXType>(expandXInTensor_);
         xOutQueue_.EnQue(sendLocalTensor_);
+
         sendLocalTensor_ = xOutQueue_.DeQue<ExpandXType>();
         DataCopyPad(rankWindow_, sendLocalTensor_, xScaleCopyParams);
-        gmTpSendCountQueue_.FreeTensor<ExpandXType>(gmTpSendCountTensor_);
         xOutQueue_.FreeTensor<ExpandXType>(sendLocalTensor_);
     } else {
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
-        DataCopyPad(gmTpSendCountTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
-        gmTpSendCountQueue_.EnQue(gmTpSendCountTensor_);
-        gmTpSendCountTensor_ = gmTpSendCountQueue_.DeQue<ExpandXType>();
-        DataCopyPad(rankWindow_, gmTpSendCountTensor_, expandXCopyParams);
-        gmTpSendCountQueue_.FreeTensor<ExpandXType>(gmTpSendCountTensor_);
+        expandXInTensor_ = expandXInAndOutQueue_.AllocTensor<ExpandXType>();
+        DataCopyPad(expandXInTensor_, expandXGM_[tokenGMOffset], expandXCopyParams, copyPadExtParams);
+        expandXInAndOutQueue_.EnQue(expandXInTensor_);
+        expandXInTensor_ = expandXInAndOutQueue_.DeQue<ExpandXType>();
+        DataCopyPad(rankWindow_, expandXInTensor_, expandXCopyParams);
+        expandXInAndOutQueue_.FreeTensor<ExpandXType>(expandXInTensor_);
     }
 }
 

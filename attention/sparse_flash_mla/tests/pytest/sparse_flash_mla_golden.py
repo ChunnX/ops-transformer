@@ -992,10 +992,10 @@ def gen_data(params, template_mode=None):
             blockFusion2 = blockFusion2.npu()
             cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
 
-    test_sas = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
+    test_smla = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                               block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, softmax_scale,
                               cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, ori_topk_length, cmp_topk_length)
-    cpu_result, softmax_lse = test_sas.forward(q, ori_k, ori_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv,
+    cpu_result, softmax_lse = test_smla.forward(q, ori_k, ori_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv,
                                                cmp_residual_kv, sinks, template_idx, cmp_k, cmp_sparse_indices, seqused_q, ori_topk_length, cmp_topk_length, return_softmax_lse)
     input_data = {
         # 命名用变量
@@ -1083,7 +1083,7 @@ def save_test_case(input_data, output_dir):
     case_name = f"{input_data['template_run_mode']}_layoutQ_{input_data['layout_q']}_layoutKV_{input_data['layout_kv']}_B_{input_data['B']}_S1_{input_data['S1']}_S2_{input_data['S2']}_T1_{input_data['T1']}_N1_{input_data['N1']}_N2_{input_data['N2']}_{input_data['case_name']}"
 
     # 生成文件名
-    input_filename = f"sas_case_{case_name}.pt"
+    input_filename = f"smla_case_{case_name}.pt"
     input_filepath = os.path.join(output_dir, input_filename)
 
     # 保存数据

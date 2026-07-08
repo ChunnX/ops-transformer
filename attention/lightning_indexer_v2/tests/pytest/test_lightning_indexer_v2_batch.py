@@ -43,13 +43,19 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def liv2(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=0)
+    cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=0)
     if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params)
     else:
         result = "Failed"
         fulfill_percent = 0
     
+    return_value = params[25]
+    if return_value:
+        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+        print(f"result_return_value: {result_return_value}")
+        print(f"result_return_value: {fulfill_precent_return_value}")
+
     row_data = {
         "Testcase_Name": Path(testcase_files).stem,
         "batch_size": params[0],

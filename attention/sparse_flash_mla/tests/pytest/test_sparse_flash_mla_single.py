@@ -25,7 +25,7 @@ save_pt = False
 pt_save_path = "data"
 
 # 处理所有参数组合
-result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/smla_result.xlsx')
+result_path = os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result.xlsx')
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 
 @pytest.mark.ci

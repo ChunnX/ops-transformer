@@ -157,6 +157,7 @@
 | 调用方式 | 样例代码 | 说明 |
 | ---- | ---- | ---- |
 | 图模式调用 | [test_geir_ffn_worker_batching.cpp](examples/test_geir_ffn_worker_batching.cpp) | 通过[算子IR](op_graph/ffn_worker_batching_proto.h)构图方式调用FfnWorkerBatching算子。 |
+| aclnn接口 | [test_aclnn_ffn_worker_batching.cpp](examples/test_aclnn_ffn_worker_batching.cpp) | 通过[aclnnFfnWorkerBatching](docs/aclnnFfnWorkerBatching.md)接口方式调用FfnWorkerBatching算子。 |
 
 ## 调度上下文数据结构
 

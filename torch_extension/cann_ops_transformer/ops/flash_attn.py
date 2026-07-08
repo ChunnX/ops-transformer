@@ -139,7 +139,6 @@ class FlashAttenOpBuilder(OpBuilder):
 
 # Instantiate the builder
 flash_attn_op_builder = FlashAttenOpBuilder()
-op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
@@ -156,6 +155,7 @@ def flash_attn_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
+    op_module = flash_attn_op_builder.load()
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
@@ -214,6 +214,7 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    op_module = flash_attn_op_builder.load()
     return op_module.flash_attn(
         q, k, v,
         block_table,

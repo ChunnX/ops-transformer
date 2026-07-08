@@ -774,6 +774,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         } else {
             fBaseParams.b = 1;
+            fBaseParams.sumS1S2Product = 1;
             fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
             fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
         }

@@ -234,7 +234,7 @@ void CalcMCache(uint32_t mIdx, const SplitContext &splitContext, const BatchCach
         mCache.mNormalBlockCost = 0;
     } else if (mIdx == (splitInfo.mBaseNum[batchCache.bIdx] - 1U) && splitInfo.mTailSize[batchCache.bIdx] != 0U) {
         mCache.mCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-                           batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
+                            batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
         mCache.mLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] :
                                                         batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
         mCache.mNormalBlockCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
@@ -654,6 +654,16 @@ void SplitFD(FAMetaData &result)
     fdRes.fdUsedVecNum = curCoreIndex;
 }
 
+bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param)
+{
+    const int64_t fullBlockCost = CalcCost(actualMFdsize, param.s2BaseSize);
+    if (noFdCost <= param.fdLeastBlock * fullBlockCost) {
+        return false;
+    }
+    int64_t fdTolerance = param.fdTolerance * fullBlockCost;
+    return noFdCost - fdTolerance > withFdCost;        // using minus in case overflow
+}
+
 void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param)
 {
     OP_LOGI("FusedInferAttentionScore", "========== BaseInfo ==========\n");
@@ -766,6 +776,15 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         ClearTmpResult(tmpResult);
     }
 
+    // 根据shape判断是否要开FD
+    if (param.streamK && result.fdRes.fdNum > 0) {
+        splitContext.splitParam.streamK = false;
+        CalcSplitPlan(result.usedCoreNum, INT64_MAX, splitContext, tmpResult);
+        uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
+        if (!CheckChooseWithFd(tmpResult.maxCost, result.maxCost, std::min(maxFdSize, param.mBaseSize), param)) {
+            CopyTmpResult(tmpResult, result);
+        }
+    }
     // 3、存在FD任务，对FD进行负载均衡分配
     if (result.fdRes.fdNum > 0U) {
         SplitFD(result);

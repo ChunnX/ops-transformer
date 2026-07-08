@@ -13,7 +13,7 @@
  * \brief
  */
 #include "basic_api/kernel_basic_intf.h"
-#include "arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
+#include "quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_key.h"
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
