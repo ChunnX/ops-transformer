@@ -192,6 +192,12 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
+    if (dequantScaleXOptional !=nullptr){
+        if(aclGetDataType(dequantScaleXOptional,ACL_FLOAT8_E8M0) == ACLNN_SUCCESS){
+            std::printf("***********fp8_e8m0 dtype is support on cann version 9.1.0*************");
+        }
+    }
+    std::printf("***********200 fp8_e8m0 dtype is support on cann version 9.1.0*************");
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };
