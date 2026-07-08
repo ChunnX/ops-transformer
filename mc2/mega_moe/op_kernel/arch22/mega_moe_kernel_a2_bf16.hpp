@@ -43,11 +43,6 @@ namespace Catlass::Gemm::Kernel {
 using namespace AscendC;
 using namespace Mc2Tiling;
 
-// Flag 同步 magic 值（精确匹配，避免上一轮残留误判）。
-// 三处同步（SendTokensV3 / RecvTokensV3 / V2 allgather）统一使用该值，需配合
-// ResetTokenPerExpert 每轮清零 flag 区，确保上一轮残留不会撞上本值。
-constexpr int32_t FLAG_VALUE_MAGIC = 123456789; // 0x075BCD15
-
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
           class BlockEpilogue2_>
 class MegaMoeKernelA2BF16 {
