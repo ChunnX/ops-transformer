@@ -124,7 +124,6 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertInputScalePtr;
     GM_ADDR sharedExpertSwigluDataPtr;
     GM_ADDR sharedExpertSwigluScalePtr;
-    GM_ADDR sharedExpertSwigluFlagPtr;
     GM_ADDR quantDoneFlagPtr;
     GM_ADDR sharedExpertGmm2DoneFlagPtr;
     GM_ADDR sharedExpertGmm1DoneFlagPtr;
@@ -313,10 +312,6 @@ struct WorkspaceInfo {
                 SIZE_INT_8 * tilingData->maxOutputSize * tilingData->sharedExpertNum * tilingData->hiddenDim /
                     SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                 ALIGN_512);
-            // sharedExpertSwigluFlag: per-expert flag [sharedExpertNum × INT_CACHELINE]
-            sharedExpertSwigluFlagPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_32);
             // quantDoneFlag: AIV writes (AtomicAdd, 2 per block), AIC polls [aicNum × sizeof(int32_t)]
             quantDoneFlagPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(

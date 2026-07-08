@@ -776,7 +776,9 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
-    AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    if (groupFlagListGmAddr_ != nullptr) {
+        AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    }
     return;
 }
 

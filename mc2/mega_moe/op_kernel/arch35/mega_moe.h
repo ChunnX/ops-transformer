@@ -1366,7 +1366,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertSwiglu()
         // Re-init epilogue with shared expert output addresses
         epilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
             params_.workspaceInfo.sharedExpertSwigluScalePtr,
-            params_.workspaceInfo.sharedExpertSwigluFlagPtr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
+            nullptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
             params_.tilingData->clampLimit});
         epilogueOp_.UpdateNextProblem({static_cast<int64_t>(m_), static_cast<int64_t>(outputN),
             static_cast<int64_t>(k_), 0});

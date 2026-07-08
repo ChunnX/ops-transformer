@@ -117,6 +117,9 @@ __aicore__ inline void WaitForUpstreamReady(
     const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
 {
     if constexpr (Policy::IS_GMM1) {
+        if (gmmAddrInfo.dispatchToGmm1Flag == nullptr) {
+            return;
+        }
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
@@ -126,6 +129,9 @@ __aicore__ inline void WaitForUpstreamReady(
             }
         }
     } else {
+        if (gmmAddrInfo.swigluToGmm2Flag == nullptr) {
+            return;
+        }
         BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
