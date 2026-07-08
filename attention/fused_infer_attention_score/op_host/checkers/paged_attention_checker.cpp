@@ -650,13 +650,15 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
 
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnNBsD && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD),
-            OP_LOGE(fiaInfo.opName, "In %s %s situation, the key/value's layout is BnNBsD, query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
+            OP_LOGE(fiaInfo.opName, "In %s %s situation, the key/value's layout is BnNBsD, "
+            "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
                 QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::NZ && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD),
-            OP_LOGE(fiaInfo.opName, "In %s %s situation, the key/value's layout is PA_NZ, query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
+            OP_LOGE(fiaInfo.opName, "In %s %s situation, the key/value's layout is PA_NZ, "
+                "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
                 QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()),
             return ge::GRAPH_FAILED);
     }
