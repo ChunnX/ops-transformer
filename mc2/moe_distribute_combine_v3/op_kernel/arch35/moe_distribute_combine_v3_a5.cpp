@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_v3_apt.cpp
+ * \file moe_distribute_combine_v3_a5.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeCombineV3.
  *        Reuses combine_v2's A5 data-as-flag MTE combine implementation.
  */
@@ -21,10 +21,10 @@
 #include "lib/matmul_intf.h"
 #if __has_include("../../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_a5_mte.h")
 #include "../../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_a5_mte.h"
-#include "../../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_apt_tiling_key.h"
+#include "../../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_a5_tiling_key.h"
 #else
 #include "../../../moe_distribute_combine_v2/op_kernel/arch35/moe_distribute_combine_v2_a5_mte.h"
-#include "../../../moe_distribute_combine_v2/op_kernel/arch35/moe_distribute_combine_v2_apt_tiling_key.h"
+#include "../../../moe_distribute_combine_v2/op_kernel/arch35/moe_distribute_combine_v2_a5_tiling_key.h"
 #endif
 using namespace MoeDistributeCombineV2A5MteImpl;
 using namespace AscendC;
