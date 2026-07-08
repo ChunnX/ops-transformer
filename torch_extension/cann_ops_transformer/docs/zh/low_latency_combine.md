@@ -86,7 +86,7 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
         <td>topk_weights</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，数据格式为ND。该参数为必选参数，但允许传入None，传None时接口内部转为空Tensor。</td>
+        <td>表示每个token的topK个专家的权重，其中共享专家不需要乘权重系数，直接相加即可，支持传None，数据格式为ND。</td>
         <td>float</td>
         <td>(BS, K)</td>
     </tr>

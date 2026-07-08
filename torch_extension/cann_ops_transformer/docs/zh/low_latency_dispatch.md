@@ -27,7 +27,7 @@
          \end{cases}
          $$
 
-      `quant_mode=0`时，非量化发送token；当`x`为低精度量化类型且携带`x_smooth_scale`时，`x_smooth_scale`随token重排后作为`dynamic_scales`输出：
+      如果quant_mode=0（非量化）
 
          $$\ quant\_out = x$$
 
@@ -35,21 +35,22 @@
 
          $$\ expand\_x = alltoall\_x\_out$$
 
-         $$\ dynamic\_scales = alltoallv(x\_smooth\_scale), \quad \text{if low precision } x \text{ with } x\_smooth\_scale$$
+      如果quant_mode=1（静态量化）
 
-      `quant_mode=1`时，静态量化使用输入的量化系数或平滑参数得到`quant_out`：
+         $$\ quant\_out = Cast(CastToFp32(x) \times scales, dstType)$$
 
-         $$\ quant\_out = CastToYdtype(x\_fp32)$$
+         $$\ alltoall\_x\_out = alltoallv(quant\_out)$$
 
-         $$\ expand\_x = alltoallv(\ quant\_out)$$
+         $$\ expand\_x = alltoall\_x\_out$$
 
-      `quant_mode=2`时，pertoken动态量化按token粒度计算缩放参数：
+      如果quant_mode=2（动态量化）
+         $$\ x\_fp32 = CastToFp32(x) \times scales$$
 
-         $$\ dynamic\_scales\_value = QuantMax / Max(Abs(x\_fp32))$$
+         $$\ dynamic\_scales\_value = dst\_type\_max / Max(Abs(x\_fp32))$$
 
-         $$\ quant\_out = CastToYdtype(\ x\_fp32 \times \ dynamic\_scales\_value )$$
+         $$\ quant\_out = Cast(x\_fp32 \times \ dynamic\_scales\_value, dstType)$$
 
-         $$\ alltoall\_x\_out = alltoallv(\ quant\_out)$$
+         $$\ alltoall\_x\_out = alltoallv(quant\_out)$$
 
          $$\ alltoall\_dynamic\_scales\_out = alltoallv(1.0 / dynamic\_scales\_value)$$
 
@@ -57,31 +58,54 @@
 
          $$\ dynamic\_scales = alltoall\_dynamic\_scales\_out$$
 
-      `quant_mode=3`时，pergroup动态量化按hidden维每128个元素为一组计算缩放参数：
+      如果quant_mode=3（pergroup量化）
 
-         $$\ group\_id = \lfloor h / 128 \rfloor$$
+         $$\ x\_fp32 = CastToFp32(x) \times scales$$
 
-         $$\ dynamic\_scales\_value[group\_id] = QuantMax / Max(Abs(x\_fp32[group\_id]))$$
+         $$\ dynamic\_scales\_value = dst\_type\_max / Max(Abs(x\_fp32))$$
 
-         $$\ quant\_out[group\_id] = CastToYdtype(\ x\_fp32[group\_id] \times dynamic\_scales\_value[group\_id] )$$
+         $$\ quant\_out = Cast(\ x\_fp32 \times \ dynamic\_scales\_value, dstType)$$
 
-         $$\ expand\_x = alltoallv(\ quant\_out)$$
+         $$\ alltoall\_x\_out = alltoallv(quant\_out)$$
 
-         $$\ dynamic\_scales = alltoallv(1.0 / dynamic\_scales\_value)$$
+         $$\ alltoall\_dynamic\_scales\_out = alltoallv(1.0 / dynamic\_scales\_value)$$
 
-      `quant_mode=4`或`quant_mode=5`时，mx动态量化或mx clip动态量化按hidden维每32个元素为一组计算FLOAT8_E8M0缩放参数，并量化为`y_dtype`指定的FLOAT8或FLOAT4类型：
+         $$\ expand\_x = alltoall\_x\_out$$
 
-         $$\ group\_id = \lfloor h / 32 \rfloor$$
+         $$\ dynamic\_scales = alltoall\_dynamic\_scales\_out$$
 
-         $$\ dynamic\_scales\_value[group\_id] = ComputeE8M0Scale(x\_fp32[group\_id])$$
+      如果quant_mode=4（mxfp8量化）
 
-         $$\ quant\_out[group\_id] = CastToYdtype(\ x\_fp32[group\_id], dynamic\_scales\_value[group\_id] )$$
+         $$\ shared_exp = floor(log_2(max(x))) - emax$$
 
-         $$\ expand\_x = alltoallv(\ quant\_out)$$
+         $$\ dynamic\_scales\_value = 2^{shared\_exp}$$
 
-         $$\ dynamic\_scales = alltoallv(dynamic\_scales\_value)$$
+         $$\ quant\_out = Cast(x / dynamic\_scales\_value, dstType)$$
 
-      其中`CastToYdtype`表示转换为`y_dtype`指定的输出类型；`QuantMax`由输出量化类型决定，例如INT8场景为127.0。
+         $$\ alltoall\_x\_out = alltoallv(quant\_out)$$
+
+         $$\ alltoall\_dynamic\_scales\_out = alltoallv(1.0 / dynamic\_scales\_value)$$
+
+         $$\ expand\_x = alltoall\_x\_out$$
+
+         $$\ dynamic\_scales = alltoall\_dynamic\_scales\_out$$
+
+      如果quant_mode=5（mxfp8量化chip方法）
+         $$\ max\_abs = max(abx(x))$$
+         $$\ max\_abs\_clamp = max(max\_abs, 10^{-4})$$
+         $$\ shared\_exp = ceil(log_2(max\_abs\_clamp / fp8\_max))$$
+
+         $$\ dynamic\_scales\_value = 2^{shared\_exp}$$
+
+         $$\ quant\_out = CastToFp8(x / dynamic\_scales\_value)$$
+
+         $$\ alltoall\_x\_out = alltoallv(quant\_out)$$
+
+         $$\ alltoall\_dynamic\_scales\_out = alltoallv(1.0 / dynamic\_scales\_value)$$
+
+         $$\ expand\_x = alltoall\_x\_out$$
+
+         $$\ dynamic\_scales = alltoall\_dynamic\_scales\_out$$
 
     - 特殊专家场景：
 
@@ -154,7 +178,18 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>quant_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>表示量化模式。支持取值：0表示非量化（默认），1表示静态量化，2表示pertoken动态量化，3表示pergroup动态量化，4表示mx动态量化，5表示mx clip动态量化。`quant_mode`为2、3、4、5时，`dynamic_scales`输出有效；`quant_mode`为0且输入`x`为HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2等低精度类型时，`dynamic_scales`也输出有效。</td>
+        <td>
+            <ul>
+                <li>0表示非量化（默认）。</li>
+                <li>1表示静态量化。</li>
+                <li>2表示pertoken动态量化。</li>
+                <li>3表示pergroup动态量化。</li>
+                <li>4表示mx动态量化。</li>
+                <li>5表示mx clip动态量化。</li>
+                <li>`quant_mode`为2、3、4、5时，`dynamic_scales`输出有效。</li>
+                <li>`quant_mode`为0且输入`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等低精度类型时，`dynamic_scales`也输出有效。</li>
+            </ul>
+        </td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -170,7 +205,17 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>x_smooth_scale</td>
         <td>Tensor</td>
         <td>可选</td>
-        <td>表示量化平滑参数或量化系数。`quant_mode`为0时，若`x`为bfloat16或float16则不传，若`x`为HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2等低精度类型则必须传有效Tensor；`quant_mode`为1时必须传；`quant_mode`为2或3时可传可不传；`quant_mode`为4或5时不传。若用于专家维平滑，要求为2维张量，如果有共享专家，shape为(shared_expert_num+num_experts, H)，如果没有共享专家，shape为(num_experts, H)，数据格式为ND，不支持非连续的Tensor。其他量化系数场景的shape约束见“quant_mode相关约束”。</td>
+        <td>
+            <ul>
+                <li>表示量化平滑参数或量化系数。</li>
+                <li>`quant_mode`为0时，若`x`为bfloat16或float16则不传，若`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等低精度类型则必须传有效Tensor。</li>
+                <li>`quant_mode`为1时必须传。</li>
+                <li>`quant_mode`为2或3时可传可不传。</li>
+                <li>`quant_mode`为4或5时不传。</li>
+                <li>若用于专家维平滑，要求为2维张量，如果有共享专家，shape为(shared_expert_num+num_experts, H)，如果没有共享专家，shape为(num_experts, H)，数据格式为ND，不支持非连续的Tensor。</li>
+                <li>其他量化系数场景的shape约束见“quant_mode相关约束”。</li>
+            </ul>
+        </td>
         <td>float</td>
         <td>
             <ul>
@@ -276,7 +321,17 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>y_dtype</td>
         <td>int</td>
         <td>可选</td>
-        <td>表示`expand_x`输出的逻辑数据类型，默认值为None，由`quant_mode`和输入类型推导。Ascend 950场景可通过该参数指定低精度输出类型：`quant_mode=1`支持INT8、HIFLOAT8；`quant_mode=2`支持INT8、FLOAT8_E4M3FN、FLOAT8_E5M2；`quant_mode=3`支持FLOAT8_E4M3FN、FLOAT8_E5M2；`quant_mode=4`或`quant_mode=5`支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2。传值需使用`cann_ops_transformer.common`中与ACL数据类型对应的整数枚举。</td>
+        <td>
+            <ul>
+                <li>表示`expand_x`输出的逻辑数据类型，默认值为None，由`quant_mode`和输入类型推导。</li>
+                <li>Ascend 950场景可通过该参数指定低精度输出类型。</li>
+                <li>`quant_mode=1`支持int8、hifloat8。</li>
+                <li>`quant_mode=2`支持int8、float8_e4m3fn、float8_e5m2。</li>
+                <li>`quant_mode=3`支持float8_e4m3fn、float8_e5m2。</li>
+                <li>`quant_mode=4`或`quant_mode=5`支持float8_e4m3fn、float8_e5m2、float4_e2m1、float4_e1m2。</li>
+                <li>传值需使用`cann_ops_transformer.common`中与ACL数据类型对应的整数枚举。</li>
+            </ul>
+        </td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -284,7 +339,7 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>x_dtype</td>
         <td>int</td>
         <td>可选</td>
-        <td>表示输入`x`的逻辑数据类型，默认值为None，由`x`的PyTorch存储类型推导。低精度场景下可指定为HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2等ACL数据类型；其中HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2在PyTorch侧以uint8存储。</td>
+        <td>表示输入`x`的逻辑数据类型，默认值为None，由`x`的PyTorch存储类型推导。低精度场景下可指定为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等ACL数据类型；其中hifloat8、float4_e2m1、float4_e1m2在PyTorch侧以uint8存储。</td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -292,7 +347,7 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>x_smooth_scales_dtype</td>
         <td>int</td>
         <td>可选</td>
-        <td>表示`x_smooth_scale`的逻辑数据类型，默认值为None，由`x_smooth_scale`的PyTorch存储类型推导。低精度场景下可指定FLOAT8_E8M0等ACL数据类型；例如`x`为FLOAT8_E5M2或FLOAT8_E4M3FN时，`x_smooth_scale`支持FLOAT或FLOAT8_E8M0，`x`为FLOAT4_E2M1或FLOAT4_E1M2时，`x_smooth_scale`要求FLOAT8_E8M0。</td>
+        <td>表示`x_smooth_scale`的逻辑数据类型，默认值为None，由`x_smooth_scale`的PyTorch存储类型推导。低精度场景下可指定float8_e8m0等ACL数据类型；例如`x`为float8_e5m2或float8_e4m3fn时，`x_smooth_scale`支持float或float8_e8m0，`x`为float4_e2m1或float4_e1m2时，`x_smooth_scale`要求float8_e8m0。</td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -324,15 +379,23 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>expand_x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>表示本卡收到的token数据，要求为2维张量，A表示在EP通信域可能收到的最大token数。非量化且未指定`y_dtype`时与`x`数据类型保持一致；量化或指定`y_dtype`时类型由`quant_mode`和`y_dtype`决定，支持INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2等低精度输出。FLOAT4_E2M1、FLOAT4_E1M2为打包存储，PyTorch侧以uint8承载，最后一维按H/2分配。数据格式为ND，支持非连续的Tensor。</td>
+        <td>表示本卡收到的token数据，要求为2维张量，A表示在EP通信域可能收到的最大token数。非量化且未指定`y_dtype`时与`x`数据类型保持一致；量化或指定`y_dtype`时类型由`quant_mode`和`y_dtype`决定，支持int8、hifloat8、float8_e4m3fn、float8_e5m2、float4_e2m1、float4_e1m2等低精度输出。数据格式为ND，支持非连续的Tensor。</td>
         <td>bfloat16、float16、int8、uint8、float8_e5m2、float8_e4m3fn</td>
-        <td>(A, H)；FLOAT4_E2M1/FLOAT4_E1M2时为(A, H/2)</td>
+        <td>(A, H)；float4_e2m1/float4_e1m2时为(A, H/2)</td>
     </tr>
     <tr>
         <td>dynamic_scales</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>表示计算得到的动态量化参数。`quant_mode`为2、3、4、5时有输出；`quant_mode`为0且输入`x`为HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2等低精度类型时也有输出。数据格式支持ND，支持非连续的Tensor。</td>
+        <td>
+            <ul>
+                <li>表示计算得到的动态量化参数。</li>
+                <li>`quant_mode`为2、3、4、5时有输出。</li>
+                <li>`quant_mode`为0且输入`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2等低精度类型时也有输出。</li>
+                <li>float8_e8m0在PyTorch侧用uint8承载。</li>
+                <li>数据格式支持ND，支持非连续的Tensor。</li>
+            </ul>
+        </td>
         <td>float、uint8</td>
         <td>
             <ul>
@@ -453,11 +516,11 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         -   `quant_mode=0`表示非量化场景，`x_smooth_scale`不传，`expand_x`的数据类型支持float16、bfloat16。
         -   `quant_mode=2`表示pertoken动态量化场景，`expand_x`的数据类型支持int8，`x_smooth_scale`可传可不传；若存在共享专家且传入有效Tensor，shape为(shared_expert_num + num_experts, H)，若不存在共享专家，shape为(num_experts, H)，输出`dynamic_scales` shape为(A,)。
     -   <term>Ascend 950DT</term>：
-        -   `quant_mode=0`表示非量化场景。当`x`为float16或bfloat16时，`expand_x`可与`x`一致，也可通过`y_dtype`指定为HIFLOAT8，`x_smooth_scale`必须为None；当`x`为HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2时，`x_smooth_scale`必须传有效Tensor，`expand_x`与`x`逻辑类型一致。`x`为HIFLOAT8时，`x_smooth_scale`逻辑类型为FLOAT；`x`为FLOAT8_E5M2或FLOAT8_E4M3FN时，`x_smooth_scale`逻辑类型为FLOAT或FLOAT8_E8M0；`x`为FLOAT4_E2M1或FLOAT4_E1M2时，`x_smooth_scale`逻辑类型为FLOAT8_E8M0，且H必须为偶数。此时`x_smooth_scale` shape为(BS, dim1)，其中dim1 <= H。
-        -   `quant_mode=1`表示静态量化场景，`expand_x`支持int8、HIFLOAT8，`x_smooth_scale`必须传有效Tensor。`expand_x`为int8时，`x_smooth_scale`可表示量化系数，shape为(1,)；也可表示每个专家共享的平滑权重，shape为(H,)；也可表示融合了每个专家平滑权重的量化系数，有共享专家时shape为(shared_expert_num + num_experts, H)，无共享专家时shape为(num_experts, H)。`expand_x`为HIFLOAT8时，`x_smooth_scale` shape必须为(1,)。
-        -   `quant_mode=2`表示pertoken动态量化场景，`expand_x`支持int8、FLOAT8_E4M3FN、FLOAT8_E5M2，`x_smooth_scale`可传可不传；若传入有效Tensor，其专家维shape规则同`quant_mode=1`，输出`dynamic_scales` shape为(A,)。
-        -   `quant_mode=3`表示pergroup动态量化场景，`expand_x`支持FLOAT8_E4M3FN、FLOAT8_E5M2，`x_smooth_scale`可传可不传；若传入有效Tensor，其专家维shape规则同`quant_mode=1`，输出`dynamic_scales` shape为(A, Ceil(H, 128))。
-        -   `quant_mode=4`表示mx动态量化场景，`quant_mode=5`表示mx clip动态量化场景，`expand_x`支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2，`x_smooth_scale`必须为None，输出`dynamic_scales` shape为(A, Align2(Ceil(H, 32)))；当`expand_x`为FLOAT4_E2M1或FLOAT4_E1M2时，H必须为偶数。
+        -   `quant_mode=0`表示非量化场景。当`x`为float16或bfloat16时，`expand_x`可与`x`一致，也可通过`y_dtype`指定为hifloat8，`x_smooth_scale`必须为None；当`x`为hifloat8、float8_e5m2、float8_e4m3fn、float4_e2m1、float4_e1m2时，`x_smooth_scale`必须传有效Tensor，`expand_x`与`x`逻辑类型一致。`x`为hifloat8时，`x_smooth_scale`逻辑类型为float；`x`为float8_e5m2或float8_e4m3fn时，`x_smooth_scale`逻辑类型为float或float8_e8m0；`x`为float4_e2m1或float4_e1m2时，`x_smooth_scale`逻辑类型为float8_e8m0，且H必须为偶数。此时`x_smooth_scale` shape为(BS, dim1)，其中dim1 <= H。
+        -   `quant_mode=1`表示静态量化场景，`expand_x`支持int8、hifloat8，`x_smooth_scale`必须传有效Tensor。`expand_x`为int8时，`x_smooth_scale`可表示量化系数，shape为(1,)；也可表示每个专家共享的平滑权重，shape为(H,)；也可表示融合了每个专家平滑权重的量化系数，有共享专家时shape为(shared_expert_num + num_experts, H)，无共享专家时shape为(num_experts, H)。`expand_x`为hifloat8时，`x_smooth_scale` shape必须为(1,)。
+        -   `quant_mode=2`表示pertoken动态量化场景，`expand_x`支持int8、float8_e4m3fn、float8_e5m2，`x_smooth_scale`可传可不传；若传入有效Tensor，其专家维shape规则同`quant_mode=1`，输出`dynamic_scales` shape为(A,)。
+        -   `quant_mode=3`表示pergroup动态量化场景，`expand_x`支持float8_e4m3fn、float8_e5m2，`x_smooth_scale`可传可不传；若传入有效Tensor，其专家维shape规则同`quant_mode=1`，输出`dynamic_scales` shape为(A, Ceil(H, 128))。
+        -   `quant_mode=4`表示mx动态量化场景，`quant_mode=5`表示mx clip动态量化场景，`expand_x`支持float8_e4m3fn、float8_e5m2、float4_e2m1、float4_e1m2，`x_smooth_scale`必须为None，输出`dynamic_scales` shape为(A, Align2(Ceil(H, 32)))；当`expand_x`为float4_e2m1或float4_e1m2时，H必须为偶数。
     -   本文中的`Ceil(H, N)`表示`(H + N - 1) // N`，`Align2(x)`表示向上对齐到2的整数倍。
 -   HCCL通信域缓存区大小:
     调用本接口前需检查HCCL\_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
