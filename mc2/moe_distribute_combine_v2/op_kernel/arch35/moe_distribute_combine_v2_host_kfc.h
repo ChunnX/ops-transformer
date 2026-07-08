@@ -235,7 +235,6 @@ private:
     uint64_t activeMaskBsCnt_{0};
     uint64_t winStatusOffset_{0};
     uint64_t totalWinSizeEp_{0};
-    uint64_t totalWinSizeTp_{0};
     uint64_t winDataSizeOffsetEp_{0};
     uint64_t winDataSizeOffsetTp_{0};
     uint32_t selfSendCnt_{0};
@@ -581,7 +580,6 @@ MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(
     tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
     totalWinSizeEp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeEp;
-    totalWinSizeTp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeTp;
     isInputTokenMaskFlag_ = tilingData->moeDistributeCombineV2Info.isTokenMask;
     isInputExpertMaskFlag_ = tilingData->moeDistributeCombineV2Info.isExpertMask;
     hasSharedExpertX_ = tilingData->moeDistributeCombineV2Info.hasSharedExpertX;
