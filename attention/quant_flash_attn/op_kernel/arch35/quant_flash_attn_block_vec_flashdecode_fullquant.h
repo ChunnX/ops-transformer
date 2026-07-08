@@ -24,7 +24,6 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../utils/quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant_gs1.h"
 
 namespace BaseApi {
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -38,10 +37,7 @@ class FiaBlockVecFlashDecodeFullQuant {
 public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
-    static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
     using SINK_T = INPUT_T;
-    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
-                                       !IsSameType<OUTPUT_T, float>::value;
     struct TaskInfo {
         uint32_t bIdx;
         uint32_t n2Idx;
@@ -89,22 +85,9 @@ protected:
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<SINK_T> sinkGm;
 
-    // postquant
-    using postQuantGmType = typename std::conditional<POST_QUANT, FaGmTensor<T, PostQuant_FORMAT>, int8_t>::type;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT,
-        FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
-    postQuantGmType quantScale2GmTensor;
-    postQuantGmType quantOffset2GmTensor;
-    postQuantBf16GmType quantScale2Bf16GmTensor;
-    postQuantBf16GmType quantOffset2Bf16GmTensor;
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
     static constexpr bool isS1G = (UB_FORMAT == UbFormat::S1G);
     static constexpr bool isPa = KvLayoutType > 0;
-    bool isQuantOffset2Exit = false;
-    bool isQuant2PerChn = false;
-    bool isQuant2Bf16 = false;
-    float postQuantScaleValue = 0;
-    float postQuantOffsetValue = 0;
 
     // =======================获取实际Act_S===========================
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
@@ -154,8 +137,7 @@ public:
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key,
-                                            __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key)
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
@@ -167,10 +149,6 @@ public:
 
         qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
         kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.cuSeqLensKVSize, constInfo.s2Size);
-
-        if constexpr (POST_QUANT) {
-            InitPostQuant(quantScale2, quantOffset2);
-        }
     }
 
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
@@ -358,35 +336,19 @@ protected:
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM)
     {
-        if constexpr (POST_QUANT) {
-            if (isQuant2PerChn) {
-                DealPostQuantOutPerChn(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-                AscendC::PipeBarrier<PIPE_V>();
-            } else {
-                DealPostQuantOutPerTensor(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
         AscendC::PipeBarrier<PIPE_V>();
-        if constexpr (POST_QUANT) {
-            DealInvalidRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        } else {
-            DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        }
+        DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
+        DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        if constexpr (!POST_QUANT) {
-            uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
-            tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
-            if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
-                     dealRowCount * this->dSizeV_Align);
-            } else {
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
-                     dealRowCount * this->dSizeV_Align);
-            }
+        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
+        tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
+        if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
+                 dealRowCount * this->dSizeV_Align);
+        } else {
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
+                 dealRowCount * this->dSizeV_Align);
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -513,84 +475,6 @@ protected:
                                                           attenOutUb);
     }
 
-    __aicore__ inline void InitPostQuant(__gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
-    {
-        return;
-    }
-    __aicore__ inline void DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
-                                                  uint32_t columnCount, uint32_t cntM)
-    {
-        PostQuantInfo_V2 postQuantInfo;
-        postQuantInfo.gSize = constInfo.gSize;
-        postQuantInfo.dSize = constInfo.dSizeV;
-        postQuantInfo.s1Size = actSeqLensQ;
-        postQuantInfo.n2Idx = taskInfo.n2Idx;
-        postQuantInfo.gS1Idx = taskInfo.gS1Idx + startRow;
-        postQuantInfo.gS1DealSize = dealRowCount;
-        postQuantInfo.colCount = columnCount;
-
-        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
-
-        if (isQuant2Bf16) {
-            uint32_t computeSize = dealRowCount * columnCount;
-            LocalTensor<bfloat16_t> quantScale2Ub =
-                ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            CopyParamsGmToUb<bfloat16_t, PostQuant_FORMAT, UB_FORMAT>(quantScale2Ub, quantScale2Bf16GmTensor,
-                                                                      postQuantInfo);
-            if (isQuantOffset2Exit) {
-                LocalTensor<bfloat16_t> quantOffset2Ub =
-                    ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
-                AscendC::PipeBarrier<PIPE_MTE2>();
-                CopyParamsGmToUb<bfloat16_t, PostQuant_FORMAT, UB_FORMAT>(quantOffset2Ub, quantOffset2Bf16GmTensor,
-                                                                          postQuantInfo);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                FaVectorApi::PostQuantPerChnlOffsetImpl<T, OUTPUT_T, bfloat16_t, isS1G>(
-                    tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, quantOffset2Ub, postQuantInfo);
-            } else {
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                FaVectorApi::PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, bfloat16_t, isS1G>(
-                    tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, postQuantInfo);
-            }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            AscendC::PipeBarrier<PIPE_V>();
-        } else {
-            LocalTensor<T> quantScale2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            CopyParamsGmToUb<T, PostQuant_FORMAT, UB_FORMAT>(quantScale2Ub, quantScale2GmTensor, postQuantInfo);
-            if (isQuantOffset2Exit) {
-                LocalTensor<T> quantOffset2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-                AscendC::PipeBarrier<PIPE_MTE2>();
-                CopyParamsGmToUb<T, PostQuant_FORMAT, UB_FORMAT>(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                PostQuantPerChnlOffsetImpl<T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub,
-                                                                  quantOffset2Ub, postQuantInfo);
-
-            } else {
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-                AscendC::PipeBarrier<PIPE_V>();
-                PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub,
-                                                                    postQuantInfo);
-            }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
-    __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                     uint32_t dealRowCount, uint32_t columnCount)
-    {
-        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUTPUT_T>();
-        PostQuantPerTensorImpl<T, OUTPUT_T, true>(tmpBmm2ResCastTensor, bmm2ResUb, postQuantScaleValue,
-                                                  postQuantOffsetValue, dealRowCount, constInfo.dSizeV,
-                                                  this->dSizeV_Align);
-    }
 
 public:
     __aicore__ inline void FlashDecode(FDparamsX &fd)

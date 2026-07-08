@@ -16,6 +16,7 @@
 #ifndef QUANT_FLASH_ATTN_KERNEL_FULLQUANT_MX_H_
 #define QUANT_FLASH_ATTN_KERNEL_FULLQUANT_MX_H_
 
+#include "../../../common/op_kernel/fia_public_define.h"
 #include "../utils/quant_flash_attn_common_def.h"
 #include "quant_flash_attn_block_cube_fullquant_mx.h"
 #include "quant_flash_attn_block_vec_fullquant_mx.h"

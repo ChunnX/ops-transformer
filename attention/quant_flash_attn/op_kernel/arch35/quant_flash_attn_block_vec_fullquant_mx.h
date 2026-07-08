@@ -16,7 +16,7 @@
 #define QUANT_FLASH_ATTN_BLOCK_VEC_FULLQUANT_MX_H_
 
 #include "kernel_operator.h"
-
+#include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
