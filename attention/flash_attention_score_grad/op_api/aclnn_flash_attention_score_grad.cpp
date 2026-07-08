@@ -1411,6 +1411,207 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     return ACLNN_SUCCESS;
 }
 
+static bool IsSameShapeExceptLastDim(const op::Shape &leftShape, const op::Shape &rightShape)
+{
+    if (leftShape.GetDimNum() != rightShape.GetDimNum()) {
+        return false;
+    }
+    for (size_t i = 0; i + 1 < leftShape.GetDimNum(); ++i) {
+        if (leftShape.GetDim(i) != rightShape.GetDim(i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static aclnnStatus InputOutputShapeCheck(const aclTensor *query, const aclTensor *queryRope,
+                                         const aclTensor *key, const aclTensor *keyRope,
+                                         const aclTensor *value, const aclTensor *dy,
+                                         const aclTensor *attentionIn, const aclTensor *dq,
+                                         const aclTensor *dqRope, const aclTensor *dk,
+                                         const aclTensor *dkRope, const aclTensor *dv,
+                                         const aclTensor *sinkIn, const aclTensor *dsinkOut,
+                                         const char *inputLayout)
+{
+    auto queryShape = query->GetViewShape();
+    auto keyShape = key->GetViewShape();
+    auto valueShape = value->GetViewShape();
+    auto dyShape = dy->GetViewShape();
+    auto attentionInShape = attentionIn->GetViewShape();
+    auto dqShape = dq->GetViewShape();
+    auto dkShape = dk->GetViewShape();
+    auto dvShape = dv->GetViewShape();
+    std::string inputLayoutStr = op::ToString(inputLayout).GetString();
+    auto expectedDimNum = (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") ? DIM_NUM_4 : DIM_NUM_3;
+    if (!(inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH" ||
+          inputLayoutStr == "SBH" || inputLayoutStr == "TND")) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In op [FlashAttentionScoreGrad], inputLayout is invalid, got [%s], expected BNSD/BSND/BSH/SBH/TND",
+            inputLayoutStr.c_str());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (queryShape.GetDimNum() != expectedDimNum || keyShape.GetDimNum() != expectedDimNum ||
+        valueShape.GetDimNum() != expectedDimNum || dyShape.GetDimNum() != expectedDimNum ||
+        attentionInShape.GetDimNum() != expectedDimNum || dqShape.GetDimNum() != expectedDimNum ||
+        dkShape.GetDimNum() != expectedDimNum || dvShape.GetDimNum() != expectedDimNum) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In op [FlashAttentionScoreGrad], shape dim num mismatch for inputLayout [%s], expected %lu dims, "
+            "query=%lu, keyIn=%lu, value=%lu, dy=%lu, attentionIn=%lu, dqOut=%lu, dkOut=%lu, dvOut=%lu",
+            inputLayoutStr.c_str(), expectedDimNum, queryShape.GetDimNum(), keyShape.GetDimNum(),
+            valueShape.GetDimNum(), dyShape.GetDimNum(), attentionInShape.GetDimNum(), dqShape.GetDimNum(),
+            dkShape.GetDimNum(), dvShape.GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (!IsSameShapeExceptLastDim(keyShape, valueShape)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In op [FlashAttentionScoreGrad], keyIn and value shape must be same except last dim, keyIn=%s, value=%s",
+            op::ToString(keyShape).GetString(), op::ToString(valueShape).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!IsSameShapeExceptLastDim(queryShape, dyShape)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In op [FlashAttentionScoreGrad], query and dy shape must be same except last dim, query=%s, dy=%s",
+            op::ToString(queryShape).GetString(), op::ToString(dyShape).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH") {
+        if (!(queryShape.GetDim(0) == keyShape.GetDim(0) && keyShape.GetDim(0) == valueShape.GetDim(0))) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], query/keyIn/value batch dim must be same for layout [%s], "
+                "query=%s, keyIn=%s, value=%s",
+                inputLayoutStr.c_str(), op::ToString(queryShape).GetString(), op::ToString(keyShape).GetString(),
+                op::ToString(valueShape).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (inputLayoutStr == "SBH") {
+        if (!(queryShape.GetDim(1) == keyShape.GetDim(1) && keyShape.GetDim(1) == valueShape.GetDim(1))) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], query/keyIn/value batch dim must be same for layout SBH, "
+                "query=%s, keyIn=%s, value=%s",
+                op::ToString(queryShape).GetString(), op::ToString(keyShape).GetString(),
+                op::ToString(valueShape).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(attentionIn, dyShape, return ACLNN_ERR_PARAM_INVALID);
+
+    if (queryRope != nullptr && keyRope != nullptr && dqRope != nullptr && dkRope != nullptr) {
+        auto queryRopeShape = queryRope->GetViewShape();
+        auto keyRopeShape = keyRope->GetViewShape();
+        auto dqRopeShape = dqRope->GetViewShape();
+        auto dkRopeShape = dkRope->GetViewShape();
+        if (queryRopeShape.GetDimNum() != DIM_NUM_3 || keyRopeShape.GetDimNum() != DIM_NUM_3 ||
+            dqRopeShape.GetDimNum() != DIM_NUM_3 || dkRopeShape.GetDimNum() != DIM_NUM_3) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], rope tensors must be 3 dims, queryRope=%lu, keyRope=%lu, "
+                "dqRopeOut=%lu, dkRopeOut=%lu",
+                queryRopeShape.GetDimNum(), keyRopeShape.GetDimNum(), dqRopeShape.GetDimNum(),
+                dkRopeShape.GetDimNum());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (!(queryRopeShape.GetDim(0) == queryShape.GetDim(0) &&
+              queryRopeShape.GetDim(1) == queryShape.GetDim(1) &&
+              queryRopeShape.GetDim(DIM_NUM_2) <= queryShape.GetDim(DIM_NUM_2))) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], queryRope shape must match query T/N dims and rope D <= query D, "
+                "queryRope=%s, query=%s",
+                op::ToString(queryRopeShape).GetString(), op::ToString(queryShape).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (!(keyRopeShape.GetDim(0) == keyShape.GetDim(0) &&
+              keyRopeShape.GetDim(1) == keyShape.GetDim(1) &&
+              keyRopeShape.GetDim(DIM_NUM_2) <= keyShape.GetDim(DIM_NUM_2))) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], keyRope shape must match keyIn T/N dims and rope D <= keyIn D, "
+                "keyRope=%s, keyIn=%s",
+                op::ToString(keyRopeShape).GetString(), op::ToString(keyShape).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dqRope, queryRope->GetViewShape(),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dkRope, keyRope->GetViewShape(),
+            return ACLNN_ERR_PARAM_INVALID);
+    }
+
+    if (sinkIn != nullptr && dsinkOut != nullptr && !sinkIn->IsEmpty() && !dsinkOut->IsEmpty()) {
+        if (sinkIn->GetViewShape().GetDimNum() != DIM_NUM_1 ||
+            dsinkOut->GetViewShape().GetDimNum() != DIM_NUM_1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], sinkInOptional and dsinkOut must be 1 dim, sinkInOptional=%lu, "
+                "dsinkOut=%lu",
+                sinkIn->GetViewShape().GetDimNum(), dsinkOut->GetViewShape().GetDimNum());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dsinkOut, sinkIn->GetViewShape(),
+            return ACLNN_ERR_PARAM_INVALID);
+    }
+
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dq, queryShape, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dk, keyShape, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(dv, valueShape, return ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus InputOutputDtypeAndShapeCheck(const aclTensor *query, const aclTensor *queryRope,
+                                                 const aclTensor *key, const aclTensor *keyRope,
+                                                 const aclTensor *value, const aclTensor *dy,
+                                                 const aclTensor *attentionIn, const aclTensor *dq,
+                                                 const aclTensor *dqRope, const aclTensor *dk,
+                                                 const aclTensor *dkRope, const aclTensor *dv,
+                                                 const aclTensor *sinkIn, const aclTensor *dsinkOut,
+                                                 const char *inputLayout)
+{
+    auto ret = InputDtypeCheck(query, key, value, dy);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = InputOutputShapeCheck(query, queryRope, key, keyRope, value, dy, attentionIn,
+        dq, dqRope, dk, dkRope, dv, sinkIn, dsinkOut, inputLayout);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    auto dqDtype = dq->GetDataType();
+    auto dkDtype = dk->GetDataType();
+    auto dvDtype = dv->GetDataType();
+    if (!(dqDtype == query->GetDataType() && dkDtype == key->GetDataType() &&
+          dvDtype == value->GetDataType())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In op [FlashAttentionScoreGrad], dqOut/dkOut/dvOut dtype must match query/keyIn/value dtype, "
+            "query=%s, keyIn=%s, value=%s, dqOut=%s, dkOut=%s, dvOut=%s",
+            op::ToString(DataType(query->GetDataType())).GetString(),
+            op::ToString(DataType(key->GetDataType())).GetString(),
+            op::ToString(DataType(value->GetDataType())).GetString(),
+            op::ToString(DataType(dqDtype)).GetString(), op::ToString(DataType(dkDtype)).GetString(),
+            op::ToString(DataType(dvDtype)).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (queryRope != nullptr && keyRope != nullptr && dqRope != nullptr && dkRope != nullptr) {
+        if (!(dqRope->GetDataType() == queryRope->GetDataType() &&
+              dkRope->GetDataType() == keyRope->GetDataType())) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], dqRopeOut/dkRopeOut dtype must match queryRope/keyRope dtype, "
+                "queryRope=%s, keyRope=%s, dqRopeOut=%s, dkRopeOut=%s",
+                op::ToString(DataType(queryRope->GetDataType())).GetString(),
+                op::ToString(DataType(keyRope->GetDataType())).GetString(),
+                op::ToString(DataType(dqRope->GetDataType())).GetString(),
+                op::ToString(DataType(dkRope->GetDataType())).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+
+    if (sinkIn != nullptr && dsinkOut != nullptr && !sinkIn->IsEmpty() && !dsinkOut->IsEmpty()) {
+        if (!(sinkIn->GetDataType() == op::DataType::DT_FLOAT &&
+              dsinkOut->GetDataType() == op::DataType::DT_FLOAT)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [FlashAttentionScoreGrad], sinkInOptional/dsinkOut dtype must be FLOAT32, "
+                "sinkInOptional=%s, dsinkOut=%s",
+                op::ToString(DataType(sinkIn->GetDataType())).GetString(),
+                op::ToString(DataType(dsinkOut->GetDataType())).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus PreFlashAttentionScoreGrad(const aclTensor **query, const aclTensor **key, const aclTensor **value,
                                               const aclTensor **dy, const aclTensor **attentionInOptional,
                                               FagInShapeInfo fagShape, FagShapeArray &fagShapeArray,
@@ -1715,6 +1916,10 @@ aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
     // calculate fag
     auto ret = FlashAttentionScoreGradGetWorkspace(
         query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
@@ -1811,6 +2016,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradGetWorkspaceSize(
                 "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     // calculate fag
     auto ret = FlashAttentionScoreGradGetWorkspace(
@@ -1982,6 +2191,10 @@ aclnnStatus aclnnFlashAttentionScoreGradV2GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
     // calculate fag
     auto ret = FlashAttentionScoreGradV2GetWorkspace(
         query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
@@ -2078,6 +2291,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV2GetWorkspaceSize(
                 "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     // calculate fag
     auto ret = FlashAttentionScoreGradV2GetWorkspace(
@@ -2268,6 +2485,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, queryRope, keyIn, keyInRope, value, dy, attentionInOptional,
+        dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
     // calculate fag
     auto ret = FlashAttentionScoreGradV3GetWorkspace(
         query, queryRope, keyIn, keyInRope, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
@@ -2339,6 +2560,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
                 "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     // calculate fag
     auto ret = FlashAttentionScoreGradGetWorkspace(
@@ -2542,7 +2767,11 @@ aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-   auto ret = FlashAttentionScoreGradV5GetWorkspace(
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, nullptr, keyIn, nullptr, value, dy, attentionInOptional,
+        dqOut, nullptr, dkOut, nullptr, dvOut, sinkInOptional, dsinkOut, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
+    auto ret = FlashAttentionScoreGradV5GetWorkspace(
         query, nullptr, keyIn, nullptr, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
         softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional, prefixOptional, 
         nullptr, nullptr, qStartIdxOptional, kvStartIdxOptional, scaleValue,
@@ -2667,6 +2896,11 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
                 "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, queryRope, keyIn, keyInRope, value, dy, attentionInOptional,
+        dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, sinkInOptional, dsinkOut, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
     // calculate fag
     auto ret = FlashAttentionScoreGradV5GetWorkspace(
         query, queryRope, keyIn, keyInRope, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
@@ -2790,6 +3024,11 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
                 "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+
+    auto checkRet = InputOutputDtypeAndShapeCheck(query, queryRope, keyIn, keyInRope, value, dy, attentionInOptional,
+        dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, sinkInOptional, dsinkOut, inputLayout);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
     // calculate fag
     auto ret = FlashAttentionScoreGradV5GetWorkspace(
         query, queryRope, keyIn, keyInRope, value, dy, pseShiftOptional, dropMaskOptional,

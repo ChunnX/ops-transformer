@@ -634,9 +634,18 @@ void SplitFD(FAMetaData &result)
     }
     // 计算每个核处理的load
     uint32_t maxVectorNum = result.usedCoreNum * result.vecCubeRatio;
+    uint32_t emptyVectorNum = maxVectorNum - result.fdRes.fdNum;
     uint64_t averageLoad = (totalFDLoad + maxVectorNum - 1U) / maxVectorNum; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < result.fdRes.fdNum; i++) {
+        if (emptyVectorNum == 0U) {
+            fdRes.taskIdx[curCoreIndex] = i;
+            fdRes.mStart[curCoreIndex] = 0U;
+            fdRes.mLen[curCoreIndex] = fdRes.mSize[i];
+            curCoreIndex++;
+            continue;
+        }
+
         uint32_t curFDVectorNum =
             std::max(fdRes.fdS2SplitNum[i] * fdRes.mSize[i] / averageLoad,
                      1UL); // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数且最少分一个核
@@ -644,12 +653,14 @@ void SplitFD(FAMetaData &result)
                                curFDVectorNum; // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         curFDVectorNum =
             (fdRes.mSize[i] + curAvgMSize - 1U) / curAvgMSize; // 重新计算正确的核数，避免因为向上取整导致有核为空
+        curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             fdRes.taskIdx[curCoreIndex] = i;
             fdRes.mStart[curCoreIndex] = vid * curAvgMSize;
             fdRes.mLen[curCoreIndex] = (vid < curFDVectorNum - 1) ? curAvgMSize : (fdRes.mSize[i] - vid * curAvgMSize);
             curCoreIndex++;
         }
+        emptyVectorNum -= (curFDVectorNum - 1U);    // 1: 空余核不包含FD自身的核，要-1
     }
     fdRes.fdUsedVecNum = curCoreIndex;
 }

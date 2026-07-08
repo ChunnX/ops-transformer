@@ -23,6 +23,7 @@
   $$
 
   其中：RotateHalf(q)表示将q的D维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
+
   $$
   \text{RotateHalf}(q)_{\text{i}} =
   \begin{cases}
@@ -77,8 +78,8 @@
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
-
-  </tbody></table>
+  </tbody>
+</table>
 
 - Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
 

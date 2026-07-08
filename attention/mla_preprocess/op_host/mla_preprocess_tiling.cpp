@@ -810,11 +810,16 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
     auto kvCacheOriginShape = context->GetInputShape(INDEX_KV_CACHE)->GetOriginShape();
 
-    // blockSize（每个 block 的逻辑行数，固定 128）的取数位置随 cache 格式不同：
-    //   - ND（cacheMode 0/1）：logical/origin shape 为 [blockNum, blockSize, 1, dim]，blockSize 在 dim1；
-    //   - NZ（cacheMode 2/3）：storage shape 为 [blockNum, C1, blockSize, C0]，blockSize 在 dim2。
+    // blockSize（每个 block 的逻辑行数，固定 128）的取数位置随 cache 传入的 shape 约定不同：
+    //   - ND（cacheMode 0/1）：shape 为 [blockNum, blockSize, 1, dim]，blockSize 在 dim1；
+    //   - NZ（cacheMode 2/3）有两种合法传法：
+    //       a) 物理 NZ storage shape [blockNum, C1, blockSize, C0]，blockSize 在 dim2；
+    //       b) 逻辑 shape + npu_format_cast(NZ)，storage/origin 仍为 [blockNum, blockSize, 1, dim]，
+    //          此时 dim2 恒为 1，blockSize 在 dim1。
     const bool isNzCache = (param.cacheMode == NUM2 || param.cacheMode == NUM3);  // 2:INT8_NZ, 3:NZ
-    if (isNzCache && kvCacheShape.GetDimNum() > DIM_2) {
+    const bool blockSizeFromStorageDim2 =
+        isNzCache && kvCacheShape.GetDimNum() > DIM_2 && kvCacheShape.GetDim(DIM_2) != 1;
+    if (blockSizeFromStorageDim2) {
         param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheShape.GetDim(DIM_2));
     } else {
         param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheOriginShape.GetDim(DIM_1));
@@ -846,8 +851,8 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
             kvRopeStorageBuf, kvRopeOriginBuf);
     OP_LOGD(context->GetNodeName(),
             "MlaPreprocess derived: kvCacheBlockSize=%lu (from %s.dim%d) kvCacheStride0=%lu kvCacheRopeStride0=%lu.",
-            param.kvCacheBlockSize, isNzCache ? "storage" : "origin", isNzCache ? 2 : 1,
-            param.kvCacheStride0, param.kvCacheRopeStride0);
+            param.kvCacheBlockSize, blockSizeFromStorageDim2 ? "storage" : "origin",
+            blockSizeFromStorageDim2 ? DIM_2 : DIM_1, param.kvCacheStride0, param.kvCacheRopeStride0);
 
     return param;
 }
