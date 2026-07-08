@@ -28,8 +28,8 @@ class BsaFullQuantKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
     
-    using ElementQ = typename BlockMmadQK::ElementA; // fp8_e4m3fn_t
-    using ElementK = typename BlockMmadQK::ElementB; // fp8_e4m3fn_t
+    using ElementQ = typename BlockMmadQK::ElementQ; // fp8_e4m3fn_t
+    using ElementK = typename BlockMmadQK::ElementK; // fp8_e4m3fn_t
     using ElementS = typename EpilogueOnlineSoftmax::ElementInput; // half/bloat16_t
     using ElementP = typename BlockMmadPV::ElementA; // fp8_e4m3fn_t
     using ElementV = typename BlockMmadPV::ElementB; // fp8_e4m3fn_t

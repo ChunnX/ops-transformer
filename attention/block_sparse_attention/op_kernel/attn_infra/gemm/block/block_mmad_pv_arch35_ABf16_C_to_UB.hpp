@@ -411,6 +411,7 @@ public:
                 auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
                                                 tla::MakeShape(mFixPAligned, nFixPAligned8));
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         // crossCoreSync after all fixPipe move

@@ -44,7 +44,7 @@ struct EpilogueBsaMask2Idx {
 template <bool transposedMm1_ = false>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
-    static constexpr transposedMm1 = transposedMm1_;
+    static constexpr bool transposedMm1 = transposedMm1_;
 };
 
 template <
@@ -55,7 +55,7 @@ struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
-    static constexpr transposedMm1 = transposedMm1_;
+    static constexpr bool transposedMm1 = transposedMm1_;
 };
 
 }  // namespace NpuArch::Epilogue
