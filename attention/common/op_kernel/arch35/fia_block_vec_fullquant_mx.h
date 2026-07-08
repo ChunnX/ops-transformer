@@ -389,7 +389,7 @@ public:
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
             uint64_t subLoopOffset = pScaleDataLen * 2;
             uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
                     {4, 1, 0, dstStride});
@@ -692,7 +692,7 @@ public:
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
             uint64_t subLoopOffset = pScaleDataLen * 2;
             uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
                          {copyCount, 1, 0, dstStride});
@@ -779,6 +779,7 @@ public:
                 }
             }
             if (gmDealRowCount == 0) {
+                SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
                 return;
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, gmDealRowCount);
