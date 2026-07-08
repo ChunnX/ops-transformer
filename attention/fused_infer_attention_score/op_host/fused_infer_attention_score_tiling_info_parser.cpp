@@ -1049,6 +1049,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
                 OP_LOGE(opName_,
                         "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.",
                         tmpAntiquant.GetDimNum());
+                return ge::GRAPH_FAILED;
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
@@ -1056,12 +1057,14 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
         if (tmpAntiquant.GetDimNum() != 2 && tmpAntiquant.GetDimNum() != 3) {
             OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.",
                     tmpAntiquant.GetDimNum());
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
         if (tmpAntiquant.GetDimNum() != 3) {
             OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.",
                     tmpAntiquant.GetDimNum());
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }
