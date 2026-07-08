@@ -365,6 +365,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 eps_sum_ub = T.alloc_ub((1,), calc_dtype)
                 softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
+                # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
+                re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
@@ -382,19 +384,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 5)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    for g_id in range(G):
-                        T.pipe_barrier("v")
-                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_max_ub[g_id])
+                    # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
+                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
                     T.pipe_barrier("v")
-                    T.tile.sub(bmm1_ub, bmm1_ub, sm_2d_ub)
+                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
                     T.pipe_barrier("v")
                     T.tile.exp(bmm1_ub, bmm1_ub)
-                    # rebuild sm_2d with sm_sum for div
-                    for g_id in range(G):
-                        T.pipe_barrier("v")
-                        T.tile.mul(sm_2d_ub[g_id, :], p_reduced_tmp_ub, sm_sum_ub[g_id])
+                    # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
                     T.pipe_barrier("v")
-                    T.tile.div(bmm1_ub, bmm1_ub, sm_2d_ub)
+                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
                     T.pipe_barrier("v")
                     T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
                     T.pipe_barrier("v")
@@ -412,6 +410,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte3", "v", 0)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
+                    # weight 广播：暂保留标量循环（64 PIPE_ALL）——下轮再用 row_expand 处理
+                    # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
                     for k in range(Nidx1):
                         T.pipe_barrier("v")
                         T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
