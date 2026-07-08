@@ -222,7 +222,7 @@ const std::map<QSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
 
 std::string QSMLADataTypeToSerialString(ge::DataType type);
 std::string QSMLALayoutToSerialString(QSMLALayout layout);
-std::string GetShapeStr(gert::Shape shape);
+std::string MQSMLAGetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 

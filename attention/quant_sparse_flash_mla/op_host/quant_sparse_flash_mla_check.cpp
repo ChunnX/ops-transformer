@@ -43,7 +43,7 @@ std::string QSMLALayoutToSerialString(QSMLALayout layout)
     }
 }
 
-std::string GetShapeStr(gert::Shape shape)
+std::string MQSMLAGetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
     oss << "[";

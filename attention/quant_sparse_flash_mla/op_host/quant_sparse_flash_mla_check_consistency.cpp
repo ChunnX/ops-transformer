@@ -92,7 +92,7 @@ ge::graphStatus QSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &par
         if (shape.GetDim(i) != shapeExpected.GetDim(i)) {
             OP_LOGE(opName_, "%s layout is %s, shape is %s, expected shape is %s.",
                 name.c_str(), QSMLALayoutToSerialString(layout).c_str(),
-                GetShapeStr(shape).c_str(), GetShapeStr(shapeExpected).c_str());
+                MQSMLAGetShapeStr(shape).c_str(), MQSMLAGetShapeStr(shapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
