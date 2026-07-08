@@ -252,10 +252,10 @@ __aicore__ inline void DrainUrmaConnections(
 }
 
 // =============================================
-// CombineSendTokenToRemote: 编排器 — 分核、VECCALC 分配、调用三阶段子函数
+// CombineSendTokenToRemote: single-tile sender; tile scheduling is owned by the caller.
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline void CombineSendTokenToRemote(const Params& params)
+__aicore__ inline void CombineSendTokenToRemote(uint32_t tileId, uint32_t tileNum, const Params& params)
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
         sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
@@ -263,15 +263,12 @@ __aicore__ inline void CombineSendTokenToRemote(const Params& params)
         (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
-    // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
-    uint32_t aivIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t aivNum = GetBlockNum();
     uint32_t rankId = params.combineCommParams.rankId;
     uint32_t worldSize = params.tilingData->epWorldSize;
-    uint32_t rankPerCore = worldSize / aivNum;
-    uint32_t remainder = worldSize % aivNum;
-    uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
-    uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
+    uint32_t rankPerTile = worldSize / tileNum;
+    uint32_t remainder = worldSize % tileNum;
+    uint32_t startRankId = rankPerTile * tileId + (tileId < remainder ? tileId : remainder);
+    uint32_t processRankNum = rankPerTile + (tileId < remainder ? 1 : 0);
     uint32_t endRankId = startRankId + processRankNum;
     uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t),
         (uint64_t)ALIGN_32);
@@ -499,6 +496,112 @@ __aicore__ inline void CombineTokenGroup(
     
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+}
+
+__aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numGroups, uint32_t totalTiles,
+    uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
+{
+    uint32_t baseSize = totalTiles / numGroups;
+    uint32_t remainder = totalTiles % numGroups;
+    uint32_t boundary = remainder * (baseSize + 1);
+
+    if (tileId < boundary) {
+        myGroup = tileId / (baseSize + 1);
+        myIdxInGrp = tileId % (baseSize + 1);
+        myGrpSize = baseSize + 1;
+    } else {
+        uint32_t adjusted = tileId - boundary;
+        myGroup = remainder + adjusted / baseSize;
+        myIdxInGrp = adjusted % baseSize;
+        myGrpSize = baseSize;
+    }
+}
+
+// ProcessCombineSingleCore has three independent input groups:
+// 1) tile scheduling: which logical tile owns token grouping and which sync slot it waits on;
+// 2) expert context: expert/rank/shape values used to locate triple records and tile counts;
+// 3) buffer context: GM/UB storage used by the combine implementation.
+// Keeping them separate avoids passing a long mixed list where tile ids can be mistaken for physical core ids.
+struct CombineTileSchedule {
+    uint32_t groupTileId;
+    uint32_t totalGroupTiles;
+    uint32_t syncTileId;
+    uint32_t syncTileNum;
+};
+
+struct CombineExpertContext {
+    uint32_t expertIdx;
+    uint32_t rankId;
+    uint32_t k;
+    uint32_t expertBeforeCnt;
+    uint32_t mExpert;
+};
+
+struct CombineBufferContext {
+    GM_ADDR gmm2OutAddr;
+    int64_t combineUbTensorSize;
+};
+
+template <int32_t CombineQuantMode>
+__aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileSchedule,
+    const CombineExpertContext& expertContext, const CombineBufferContext& bufferContext, const Params& params)
+{
+    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(expertContext.mExpert, MegaMoeImpl::L1_TILE_M_256);
+    if (tokenGroupsThisExpert == 0 || tileSchedule.totalGroupTiles == 0) {
+        return;
+    }
+
+    uint32_t myGroup = 0;
+    uint32_t myIdxInGrp = 0;
+    uint32_t myGrpSize = 0;
+    ComputeCombineTileGrouping(tileSchedule.groupTileId, tokenGroupsThisExpert, tileSchedule.totalGroupTiles,
+        myGroup, myIdxInGrp, myGrpSize);
+    if (myGroup >= tokenGroupsThisExpert || myGrpSize == 0) {
+        return;
+    }
+
+    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(expertContext.k, MegaMoeImpl::L1_TILE_N);
+    AscendC::GlobalTensor<int32_t> gmm2CombineSyncCounter;
+    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
+    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
+        + expertContext.expertIdx * tileSchedule.syncTileNum * INT_CACHELINE
+        + tileSchedule.syncTileId * INT_CACHELINE;
+    while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
+        int64_t st = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - st < 100) {
+        };
+    }
+
+    uint32_t nScale = Ops::Base::CeilDiv(expertContext.k, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(
+        expertContext.k + nScale, static_cast<uint32_t>(ALIGN_32));
+    uint32_t tokenStart = myGroup * MegaMoeImpl::L1_TILE_M_256;
+    uint32_t tokenCount = (MegaMoeImpl::L1_TILE_M_256 < expertContext.mExpert - tokenStart) ?
+        MegaMoeImpl::L1_TILE_M_256 : expertContext.mExpert - tokenStart;
+    uint32_t tokensPerTile = Ops::Base::CeilDiv(tokenCount, myGrpSize);
+    int32_t myTokenOffset = myIdxInGrp * tokensPerTile;
+    int32_t myTokenCount = 0;
+    if (myTokenOffset < static_cast<int32_t>(tokenCount)) {
+        myTokenCount = (tokensPerTile < tokenCount - myTokenOffset) ?
+            tokensPerTile : tokenCount - myTokenOffset;
+    }
+    if (myTokenCount <= 0) {
+        return;
+    }
+
+    AscendC::SetCtrlSpr<60, 60>(0);
+    int64_t offset = 0;
+    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
+    offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr
+        + (expertContext.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
+    PipeBarrier<PIPE_MTE2>();
+    CombineTokenGroup<CombineQuantMode, bfloat16_t>(
+        tokenStart + myTokenOffset, myTokenCount, expertContext.k, expertContext.expertIdx, expertContext.rankId,
+        bufferContext.gmm2OutAddr, params, tripleTensor, bufferContext.combineUbTensorSize,
+        offset, quantTokenSizeBytes);
 }
 
 }  // namespace MegaMoeCombineImpl
