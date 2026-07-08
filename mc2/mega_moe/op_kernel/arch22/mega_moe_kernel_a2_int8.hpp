@@ -1038,7 +1038,7 @@ private:
 
         // prevGroupSum1:   本 core 所处理的 dstEpIdx 在 peer mem 中已接收的 token 基准偏移
         // prevGroupSum2:   RuntimeRank(params) 的 peer mem 中已接收 token 的基准偏移（所有 core 共享）
-        uint32_t prevGroupSum1Arr[MAX_RANK_SIZE] = {0};
+        uint32_t prevGroupSum1Arr[MAX_RANK_PER_CORE] = {0};
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1194,10 +1194,8 @@ private:
         CombineV2(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
-#ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params, params.EP * paddedExpertNumAligned);
         AscendC::SyncAll<true>();
-#endif
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1241,13 +1239,11 @@ private:
         uint32_t preSrcExpertSum = 0;
         uint32_t n2 = params.problemShape.k();
         uint32_t k2 = params.problemShape.n() / 2;
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(128 * 1024);
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(
             shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
-#endif
         icache_preload(8);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx));
@@ -1294,7 +1290,6 @@ private:
                 }
             }
 
-#ifdef HCCL_COMM
             AscendC::SyncAll<true>();
             int32_t preSumRankInExpert = 0;
             for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
@@ -1337,7 +1332,6 @@ private:
                     rdmaUbLocal,
                     rdmaUbLocalHead);
             }
-#endif
             preSrcExpertSum += currentExpertM;
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
@@ -1405,6 +1399,7 @@ private:
         int64_t offsetFlag;  // EP × expertPerRank × 4 bytes；每个 sender rank 占 expertPerRank 个 uint64_t slot，存放 epoch 到达标志
         int64_t offsetWinOutA;                   // A tensor in winOut (dispatch, outgoing tokens)
         int64_t offsetWinOutD;                   // D tensor in winOut (combine, outgoing FFN results)
+        int64_t offsetAllgatherFlag;
         int64_t offsetWinOutPeerPerTokenScale;   // per-token scale in winOut
         int64_t offsetWinOutFlag;                // Dispatch Flag 区 in winOut
         int64_t offsetWinOutPeerTokenPerExpert;  // TPE 区 in winOut
@@ -1422,33 +1417,39 @@ private:
             const int64_t bs = params.problemShape.m();
             const int64_t topK = params.topK;
 
-            // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line（与 BF16/W4A8 统一）
-            int64_t flagSize = EP * E * 64;
+            // Dispatch Flag: EP×MAX_EXPERTS_PER_RANK(128)×64B，每 slot 占 64B cache line
+            // E 取最大值 128，使 flag 区域位置固定，与实际 expertPerRank 无关
+            int64_t flagSize = EP * MAX_EXPERTS_PER_RANK * 64;
+            // Allgather Flag: EP×64B（与 BF16 统一布局，预留）
+            int64_t allgatherFlagSize = EP * 64;
             // PerTokenScaleSize: M × sizeof(float)
             int64_t offsetPerTokenScaleSize = M * sizeof(float);
             // AAfterDispatchSize: dispatch 接收数据区INT8， M × (h + ALIGN_512)，原始token
             int64_t AAfterDispatchSize = M * (h + ALIGN_512);
-            // DAfterCombineSize: combine 接收数据区BF16，bs × topK × h × sizeof(int16_t)，FFN过后的数据
-            int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
 
-            // WinIn: 纯从前向后布局 (front-to-back)，与 A3 对齐
-            // RESERVED → A → perTokenScale → D → flag → TPE
+            int64_t usableEnd = static_cast<int64_t>(shmem.SegmentSize()) -
+                static_cast<int64_t>(shmem.TailReservedSize());
+            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)
+            // （与 ResetTokenPerExpert 中 num 一致）
+            int64_t tpeSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
+                static_cast<int64_t>(sizeof(int32_t));
+
+            // WinIn: A/scale/D 从前向后；flag 紧贴 usableEnd，allgatherFlag/TPE 从后往前
             offsetA = RESERVED_SPACE_SIZE;
             offsetPeerPerTokenScale = offsetA + AAfterDispatchSize;
             offsetD = offsetPeerPerTokenScale + offsetPerTokenScaleSize;
-            offsetFlag = offsetD + DAfterCombineSize;
-            offsetPeerTokenPerExpert = offsetFlag + flagSize;
+            offsetFlag = usableEnd - flagSize;
+            offsetWinOutFlag = offsetFlag;  // FLAG 共享：winIn 与 winOut 同一区域
+            offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
+            offsetWinOutPeerTokenPerExpert = offsetAllgatherFlag - tpeSize;           // winOut TPE
+            offsetPeerTokenPerExpert = offsetWinOutPeerTokenPerExpert;                // winIn TPE
 
-            // WinOut: 纯从前向后布局，A/D 各占独立偏移
+            // WinOut: A/scale/D 从前向后布局
             // ABeforeDispatchSize: dispatch 发送数据区INT8， bs * topK × (h + ALIGN_512)，原始token
             int64_t ABeforeDispatchSize = bs * topK * (h + ALIGN_512);
-            // DBeforeCombineSize: combine 发送数据区BF16，M × h × sizeof(int16_t)，FFN过后的数据
-            int64_t DBeforeCombineSize = M * h * sizeof(int16_t);
             offsetWinOutA = RESERVED_SPACE_SIZE;
             offsetWinOutPeerPerTokenScale = offsetWinOutA + ABeforeDispatchSize;
             offsetWinOutD = offsetWinOutPeerPerTokenScale + offsetPerTokenScaleSize;
-            offsetWinOutFlag = offsetWinOutD + DBeforeCombineSize;
-            offsetWinOutPeerTokenPerExpert = offsetWinOutFlag + flagSize;
         }
     };
 
