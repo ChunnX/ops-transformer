@@ -1175,7 +1175,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::SplitFD(SplitResult &splitRes)
             curCoreIndex++;
         }
         // 更新冗余vec核数
-        emptyVectorNum -= (curFDVectorNum - 1U);    // 1: 空余核不包含FD自身的核，要-1
+        emptyVectorNum -= (curFDVectorNum - 1U); // 1: 空余核不包含FD自身的核，要-1
     }
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }
