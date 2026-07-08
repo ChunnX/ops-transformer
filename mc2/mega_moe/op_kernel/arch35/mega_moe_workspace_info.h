@@ -226,9 +226,10 @@ struct WorkspaceInfo {
             uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
             uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
                 static_cast<uint32_t>(ALIGN_512));
-            uint32_t serverWorkspaceBytes = ALIGN_32 + tilingData->bs * recordBytes;
+            int64_t serverWorkspaceBytes = static_cast<int64_t>(ALIGN_32) +
+                static_cast<int64_t>(tilingData->bs) * recordBytes;
             workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
+                static_cast<int64_t>(serverNum) * serverWorkspaceBytes, static_cast<int64_t>(ALIGN_512));
             
             dispatchCursorPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32),
@@ -239,17 +240,20 @@ struct WorkspaceInfo {
                 static_cast<int64_t>(ALIGN_512));
             
             dispatchL2CommPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
                 static_cast<int64_t>(ALIGN_512));
 
             combineCommDataPtr = base + workspaceSize;
-            uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-                                                                  sizeof(uint32_t)), (int64_t)ALIGN_32);
+            int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
+                sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
             // 每个 token 含数据+三元组(32B)
-            uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
+            int64_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
                 (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-            uint32_t maxDataSize = Ops::Base::CeilAlign((int64_t)(tilingData->bs * maxDataSizePerToken *
-                tilingData->expertPerRank * tilingData->epWorldSize), (int64_t)ALIGN_512);
+            int64_t maxDataSize = Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
+                static_cast<int64_t>(tilingData->expertPerRank) *
+                static_cast<int64_t>(tilingData->epWorldSize), (int64_t)ALIGN_512);
             workspaceSize += maxDataSize;
 
             combineCommNotifyPtr = base + workspaceSize;
