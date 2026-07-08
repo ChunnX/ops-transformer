@@ -1304,67 +1304,23 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
-
-    GlobalTensor<int32_t> gmm2CombineSyncCounter;
-    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
-
-    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
-
-    uint32_t mExpert = Get<M_VALUE>(gmm2State.problemShape);
-    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(mExpert, L1_TILE_M_256);
-
-    uint32_t coreIdForGrouping = aivCoreIdx_;
-    uint32_t totalCoresForGrouping = blockAivNum_;
+    uint32_t groupTileId = aivCoreIdx_;
+    uint32_t totalGroupTiles = blockAivNum_;
     if constexpr (ENABLE_A8W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
-        coreIdForGrouping = aivCoreIdx_ / 2;
-        totalCoresForGrouping = blockAivNum_ / 2;
+        groupTileId = aivCoreIdx_ / 2;
+        totalGroupTiles = blockAivNum_ / 2;
     }
-
-    uint32_t myGroup, myIdxInGrp, myGrpSize;
-    MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
-        myGroup, myIdxInGrp, myGrpSize);
-
-    if (myGroup >= tokenGroupsThisExpert) {
-        return;
-    }
-
-    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
-        + expertIdx * blockAivNum_ * INT_CACHELINE
-        + aivCoreIdx_ * INT_CACHELINE;
-    while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup)
-    {
-        int64_t st = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - st < 100) {
-        };
-    }
-    uint32_t tokenStart = myGroup * L1_TILE_M_256;
-    uint32_t tokenCount = (L1_TILE_M_256 < mExpert - tokenStart) ? L1_TILE_M_256 : mExpert - tokenStart;
-    uint32_t tokensPerCore = Ops::Base::CeilDiv(tokenCount, myGrpSize);
-    int32_t myTokenOffset = myIdxInGrp * tokensPerCore;
-    int32_t myTokenCount = 0;
-    if (myTokenOffset < (int32_t)tokenCount) {
-        myTokenCount = (tokensPerCore < tokenCount - myTokenOffset) ? tokensPerCore : tokenCount - myTokenOffset;
-    }
-    if (myTokenCount > 0) {
-        AscendC::SetCtrlSpr<60, 60>(0);
-        int64_t offset = 0;
-        LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
-        offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
-        AscendC::GlobalTensor<int32_t> tripleGm;
-        tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
-            + (gmm2State.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
-        PipeBarrier<PIPE_MTE2>();
-        MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t>(
-            tokenStart + myTokenOffset, myTokenCount, k_, expertIdx, rankId_,
-            gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
-            offset, quantTokenSizeBytes);
-    }
+    MegaMoeCombineImpl::CombineTileSchedule tileSchedule{
+        groupTileId, totalGroupTiles, aivCoreIdx_, blockAivNum_};
+    MegaMoeCombineImpl::CombineExpertContext expertContext{
+        expertIdx, rankId_, k_, gmm2State.expertBeforeCnt, Get<M_VALUE>(gmm2State.problemShape)};
+    MegaMoeCombineImpl::CombineBufferContext bufferContext{
+        gmmAddrInfo.gmm2OutGlobal, combineUbTensorSize_};
+    MegaMoeCombineImpl::ProcessCombineSingleCore<CombineQuantMode>(
+        tileSchedule, expertContext, bufferContext, params_);
 }
 
 // =============================================
@@ -1677,7 +1633,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if (GetSubBlockIdx() == 1) {
             LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
             hcomm_.Init(hcommTensor_, ALIGN_512);
-            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(params_);
+            uint32_t sendTileId = blockIdx_;
+            uint32_t sendTileNum = blockNum_;
+            MegaMoeCombineImpl::CombineSendTokenToRemote<bfloat16_t>(sendTileId, sendTileNum, params_);
         }
     }
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
