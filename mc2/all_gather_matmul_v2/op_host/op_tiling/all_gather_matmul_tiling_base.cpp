@@ -389,9 +389,9 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rc
 
 /**
  * Due to communication constraints: 
- * 1. The maximum number of communication attempts is limited to 63
- * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
+ * 1. The maximum number of communication attempts is limited to HCCL_MAX_COMM_TILES
+ * 2. The data volume of a single communication shall not exceed 256MB in CCU
+ * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
@@ -401,9 +401,9 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
                 still exceeds 256MB.", sizeOfSingleM),
                 return ge::GRAPH_FAILED);
     
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, HCCL_MAX_COMM_TILES) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 63 parts (rounded up), the size %lu \
+        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 62 parts (rounded up), the size %lu \
                 still exceeds 256MB.", sizeOfSplitM),
                 return ge::GRAPH_FAILED);
 
