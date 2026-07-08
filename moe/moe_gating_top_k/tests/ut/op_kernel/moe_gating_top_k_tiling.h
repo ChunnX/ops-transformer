@@ -42,6 +42,7 @@ struct MoeGatingTopKTilingData {
     float routedScalingFactor = 0;
     float eps = 0;
     int64_t calTmpBufUbSize = 0;
+    bool hashFlag = false;
 };
 #pragma pack()
 
