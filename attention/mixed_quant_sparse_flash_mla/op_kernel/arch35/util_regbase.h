@@ -23,11 +23,6 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
-constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
-constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
-constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
-constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8;
-constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -78,6 +73,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t firstFdDataWorkspaceIdx = 0;
     bool isS2Split = false;
     int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
 };
 
 #define COMMON_RUN_INFO \
@@ -121,6 +117,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     bool    isCmp; \
     bool    isS2Split = false; \
     int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -132,16 +129,6 @@ struct RunInfo {
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
     int64_t firstFdDataWorkspaceIdx = 0;
-};
-
-struct FdRunInfo {
-    bool coreEnable = false;
-    int64_t bn2Idx = 0;
-    int64_t mIdx = 0;
-    int64_t workspaceIdx = 0;
-    int64_t workspaceNum = 0;
-    int64_t mStartIdx = 0;
-    int64_t mNum = 0;
 };
 
 #define COMMON_CONST_INFO \

@@ -45,6 +45,8 @@ static const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
 static const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 static const std::string A2_A3_PLATFORM_LOG = "A2/A3";
 static const std::string A5_PLATFORM_LOG = "A5";
+constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
+constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
 {
     return tensor != nullptr && tensor->GetShapeSize() > 0;
@@ -2050,6 +2052,27 @@ void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_bmm2ResUbSize(bmm2ResUbSize_);
 }
 
+uint32_t SparseFlashMlaTiling::CalcFdLogicalSlotCount(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const
+{
+    bool isSplitG = IsA5Arch(tilingInfo->npuArch) && tilingInfo->gSize > 64;
+    if (isSplitG) {
+        return aicNum >> 1U;
+    }
+    return aicNum;
+}
+
+uint64_t SparseFlashMlaTiling::CalcFdStagingWorkspaceSize(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const
+{
+    if (!IsA5Arch(tilingInfo->npuArch) || aicNum == 0U) {
+        return 0ULL;
+    }
+
+    const uint64_t slotCount = CalcFdLogicalSlotCount(tilingInfo, aicNum) * FD_MAX_S2_SPLIT_NUM;
+    // 2表示max和sum两个缓冲区
+    const uint64_t bytesPerSlot = tilingInfo->gSize * sizeof(float) * (headDimAlign_ + 2ULL * FD_BROADCAST_ELEMS);
+    return slotCount * bytesPerSlot;
+}
+
 // --------------------------SparseFlashMlaTiling类成员函数定义----------------------
 ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
 {
@@ -2070,13 +2093,14 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
-        if (tilingInfo->gSize > 64 || tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+        bool isSplitG = tilingInfo->gSize > 64;
+        if (isSplitG || tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
             constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
             constexpr uint32_t S2_BASE_SIZE = 128;
             constexpr uint32_t D_SIZE = 512;
             constexpr uint32_t VEC_RES_ELEM_SIZE = 2;
             uint32_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
-            if (tilingInfo->gSize > 64) {
+            if (isSplitG) {
                 gmSize *= (aicNum >> 1U);
             } else {
                 gmSize *= aicNum;
@@ -2095,6 +2119,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum;
         }
     }
+    workspaceSize += static_cast<uint32_t>(CalcFdStagingWorkspaceSize(tilingInfo, aicNum));
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
