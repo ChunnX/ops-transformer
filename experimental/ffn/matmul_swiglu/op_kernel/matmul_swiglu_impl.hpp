@@ -28,13 +28,15 @@ namespace NsMatmulSwiglu {
 using namespace AscendC;
 using namespace matmul;
 
+constexpr int32_t NUM_BUFFER = 2;  // 输入/输出队列双缓冲深度
+
 // xType: 输入/输出数据类型; cType: matmul 累加与中间数据类型(固定 fp32)
 template <typename xType, typename cType>
 class MatmulSwigluImpl {
 public:
-    using AType    = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
-    using BType    = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
-    using CTypeMm  = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
+    using AType = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
+    using BType = MatmulType<TPosition::GM, CubeFormat::ND, xType, false>;
+    using CTypeMm = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
     using BiasType = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
 
     Matmul<AType, BType, CTypeMm, BiasType> mm;  // 单 matmul: x[M,K] @ weight[K,2N] -> [M,2N]
@@ -46,13 +48,13 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y, GM_ADDR userWs,
                                 const optiling::MatmulSwigluTilingData* tilingData)
     {
-        m_           = tilingData->m;
-        k_           = tilingData->k;
-        n_           = tilingData->n;
-        twoN_        = tilingData->twoN;
-        hasBias_     = (tilingData->hasBias == 1U);
-        transposeW_  = (tilingData->transposeWeight == 1U);
-        tileN_       = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
+        m_ = tilingData->m;
+        k_ = tilingData->k;
+        n_ = tilingData->n;
+        twoN_ = tilingData->twoN;
+        hasBias_ = (tilingData->hasBias == 1U);
+        transposeW_ = (tilingData->transposeWeight == 1U);
+        tileN_ = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
 
         xGm_.SetGlobalBuffer((__gm__ xType*)x, m_ * k_);
         wGm_.SetGlobalBuffer((__gm__ xType*)weight, k_ * twoN_);
@@ -64,10 +66,10 @@ public:
 
         // 向量阶段每次处理一块 tileN 列(而非整行), 避免大 N 时 UB 溢出:
         // gate/up/sig(fp32) + y(xType), 缓冲按 tileN 开。
-        pipe.InitBuffer(inQueGate_, 2, tileN_ * sizeof(cType));
-        pipe.InitBuffer(inQueUp_, 2, tileN_ * sizeof(cType));
+        pipe.InitBuffer(inQueGate_, NUM_BUFFER, tileN_ * sizeof(cType));
+        pipe.InitBuffer(inQueUp_, NUM_BUFFER, tileN_ * sizeof(cType));
         pipe.InitBuffer(sigBuf_, tileN_ * sizeof(cType));
-        pipe.InitBuffer(outQueY_, 2, tileN_ * sizeof(xType));
+        pipe.InitBuffer(outQueY_, NUM_BUFFER, tileN_ * sizeof(xType));
     }
 
     __aicore__ inline void Process()
@@ -154,9 +156,9 @@ private:
     }
 
 private:
-    TQue<QuePosition::VECIN, 2> inQueGate_;
-    TQue<QuePosition::VECIN, 2> inQueUp_;
-    TQue<QuePosition::VECOUT, 2> outQueY_;
+    TQue<QuePosition::VECIN, NUM_BUFFER> inQueGate_;
+    TQue<QuePosition::VECIN, NUM_BUFFER> inQueUp_;
+    TQue<QuePosition::VECOUT, NUM_BUFFER> outQueY_;
     TBuf<TPosition::VECCALC> sigBuf_;
 
     GlobalTensor<xType> xGm_;
