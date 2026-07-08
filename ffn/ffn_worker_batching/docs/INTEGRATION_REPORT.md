@@ -52,14 +52,20 @@
 
 ## 4. UB 216/248 口径收敛（issue_20260708_ub-size-host-kernel-mismatch_01）
 
-**结论：统一以 `GetCoreMemSize(CoreMemType::UB)` 返回值（arch35=253952 B=248KB）为 host/kernel 唯一 UB 真值源。**
+> ⚠️ **本节原结论（"以 248KB 为唯一真值源、用同一 ubSize 即不溢出"）已被穿刺2 实测推翻，2026-07-08 会话恢复后修正。** 原文见文末删除线区，最终结论如下。
 
-- **根因定性**：216KB 与 248KB 测的不是同一个量。`GetCoreMemSize(UB)`（host tiling 用）读 CANN `platform_config/Ascend950DT_*.ini` 的 `ub_size`——本环境实测全部 `ub_size=253952`，是算子编译/tiling 侧的**权威可用 UB**；`ACL_DEV_ATTR_UBUF_PER_VECTOR_CORE`（穿刺1/3 Kernel 直调工装用）走 ACL runtime attr 返回 221184，是穿刺工装的保守 runtime 口径（穿刺1 还自扣 16KB），**非算子编译期上限**。两者服务对象不同，非真实硬件冲突。
-- **落地**：kernel 侧 UB 派生只经 `ScheduleContextInfo.ubSize`（由 host TilingData 拷入），**无任何直接 UB 查询、无字节常量**（grep 验证 arch35/*.h 仅 tiling_def.h 注释提及）；host 侧只用 `GetCoreMemSize(UB)`。
-- **不溢出数学保证**：单核 sort 4×InitBuffer = `32×sortNum` 字节，单核触发上界 `totalLength≤sortLoopMaxElement=ubSize/32`，故合计≈`ubSize`——host/kernel 用同一个 248KB，预算自洽贴合；超上界自动走多核（每核≤sortLoopMaxElement），同样不溢出。编译器按 248KB 接受 InitBuffer 无 overflow 报错。
-- **遗留**：A=1024 上界大 shape 多核 NPU 实跑不溢出验证，交穿刺/汇合在真机确认（PLAN 迭代二穿刺2）。
+**修正后结论：`GetCoreMemSize(UB)` 返回平台标称值（248KB=253952），但 vector core 实际可用少 32KB 系统预留（=216KB）。host tiling 派生 UB 阈值前须扣减 32KB 系统预留，再作为唯一真值源写入 TilingData 供 kernel 使用。**
 
-issue 状态已更新为 ✅已收敛。
+- **根因定性（修正）**：32KB 差是**真实系统预留**，非工装口径差。穿刺2（`probe_iter2_boundary_maxshape`）同进程实测：kernel 侧 `ACL_DEV_ATTR_UBUF_PER_VECTOR_CORE`=221184(216KB) 是 vector core 物理可用上界；host 侧 `GetCoreMemSize(UB)`=253952(248KB) 是平台标称值。原"数学保证"只算了**单核**（贴合 248KB），**漏算多核**：多核 sort 每核同样 4-buffer，每核 tile 打到 SLM=7936 时 footprint=248KB **超物理 216KB→溢出**。
+- **修复**：`_tiling_arch35.cpp::GetPlatformInfo()` 中 `GetCoreMemSize(UB)` 后扣 `UB_SYS_RESERVED_SIZE=32*1024`→216KB→SLM=6912（穿刺2 实证 FITS）。对齐同仓 `mhc_pre_sinkhorn_backward` arch35。kernel 侧仍只经 `ScheduleContextInfo.ubSize` 单一取值（拿到扣减后的 216KB），无字节常量；不违反「UB size no hardcode」（运行时取值+扣固定系统预留）。
+- **验证**：ascend950 --opkernel 重编 EXIT0+3 binary；op_host UT 期望值同步（253952→221184/6912、262144→229376/7168）。**遗留**：多核大 shape NPU 实跑最终确认（穿刺2 已在等价构造下实证 FITS）。
+
+详见 `issues/issue_20260708_ub-size-host-kernel-mismatch_01.md` §最终修复。issue 状态：✅已真正修复。
+
+<details><summary>原（已推翻）结论存档</summary>
+
+~~统一以 GetCoreMemSize(UB)=248KB 为唯一真值源；216KB 仅穿刺工装保守口径、非真实冲突；单核 4×InitBuffer≈ubSize 预算自洽、超上界走多核同样不溢出。~~ —— 单核记账正确但漏多核，被穿刺2 实测 footprint 记账推翻。
+</details>
 
 ## 5. 交付件
 

@@ -51,6 +51,12 @@ constexpr int64_t MAX_SESSION_NUM = 1024;
 constexpr int64_t MAX_K_NUM = 64;
 constexpr int64_t TH_RECV_CORE_NUM = 32;
 constexpr int64_t TH_RECV_Y_NUM = 200000;
+
+// arch35 系统预留 UB：GetCoreMemSize(UB) 返回平台标称 UB（本机 248KB），但 vector core
+// 实际可用比标称少 32KB 系统预留（穿刺2 同进程实测 kernel 侧 UBUF_PER_VECTOR_CORE=216KB）。
+// sort 多核每 loop 4-buffer footprint 按标称 248KB 派生 sortLoopMaxElement 会超物理 UB 溢出，
+// 故派生前扣减系统预留，与同仓 arch35 算子（mhc_pre_sinkhorn_backward）一致。非写死 UB 容量。
+constexpr uint64_t UB_SYS_RESERVED_SIZE = 32 * 1024;
 } // namespace
 
 class FfnWorkerBatchingRegbaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -108,9 +114,11 @@ ge::graphStatus FfnWorkerBatchingRegbaseTiling::GetPlatformInfo()
         return ge::GRAPH_FAILED);
 
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
-    OP_CHECK_IF(ubSize_ == 0,
-        OP_LOGE(context_->GetNodeName(), "Get ubSize failed."),
+    OP_CHECK_IF(ubSize_ <= UB_SYS_RESERVED_SIZE,
+        OP_LOGE(context_->GetNodeName(), "Get ubSize failed: %lu <= sys reserved %lu.", ubSize_, UB_SYS_RESERVED_SIZE),
         return ge::GRAPH_FAILED);
+    // 扣减系统预留，得 vector core 实际可用 UB（与 kernel 侧真实口径对齐，防多核 sort footprint 溢出）。
+    ubSize_ -= UB_SYS_RESERVED_SIZE;
 
     sysWorkspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;

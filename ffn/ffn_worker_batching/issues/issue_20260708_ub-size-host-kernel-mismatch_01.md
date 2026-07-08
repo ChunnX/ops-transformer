@@ -4,7 +4,8 @@
 arch35(DAV_3510) UB 容量 host 侧(248KB) 与 kernel 侧(216KB) 查询口径不一致，大 shape 下有 UB 溢出风险
 
 ## 状态
-✅ 已收敛（迭代二整合，2026-07-08）
+✅ 已真正修复（2026-07-08 会话恢复后，changwei step4→step5 之间）
+⚠️ 下方"收敛结论（迭代二整合）"一节的定性（"248KB 是权威值、216KB 仅工装口径、用同一 ubSize 即自洽不溢出"）**已被穿刺2 实测推翻，保留仅作过程记录，勿再据其结论**。真实修复见本节下方「## 最终修复」。
 
 ## 背景
 迭代一穿刺阶段，两个穿刺各自用不同接口查询单 vector core 的 UB 容量，返回值不一致：
@@ -51,7 +52,38 @@ arch35(DAV_3510) UB 容量 host 侧(248KB) 与 kernel 侧(216KB) 查询口径不
 - PLAN 迭代二穿刺2（A=1024 上界大 shape 多核）仍是 NPU 实跑验证 UB 不溢出的天然载体，交由穿刺/汇合验证在真机确认（本迭代交付口径为「编译通过 + 口径统一」，真机对拍由穿刺/汇合负责）。
 - 若未来某芯片 `GetCoreMemSize` 与实际可用 UB 出现真实差异（非工装口径差），应在 host tiling 侧统一加保守 reserve，仍禁止 kernel 侧写死。
 
+## 最终修复（2026-07-08，会话恢复后）
+
+### 为何推翻上面的"收敛结论"
+上面「收敛结论（迭代二整合）」把 248KB 定为权威值、认为用同一个 ubSize 就自洽不溢出。**该结论错误，被穿刺2（`probe/probe_iter2_boundary_maxshape`）同进程实测推翻**：
+
+- 穿刺2 同一进程内同时查两口径坐实：kernel 侧 `ACL_DEV_ATTR_UBUF_PER_VECTOR_CORE`=**221184(216KB)** 是 vector core 物理可用上界，host 侧 `GetCoreMemSize(UB)`=**253952(248KB)** 是平台标称值，差 32KB 是**真实系统预留**，非工装口径差。
+- 上面「数学保证」只算了**单核** sort（单核 4-buffer footprint≈ubSize，贴合 248KB）；但**多核** sort 每核同样分配 4 个 buffer，每核每 loop tile 打到 `sortLoopMaxElement=ubSize/32=7936` 时，footprint=`4×7936×8=253952(248KB)` **超物理 216KB 达 32KB → 溢出**。多核这一支被漏算。
+- 穿刺2 实测：按 kernel 216KB 派生的 SLM=6912→footprint 216KB **FITS，NPU 实跑 8/8 二进制一致无 507035**；按 host 248KB 派生的 SLM=7936→footprint 248KB **OVERFLOW**。三重证据（实测两口径 + footprint 记账 + 216KB 恰好装满）。
+
+### 修复内容
+`op_host/ffn_worker_batching_tiling_arch35.cpp::GetPlatformInfo()`：`GetCoreMemSize(UB, ubSize_)` 后**扣减 32KB 系统预留**再用于所有 UB 派生：
+```cpp
+constexpr uint64_t UB_SYS_RESERVED_SIZE = 32 * 1024;  // arch35 vector core 系统预留
+...
+ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
+ubSize_ -= UB_SYS_RESERVED_SIZE;   // 得 vector core 实际可用 UB，与 kernel 侧真实口径对齐
+```
+效果：`ubSize_` = 253952-32768 = **221184(216KB)**，`sortLoopMaxElement`=221184/32=**6912**（与穿刺2 FITS 值一致）。kernel 侧全部 UB 派生（sort footprint、gather `ubAvailable`、group_listing `perLoopMaxRows`）经 `tilingData.ubSize` 统一拿到扣减后的 216KB，一致修正（之前按 248KB 全部偏大，只是小 shape 未触顶）。
+
+### 修法依据（非自造安全系数）
+- 对齐同仓 arch35 算子既有约定：`mhc/mhc_pre_sinkhorn_backward/op_host/op_tiling/mhc_pre_sinkhorn_backward_tiling.cpp:491` 的 `TilingMhcPreSinkhornBackwardArch35` 里同样 `ubSize = ubSize - 32*1024; SetDynUBufSize(ubSize)`。
+- host tiling 侧 `platform_ascendc` API 无 vector-core UB 专用接口（`CoreMemType` 只有单一 `UB=5`，无 device attr），确认后采用"标称值扣固定系统预留"是仓内标准做法。
+- **不违反 MEMORY「UB size no hardcode」**：UB 容量仍运行时 `GetCoreMemSize` 取值，只扣一个与容量无关的固定系统预留常量（32KB），非把 216/248 这种 arch UB 容量写死。
+
+### 验证
+- ascend950 `--opkernel` 重编 EXIT 0，3 binary 重新生成（tiling 逻辑变更编译通过）。
+- op_host tiling UT 期望值同步更新到扣减后口径（253952→221184/6912；262144→229376/7168），A2/A3(DAV_2201) 对照用例口径不动。
+- 待办：泛化阶段用大 shape（多核 sort 每核 tile 打到 SLM=6912）NPU 实跑，最终确认不溢出（穿刺2 已在等价构造下实证 FITS）。
+
 ## 关联
 - 迭代一穿刺3/4 RESULT.md、汇合验证 iter1-integration-report.md 均记录了该观察项。
-- PLAN.md 迭代二穿刺2（边界 shape A=1024）是验证收敛的天然载体。
-- 本迭代整合报告：`docs/INTEGRATION_REPORT.md`。
+- **穿刺2 `probe/probe_iter2_boundary_maxshape/RESULT.md`：推翻旧收敛结论、坐实溢出的关键实测载体。**
+- 代码检视报告 `docs/arch35_code_review_summary.md` H1：抓住 INTEGRATION_REPORT 与 PROBE_SUMMARY 结论矛盾并定为头号 HIGH。
+- PLAN.md 迭代二穿刺2（边界 shape A=1024）。
+- 本迭代整合报告：`docs/INTEGRATION_REPORT.md`（其 §4 的 248KB 唯一真值源结论同被本修复推翻）。

@@ -4,16 +4,17 @@
 > 方法：假设检验 + 逐项取证（file:line）。检视人：内联（主 Agent），阶段0 概要/条例路由由子 Agent 产出。
 > 结论：**delta 无阻塞级代码逻辑缺陷；1 个 HIGH 需在泛化阶段实测坐实（UB 大 shape），其余为设计内/已验证/待覆盖。**
 
-## HIGH — 需泛化/精度阶段实测坐实
+## HIGH — 已修复（2026-07-08 会话恢复后）
 
-### H1. UB 口径大 shape 溢出风险未验证（文档结论自相矛盾）
-- **位置**：`ffn_worker_batching_tiling_arch35.cpp:220-221`
-- **现状**：`sortLoopMaxElement = ubSize_ / (4B*2*4) / 32 * 32`，其中 `ubSize_` = host `GetCoreMemSize(UB)` = **248KB(253952)**，算得 `sortLoopMaxElement=7936`。
-- **矛盾**：
+### H1. UB 口径大 shape 溢出风险 —— ✅ 已修复
+- **位置**：`ffn_worker_batching_tiling_arch35.cpp` `GetPlatformInfo()` + 派生处
+- **原现状**：`sortLoopMaxElement = ubSize_ / (4B*2*4) / 32 * 32`，其中 `ubSize_` = host `GetCoreMemSize(UB)` = **248KB(253952)**，算得 `sortLoopMaxElement=7936`。
+- **矛盾（当时未决）**：
   - `INTEGRATION_REPORT.md §4` 结论：以 `GetCoreMemSize(UB)`=248KB 为 host/kernel **唯一真值源**（即 248KB 可用，代码按此走）。
-  - `PROBE_SUMMARY`(迭代二穿刺2) 结论：kernel 侧 `UBUF_PER_VECTOR_CORE`=**216KB**，host 派生 SLM=7936 → 多核 sort 每核 4-buffer footprint `4*7936*8=253952=248KB` **超物理 216KB 达 32KB → OVERFLOW**，主线应改按 `min(host,kernel)` 派生。
-- **判定**：**SUSPICIOUS-HIGH**。代码走了 248KB 路径；两份文档对"248KB 是否安全"结论相反；大 shape（A=1024、topK+1=64、单核每 loop tile 打到 SLM）NPU 实跑**未做过**（小 shape probe 已过，未触发）。
-- **动作**：泛化/精度阶段**必须**跑大 shape 用例（A=1024×BS×K=64、Y 使单核元素≥7936）观察是否 507035/踩内存。若溢出→按穿刺2 结论改 `sortLoopMaxElement` 分母用 `min(host_ub, kernel_ub)` 或实测每核可用 UB（仍禁写死 arch 常量）。
+  - `PROBE_SUMMARY`(迭代二穿刺2) 结论：kernel 侧 `UBUF_PER_VECTOR_CORE`=**216KB**，host 派生 SLM=7936 → 多核 sort 每核 4-buffer footprint `4*7936*8=253952=248KB` **超物理 216KB 达 32KB → OVERFLOW**。
+- **定论（穿刺2 实测胜出）**：穿刺2 同进程实测坐实 32KB 差是**真实系统预留**（非工装口径差）；INTEGRATION_REPORT 的"数学保证"只算了单核、漏了多核每核同样 4-buffer 会溢。故 INTEGRATION_REPORT §4 / issue #01 旧收敛结论**被推翻**。
+- **修复**：`GetPlatformInfo()` 中 `GetCoreMemSize(UB, ubSize_)` 后扣减 `UB_SYS_RESERVED_SIZE=32*1024` 再派生 → `ubSize_=221184(216KB)`、`sortLoopMaxElement=6912`（与穿刺2 FITS 值一致）。对齐同仓 `mhc_pre_sinkhorn_backward` arch35 做法；不违反「UB size no hardcode」（运行时取值 + 扣固定系统预留，非写死 UB 容量）。详见 `issues/issue_20260708_ub-size-host-kernel-mismatch_01.md` §最终修复。
+- **验证**：ascend950 --opkernel 重编 EXIT0 + 3 binary；op_host UT 期望值同步到 216KB 口径（253952→221184/6912，262144→229376/7168），A2/A3 DAV_2201 对照不动。**遗留**：泛化阶段用多核大 shape（每核 tile 打到 SLM=6912）NPU 实跑做最终确认（穿刺2 已在等价构造下实证 FITS）。
 
 ## MEDIUM / LOW — 确认 OK 或设计内
 

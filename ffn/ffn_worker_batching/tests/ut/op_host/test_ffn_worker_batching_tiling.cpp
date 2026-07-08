@@ -149,10 +149,10 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_arch35_ascend950_
 
     int64_t expectTilingKey = 100;  // NORM
     // 字段: Y H tokenDtype expertNum coreNum ubSize sortLoopMaxElement sortNumWorkSpace
-    // coreNum=64（NORM 不限核）。ubSize=262144：arch35(DAV_3510) 的 GetCoreMemSize(UB) 返回平台完整 UB，
-    // 不像 A2(DAV_2201) 预留 256B（A2 得 261888）。sortLoopMaxElement=262144/(4*2*4)/32*32=8192。
-    // 这正是设计要求的「UB 容量运行时接口查询、禁写死 arch 常量」——arch35 自动取到更大的可用 UB。
-    std::string expectTilingData = "1152 4096 0 8 64 262144 8192 1152 ";
+    // coreNum=64（NORM 不限核）。GetCoreMemSize(UB)=262144：arch35(DAV_3510) 扣减 32KB 系统预留 -> ubSize=229376，
+    // 与 A2(DAV_2201) 预留 256B 不同口径（A2 扣 256B 得 261888；arch35 扣 32768 得 229376）。
+    // sortLoopMaxElement=(262144-32768)/(4*2*4)/32*32=7168。运行时取 UB 后按固定系统预留扣减，非写死 arch 常量。
+    std::string expectTilingData = "1152 4096 0 8 64 229376 7168 1152 ";
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -180,8 +180,8 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_arch35_ascend950_
         "Ascend950");
 
     int64_t expectTilingKey = 101;  // RECV
-    // arch35 ubSize=262144 / sortLoopMaxElement=8192（同 NORM 用例说明）；coreNum=32 为 RECV 限核。
-    std::string expectTilingData = "1152 4096 0 8 32 262144 8192 1152 ";
+    // arch35 GetCoreMemSize(UB)=262144 扣 32KB 系统预留 -> ubSize=229376 / sortLoopMaxElement=7168（同 NORM 用例说明）；coreNum=32 为 RECV 限核。
+    std::string expectTilingData = "1152 4096 0 8 32 229376 7168 1152 ";
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -206,7 +206,7 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_arch35_ascend950_
         "Ascend950");
 
     int64_t expectTilingKey = 100;
-    std::string expectTilingData = "1152 4096 1 8 64 262144 8192 1152 ";
+    std::string expectTilingData = "1152 4096 1 8 64 229376 7168 1152 ";
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -231,7 +231,7 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_arch35_ascend950_
         "Ascend950");
 
     int64_t expectTilingKey = 101;
-    std::string expectTilingData = "1152 4096 2 8 32 262144 8192 1152 ";
+    std::string expectTilingData = "1152 4096 2 8 32 229376 7168 1152 ";
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -297,12 +297,13 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_worker_batching_tiling_ascend910_93_recv
 //      tiling 侧驱动量（Y、sortLoopMaxElement）正确
 //   3) RECV 限核阈值 TH_RECV_CORE_NUM=32 / TH_RECV_Y_NUM=200000 生效（Y<=200000 限核 32；Y>200000 不限核）
 //   4) UB 阈值 sortLoopMaxElement 运行时派生正确，且对齐 issue_20260708 收敛口径
-//      GetCoreMemSize(UB)=248KB(253952 B) —— 真实 Ascend950 platform_config ub_size
+//      GetCoreMemSize(UB)=248KB(253952 B) —— 真实 Ascend950 platform_config ub_size，扣 32KB 系统预留后派生
 //   5) A2/A3(ascend910b/ascend910_93) 仍走原 monolithic 路径、零回归（守卫验证）
 //
 // 关键派生关系（与 _tiling_arch35.cpp / _tiling.cpp 一致）：
 //   sortLoopMaxElement = ubSize / (sizeof(int32)*2*4) / 32 * 32 = ubSize/32 向下 32 对齐
-//     - arch35(DAV_3510) 不预留：ubSize 直取 GetCoreMemSize 返回值 → 248KB=253952 → 7936；256KB=262144 → 8192
+//     - arch35(DAV_3510) 扣减 32KB 系统预留：GetCoreMemSize 返回值 - 32768 后派生
+//       → 248KB=253952 扣后 221184 → 6912；256KB=262144 扣后 229376 → 7168
 //     - A2/A3(DAV_2201) 预留 256B：注入 262144 → GetCoreMemSize=261888 → 8160
 //   workspace = 128*4 + Y*4 + Y*4*2*4 + expertNum*4 + sysWorkspaceSize(16777216) = 16777760 + 36*Y (expertNum=8)
 //   RECV 限核：need_schedule==1 && Y<=200000 → coreNum=min(aivNum,32)；否则 coreNum=aivNum
@@ -330,7 +331,8 @@ std::vector<gert::TilingContextPara::OpAttr> MakeArch35Attrs(
 } // namespace
 
 // A1｜NORM 分派 + 248KB UB 收敛 + 单核阈值：Ascend950 + need_schedule=0 -> TilingKey=100，coreNum=64（NORM 不限核）。
-// ubSize=253952(248KB) -> sortLoopMaxElement=7936；Y=1152 <= 7936 -> kernel 侧走单核 sort（tiling 驱动量正确）。
+// GetCoreMemSize(UB)=253952(248KB)，扣 32KB 系统预留 -> ubSize=221184(216KB) -> sortLoopMaxElement=6912；
+// Y=1152 <= 6912 -> kernel 侧走单核 sort（tiling 驱动量正确）。扣减防多核 sort 4-buffer footprint 溢出（穿刺2 实测）。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_norm_key100_ub248k_singlecore)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
@@ -351,10 +353,10 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_norm_key100_ub248k_sing
               << " sortLoopMaxElement=" << d[6] << std::endl;
     EXPECT_EQ(info.tilingKey, 100);
     EXPECT_EQ(info.blockNum, 64u);                 // NORM 不限核
-    EXPECT_EQ(d[6], 7936);                         // sortLoopMaxElement = 253952/32 对齐
+    EXPECT_EQ(d[6], 6912);                         // sortLoopMaxElement = (253952-32768)/32 对齐（扣系统预留）
     EXPECT_LE(d[0], d[6]);                         // Y(1152) <= sortLoopMaxElement -> 单核 sort 分支
 
-    std::string expectTilingData = "1152 4096 0 8 64 253952 7936 1152 ";
+    std::string expectTilingData = "1152 4096 0 8 64 221184 6912 1152 ";
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 100, expectTilingData, expectWorkspaces);
 }
@@ -371,13 +373,14 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_key101_ub248k_core
         MakeArch35Attrs(/*tokenDtype*/0, /*needSchedule*/1, /*A*/16, /*BS*/8, /*K*/9, /*H*/4096),
         &compileInfo, "Ascend950", kAivNum64, kArch35Ub248K);
 
-    std::string expectTilingData = "1152 4096 0 8 32 253952 7936 1152 ";  // coreNum=32 限核
+    std::string expectTilingData = "1152 4096 0 8 32 221184 6912 1152 ";  // coreNum=32 限核；ubSize 扣 32KB 系统预留
     std::vector<size_t> expectWorkspaces = {16819232};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 101, expectTilingData, expectWorkspaces);
 }
 
 // A3｜UB 阈值运行时派生证明：同一 shape/NORM/Ascend950，仅 ubSize 不同 -> sortLoopMaxElement 随之变化（非写死 arch 常量）。
-//     253952(248KB)->7936；262144(256KB)->8192。对齐 MEMORY「UB size no hardcode」。
+//     扣 32KB 系统预留后：253952(248KB)->(253952-32768)/32=6912；262144(256KB)->(262144-32768)/32=7168。
+//     对齐 MEMORY「UB size no hardcode」（运行时取值 + 固定系统预留扣减，非写死 UB 容量常量）。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sortloopmax_runtime_derived)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
@@ -397,12 +400,12 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sortloopmax_runtime_der
     int64_t slme248 = reinterpret_cast<const int64_t*>(info248.tilingData.get())[6];
     int64_t slme256 = reinterpret_cast<const int64_t*>(info256.tilingData.get())[6];
     std::cout << "[A3][runtime-derived] ub253952->slme=" << slme248 << " ub262144->slme=" << slme256 << std::endl;
-    EXPECT_EQ(slme248, 7936);
-    EXPECT_EQ(slme256, 8192);
+    EXPECT_EQ(slme248, 6912);     // (253952-32768)/32
+    EXPECT_EQ(slme256, 7168);     // (262144-32768)/32
     EXPECT_NE(slme248, slme256);  // ubSize 变则阈值变 -> 运行时派生，非写死
 }
 
-// B1｜多核 sort 阈值分支（大 shape）：Ascend950 + NORM + Y=65536 > sortLoopMaxElement(7936) -> kernel 走多核 sort。
+// B1｜多核 sort 阈值分支（大 shape）：Ascend950 + NORM + Y=65536 > sortLoopMaxElement(6912) -> kernel 走多核 sort。
 //     tiling 侧 coreNum=64（NORM 不限核）、sortNumWorkSpace=Y 正确；workspace 随 Y 增大（16777760+36*Y）。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_norm_multicore_largeshape)
 {
@@ -421,17 +424,17 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_norm_multicore_largesha
     std::cout << "[B1][NORM][multicore] Y=" << d[0] << " sortLoopMaxElement=" << d[6]
               << " coreNum=" << d[4] << std::endl;
     EXPECT_EQ(info.tilingKey, 100);
-    EXPECT_GT(d[0], d[6]);        // Y(65536) > sortLoopMaxElement(7936) -> 多核 sort 分支
+    EXPECT_GT(d[0], d[6]);        // Y(65536) > sortLoopMaxElement(6912) -> 多核 sort 分支
     EXPECT_EQ(d[4], 64);         // NORM 不限核
 
     // Y=65536: workspace = 16777760 + 36*65536 = 19137056
-    std::string expectTilingData = "65536 4096 0 8 64 253952 7936 65536 ";
+    std::string expectTilingData = "65536 4096 0 8 64 221184 6912 65536 ";
     std::vector<size_t> expectWorkspaces = {19137056};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 100, expectTilingData, expectWorkspaces);
 }
 
 // C1｜RECV 限核阈值边界（Y 恰等于 TH_RECV_Y_NUM）：Ascend950 + RECV + Y=200000(<=200000) -> coreNum=min(64,32)=32。
-//     同时 Y=200000 > sortLoopMaxElement(7936) -> RECV 多核 sort + 限核 32 双特性同时命中。
+//     同时 Y=200000 > sortLoopMaxElement(6912) -> RECV 多核 sort + 限核 32 双特性同时命中。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_corelimit_boundary_eq)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
@@ -452,7 +455,7 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_corelimit_boundary
     EXPECT_EQ(info.blockNum, 32u);   // SetBlockDim 同步为 32
 
     // Y=200000: workspace = 16777760 + 36*200000 = 23977760
-    std::string expectTilingData = "200000 4096 0 8 32 253952 7936 200000 ";
+    std::string expectTilingData = "200000 4096 0 8 32 221184 6912 200000 ";
     std::vector<size_t> expectWorkspaces = {23977760};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 101, expectTilingData, expectWorkspaces);
 }
@@ -479,14 +482,14 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_corelimit_boundary
     EXPECT_EQ(info.blockNum, 64u);
 
     // Y=204800: workspace = 16777760 + 36*204800 = 24150560
-    std::string expectTilingData = "204800 4096 0 8 64 253952 7936 204800 ";
+    std::string expectTilingData = "204800 4096 0 8 64 221184 6912 204800 ";
     std::vector<size_t> expectWorkspaces = {24150560};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 101, expectTilingData, expectWorkspaces);
 }
 
 // D1｜A3 零回归（NORM）：Ascend910_93 + need_schedule=0 -> monolithic 路径 TilingKey=100，coreNum=64。
 //     补齐现有 A3 RECV 无回归用例缺失的 A3 NORM 分支；DAV_2201 预留 256B -> ubSize=261888、sortLoopMaxElement=8160
-//     （与 arch35 253952/7936 不同，证明 A3 未误走 arch35 1000 档）。
+//     （与 arch35 221184/6912 不同，证明 A3 未误走 arch35 1000 档）。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_ascend910_93_norm_no_regression)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
@@ -524,7 +527,7 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_ascend910b_recv_largeshape_no_
               << " sortLoopMaxElement=" << d[6] << std::endl;
     EXPECT_EQ(info.tilingKey, 101);
     EXPECT_EQ(d[4], 64);        // Y>200000 不限核（A2 monolithic 同语义）
-    EXPECT_EQ(d[5], 261888);   // DAV_2201 预留 256B -> 未走 arch35（arch35 会是 253952）
+    EXPECT_EQ(d[5], 261888);   // DAV_2201 预留 256B -> 未走 arch35（arch35 扣 32KB 会是 221184）
 
     // Y=204800: workspace = 16777760 + 36*204800 = 24150560
     std::string expectTilingData = "204800 4096 0 8 64 261888 8160 204800 ";
