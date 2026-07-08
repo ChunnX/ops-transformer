@@ -54,6 +54,8 @@ private:
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen);
     __aicore__ inline void ScatterByRank(uint32_t batchLen);
     __aicore__ inline void FetchByRank(uint32_t indicesBatchStart);
+    __aicore__ inline void LocalFetchTokens(uint32_t indicesBatchStart);
+    __aicore__ inline void RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart);
     __aicore__ inline void GatherRankTokens(uint32_t ownerRank, uint32_t batchLen, uint32_t compareCntMax,
                                             uint32_t &runningOffset);
 
@@ -266,7 +268,45 @@ __aicore__ inline void EngramFetchArch35::Process()
     }
 }
 
-__aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart)
+__aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatchStart)
+{
+    AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
+    AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+    AscendC::LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
+    AscendC::LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
+
+    uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
+    uint32_t numEntriesPerRank = static_cast<uint32_t>(numEntriesPerRank_);
+    uint32_t totalBlocks = AscendC::GetBlockNum();
+    uint32_t ownerCore = rankId_ % totalBlocks;
+
+    uint32_t numIdleCores = (totalBlocks > numRanks_) ? (totalBlocks - numRanks_) : 0;
+    uint32_t numParticipants = numIdleCores + 1;
+    uint32_t participantIdx = (aivId_ == ownerCore) ? 0 : (aivId_ - numRanks_ + 1);
+    uint32_t localIdxStart = rankId_ * numEntriesPerRank;
+    uint32_t rankStart = rankOffsets(rankId_);
+    uint32_t cnt = rankCounts(rankId_);
+    uint32_t tileIdx = 0;
+    for (uint32_t b = participantIdx; b < cnt; b += numParticipants) {
+        uint32_t i = tokenIdxInRank(rankStart + b);
+        int32_t globalIdx = indicesLocal(i);
+        uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - localIdxStart;
+        uint64_t globalTokenIdx = indicesBatchStart + i;
+        GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
+        GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
+                      + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+        LocalCopySlice(dst, src, hiddenBytes, tileIdx);
+    }
+    if (tileIdx >= 1U) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
+    }
+    if (tileIdx >= 2U) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
+    }
+}
+
+__aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart)
 {
     AscendC::LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
     AscendC::LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
@@ -277,62 +317,43 @@ __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart
 
     uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
     uint32_t numEntriesPerRank = static_cast<uint32_t>(numEntriesPerRank_);
-    uint32_t totalBlocks = AscendC::GetBlockNum();
 
-    for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
-        if (ownerRank == rankId_) {
-            continue;
-        }
-        uint32_t idxStart = ownerRank * numEntriesPerRank;
-        uint32_t rankStart = rankOffsets(ownerRank);
-        uint32_t cnt = rankCounts(ownerRank);
-        uint32_t pendingReadCount = 0;
+    uint32_t idxStart = ownerRank * numEntriesPerRank;
+    uint32_t rankStart = rankOffsets(ownerRank);
+    uint32_t cnt = rankCounts(ownerRank);
+    uint32_t pendingReadCount = 0;
 
-        for (uint32_t b = 0; b < cnt; b++) {
-            uint32_t i = tokenIdxInRank(rankStart + b);
-            int32_t globalIdx = indicesLocal(i);
-            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
-            uint64_t globalTokenIdx = indicesBatchStart + i;
-            GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
-            GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
-                                    + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-            hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
-            pendingReadCount++;
-            if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
-                hcomm_.Commit(hcommHandleLocal(ownerRank));
-                pendingReadCount = 0;
-            }
-        }
-
-        if (pendingReadCount > 0) {
+    for (uint32_t b = 0; b < cnt; b++) {
+        uint32_t i = tokenIdxInRank(rankStart + b);
+        int32_t globalIdx = indicesLocal(i);
+        uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
+        uint64_t globalTokenIdx = indicesBatchStart + i;
+        GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
+        GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
+                                + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+        hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
+        pendingReadCount++;
+        if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
             hcomm_.Commit(hcommHandleLocal(ownerRank));
+            pendingReadCount = 0;
         }
     }
 
-    uint32_t ownerCore = rankId_ % totalBlocks;
-    if (aivId_ == ownerCore || aivId_ >= numRanks_) {
-        uint32_t numIdleCores = (totalBlocks > numRanks_) ? (totalBlocks - numRanks_) : 0;
-        uint32_t numParticipants = numIdleCores + 1;
-        uint32_t participantIdx = (aivId_ == ownerCore) ? 0 : (aivId_ - numRanks_ + 1);
-        uint32_t localIdxStart = rankId_ * numEntriesPerRank;
-        uint32_t rankStart = rankOffsets(rankId_);
-        uint32_t cnt = rankCounts(rankId_);
-        uint32_t tileIdx = 0;
-        for (uint32_t b = participantIdx; b < cnt; b += numParticipants) {
-            uint32_t i = tokenIdxInRank(rankStart + b);
-            int32_t globalIdx = indicesLocal(i);
-            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - localIdxStart;
-            uint64_t globalTokenIdx = indicesBatchStart + i;
-            GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
-            GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
-                          + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-            LocalCopySlice(dst, src, hiddenBytes, tileIdx);
-        }
-        if (tileIdx >= 1U) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-        }
-        if (tileIdx >= 2U) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
+    if (pendingReadCount > 0) {
+        hcomm_.Commit(hcommHandleLocal(ownerRank));
+    }
+}
+
+__aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart)
+{
+    uint32_t totalBlocks = AscendC::GetBlockNum();
+    uint32_t startRank = (aivId_ < numRanks_) ? aivId_ : rankId_;
+
+    for (uint32_t ownerRank = startRank; ownerRank < numRanks_; ownerRank += totalBlocks) {
+        if (ownerRank == rankId_) {
+            LocalFetchTokens(indicesBatchStart);
+        } else {
+            RemoteFetchRank(ownerRank, indicesBatchStart);
         }
     }
 }
