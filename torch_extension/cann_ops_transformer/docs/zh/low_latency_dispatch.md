@@ -17,35 +17,71 @@
 -   计算公式：
     - 量化场景：
 
-      若`quant_mode`不为`2`，即非pertoken动态量化场景：
+      若`x_smooth_scale`不为None，先按专家维或量化系数进行平滑/缩放；若为None，则直接使用`x`：
 
          $$
-         \ quant\_out=
+         \ x\_fp32 =
          \begin{cases}
-         \ x, & \quad \text{if}\ quant\_mode = 0 \\
-         \ CastToInt8(\ CastToFp32(x) \times \ scales ), & \quad \text{if } quant\_mode ≠ 0 \\
+         \ CastToFp32(x) \times \ x\_smooth\_scale, & \quad \text{if } x\_smooth\_scale \ne None \\
+         \ CastToFp32(x), & \quad \text{if } x\_smooth\_scale = None
          \end{cases}
          $$
 
-         $$\ alltoall\_x\_out= \ alltoallv(\ quant\_out)$$
+      `quant_mode=0`时，非量化发送token；当`x`为低精度量化类型且携带`x_smooth_scale`时，`x_smooth_scale`随token重排后作为`dynamic_scales`输出：
 
-         $$\ expand\_x= \ alltoall\_x\_out$$
+         $$\ quant\_out = x$$
 
-      若`quant_mode`为`2`，即pertoken动态量化场景：
+         $$\ alltoall\_x\_out = alltoallv(\ quant\_out)$$
 
-         $$\ x\_fp32= \ CastToFp32(x) \times \ scales$$
+         $$\ expand\_x = alltoall\_x\_out$$
 
-         $$\ dynamic\_scales\_value = 127.0/Max(Abs(x\_fp32))$$
+         $$\ dynamic\_scales = alltoallv(x\_smooth\_scale), \quad \text{if low precision } x \text{ with } x\_smooth\_scale$$
 
-         $$\ quant\_out=CastToInt8(\ x\_fp32 \times \ dynamic\_scales\_value )$$
+      `quant_mode=1`时，静态量化使用输入的量化系数或平滑参数得到`quant_out`：
 
-         $$\ alltoall\_x\_out= \ alltoallv(\ quant\_out)$$
+         $$\ quant\_out = CastToYdtype(x\_fp32)$$
 
-         $$\ alltoall\_dynamic\_scales\_out = alltoall(1.0/dynamic\_scales)$$
+         $$\ expand\_x = alltoallv(\ quant\_out)$$
 
-         $$\ expand\_x=\ alltoall\_x\_out$$
+      `quant_mode=2`时，pertoken动态量化按token粒度计算缩放参数：
 
-         $$\ dynamic\_scales=\ alltoall\_dynamic\_scales\_out$$
+         $$\ dynamic\_scales\_value = QuantMax / Max(Abs(x\_fp32))$$
+
+         $$\ quant\_out = CastToYdtype(\ x\_fp32 \times \ dynamic\_scales\_value )$$
+
+         $$\ alltoall\_x\_out = alltoallv(\ quant\_out)$$
+
+         $$\ alltoall\_dynamic\_scales\_out = alltoallv(1.0 / dynamic\_scales\_value)$$
+
+         $$\ expand\_x = alltoall\_x\_out$$
+
+         $$\ dynamic\_scales = alltoall\_dynamic\_scales\_out$$
+
+      `quant_mode=3`时，pergroup动态量化按hidden维每128个元素为一组计算缩放参数：
+
+         $$\ group\_id = \lfloor h / 128 \rfloor$$
+
+         $$\ dynamic\_scales\_value[group\_id] = QuantMax / Max(Abs(x\_fp32[group\_id]))$$
+
+         $$\ quant\_out[group\_id] = CastToYdtype(\ x\_fp32[group\_id] \times dynamic\_scales\_value[group\_id] )$$
+
+         $$\ expand\_x = alltoallv(\ quant\_out)$$
+
+         $$\ dynamic\_scales = alltoallv(1.0 / dynamic\_scales\_value)$$
+
+      `quant_mode=4`时，mx动态量化按hidden维每32个元素为一组计算FLOAT8_E8M0缩放参数，并量化为`y_dtype`指定的FLOAT8或FLOAT4类型：
+
+         $$\ group\_id = \lfloor h / 32 \rfloor$$
+
+         $$\ dynamic\_scales\_value[group\_id] = ComputeE8M0Scale(x\_fp32[group\_id])$$
+
+         $$\ quant\_out[group\_id] = CastToYdtype(\ x\_fp32[group\_id], dynamic\_scales\_value[group\_id] )$$
+
+         $$\ expand\_x = alltoallv(\ quant\_out)$$
+
+         $$\ dynamic\_scales = alltoallv(dynamic\_scales\_value)$$
+
+      其中`CastToYdtype`表示转换为`y_dtype`指定的输出类型；`QuantMax`由输出量化类型决定，例如INT8场景为127.0。
 
     - 特殊专家场景：
 
