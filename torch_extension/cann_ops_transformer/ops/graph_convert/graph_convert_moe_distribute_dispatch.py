@@ -264,7 +264,7 @@ if _TORCHAIR_AVAILABLE:
 
         if quant_mode == 0 and x.dtype not in (DataType.DT_FLOAT16, DataType.DT_BF16) and scales is not None:
             dynamic_scales.desc.dtype = scales.desc.dtype
-        elif quant_mode == 4:
+        elif quant_mode == 4 or quant_mode == 5:
             dynamic_scales_dtype = DataType.DT_FLOAT8_E8M0
             dynamic_scales.desc.dtype = ge_dtype_to_ge_proto_dtype(dynamic_scales_dtype)
         else:

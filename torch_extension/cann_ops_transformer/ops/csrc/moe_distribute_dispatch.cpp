@@ -40,7 +40,7 @@ aclDataType GetDynamicScalesDtype(const at::Tensor &x, const c10::optional<at::T
         aclDataType scale_value_type = HasTensor(scales) ? ConvertToAclDataType(scales.value().scalar_type()) : ACL_FLOAT;
         dynamic_scale_dtype = (x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf)
             ? ACL_FLOAT : (scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type);
-    } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
+    } else if (quant_mode == QuantMode::QUANT_MODE_MX || quant_mode == QuantMode::QUANT_MODE_MX_CLIP) {
         dynamic_scale_dtype = ACL_FLOAT8_E8M0;
     }
     return dynamic_scale_dtype;
@@ -59,7 +59,7 @@ std::vector<int64_t> GetDynamicScalesShape(const c10::optional<at::Tensor> &scal
         shape = {a};
     } else if (quant_mode == QuantMode::QUANT_MODE_PERGROUP) {
         shape = {a, (h + perGroupSize - 1) / perGroupSize};
-    } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
+    } else if (quant_mode == QuantMode::QUANT_MODE_MX || quant_mode == QuantMode::QUANT_MODE_MX_CLIP) {
         shape = {a, ((h + mxQuantSize - 1) / mxQuantSize + 1) / 2 * 2};
     }
     return shape;
