@@ -139,18 +139,19 @@ public:
                             auto stateIn = inQueue_.DeQue<float>();
                             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
                             inQueue_.FreeTensor(stateIn);
-                            if (isFirstGroup_ && cId == 0) {
-                                auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
-                                Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
-                                outQueue_.EnQue(bf16Init);
-                                CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                            if (cId == 0) {
+                                if (isFirstGroup_) {
+                                    auto bf16Init = outQueue_.AllocTensor<bfloat16_t>();
+                                    Cast(bf16Init, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
+                                    outQueue_.EnQue(bf16Init);
+                                    CopyOut<bfloat16_t>(sTP_->curState[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
+                                }
                                 CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
                             }
-                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                         }
                         CrossCoreWaitFlag(0x2);
                         if (GetSubBlockIdx() == 0) {
-                            if (cId != 0) {
+                            if (cId != 0 || !isFirstGroup_) {
                                 CopyIn<bfloat16_t>(sTP_->finalState[nvId * Dv_ * Dk_], Dv_, Dk_);
                                 auto deltaIn = inQueue_.DeQue<bfloat16_t>();
                                 Cast(stateDeltaUb_, deltaIn, RoundMode::CAST_NONE, Dv_ * curDk_);
@@ -158,6 +159,7 @@ public:
                                 Add(stateFp32Ub_, stateFp32Ub_, stateDeltaUb_, Dv_ * curDk_);
                                 PipeBarrier<PIPE_V>();
                             }
+                            CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             auto fp32Local = outQueue_.AllocTensor<float>();
                             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
                             outQueue_.EnQue(fp32Local);
@@ -190,7 +192,7 @@ public:
                         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                         auto bf16In = sTP_->curState[nvId * Dv_ * Dk_];
                         auto deltaOut = sTP_->finalState[nvId * Dv_ * Dk_];
-                        if (isFirstGroup_ && cId == 0) {
+                        if (cId == 0) {
                             CrossCoreWaitFlag(0x3);
                         }
                         CalVPrime(sTP_->kCumdecay[mm_offset0], bf16In, sTP_->vInner[mm_offset1]);
@@ -198,7 +200,7 @@ public:
                                      sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
-                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut);
+                        CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut, bf16In);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     } else {
                         auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
@@ -283,15 +285,16 @@ public:
 
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
                                        GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<bfloat16_t> state)
+                                       GlobalTensor<bfloat16_t> state,
+                                       GlobalTensor<bfloat16_t> stateAccum = {})
     {
-        // state_out = v_new.transpose(0, 1) @ kg
-        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);    // MNK
-        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
+        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);
+        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_);
         sTP_->mm1->SetTensorA(vInner, true);
         sTP_->mm1->SetTensorB(kg, false);
         if constexpr (kIsFp32) {
             sTP_->mm1->IterateAll(state, 0);
+            sTP_->mm1->IterateAll(stateAccum, 1);
         } else {
             sTP_->mm1->IterateAll(state, 1);
         }

@@ -20,6 +20,7 @@
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(ChunkGatedDeltaRule, ChunkGatedDeltaRuleTiling, 0);
@@ -191,7 +192,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    tilingKey_ = tilingData_.stateIsFp32 ? 10 : 0;
+    tilingKey_ = tilingData_.stateIsFp32 ? TILING_KEY_CGDR_FP32_STATE : TILING_KEY_CGDR_BF16_STATE;
 
     // 执行 matmul tiling
     if (DoMatmulTiling() != ge::GRAPH_SUCCESS) {
