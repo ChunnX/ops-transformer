@@ -88,11 +88,9 @@ public:
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, deltaSize));
             uint64_t outSize = Std::max(inSize, deltaSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
-            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
+            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
             uint32_t buffOffset = 0;
             stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
-            buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
-            stateDeltaUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
         } else {
@@ -154,10 +152,12 @@ public:
                             if (cId != 0 || !isFirstGroup_) {
                                 CopyIn<bfloat16_t>(sTP_->finalState[nvId * Dv_ * Dk_], Dv_, Dk_);
                                 auto deltaIn = inQueue_.DeQue<bfloat16_t>();
-                                Cast(stateDeltaUb_, deltaIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+                                auto deltaFp32 = outQueue_.AllocTensor<float>();
+                                Cast(deltaFp32, deltaIn, RoundMode::CAST_NONE, Dv_ * curDk_);
                                 inQueue_.FreeTensor(deltaIn);
-                                Add(stateFp32Ub_, stateFp32Ub_, stateDeltaUb_, Dv_ * curDk_);
+                                Add(stateFp32Ub_, stateFp32Ub_, deltaFp32, Dv_ * curDk_);
                                 PipeBarrier<PIPE_V>();
+                                outQueue_.FreeTensor(deltaFp32);
                             }
                             CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                             auto fp32Local = outQueue_.AllocTensor<float>();
@@ -358,7 +358,6 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
-    LocalTensor<float> stateDeltaUb_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;
