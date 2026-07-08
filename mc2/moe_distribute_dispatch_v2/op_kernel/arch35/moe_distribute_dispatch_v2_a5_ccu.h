@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_arch35.h
+ * \file moe_distribute_dispatch_v2_a5_ccu.h
  * \brief
  */
 
