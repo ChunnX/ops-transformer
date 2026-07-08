@@ -207,8 +207,8 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
                 AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
                 AscendC::MicroAPI::AddrReg gradHOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
                 AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-                AscendC::MicroAPI::DataCopy(zReg, zRow, zOfst);
-                AscendC::MicroAPI::DataCopy(gradHReg, gradHRow, gradHOfst);
+                AscendC::MicroAPI::LoadAlign(zReg, zRow, zOfst);
+                AscendC::MicroAPI::LoadAlign(gradHReg, gradHRow, gradHOfst);
                 AscendC::MicroAPI::Neg(zReg, zReg, maskReg);
                 AscendC::MicroAPI::Exp(zReg, zReg, maskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, onesReg, maskReg);
@@ -222,7 +222,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U *gradHAddr, __local_mem__ U *
                 if constexpr (!ISPRE) {
                     AscendC::MicroAPI::Muls(gradZReg, gradZReg, U(2), maskReg);
                 }
-                AscendC::MicroAPI::DataCopy(gradZRow, gradZReg, gradZOfst, maskReg);
+                AscendC::MicroAPI::StoreAlign(gradZRow, gradZReg, gradZOfst, maskReg);
             }
         }
     }
@@ -273,12 +273,9 @@ __aicore__ inline void ComputeGradAlphaAll(__local_mem__ U *normOutAddr, __local
                 AscendC::MicroAPI::Add(sumRes, sumRes, reduceReg, oneMask);
             }
         }
-        AscendC::MicroAPI::DataCopy<U, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-            gradAlphaAddr, sumPre, oneMask);
-        AscendC::MicroAPI::DataCopy<U, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-            gradAlphaAddr + 1, sumPost, oneMask);
-        AscendC::MicroAPI::DataCopy<U, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-            gradAlphaAddr + 2, sumRes, oneMask);
+        AscendC::MicroAPI::Store(gradAlphaAddr, sumPre, 1);
+        AscendC::MicroAPI::Store(gradAlphaAddr + 1, sumPost, 1);
+        AscendC::MicroAPI::Store(gradAlphaAddr + 2, sumRes, 1);
     }
 }
 
@@ -352,8 +349,8 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
                 maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 AscendC::MicroAPI::AddrReg ofs = AscendC::MicroAPI::CreateAddrReg<U>(vf, vfLen);
 
-                AscendC::MicroAPI::DataCopy(hcReg, hcBase, ofs);
-                AscendC::MicroAPI::DataCopy(biasReg, biasAddr, ofs);
+                AscendC::MicroAPI::LoadAlign(hcReg, hcBase, ofs);
+                AscendC::MicroAPI::LoadAlign(biasReg, biasAddr, ofs);
 
                 // normOut = hc * invRms
                 AscendC::MicroAPI::Mul(normOutReg, hcReg, invRmsReg, maskReg);
@@ -361,8 +358,8 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
                 AscendC::MicroAPI::Mul(zReg, normOutReg, alphaReg, maskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, maskReg);
 
-                AscendC::MicroAPI::DataCopy(zBase + vf * vfLen, zReg, maskReg);
-                AscendC::MicroAPI::DataCopy(noBase + vf * vfLen, normOutReg, maskReg);
+                AscendC::MicroAPI::StoreAlign(zBase + vf * vfLen, zReg, maskReg);
+                AscendC::MicroAPI::StoreAlign(noBase + vf * vfLen, normOutReg, maskReg);
             }
         }
     }
@@ -388,8 +385,8 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U *hcBeformNormAddr, __l
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::AddrReg biasOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-            AscendC::MicroAPI::DataCopy(zReg, hcBeformNormAddr, zOfst);
-            AscendC::MicroAPI::DataCopy(biasReg, biasAddr, biasOfst);
+                AscendC::MicroAPI::LoadAlign(zReg, hcBeformNormAddr, zOfst);
+                AscendC::MicroAPI::LoadAlign(biasReg, biasAddr, biasOfst);
             for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
                 AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
                                                AscendC::MicroAPI::MemType::SCALAR_LOAD>();
@@ -397,7 +394,7 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U *hcBeformNormAddr, __l
                 AscendC::MicroAPI::Duplicate(invRmsReg, invRms, allMaskReg);
                 AscendC::MicroAPI::Mul(zReg, zReg, invRmsReg, maskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, maskReg);
-                AscendC::MicroAPI::DataCopy(hcBeformNormAddr + j * colLen, zReg, maskReg);
+                AscendC::MicroAPI::StoreAlign(hcBeformNormAddr + j * colLen, zReg, maskReg);
             }
         }
     }
@@ -456,15 +453,15 @@ __aicore__ inline void ComputeGradXFromRms(const LocalTensor<T> &xFp32Local, con
         MicroAPI::RegTensor<T> ncCountReg;
         MicroAPI::Duplicate(ncCountReg, static_cast<T>(ncCount));
 
-        for (uint16_t i = 0; i < repeatTimes; i++) {
             MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);
+        for (uint16_t i = 0; i < repeatTimes; i++) {
             MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<T>(i, repeatCount);
-            MicroAPI::DataCopy(xFp32Reg, (__local_mem__ T *)xFp32Addr, offset);
+            MicroAPI::LoadAlign(xFp32Reg, (__local_mem__ T *)xFp32Addr, offset);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, static_cast<T>(-1), preg);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, gradInvRms, preg);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, invRms, preg);
             MicroAPI::Div(xFp32Reg, xFp32Reg, ncCountReg, preg);
-            MicroAPI::DataCopy(xFp32AddrOut + i * repeatCount, xFp32Reg, preg);
+            MicroAPI::StoreAlign(xFp32AddrOut + i * repeatCount, xFp32Reg, preg);
         }
     }
 }
