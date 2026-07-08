@@ -577,6 +577,40 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PagedAttentionChecker::CheckNoQuantAntiQuantTensorContiguous(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableNonQuant_ && !enableAntiQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // key
+    const gert::Shape keyInputShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const uint32_t keyDimNum = keyInputShape.GetDimNum();
+    const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+    const uint32_t keyAntiquantScaleDimNum = keyAntiquantScaleShape.GetDimNum();
+    // value
+    const gert::Shape valueInputShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    const uint32_t valueDimNum = valueInputShape.GetDimNum();
+    const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+    const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
+
+    int32_t dimIndex = 0;
+    OP_CHECK_IF((enableNonQuant_ && 
+        ((CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS))),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key/value",
+            "Non-quantization scenarios do not support non-contiguous tensors"),
+            return ge::GRAPH_FAILED); 
+    OP_CHECK_IF((enableAntiQuant_ && 
+        ((CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex) != ge::GRAPH_SUCCESS))),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key/value/keyAntiquantScale/valueAntiquantScale",
+            "Anti-quantization scenarios do not support non-contiguous tensors"),
+            return ge::GRAPH_FAILED); 
+    return ge::GRAPH_SUCCESS;
+}
+
 // check blocksize
 ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo)
 {
@@ -732,7 +766,8 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
         ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckMaskShape(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckQDtypeSupport(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckQDtypeSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckNoQuantAntiQuantTensorContiguous(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
     if (enableAntiQuant_) {
