@@ -120,7 +120,7 @@ uint64_t SelectOptimalCandidateTileM(uint64_t maxTileM)
 }
 
 /*!
- * \brief 确定满足63次通信限制的最终tileM，必要时反向计算
+ * \brief 确定满足HCCL_MAX_TOTAL_TILES限制的最终tileM，必要时反向计算
  *
  * \param [in] mValue         M维大小
  * \param [in] candidateTileM 优选的候选tileM
@@ -130,14 +130,14 @@ uint64_t SelectOptimalCandidateTileM(uint64_t maxTileM)
  * \param [in] rankDim        卡数
  * \param [in] opName         算子名称（用于日志）
  *
- * \return HCCL_UNSUPPORTED   - 无法同时满足256MB和63次限制
+ * \return HCCL_UNSUPPORTED   - 无法同时满足256MB和HCCL_MAX_TOTAL_TILES限制
  * \return 其他值             - 最终的tileM
  *
  * \details 算法步骤：
  *   1. 预估总切分份数：totalTileCnt = ceil(M / candidateTileM)
- *   2. 若 totalTileCnt ≤ 63，直接返回 candidateTileM（优选值已满足）
- *   3. 若 totalTileCnt > 63，反向计算满足63次的最小tileM：
- *      - minTileM = ceil(M / 63)
+ *   2. 若 totalTileCnt ≤ HCCL_MAX_TOTAL_TILES，直接返回 candidateTileM（优选值已满足）
+ *   3. 若 totalTileCnt > HCCL_MAX_TOTAL_TILES，反向计算满足HCCL_MAX_TOTAL_TILES次的最小tileM：
+ *      - minTileM = ceil(M / HCCL_MAX_TOTAL_TILES)
  *      - 向上256对齐 → minTileM_align
  *      - 在候选列表中找 ≥ minTileM_align 的最小值（仍优先候选列表值）
  *   4. 验证256MB限制：若 finalTileM > maxTileM，返回 HCCL_UNSUPPORTED
@@ -145,7 +145,7 @@ uint64_t SelectOptimalCandidateTileM(uint64_t maxTileM)
  *
  * \note 这种策略确保：
  *   - 正常数据量：优先性能（大tileM、少通信）
- *   - 大数据量：扩展到最多63次通信处理
+ *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信处理
  *   - 超大数据量：报错提示不支持
  */
 uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, uint64_t maxTileM,
@@ -262,13 +262,13 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
  * \details 整体流程：
  *   1. CalcMaxTileMFromHcclLimit()  - 判断是否需要调整，计算maxTileM
  *   2. SelectOptimalCandidateTileM() - 优选tileM候选值（2048优先）
- *   3. DetermineFinalTileMWithLimit() - 确定满足63次限制的最终tileM
+ *   3. DetermineFinalTileMWithLimit() - 确定满足HCCL_MAX_TOTAL_TILES次限制的最终tileM
  *   4. ApplyTileSplit()              - 应用切分结果，更新cutRes
  *
  * \note 调整策略：
  *   - 正常数据量：优先性能，8-16次通信内完成，使用大tileM（2048/1024）
- *   - 大数据量：扩展到最多63次通信，仍优先使用优选候选值
- *   - 超大数据量：报错，无法同时满足256MB单次限制和63次总限制
+ *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信，仍优先使用优选候选值
+ *   - 超大数据量：报错，无法同时满足256MB单次限制和HCCL_MAX_TOTAL_TILES次总限制
  */
 void AdjustCutResultForHCCL(CutResult& cutRes,
                             uint64_t mValue, uint64_t kValue,
