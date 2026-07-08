@@ -54,15 +54,15 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("qDequantScaleOptional")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Input("kDequantScaleOptional")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Input("vDequantScaleOptional")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Output("attentionOut")
             .ParamType(REQUIRED)
