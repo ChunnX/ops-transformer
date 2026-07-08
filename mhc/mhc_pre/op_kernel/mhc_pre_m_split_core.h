@@ -251,7 +251,6 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
                                 GM_ADDR post, GM_ADDR combFrag,
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                GM_ADDR sumOut, GM_ADDR normOut,
                                 GM_ADDR workspace,
                                 const MhcPreMembaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
@@ -271,8 +270,6 @@ public:
             hPreGm.SetGlobalBuffer((__gm__ float *)hPre);
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)hcBeforeNorm);
             invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
-            sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
-            normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
         } else {
             int64_t xCastWsTotalSize = tilingData->stage1XCastWsSize / sizeof(float);
             invRmsGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize);
@@ -455,100 +452,8 @@ public:
                 PipeBarrier<PIPE_V>();
                 AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
                                                 tilingData->hcMult * tilingData->hcMultAlign);
-                SoftmaxFP32Perf(mxies02ReduceLocal, mxies02ReduceLocal, reduceLocal, hcBrcbLocal1, curRowFactor * tilingData->hcMult,
-                                tilingData->hcMult, tilingData->hcEps);
-                
-                if (needGrad_) {
-                    int64_t normOutBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
-                                                rowOuterIdx * curStage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
-                    VToMTE3Sync();
-                    CopyOut(mxies02ReduceLocal, normOutGm[normOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
-                    MTE3ToVSync();
-                }
-
-                if (needGrad_) {
-                    VToMTE3Sync();
-                    int64_t sumOutBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
-                                               rowOuterIdx * curStage2RowFactor) * tilingData->hcMult;
-                    CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
-                    MTE3ToVSync();
-                }
-
-                ReduceSumARAPerf(reduceLocal, mxies02ReduceLocal, curRowFactor, tilingData->hcMult, tilingData->hcMult);
-                if (needGrad_) {
-                    VToMTE3Sync();
-                    int64_t sumOutBaseOffset = (tilingData->bs +
-                                               stage2BlockIdx * curRowOfFormerBlock +
-                                               rowOuterIdx * curStage2RowFactor) * tilingData->hcMult;
-                    CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
-                    MTE3ToVSync();
-                }
-                Adds(reduceLocal, reduceLocal, tilingData->hcEps, curRowFactor * tilingData->hcMult);
+                Copy(combFragLocal, mxies02ReduceLocal, curRowFactor * tilingData->hcMult * tilingData->hcMultAlign, 1, {1, 1, 0, 0});
                 PipeBarrier<PIPE_V>();
-                DivABABrcInline(combFragLocal, mxies02ReduceLocal, reduceLocal, curRowFactor, tilingData->hcMult,
-                                tilingData->hcMult);
-
-                // 循环内norm输出通过拼接,减少搬运
-                for (int64_t iter = 1; iter < tilingData->iterTimes; iter++) {
-                    auto reduceLocal2 = reduceQue.AllocTensor<float>();
-                    LastDimReduceSumPerf(reduceLocal2, combFragLocal, curRowFactor * tilingData->hcMult, tilingData->hcMult);
-                    Adds(reduceLocal2, reduceLocal2, tilingData->hcEps, curRowFactor * tilingData->hcMult);
-                    PipeBarrier<PIPE_V>();
-                    DivABLastDimBrcInline<float, true>(combFragLocal, combFragLocal, reduceLocal2, hcBrcbLocal1,
-                                                        curRowFactor * tilingData->hcMult, tilingData->hcMult);
-                    if (needGrad_) {
-                        reduceQue.EnQue(reduceLocal2);
-                        reduceLocal2 = reduceQue.DeQue<float>();
-                        int64_t sumOutBaseOffset = ((iter * 2) * tilingData->bs +
-                                                   stage2BlockIdx * curRowOfFormerBlock +
-                                                   rowOuterIdx * curStage2RowFactor) * tilingData->hcMult;
-                        CopyOut(reduceLocal2, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
-                    }
-                    reduceQue.template FreeTensor(reduceLocal2);
-
-                    if (needGrad_) {
-                        int64_t tileRepeatTimes_ = CeilDiv(tilingData->hcMult * curStage2RowFactor * 2 * tilingData->hcMult, 64);
-                        auto yLocal = yQue.template AllocTensor<float>();
-                        Copy(yLocal, combFragLocal, curStage2RowFactor * tilingData->hcMult * tilingData->hcMultAlign, 1, {1, 1, 0, 0});
-                        PipeBarrier<PIPE_V>();
-                        Cast(yCastLocal.template ReinterpretCast<int64_t>(),
-                            yLocal.template ReinterpretCast<int32_t>(), RoundMode::CAST_NONE,
-                            curStage2RowFactor * tilingData->hcMult * 8);
-                        PipeBarrier<PIPE_V>();
-
-                        Copy(yLocal, yCastLocal, 64, tileRepeatTimes_, {1, 2, 8, 16});
-                        PipeBarrier<PIPE_V>();
-
-                        Cast(yLocal.template ReinterpretCast<int32_t>(),
-                            yLocal.template ReinterpretCast<int64_t>(), RoundMode::CAST_NONE,
-                            curStage2RowFactor * tilingData->hcMult * tilingData->hcMult);
-                        PipeBarrier<PIPE_V>();
-                        yQue.template EnQue(yLocal);
-                        yLocal = yQue.template DeQue<float>();
-                        int64_t normOutBaseOffset = ((iter * 2) * tilingData->bs +
-                                                    stage2BlockIdx * curRowOfFormerBlock +
-                                                    rowOuterIdx * curStage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
-                        CopyOut(yLocal, normOutGm[normOutBaseOffset], 1, curRowFactor * tilingData->hcMult *tilingData->hcMult);
-                        yQue.template FreeTensor(yLocal);
-                    }
-                    auto reduceLocal3 = reduceQue.AllocTensor<float>();
-                    ReduceSumARAPerf(reduceLocal3, combFragLocal, curRowFactor, tilingData->hcMult, tilingData->hcMult);
-                    Adds(reduceLocal3, reduceLocal3, tilingData->hcEps, curRowFactor * tilingData->hcMult);
-                    PipeBarrier<PIPE_V>();
-
-                    if (needGrad_) {
-                        reduceQue.EnQue(reduceLocal3);
-                        reduceLocal3 = reduceQue.DeQue<float>();
-                        int64_t sumOutBaseOffset = ((iter * 2 + 1) * tilingData->bs +
-                                                   stage2BlockIdx * curRowOfFormerBlock +
-                                                   rowOuterIdx * curStage2RowFactor) * tilingData->hcMult;
-                        CopyOut(reduceLocal3, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
-                    }
-                    reduceQue.template FreeTensor(reduceLocal3);
-                    DivABABrcInline(combFragLocal, combFragLocal, reduceLocal3, curRowFactor, tilingData->hcMult,
-                                    tilingData->hcMult);
-                }
-                
                 squareSumQue.template FreeTensor(squareSumOutLocal);
 
                 combFragQue.EnQue(combFragLocal);
@@ -578,8 +483,6 @@ private:
     GlobalTensor<float> hPreGm;
     GlobalTensor<float> hcBeforeNormGm;
     GlobalTensor<float> invRmsGm;
-    GlobalTensor<float> sumOutGm;
-    GlobalTensor<float> normOutGm;
 
     bool needGrad_ = false;
     bool isTailBsLoop_ = false;

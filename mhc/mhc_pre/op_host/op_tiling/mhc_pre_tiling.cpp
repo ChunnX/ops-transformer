@@ -49,12 +49,9 @@ constexpr uint64_t M_L1_MAX_SIZE = 256;
 constexpr uint64_t K_MULIT_CORE_SPLIT_BASE_SIZE = 256;
 constexpr uint64_t A_L1_SIZE = 128 * 256;
 constexpr uint64_t K_L1_MAX_SIZE = 1024;
-constexpr int64_t HC_MULT_ATTR_IDX = 0;
-constexpr int64_t ITER_TIMES_ATTR_IDX = 1;
+constexpr int64_t OUT_FLAG_ATTR_IDX = 0;
+constexpr int64_t NORM_EPS_ATTR_IDX = 1;
 constexpr int64_t HC_EPS_ATTR_IDX = 2;
-constexpr int64_t NORM_EPS_ATTR_IDX = 3;
-constexpr int64_t NEED_BACKWARD_ATTR_IDX = 4;
-constexpr int64_t DEFAULT_ITER_TIMES = 20;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
@@ -89,20 +86,14 @@ ge::graphStatus MhcPreMembaseTiling::GetAttr()
     auto* attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    auto hcMultAttr = attrs->GetAttrPointer<int64_t>(HC_MULT_ATTR_IDX);
-    hcMult_ = hcMultAttr == nullptr ? 4 : *hcMultAttr;
-
-    auto iterTimesAttr = attrs->GetAttrPointer<int64_t>(ITER_TIMES_ATTR_IDX);
-    iterTimes_ = iterTimesAttr == nullptr ? DEFAULT_ITER_TIMES : *iterTimesAttr;
-
-    auto hcEpsAttr = attrs->GetAttrPointer<float>(HC_EPS_ATTR_IDX);
-    hcEps_ = hcEpsAttr == nullptr ? 1e-6f : *hcEpsAttr;
+    auto outFlagAttr = attrs->GetAttrPointer<int64_t>(OUT_FLAG_ATTR_IDX);
+    needGrad_ = (outFlagAttr == nullptr || *outFlagAttr == 0) ? false : true;
 
     auto normEpsAttr = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_IDX);
     normEps_ = normEpsAttr == nullptr ? 1e-6f : *normEpsAttr;
 
-    auto needBackwardAttr = attrs->GetAttrPointer<bool>(NEED_BACKWARD_ATTR_IDX);
-    needGrad_ = needBackwardAttr == nullptr ? true : *needBackwardAttr;
+    auto hcEpsAttr = attrs->GetAttrPointer<float>(HC_EPS_ATTR_IDX);
+    hcEps_ = hcEpsAttr == nullptr ? 1e-6f : *hcEpsAttr;
     return ge::GRAPH_SUCCESS;
 }
 
