@@ -50,9 +50,7 @@ ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo) const
     const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK, SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
                                                  SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND, SPARSE_MODE_TREE};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(fiaInfo.sparseMode, sparseModeList),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
-                    std::to_string(fiaInfo.sparseMode).c_str(),
-                    "SparseMode only supports 0/1/2/3/4/9"),
+                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -62,9 +60,7 @@ ge::graphStatus MaskChecker::CheckAntiquantSparseMode(const FiaTilingInfo &fiaIn
 {
     OP_CHECK_IF(
         fiaInfo.s1Size == 1U && fiaInfo.sparseMode != SPARSE_MODE_NO_MASK,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
-            std::to_string(fiaInfo.sparseMode).c_str(),
-            "When S of query equal to 1, sparseMode only supports 0(defaultMask)"),
+        OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -77,9 +73,7 @@ ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(
             fiaInfo.sparseMode != SPARSE_MODE_NO_MASK && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN &&
                 fiaInfo.sparseMode != SPARSE_MODE_BAND && fiaInfo.sparseMode != SPARSE_MODE_TREE,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
-                std::to_string(fiaInfo.sparseMode).c_str(),
-                "Only support sparse 0/3/4/9 when ifa mla is enabled"),
+            OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -175,10 +169,7 @@ ge::graphStatus MaskChecker::CheckFP8GQAFullQuant(const FiaTilingInfo &fiaInfo)
     }
     OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
                 ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
-                        std::to_string(fiaInfo.sparseMode).c_str(),
-                        "In FP8 GQA fullquant scenario, only support sparse 0 without mask "
-                        "or sparse 3 with mask"),
+                    OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -309,8 +300,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) c
                 return ge::GRAPH_FAILED;
             }
         } else {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "atten_mask", "2D",
-                "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\]");
+            OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, the datatype of dequant_scale_query must be FLOAT32");
             return ge::GRAPH_FAILED;
         }
     } else if (attenMaskDim == MASK_DIM_BSS &&
