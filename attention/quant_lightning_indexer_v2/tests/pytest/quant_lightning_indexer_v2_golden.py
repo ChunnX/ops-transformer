@@ -896,6 +896,12 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if isinstance(k_scale_datarange, str):
             k_scale_datarange = ast.literal_eval(k_scale_datarange)
 
+        params = (batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
+                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,
+                  seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
+                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
+                  k_scale_datarange, cmp_ratio, return_value, output_idx_offset)
+
     if qk_dtype == torch.uint8:
         hifp8mode = 1
         query_dtype = torch_npu.hifloat8 # ACL_HIFLOAT8
@@ -1207,6 +1213,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         if qk_dtype == torch.float8_e4m3fn:
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
+            blockFusion = blockFusion.to(dtype=torch.float16)
 
         output_tensors = {
             "params":params,

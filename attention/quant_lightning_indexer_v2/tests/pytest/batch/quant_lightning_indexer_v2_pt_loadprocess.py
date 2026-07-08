@@ -35,9 +35,13 @@ def test_qliv2_process(filepath, device_id=0):
     if params[10] == 'FLOAT8_E4M3FN':
         query = test_data['query'].to(dtype=torch.float8_e4m3fn).npu()
         key = test_data['key'].to(dtype=torch.float8_e4m3fn).npu()
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].to(dtype=torch.float8_e4m3fn).npu()
     else:
         query = test_data['query'].npu()
         key = test_data['key'].npu()
+        if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
+            blockFusion = test_data['blockFusion'].npu()
 
     max_seqlen_q = params[18]
     return_value = params[30]
