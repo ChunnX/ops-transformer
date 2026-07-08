@@ -26,12 +26,15 @@ using namespace ge;
 using namespace std;
 
 constexpr int NUM_1 = 1;
+constexpr int NUM_2 = 2;
+constexpr int NUM_64 = 64;
 
 constexpr int DIM_0 = 0;
 constexpr int DIM_1 = 1;
 constexpr int DIM_2 = 2;
 constexpr int DIM_3 = 3;
 constexpr int DIM_NUM_4 = 4;
+constexpr int DIM_NUM_5 = 5;
 
 constexpr int TND_DIM_T = 0;
 constexpr int TND_DIM_N = 1;
@@ -73,6 +76,9 @@ constexpr int BLOCK_SIZE_INDEX = 6;
 constexpr int PRE_TOKENS_INDEX = 7;
 constexpr int NEXT_TOKENS_INDEX = 8;
 constexpr int SOFTMAX_LSE_FLAG_INDEX = 9;
+// V3 新增:量化参数属性索引(追加在 softmaxLseFlag 之后,与 def.cpp 属性顺序一致)
+constexpr int QUANT_MODE_INDEX = 10;
+constexpr int DST_TYPE_MAX_INDEX = 11;
 
 constexpr int ATTENTION_OUT_INDEX = 0;
 
@@ -105,10 +111,18 @@ std::unordered_map<std::string, std::string> inputLayoutMapQ2Kv = {
     {"BSND", "BSND"}
 };
 
+enum QuantMode : int64_t {
+    NO_QUANT = 0,
+    FP8_QUANT = 1,
+    MXFP4_QUANT = 2,
+};
+
 static std::string DataTypeToString(ge::DataType dataType)
 {
     static const ::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
         {ge::DT_FLOAT8_E4M3FN, "ge::DT_FLOAT8_E4M3FN"},
+        {ge::DT_FLOAT8_E8M0, "ge::DT_FLOAT8_E8M0"},
+        {ge::DT_FLOAT4_E2M1, "ge::DT_FLOAT4_E2M1"},
         {ge::DT_BF16, "ge::DT_BF16"},
         {ge::DT_FLOAT16, "ge::DT_FLOAT16"},
         {ge::DT_FLOAT, "ge::DT_FLOAT"},
@@ -488,6 +502,11 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
+    if (quantMode_ == MXFP4_QUANT && (embeddingSize_ != 64 || embeddingSize_ != 128)) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", embeddingSize_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -499,6 +518,17 @@ ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContex
             OP_LOGE(bsaContext->GetNodeName(),
                     "The supported dtype of attentionOut is float16 or bfloat16 when the dtype of query/key/value is "
                     "all float8_e4m3fn, but now it is %s.",
+                    DataTypeToString(attentionOutDataType_).c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
+    // V3 新增:mxfp4 (DT_FLOAT4_E2M1) 输入时,attentionOut 必须为 bfloat16
+    if (quantMode_ == MXFP4_QUANT) {
+        attentionOutDataType_ = bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetDataType();
+        if (attentionOutDataType_ != ge::DT_BF16) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "The supported dtype of attentionOut is bfloat16 when the dtype of query/key/value is "
+                    "all float4_e2m1 (mxfp4), but now it is %s.",
                     DataTypeToString(attentionOutDataType_).c_str());
             return ge::GRAPH_FAILED;
         }
@@ -686,6 +716,12 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     if (CheckSparsePattern(bsaContext, DEFAULT_BLOCK_SHAPE) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // V3 新增:mxfp4 要求 blockShapeX 为 64 的倍数
+    if (quantMode_ == MXFP4_QUANT && blockShapeX_ % 64 != 0) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "mxfp4 requires blockShapeX to be multiple of 64, but got %u.", blockShapeX_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -729,7 +765,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
     }
 
     const auto *dequantScaleTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (quantMode_ == FP8_QUANT) {
         if (dequantScaleTensor == nullptr) {
             OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must not be nullptr when the dtype is float8_e4m3fn.",
                     parameterName.c_str());
@@ -771,14 +807,75 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
             return ge::GRAPH_FAILED;
         }
+    } else if (quantMode_ == MXFP4_QUANT) {
+        return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
-            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must be nullptr when the dtype is not float8_e4m3fn.",
+            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must be nullptr when the dtype is not float8_e4m3fn or float4_e2m1.",
                     parameterName.c_str());
             return ge::GRAPH_FAILED;
         }
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+// V3 新增:mxfp4 量化下 Q/K/V scale 形状校验 (仅 BNSD/BSND,TND 暂不校验)
+//   QScale:  BNSD=[B,N1,S1,D//64,2]  BSND=[B,S1,N1,D//64,2]
+//   KScale:  BNSD=[B,N2,S2,D//64,2]  BSND=[B,S2,N2,D//64,2]
+//   VScale:  BNSD=[B,N2,S2//64,D,2]  BSND=[B,S2//64,N2,D,2]  (S2//64 向上取整)
+ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
+{
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
+        return ge::GRAPH_SUCCESS;  // TND 暂不校验
+    }
+    const auto *scaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
+    if (scaleShape == nullptr) {
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode == 2) mxfp4 dequantScale (index=%d) must not be nullptr.", parameterIndex);
+        return ge::GRAPH_FAILED;
+    }
+    auto &storageShape = scaleShape->GetStorageShape();
+    if (storageShape.GetDimNum() != DIM_NUM_5) {
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode == 2) mxfp4 scale must be 5D, got %zuD.", storageShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+
+    bool isBNSD = (qInputLayout_ == BSAQInputLayout::BNSD_Q);
+    uint32_t sDiv64 = (maxKvSeqlen_ + NUM_64 - 1) / NUM_64;  // CeilDiv(S2, 64)
+    uint32_t dDiv64 = embeddingSize_ / NUM_64;
+    uint32_t expDim1, expDim2, expDim3;
+
+    if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
+        // QScale: BNSD=[B,N1,S1,D//64,2]  BSND=[B,S1,N1,D//64,2]
+        expDim1 = isBNSD ? numHeads_   : maxQSeqlen_;
+        expDim2 = isBNSD ? maxQSeqlen_ : numHeads_;
+        expDim3 = dDiv64;
+    } else if (parameterIndex == V_DEQUANT_SCALE_INDEX) {
+        // VScale: BNSD=[B,N2,S2//64,D,2]  BSND=[B,S2//64,N2,D,2]
+        expDim1 = isBNSD ? kvHeads_ : sDiv64;
+        expDim2 = isBNSD ? sDiv64   : kvHeads_;
+        expDim3 = embeddingSize_;
+    } else {
+        // KScale: BNSD=[B,N2,S2,D//64,2]  BSND=[B,S2,N2,D//64,2]
+        expDim1 = isBNSD ? kvHeads_     : maxKvSeqlen_;
+        expDim2 = isBNSD ? maxKvSeqlen_ : kvHeads_;
+        expDim3 = dDiv64;
+    }
+
+    auto checkDim = [&](uint32_t expected, int idx) -> bool {
+        uint32_t actual = static_cast<uint32_t>(storageShape.GetDim(idx));
+        if (actual != expected) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "(quantMode == 2)  mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
+                    idx, isBNSD ? "BNSD" : "BSND", parameterIndex, expected, actual);
+            return false;
+        }
+        return true;
+    };
+    if (!checkDim(batch_, 0) || !checkDim(expDim1, 1) || !checkDim(expDim2, 2) ||
+        !checkDim(expDim3, 3) || !checkDim(NUM_2, 4)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -914,6 +1011,27 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     } else {
         OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 or 1, but got: %ld.", *softmaxLsePtr);
         return ge::GRAPH_FAILED;
+    }
+
+    // V3 新增:读取量化参数 quantMode / dstTypeMax
+    auto quantModePtr = attrs->GetAttrPointer<int64_t>(QUANT_MODE_INDEX);
+    if (quantModePtr == nullptr) {
+        quantMode_ = 0;  // 默认值,与 def.cpp 中 .Int(0) 一致
+    } else {
+        quantMode_ = static_cast<uint32_t>(*quantModePtr);
+    }
+    auto dstTypeMaxPtr = attrs->GetAttrPointer<float>(DST_TYPE_MAX_INDEX);
+    if (dstTypeMaxPtr == nullptr) {
+        dstTypeMax_ = 0.0f;  // 默认值,与 def.cpp 中 .Float(0) 一致
+    } else {
+        dstTypeMax_ = *dstTypeMaxPtr;
+    }
+    if (quantMode_ == MXFP4_QUANT) {
+        if (dstTypeMax_ == 0.0f) {
+            dstTypeMax_ = 2.0f;
+        } else {
+            dstTypeMax_ = std::log2(dstTypeMax_);
+        }       
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1137,6 +1255,9 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_selectNumIdxSize(selectNumIdxSize_);
     tilingData_->set_selectIdxSize(selectIdxSize_);
+    // V3 新增:填充量化参数
+    tilingData_->set_quantMode(quantMode_);
+    tilingData_->set_dstTypeMax(dstTypeMax_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);
     tilingData_->BsaMask2IdxTileInfo.set_yBlockNumAligned(yBlockNumAligned_);
@@ -1195,6 +1316,9 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         } else if (attentionOutDataType_ == ge::DT_BF16) {
             tilingKey += 20;
         }
+    }
+    if (quantMode_ == MXFP4_QUANT) {
+         tilingKey += 30;
     }
 
     // [位11-13] KV Layout（十亿位）
