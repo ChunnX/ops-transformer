@@ -37,7 +37,8 @@ static constexpr uint64_t LSE_OUT = 1;
 enum QuantMode : int64_t {
     NO_QUANT = 0,
     FP8_QUANT = 1,
-    MXFP4_QUANT = 2,
+    MXFP4_OCP_QUANT = 2,
+    MXFP4_CX_QUANT = 3,
 };
 
 static bool CheckDataType(const aclTensor *query,
