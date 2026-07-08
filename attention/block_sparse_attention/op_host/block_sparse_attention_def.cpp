@@ -83,6 +83,8 @@ public:
         this->Attr("preTokens").AttrType(OPTIONAL).Int(2147483647);
         this->Attr("nextTokens").AttrType(OPTIONAL).Int(2147483647);
         this->Attr("softmaxLseFlag").AttrType(OPTIONAL).Int(0);
+        this->Attr("quantMode").AttrType(OPTIONAL).Int(0);
+        this->Attr("dstTypeMax").AttrType(OPTIONAL).Float(0.0);
 
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
