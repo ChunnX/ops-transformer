@@ -299,10 +299,7 @@ ge::graphStatus FaInfoParser::GetQkHeadDim()
 ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
-        OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
-                    OP_LOGE(opName_, "max_seqlen_q must be provided when layout_q is TND."),
-                    return ge::GRAPH_FAILED);
-        s1Size_ = *opParamInfo_.maxSeqlenQ;
+        s1Size_ = queryTSize_;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -324,10 +321,7 @@ void FaInfoParser::GetKvStorageMode()
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
-        OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
-                    OP_LOGE(opName_, "max_seqlen_kv must be provided when layout_kv is TND."),
-                    return ge::GRAPH_FAILED);
-        s2Size_ = *opParamInfo_.maxSeqlenKV;
+        s2Size_ = keyTSize_;
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
