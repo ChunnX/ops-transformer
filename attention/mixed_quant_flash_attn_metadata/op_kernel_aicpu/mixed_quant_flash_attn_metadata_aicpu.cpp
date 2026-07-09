@@ -247,22 +247,28 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 64U;
-        mBaseSize_ = 256U;
-    } else if (quantMode_ == 1 && validSocVersion == ValidSocVersion::ASCEND910_96) {
-        s2BaseSize_ = 32U;
-        mBaseSize_ = 512U;
+    if (quantMode_ == 1) {
+        if (validSocVersion == ValidSocVersion::ASCEND950) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
+            mBaseSize_ = 32U;
+            s2BaseSize_ = 512U;
+        } else {
+            KERNEL_LOG_ERROR("unsupported socVersion");
+            return false;
+        }
     } else {
-        KERNEL_LOG_ERROR("unsupported quantMode or socVersion");
+        KERNEL_LOG_ERROR("unsupported quantMode");
         return false;
     }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.costFunc = CalcCost;
     param.mode = load_balance::BalanceMode::BN1_S1;
-    param.l2Byte = 0U;     // Set sectionNum to 1
-    param.fdTolerance = 300;                 // 300: least block
+    param.l2Byte = 0;     // Set sectionNum to 1
+    param.fdTolerance = 10;                 // 300: least block
+    param.fdLeastBlock = 3;
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;
 }
