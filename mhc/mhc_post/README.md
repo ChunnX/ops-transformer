@@ -17,8 +17,16 @@
 
 - 计算公式：
 
+  当 h_res 提供时：
+
   $$
   x_{l+1} = (H_{l}^{res})^{T} \times x_l + h_{l}^{out} \otimes H_{t}^{post}
+  $$
+
+  当 h_res 缺省时（仅 Ascend 950 支持）：
+
+  $$
+  x_{l+1} = x_l + h_{l}^{out} \otimes H_{t}^{post}
   $$
 
 ## 参数说明
@@ -48,8 +56,8 @@
     </tr>
     <tr>
       <td>h_res</td>
-      <td>输入</td>
-      <td>mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。</td>
+      <td>输入（可选）</td>
+      <td>mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。缺省时退化为直接残差连接（仅 Ascend 950 支持）。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -79,7 +87,7 @@
 
 ## 约束说明
 
-无
+- h_res 缺省（nohres 路径）仅在 Ascend 950 上支持，A2/A3 系列不支持。
 
 ## 调用说明
 
