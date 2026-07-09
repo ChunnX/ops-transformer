@@ -242,23 +242,25 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
     int64_t dispatchQuantMode, c10::optional<int64_t> dispatchQuantOutDtype,
     int64_t combineQuantMode, std::string commAlg)
 {
-    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024,
-        "ep_world_size only support in [2, 1024], but got ", epWorldSize);
-    TORCH_CHECK(hidden >= 1024 && hidden <= 8192,
-        "hidden only support in [1024, 8192], but got ", hidden);
-    TORCH_CHECK(numMaxTokensPerRank >= 1 && numMaxTokensPerRank <= 512,
-        "num_max_tokens_per_rank only support in [1, 512], but got ", numMaxTokensPerRank);
-    TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
-        "moe_expert_num only support in [1, 2048], but got ", moeExpertNum);
-    TORCH_CHECK(numTopk >= 1 && numTopk <= 16,
-        "num_topk only support in [1, 16], but got ", numTopk);
-
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
     if (isA2 || isA3) {
-        bool isQuantRouting = (dispatchQuantMode == 4);
+        TORCH_CHECK(epWorldSize == 2 || epWorldSize == 4 || epWorldSize == 8 ||
+                    epWorldSize == 16 || epWorldSize == 32,
+            "ep_world_size only support {2, 4, 8, 16, 32} on A2/A3, but got ", epWorldSize);
+        TORCH_CHECK(hidden >= 1024 && hidden <= 8192 && hidden % 512 == 0,
+            "hidden only support [1024, 8192] and hidden % 512 == 0 on A2/A3, but got ", hidden);
+        TORCH_CHECK(numMaxTokensPerRank >= 1 && numMaxTokensPerRank <= 4096,
+            "num_max_tokens_per_rank only support [1, 4096] on A2/A3, but got ", numMaxTokensPerRank);
+        TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
+            "moe_expert_num only support [1, 2048] on A2/A3, but got ", moeExpertNum);
+        TORCH_CHECK(numTopk >= 1 && numTopk <= 16,
+            "num_topk only support [1, 16] on A2/A3, but got ", numTopk);
+        TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
+            "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
+        bool isQuantRouting = (dispatchQuantMode == 4);
         if (isA3) {
             return CalcLeastCclBufferSizeA3(
                 hidden, epWorldSize, isQuantRouting,
@@ -269,7 +271,18 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum,
             numMaxTokensPerRank, numTopk);
     }
 
-    // A5
+    // A5 / 950 — 校验与原 Python get_mega_moe_ccl_buffer_size 对齐
+    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024,
+        "ep_world_size only support in [2, 1024], but got ", epWorldSize);
+    TORCH_CHECK(hidden >= 1024 && hidden <= 8192,
+        "hidden only support in [1024, 8192], but got ", hidden);
+    TORCH_CHECK(numMaxTokensPerRank >= 1,
+        "num_max_tokens_per_rank should be >= 1, but got ", numMaxTokensPerRank);
+    TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
+        "moe_expert_num only support in [1, 2048], but got ", moeExpertNum);
+    TORCH_CHECK(numTopk >= 1 && numTopk <= 16,
+        "num_topk only support in [1, 16], but got ", numTopk);
+
     return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum,
         numMaxTokensPerRank, numTopk, hidden);
 }
