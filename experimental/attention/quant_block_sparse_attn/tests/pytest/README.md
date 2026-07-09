@@ -24,12 +24,9 @@ The CPU golden follows BSA scheme 2.4:
 
 `quant_block_sparse_attn_paramset.py` covers:
 
-- BSND dense-equivalent sparse selection
-- BSND Q/K/V/P scale gradient
-- BSND partial tail KV block with random PA block table
-- Empty sparse output
+- TND dense-equivalent sparse selection
 - TND random actual lengths
-- LEFT_UP and RIGHT_DOWN causal sparse cases
+- NTD typical layout coverage
 
 ## Usage
 

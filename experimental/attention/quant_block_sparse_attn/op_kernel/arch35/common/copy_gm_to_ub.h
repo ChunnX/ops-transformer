@@ -110,8 +110,6 @@ private:
             DataCopyPadExtParams<T> dataCopyPadParams{};
             int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset;
             DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
-        } else if constexpr (GM_FORMAT == BSALayout::BSND) {
-        } else if constexpr (GM_FORMAT == BSALayout::BNSD) {
         }
     }
 };

@@ -30,9 +30,6 @@ constexpr size_t DIM_NUM_2 = 2U;
 constexpr size_t DIM_NUM_3 = 3U;
 constexpr size_t DIM_NUM_4 = 4U;
 constexpr size_t DIM_B = 0U;
-constexpr size_t DIM_S = 1U;
-constexpr size_t DIM_N = 2U;
-constexpr size_t DIM_D = 3U;
 constexpr size_t DIM_TND_T = 0U;
 constexpr size_t DIM_TND_N = 1U;
 constexpr size_t DIM_TND_D = 2U;
@@ -47,7 +44,6 @@ constexpr size_t DIM_SPARSE_QB = 2U;
 constexpr size_t DIM_SPARSE_COUNT = 3U;
 constexpr size_t DIM_KV_HEAD_DIM = 3U;
 constexpr size_t DIM_V_DESCALE_N2 = 0U;
-constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 } // namespace
@@ -63,19 +59,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
 {
     const size_t queryDimNum = queryShape.GetDimNum();
     const std::string layoutQ = BSAGetStringAttr(attrs, BSA_LAYOUT_Q_ATTR_INDEX, "TND");
-    if (queryDimNum == DIM_NUM_4 && layoutQ == "BSND") {
-        tilingInfo.isBSND = true;
-        tilingInfo.layoutQValue = BSA_LAYOUT_Q_BSND_VALUE;
-        if (!BSAGetDimAsU32(queryShape, DIM_B, tilingInfo.bSize) ||
-            !BSAGetDimAsU32(queryShape, DIM_S, tilingInfo.s1Size) ||
-            !BSAGetDimAsU32(queryShape, DIM_N, tilingInfo.n1Size) ||
-            !BSAGetDimAsU32(queryShape, DIM_D, tilingInfo.dSize)) {
-            OP_LOGE(kOpName, "ParseQuery BSND: failed to get query dims, dimNum=%zu", queryDimNum);
-            return ge::GRAPH_FAILED;
-        }
-        tilingInfo.qTokenNum = tilingInfo.bSize * tilingInfo.s1Size;
-    } else if (queryDimNum == DIM_NUM_3 && layoutQ == "TND") {
-        tilingInfo.isBSND = false;
+    if (queryDimNum == DIM_NUM_3 && layoutQ == "TND") {
         tilingInfo.layoutQValue = BSA_LAYOUT_Q_TND_VALUE;
         if (!BSAGetDimAsU32(sparseIndicesShape, DIM_B, tilingInfo.bSize) ||
             !BSAGetDimAsU32(queryShape, DIM_TND_T, tilingInfo.s1Size) ||
@@ -87,7 +71,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
         tilingInfo.qTokenNum = tilingInfo.s1Size;
         tilingInfo.s1Size = BSAGetPositiveAttr(attrs, BSA_MAX_SEQLEN_Q_ATTR_INDEX, tilingInfo.s1Size);
     } else if (queryDimNum == DIM_NUM_3 && layoutQ == "NTD") {
-        tilingInfo.isBSND = false;
         tilingInfo.layoutQValue = BSA_LAYOUT_Q_NTD_VALUE;
         if (!BSAGetDimAsU32(sparseIndicesShape, DIM_B, tilingInfo.bSize) ||
             !BSAGetDimAsU32(queryShape, DIM_NTD_N, tilingInfo.n1Size) ||
@@ -101,7 +84,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
                                                  std::to_string(queryDimNum) + "D with layout " + layoutQ,
-                                                 "4D with layout BSND, 3D with layout TND or 3D with layout NTD");
+                                                 "3D with layout TND or 3D with layout NTD");
         return ge::GRAPH_FAILED;
     }
 

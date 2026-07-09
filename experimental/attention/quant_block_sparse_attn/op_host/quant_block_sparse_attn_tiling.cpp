@@ -28,12 +28,10 @@
 namespace optiling {
 namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttn";
-constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
 constexpr uint32_t BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;
-constexpr uint8_t BSA_LAYOUT_TYPE_BSH = 1U;
 constexpr uint8_t BSA_LAYOUT_TYPE_TND = 2U;
 constexpr uint8_t BSA_LAYOUT_TYPE_NTD = 5U;
 constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
@@ -113,10 +111,8 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_pseS2Size(0);
     inputParams.set_pseBSize(0);
     inputParams.set_bandIndex(0);
-    uint8_t layoutTypeVal = BSA_LAYOUT_TYPE_BSH;
-    if (info.layoutQValue == BSA_LAYOUT_Q_TND_VALUE) {
-        layoutTypeVal = BSA_LAYOUT_TYPE_TND;
-    } else if (info.layoutQValue == BSA_LAYOUT_Q_NTD_VALUE) {
+    uint8_t layoutTypeVal = BSA_LAYOUT_TYPE_TND;
+    if (info.layoutQValue == BSA_LAYOUT_Q_NTD_VALUE) {
         layoutTypeVal = BSA_LAYOUT_TYPE_NTD;
     }
     inputParams.set_layoutType(layoutTypeVal);
