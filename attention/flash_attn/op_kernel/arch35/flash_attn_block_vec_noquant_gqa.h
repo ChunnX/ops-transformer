@@ -68,8 +68,7 @@ public:
     static constexpr MaskFormat MASK_LAYOUT =
         (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
          layout == LayOutTypeEnum::LAYOUT_SBH) ?
-            MaskFormat::SG :
-            MaskFormat::GS;
+            MaskFormat::SG : MaskFormat::GS;
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
@@ -77,9 +76,9 @@ public:
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
-
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
+
+    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
     using flashdecodeGmType = GlobalTensor<float>;
 
@@ -105,15 +104,15 @@ public:
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
-    static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
+    static constexpr uint32_t vec1ResOffsetDn = (s2BaseSize * 32) + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
 
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 

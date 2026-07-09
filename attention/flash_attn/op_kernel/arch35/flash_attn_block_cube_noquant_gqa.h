@@ -217,6 +217,15 @@ public:
                                         BuffersPolicyDB<BufferType::L1>>;
     };
 
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>,
+                                        BuffersPolicyDB<BufferType::L0C>>;
+    };
+
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
@@ -227,15 +236,6 @@ public:
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
                                         BuffersPolicySingleBuffer<BufferType::L0B>,
                                         BuffersPolicyDB<BufferType::L0B>>;
-    };
-
-    /* ============确定L0C的类型============= */
-    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
-    struct L0CBuffSel {
-        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>,
-                                        BuffersPolicyDB<BufferType::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;

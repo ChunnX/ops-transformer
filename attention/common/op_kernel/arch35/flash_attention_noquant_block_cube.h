@@ -614,13 +614,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
             shape.actHeadDim = realN;
             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
             shape.copyRowNum = runInfo.s2RealSize;
+            shape.pageStride = constInfo.valueBnStride;
+            shape.n2Stride = constInfo.valueN2Stride;
             if constexpr (isFp8) {
                 shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
             } else {
                 shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             }
-            shape.pageStride = constInfo.valueBnStride;
-            shape.n2Stride = constInfo.valueN2Stride;
             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
         } else {
@@ -675,7 +675,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
         fixpipeParams.mSize = s1BaseSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
         fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
         if constexpr (!useDn) {
-            fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+            fixpipeParams.mSize = ((runInfo.s1RealSize + 1) >> 1) << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
             fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
             if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
                 bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
@@ -1524,10 +1524,10 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPo
     }
  
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
-    if constexpr (bmm2Write2Ub) {
-        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小
-    } else {
+    if constexpr (!bmm2Write2Ub) {
         fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小
+    } else {
+        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小
     }
  
     fixpipeParams.mSize = runInfo.s1RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
@@ -1915,18 +1915,18 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
         if constexpr (isFd) {
-            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
-                        runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
+            startPos.s2Offset = (runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize) +  // FD分片起始
+                        (runInfo.s2LoopCount * s2BaseSize);  // 核心内循环偏移
         } else {
-            startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+            startPos.s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount * s2BaseSize);  // 非FD场景
         }
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.headNum = constInfo.n2Size;
         shape.headDim = constInfo.dSize;
         shape.actHeadDim = constInfo.dSize;
-        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         shape.pageStride = constInfo.keyBnStride;
