@@ -511,7 +511,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD = false>
+template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T, WITH_ZERO_HEAD> {
     GmLayout<FORMAT> gmLayout;
     using SeqLensKVParserType = ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD>;

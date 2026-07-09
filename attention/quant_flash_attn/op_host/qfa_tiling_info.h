@@ -195,7 +195,7 @@ struct QfaParaInfo {
     QfaOptionalParaInfo attnMask = {nullptr, nullptr};
 
     const int32_t *quantMode = nullptr;
-    const double *softmaxScale = nullptr;
+    const float *softmaxScale = nullptr;
     const int32_t *maskMode = nullptr;
     const int32_t *winLeft = nullptr;
     const int32_t *winRight = nullptr;

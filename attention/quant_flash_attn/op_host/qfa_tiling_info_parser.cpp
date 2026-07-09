@@ -230,7 +230,7 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
                 return ge::GRAPH_FAILED);
 
     opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
-    opParamInfo_.softmaxScale = attrs->GetAttrPointer<double>(ATTR_SOFTMAX_SCALE_INDEX);
+    opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.winLeft = attrs->GetAttrPointer<int32_t>(ATTR_WIN_LEFT_INDEX);
     opParamInfo_.winRight = attrs->GetAttrPointer<int32_t>(ATTR_WIN_RIGHT_INDEX);
