@@ -402,7 +402,7 @@ static aclnnStatus InputOutputDtypeCheck(const aclTensor *query, const aclTensor
     auto outDtype = attentionOut->GetDataType();
 
     if (qDtype != outDtype) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("Input query tensor's dtype should be same with attentionOut tensor's dtype");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input query tensor's dtype should be same with attentionOut tensor's dtype");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -568,7 +568,7 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
     size_t layoutLen = strlen(inputLayout);
 
     if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore query or key Invalid layout");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore query or key Invalid layout");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1246,7 +1246,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
 
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
-    CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut));
+    CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
