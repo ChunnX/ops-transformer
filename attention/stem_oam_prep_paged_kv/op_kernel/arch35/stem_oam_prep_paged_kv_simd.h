@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file stem_oam_prep_paged_kv_simd.h
  * \brief
@@ -29,6 +28,7 @@ using namespace AscendC;
 
 constexpr static int64_t KVMAXLEN = 256 * 1024;
 constexpr static int64_t STEMBLOCKMINSIZE = 32;
+
 class StemOamPrepPagedKvSimd {
 public:
     __aicore__ inline StemOamPrepPagedKvSimd() = default;
