@@ -179,7 +179,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetWorkspaceSize(
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    aclnnStatus ret = InnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
@@ -220,7 +220,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(void *workspace, uint64_t workspaceS
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    return aclnnInnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
+    return InnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
 }
 
 } // namespace

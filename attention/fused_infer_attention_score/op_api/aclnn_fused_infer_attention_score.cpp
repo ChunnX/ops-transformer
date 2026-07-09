@@ -45,7 +45,7 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    aclnnStatus ret = InnerFusedInferAttentionScoreGetWorkspaceSize(
         query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1, deqScale2,
         quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
@@ -72,7 +72,7 @@ aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSiz
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ");
         isFirstCall = false;
     }
-    return aclnnInnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
+    return InnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
 }
 
 } // namespace

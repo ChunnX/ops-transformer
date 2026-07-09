@@ -9,16 +9,22 @@
  */
 
 #include "fused_infer_attention_score_inner.h"
+#include "fused_infer_attention_score.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "opdev/make_op_executor.h"
+#include "opdev/fast_vector.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/contiguous.h"
+#include "acl/acl.h"
+
+#include <vector>
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-namespace {
 
 const uint64_t INT4_NUMS_IN_INT32 = 8;
 
@@ -134,7 +140,254 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
     }
 }
 
+namespace {
+
+bool IsCacheScene(const aclTensor *blockTableOptional)
+{
+    return blockTableOptional != nullptr && blockTableOptional->GetViewShape().GetShapeSize() != 0;
+}
+
+bool GetAclTensorViewStrides(const aclTensor *tensor, int64_t *&stridesValue, uint64_t &stridesNum)
+{
+    stridesValue = nullptr;
+    stridesNum = 0;
+    auto retView = aclGetViewStrides(tensor, &stridesValue, &stridesNum);
+    if (retView != ACL_SUCCESS || stridesValue == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclGetViewStrides failed.");
+        delete[] stridesValue;
+        stridesValue = nullptr;
+        stridesNum = 0;
+        return false;
+    }
+    return true;
+}
+
+bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return true;
+    }
+    if (IsContiguous(tensor)) {
+        return true;
+    }
+
+    auto viewShape = tensor->GetViewShape();
+    int64_t dimNum = viewShape.GetDimNum();
+    if (dimNum <= 1) {
+        return false;
+    }
+
+    int64_t *viewStrides = nullptr;
+    uint64_t stridesNum = 0;
+    if (!GetAclTensorViewStrides(tensor, viewStrides, stridesNum)) {
+        return false;
+    }
+    if (stridesNum < static_cast<uint64_t>(dimNum)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "View strides num[%lu] is less than view shape dim num[%ld].",
+                stridesNum, dimNum);
+        delete[] viewStrides;
+        return false;
+    }
+
+    bool isFirstAxisOnlyNonContiguous = true;
+    int64_t expectedStride = 1;
+    for (int64_t dim = dimNum - 1; dim >= 1; --dim) {
+        if (viewShape.GetDim(dim) != 1 && viewStrides[dim] != expectedStride) {
+            isFirstAxisOnlyNonContiguous = false;
+            break;
+        }
+        expectedStride *= viewShape.GetDim(dim);
+    }
+
+    if (isFirstAxisOnlyNonContiguous && viewStrides[0] < expectedStride) {
+        isFirstAxisOnlyNonContiguous = false;
+    }
+    delete[] viewStrides;
+
+    auto viewOffset = tensor->GetViewOffset();
+    return isFirstAxisOnlyNonContiguous && (expectedStride == 0 || viewOffset % expectedStride == 0);
+}
+
+aclnnStatus CheckTensorListFirstAxisOnlyNonContiguous(const aclTensorList *tensorList, const char *name)
+{
+    if (tensorList == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (!IsFirstAxisOnlyNonContiguous(tensor)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "%s[%lu] is non-contiguous in cache scene, only first-axis non-contiguous layout is supported.",
+                    name, i);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
+{
+    if (tensorList == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    std::vector<const aclTensor *> tensors;
+    tensors.reserve(tensorList->Size());
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor == nullptr) {
+            tensors.emplace_back(nullptr);
+            continue;
+        }
+        auto contiguousTensor = l0op::Contiguous(tensor, executor);
+        if (contiguousTensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s[%lu] contiguous failed.", name, i);
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        tensors.emplace_back(contiguousTensor);
+    }
+
+    auto contiguousList = executor->AllocTensorList(tensors.data(), tensors.size());
+    if (contiguousList == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc contiguous %s tensorList failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    tensorList = contiguousList;
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ProcessKeyValueForContiguous(const aclTensorList *&key, const aclTensorList *&value,
+                                         const aclTensor *blockTableOptional, aclOpExecutor *executor)
+{
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "executor is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (key == nullptr || value == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "key or value tensorList is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (key->Size() != value->Size()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "key tensorList size[%lu] should be equal to value tensorList size[%lu].",
+                key->Size(), value->Size());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (IsCacheScene(blockTableOptional)) {
+        CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        return ACLNN_SUCCESS;
+    }
+
+    CHECK_RET(MakeTensorListContiguous(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorListContiguous(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
 } // namespace
+
+aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *pseShiftOptional, const aclTensor *attenMaskOptional,
+    const aclIntArray *actualSeqLengthsOptional, const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *deqScale1Optional, const aclTensor *quantScale1Optional,
+    const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
+    const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
+    const aclTensor *antiquantOffsetOptional, const aclTensor *blockTableOptional,
+    const aclTensor *queryPaddingSizeOptional, const aclTensor *kvPaddingSizeOptional,
+    const aclTensor *keyAntiquantScaleOptional, const aclTensor *keyAntiquantOffsetOptional,
+    const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
+    const aclTensor *keySharedPrefixOptional, const aclTensor *valueSharedPrefixOptional,
+    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
+    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional,
+    const aclTensor *dequantScaleQueryOptional, const aclTensor *learnableSinkOptional,
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional,
+    int64_t numHeads, double scaleValue, int64_t preTokens, int64_t nextTokens,
+    char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
+    int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag, int64_t keyAntiquantMode,
+    int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType, int64_t outDtype,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
+{
+    L2_DFX_PHASE_1(InnerFusedInferAttentionScore,
+                   DFX_IN(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
+                          actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional,
+                          quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
+                          blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
+                          keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
+                          keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenOptional,
+                          queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
+                          learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional, numHeads, scaleValue, preTokens,
+                          nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode,
+                          softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype),
+                   DFX_OUT(attentionOut, softmaxLse));
+
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    OP_CHECK_NULL(query, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(attentionOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
+    if (inputLayout == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "inputLayout is nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    if (attentionOut->IsEmpty()) {
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
+
+    const aclTensorList *processedKey = key;
+    const aclTensorList *processedValue = value;
+
+    aclOpExecutor *l0Executor = uniqueExecutor.get();
+    CHECK_RET(ProcessKeyValueForContiguous(processedKey, processedValue, blockTableOptional, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+
+    auto l0Out = l0op::FusedInferAttentionScore(
+        query, processedKey, processedValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
+        actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
+        quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
+        queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
+        valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keySharedPrefixOptional,
+        valueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional,
+        keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional,
+        kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+        sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
+        queryQuantMode, pseType, outDtype, attentionOut, softmaxLse, l0Executor);
+
+    auto l0AttentionOut = std::get<0>(l0Out);
+    auto l0SoftmaxLse = std::get<1>(l0Out);
+    if (l0AttentionOut == nullptr || l0SoftmaxLse == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+
+    auto attentionViewCopy = l0op::ViewCopy(l0AttentionOut, attentionOut, l0Executor);
+    if (attentionViewCopy == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (softmaxLseFlag) {
+        auto softmaxLseViewCopy = l0op::ViewCopy(l0SoftmaxLse, softmaxLse, l0Executor);
+        CHECK_RET(softmaxLseViewCopy != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus InnerFusedInferAttentionScore(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
+{
+    L2_DFX_PHASE_2(InnerFusedInferAttentionScore);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+}
 
 #ifdef __cplusplus
 }
