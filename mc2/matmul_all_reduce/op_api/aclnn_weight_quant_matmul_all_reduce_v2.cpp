@@ -13,7 +13,6 @@
 #include "aclnnInner_matmul_all_reduce.h"
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
-#include "mc2_comm_utils.h"
 #include "mc2_log_compat.h"
 
 using namespace op;
@@ -27,9 +26,6 @@ static constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_BF16};
@@ -345,34 +341,6 @@ static aclnnStatus CheckParams(
     return ACLNN_SUCCESS;
 }
 
-static const aclTensor* CopyTensor(const aclTensor* x2)
-{
-    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDims(storageDimsNum);
-    for (size_t i = 0; i < storageDimsNum; i++) {
-        storageDims[i] = x2->GetStorageShape().GetDim(i);
-    }
-    OP_LOGD("WeightQuantMatmulAllReduceV2, CopyTensor storageDimsNum is %lu.", storageDimsNum);
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(storageDimsNum, 1);
-    for (int64_t i = static_cast<int64_t>(storageDimsNum - DIM_LEN_TWO); i >= 0; i--) {
-        stride[i] = storageDims[i + 1] * stride[i + 1];
-    }
-    auto offset = x2->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
-    auto stgFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    if (stgFormat == Format::FORMAT_ND) {
-        OP_LOGD("WeightQuantMatmulAllReduceV2, CopyTensor format is ACL_FORMAT_ND");
-        format = aclFormat::ACL_FORMAT_ND;
-    } else if (stgFormat == Format::FORMAT_FRACTAL_NZ) {
-        format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
-    }
-    return aclCreateTensor(
-        storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
-        x2->GetTensor()->GetAddr());
-}
-
 aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
     const aclTensor* antiquantOffset, const aclTensor* x3, const char* group, const char* reduceOp,
@@ -400,7 +368,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    auto copyX2 = CopyTensor(x2);
+    auto copyX2 = QuantMatmulAllReduceCopyTensor(x2);
     auto tempX2 = MatmulAllReduceIsWeightNZFormat(x2) ? copyX2 : x2;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
@@ -409,20 +377,10 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commMode), output,
         workspaceSize, executor);
     OP_LOGD("WeightQuantMatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
-    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr && commMode != nullptr) {
-        // SetUserHandle to pass comm_mode to aclnnWeightQuantMatmulAllReduceV2
-        uint8_t commModeEnum = 0;
-        if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            OP_LOGE_WITH_INVALID_ATTR("aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize", "commMode",
-                commMode, "'ccu' or 'ai_cpu'");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
-        NnopbaseSetUserHandle(*executor, arg);
+    if (ret == ACLNN_SUCCESS) {
+        auto retCommMode = MatmulAllReduceSetCommMode(
+            executor, commMode, "aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize");
+        CHECK_RET(retCommMode == ACLNN_SUCCESS, retCommMode);
     }
 #ifdef MC2_UT
     ret = 0;
@@ -449,23 +407,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
         OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
         return ACLNN_ERR_INNER;
     }
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            void *arg = NnopbaseGetUserHandle(executor);
-            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-            uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            }
-        } else {
-            OP_LOGD("A2 aclnnWeightQuantMatmulAllReduceV2: NnopbaseHcclServerType, use AICPU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
+    MatmulAllReduceSetHcclServerType(executor);
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("WeightQuantMatmulAllReduceV2, aclnnWeightQuantMatmulAllReduceV2 ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
