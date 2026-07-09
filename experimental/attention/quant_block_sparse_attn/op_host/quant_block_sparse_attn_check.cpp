@@ -105,9 +105,7 @@ ge::graphStatus CheckInputDtype(const BSARequiredParaInfo &input, const char *in
 
 ge::graphStatus CheckMXFP8FullQuantScaleInputs(const QuantBlockSparseAttnParaInfo &opParamInfo)
 {
-    // MX matmul 通过硬件 LoadData 消费 Q/K/V/P scale，因此四个 scale tensor 都必须传入。
-    // 该 helper 只检查是否存在；dtype/shape 分别由 CheckScaleDtype 和
-    // CheckMXFP8FullQuantShape 校验。
+    // 四个 MX scale 均为必选输入。
     if (opParamInfo.pScale.shape == nullptr || opParamInfo.kDescale.shape == nullptr ||
         opParamInfo.vDescale.shape == nullptr || opParamInfo.qDescale.shape == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -155,8 +153,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
     }
 
     if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // MXFP8 特性与原 FP8 约束分开处理。当前 MX 仅支持 TND query/output、
-        // PA_BNSD KV 以及 B_N_Qb_Kb sparse indices。
+        // MX 仅支持 TND query/output。
         if (tilingInfo_.layoutQStr != "TND" || tilingInfo_.layoutOutStr != "TND") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "layout_q/layout_out", tilingInfo_.layoutQStr + "/" + tilingInfo_.layoutOutStr,
@@ -179,8 +176,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // MX 全量化场景中 Q/K/V 均为 fp8_e4m3fn。scale tensor 为 fp8_e8m0，
-        // 且 shape 规则不同，因此单独在 scale 校验中处理。
+        // MX Q/K/V 为 fp8_e4m3fn。
         if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN || tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN) {
             OP_LOGE_FOR_INVALID_DTYPE(
                 kOpName, "query/key/value",
@@ -217,8 +213,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
             return ge::GRAPH_FAILED;
         }
     } else if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // MX 场景下 Q/K/V antiquant scale 与 P quant scale 都是 e8m0。
-        // 它们不同于原 FP8 的 FLOAT scale，因为 LoadData 会将其作为 MX 指数 scale 消费。
+        // MX scale 均为 fp8_e8m0。
         if (CheckInputDtype(opParamInfo.qDescale, "dequantScaleQuery", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.kDescale, "keyAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
@@ -238,8 +233,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 {
-    // MX 路径的计算 tile 仍为 S2=512，但 PA/sparse KV block 粒度改为 128 或 64。
-    // kernel 会把 4 个 128-token block 或 8 个 64-token block 拼成一个 512-token tile。
+    // MX 将 128/64-token block 拼成 512-token tile。
     if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "q_block_size", std::to_string(tilingInfo_.qBlockSizeVal),
@@ -337,14 +331,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMaskMode() const
 ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
-    // quant_mode=2 在访问 shape 前要求所有 scale 输入都存在。
-    // 空 tensor 支持的是输出初始化场景，不表示可以省略 MX scale tensor。
+    // shape 校验前先确认 scale 输入存在。
     if (CheckMXFP8FullQuantScaleInputs(opParamInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    // MX kernel 只处理 PA BNBD K/V。Key 和 Value 的最后一维可以不同（D 与 DV），
-    // 但二者都必须是 4D：[paBlockNumSum, kvHeadNum, blockSize, headDim]。
+    // K/V 均为 4D PA BNBD，末维可分别为 D/DV。
     const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = opParamInfo.value.shape->GetStorageShape();
     if (keyShape.GetDimNum() != DIM_NUM_4 || valueShape.GetDimNum() != DIM_NUM_4) {
@@ -359,15 +351,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
     const int64_t scaleDSize = static_cast<int64_t>(BSACeilDiv(tilingInfo_.dSize, BSA_MXFP8_SCALE_GROUP_SIZE));
     const int64_t kvTokenNum =
         static_cast<int64_t>(tilingInfo_.paBlockNumSum) * static_cast<int64_t>(tilingInfo_.kvBlockSizeVal);
-    // valueAntiquantScale 每 64 个 KV token 分一组，因此首维是 token group 数，
-    // 不是原始 KV token 数；这一点与 keyAntiquantScale 不同。
+    // VScale 首维为 64-token group 数。
     const int64_t valueScaleTokenGroups =
         (kvTokenNum + static_cast<int64_t>(BSA_MXFP8_SCALE_GROUP_SIZE) - 1) /
         static_cast<int64_t>(BSA_MXFP8_SCALE_GROUP_SIZE);
-    // Shape 约束：
-    //   P scale：一个静态 e8m0 scale。
-    //   Q/K scale：per-token-group，[T, N, D/64, 2]。
-    //   V scale：per-channel-group，[T/64, N, DV, 2]。
+    // PScale:[1]；Q/K scale:[T,N,D/64,2]；V scale:[T/64,N,DV,2]。
     const std::array<int64_t, DIM_NUM_1> pScaleShape = {BSA_MXFP8_P_SCALE_SIZE};
     const std::array<int64_t, DIM_NUM_4> queryAntiquantScaleShape = {
         static_cast<int64_t>(tilingInfo_.qTokenNum), static_cast<int64_t>(tilingInfo_.n1Size), scaleDSize,

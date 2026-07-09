@@ -61,16 +61,13 @@ uint32_t GetAicCoreNum(gert::TilingContext *context)
 
 uint32_t CalcMxScaleDSize(uint32_t dSize)
 {
-    // MX scale shape 保留 [D/64, 2] 两个独立维度。该 helper 只返回 D/64；
-    // 调用方需要展平元素个数时，再乘以 scaleLastDim。
+    // 返回 MX scale 的 D/64 维度。
     return BSACeilDiv(dSize, BSA_MXFP8_SCALE_GROUP_SIZE);
 }
 
 QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t blockSize, uint32_t lastDim)
 {
-    // PA BNBD layout：[physicalBlock, N, blockSize, lastDim]。
-    // n2Stride 表示同一个物理 block 内两个 head 之间的偏移；
-    // bnStride 表示两个物理 block 之间的偏移。
+    // PA BNBD：[physicalBlock,N,blockSize,lastDim]。
     QuantBlockSparseAttnMxStrideParams stride;
     stride.n2Stride = static_cast<uint64_t>(blockSize) * lastDim;
     stride.bnStride = static_cast<uint64_t>(n2Size) * stride.n2Stride;
@@ -250,9 +247,7 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
 
 void QuantBlockSparseAttnTiling::FillMxTilingData()
 {
-    // MXFP8 全量化使用独立 tiling payload。能复用 FP8 host 字段语义的地方尽量保持一致；
-    // 但 MX 专属的 scale 分组方式显式写入 tilingdata，避免 kernel 再通过 quant_mode
-    // 反推 shape 语义。
+    // 填充独立 MX tiling payload。
     const auto &info = *tilingInfo_;
     const uint8_t compatMaskMode =
         (info.maskModeVal == BSA_MASK_MODE_CAUSAL) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
@@ -260,8 +255,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     const uint32_t dSizeV = info.dSizeV == 0U ? BSA_D_SIZE : info.dSizeV;
     const uint32_t queryScaleDSize = CalcMxScaleDSize(dSize);
     const uint32_t keyScaleDSize = CalcMxScaleDSize(dSize);
-    // valueAntiquantScale 在 token 维度上是 per-channel-group：
-    // 每个物理 PA block 对应 [ceil(blockSize/64), N, DV, 2]。
+    // 每个 PA block 的 VScale 为 [ceil(blockSize/64),N,DV,2]。
     const uint32_t valueScaleBlockSize = BSACeilDiv(info.kvBlockSizeVal, BSA_MXFP8_SCALE_GROUP_SIZE);
     const uint32_t valueScaleDSize = dSizeV * BSA_MXFP8_VALUE_SCALE_LAST_DIM;
     const bool actualSeqQNull = info.opParamInfo.seqUsedQ.tensor == nullptr;
@@ -295,8 +289,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     baseParams.isActualSeqLengthsKVNull = actualSeqKVNull ? 1U : 0U;
     baseParams.coreNum = usedCoreNum_;
     baseParams.outputLayout = info.layoutQValue;
-    // K/V 数据均为 PA BNBD。K scale 为 token-major，lastDim = (D/64)*2；
-    // V scale 为 tokenGroup-major，lastDim = DV*2。
+    // KScale 按 token，VScale 按 64-token group。
     baseParams.keyStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSize);
     baseParams.valueStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSizeV);
     baseParams.kScaleStrides =
@@ -333,9 +326,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     sparseParams.sparseCount = info.sparseCount;
 
     auto &multiCoreParams = mxTilingData_.multiCoreParams;
-    // MX kernel 当前仍复用 BSA metadata 作为实际切核边界。
-    // 这里仍填充这些数组，使 MX tilingdata 保持自描述，
-    // 后续切换到 common-MX 风格切核逻辑时可以继续兼容。
+    // MX 复用 BSA metadata 分核边界。
     multiCoreParams.coreNum = static_cast<int32_t>(usedCoreNum_);
     multiCoreParams.totalSize = static_cast<int64_t>(totalTaskNum_);
     multiCoreParams.s1OuterSize = info.qbMax;
@@ -355,9 +346,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     workspaceParams.logSumExpSize = 0U;
 
     auto &scaleParams = mxTilingData_.scaleParams;
-    // 同时记录 shape 分组信息和 antiquant mode 值。当前 kernel 主要使用 size；
-    // check/诊断仍可通过这些字段确认 MX 模式约束：
-    // query/key 为 per-token-group(6)，value 为 per-channel-group(8)。
+    // Q/K mode=6，V mode=8。
     scaleParams.scaleGroupSize = BSA_MXFP8_SCALE_GROUP_SIZE;
     scaleParams.scaleLastDim = BSA_MXFP8_SCALE_LAST_DIM;
     scaleParams.queryScaleDSize = queryScaleDSize;
@@ -384,8 +373,7 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
     if (info.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // MX 使用独立 tiling key 和 S2=512 config，使 kernel dispatch 能选择
-        // QuantBlockSparseAttnMxKernel，并读取 QuantBlockSparseAttnMxTilingData。
+        // MX 使用独立 tiling data 和 S2=512 config。
         tilingKey_ = GET_TPL_TILING_KEY(
             BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
             info.returnSoftmaxLseVal ? 1U : 0U, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
