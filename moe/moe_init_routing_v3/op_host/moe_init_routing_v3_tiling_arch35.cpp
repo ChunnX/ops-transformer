@@ -1889,7 +1889,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
+    int64_t originPerLoopCols = perLoopParams.perLoopCols;
     AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    if (perLoopParams.perLoopCols != originPerLoopCols) {
+        SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
+        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    }
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
@@ -2098,11 +2103,14 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
             int64_t inputXInSpace = inputXDtypeSize_ == static_cast<int64_t>(sizeof(float)) ?
                                     AlignBytes(cols_, sizeof(float)) :
                                     BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
+            inputXInSpace *= NUM_TWO;
             int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
             // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
-            int64_t inputXOutSpace = AlignBytes(cols_ / 2, sizeof(int8_t));
+            int64_t inputXOutSpace = AlignBytes(Ops::Base::CeilDiv(cols_, NUM_TWO), sizeof(int8_t));
+            int64_t calcSpace = AlignBytes(cols_, sizeof(float));
             int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
-            remainUb -= (inputXInSpace + smoothInSpace + inputXOutSpace + scaleOutSpace);
+            remainUb -=
+                (inputXInSpace + smoothInSpace + calcSpace + inputXOutSpace + scaleOutSpace);
         } else {
             int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
             int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
