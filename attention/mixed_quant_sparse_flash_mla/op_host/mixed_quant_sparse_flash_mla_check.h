@@ -261,6 +261,7 @@ struct QSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -304,6 +305,7 @@ public:
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
     int64_t topkValueMode = 0;
+    bool returnSoftmaxLse = false;
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
