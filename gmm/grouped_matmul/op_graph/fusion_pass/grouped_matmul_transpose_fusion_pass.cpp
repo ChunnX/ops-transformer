@@ -1,0 +1,782 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file grouped_matmul_transpose_fusion_pass.cpp
+ * \brief Remove transpose-like nodes before GroupedMatmul and preserve their semantics in transpose attrs.
+ */
+
+#include "grouped_matmul_transpose_fusion_pass.h"
+
+#if CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
+#include <algorithm>
+#include <cstdint>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "acl/acl_rt.h"
+#include "graph/utils/type_utils.h"
+#include "log/log.h"
+#include "platform/platform_info.h"
+
+using namespace ge;
+using namespace ge::fusion;
+
+namespace ops {
+namespace {
+constexpr char kPassName[] = "GroupedMatmulTransposeFusionPass";
+constexpr char kOpTypeGroupedMatmul[] = "GroupedMatmul";
+constexpr char kOpTypeTranspose[] = "Transpose";
+constexpr char kOpTypeTransposeD[] = "TransposeD";
+constexpr char kOpTypeReshape[] = "Reshape";
+constexpr char kOpTypeBitcast[] = "Bitcast";
+constexpr char kOpTypeConst[] = "Const";
+constexpr char kTransposeXAttr[] = "transpose_x";
+constexpr char kTransposeWeightAttr[] = "transpose_weight";
+constexpr char kNpuArchKey[] = "NpuArch";
+constexpr char kSocVersionKey[] = "version";
+constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
+
+constexpr int32_t kXIndex = 0;
+constexpr int32_t kWeightIndex = 1;
+constexpr int32_t kScaleIndex = 3;
+constexpr int32_t kAntiquantScaleIndex = 5;
+constexpr int32_t kPertokenScaleIndex = 8;
+constexpr int32_t kPermInputIndex = 1;
+constexpr int32_t kMiniShapeLen = 2;
+constexpr uint32_t kRtSocSpecLen = 32;
+
+const std::vector<int64_t> kPermWeight = {0, 2, 1};
+const std::vector<int64_t> kPermWeightReshapePattern = {1, 0};
+const std::vector<int64_t> kPermScaleReshapePattern = {1, 0, 2};
+const std::vector<int64_t> kPermAntiquantScaleReshapePattern = {1, 0};
+const std::vector<int64_t> kPermAntiquantScaleReshapePatternMx = {1, 0, 2};
+const std::vector<int64_t> kPermX = {1, 0};
+const std::vector<int64_t> kPermPertoken = {1, 0, 2};
+const std::vector<int64_t> kPermAntiquantScale = {0, 2, 1};
+const std::vector<int64_t> kPermAntiquantScaleMx = {0, 2, 1, 3};
+const std::vector<int64_t> kPermScale = {0, 2, 1, 3};
+const std::set<std::string> kDav3510SupportedSocVersion = {"3510"};
+
+struct GmmReshapePatternMatchInfo {
+    bool isReshapePattern = false;
+    bool isBitcastReshapePattern = false;
+};
+
+struct GmmInputPattern {
+    GNodePtr immediateInput = nullptr;
+    GNodePtr bitcastNode = nullptr;
+    GNodePtr reshapeNode1 = nullptr;
+    GNodePtr transposeNode = nullptr;
+    GNodePtr reshapeNode2 = nullptr;
+    GNodePtr sourceNode = nullptr;
+    GNodePtr oldSrcNode = nullptr;
+    int32_t sourceOutputPort = 0;
+    bool isReshapePattern = false;
+    bool isBitcastReshapePattern = false;
+};
+
+bool IsGraphFusionRuntimeSupported()
+{
+    int32_t version = 0;
+    if (aclsysGetVersionNum("ge_compiler", &version) != ACL_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to get ge compiler version.");
+        return false;
+    }
+    return version >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION;
+}
+
+CustomPassStage GetGroupedMatmulTransposeFusionPassStage()
+{
+    return IsGraphFusionRuntimeSupported() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape;
+}
+
+bool IsType(const GNodePtr& node, const char* type)
+{
+    if (node == nullptr) {
+        return false;
+    }
+    AscendString nodeType;
+    return node->GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
+}
+
+bool IsType(const GNode& node, const char* type)
+{
+    AscendString nodeType;
+    return node.GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
+}
+
+bool IsTransposeType(const GNodePtr& node)
+{
+    return IsType(node, kOpTypeTranspose) || IsType(node, kOpTypeTransposeD);
+}
+
+GNodePtr GetInputNode(const GNode& dstNode, int32_t dstInputPort, int32_t* srcOutputPort = nullptr)
+{
+    auto [srcNode, resolvedSrcOutputPort] = dstNode.GetInDataNodesAndPortIndexs(dstInputPort);
+    if (srcOutputPort != nullptr) {
+        *srcOutputPort = resolvedSrcOutputPort;
+    }
+    return srcNode;
+}
+
+size_t GetOutputConsumerNum(const GNodePtr& node)
+{
+    if (node == nullptr) {
+        return 0;
+    }
+    return node->GetOutDataNodesAndPortIndexs(0).size();
+}
+
+bool IsUnknownShape(const Shape& shape)
+{
+    const auto dims = shape.GetDims();
+    return std::any_of(dims.begin(), dims.end(), [](int64_t dim) {
+        return dim == ge::UNKNOWN_DIM || dim == ge::UNKNOWN_DIM_NUM || dim < 0;
+    });
+}
+
+bool CheckPlatformIsDav3510ForGmm()
+{
+    char npuArch[kRtSocSpecLen] = {};
+    auto ret = rtGetSocSpec(kSocVersionKey, kNpuArchKey, npuArch, kRtSocSpecLen);
+    if (ret != RT_ERROR_NONE) {
+        OP_LOGW(kPassName, "rtGetSocSpec failed.");
+        return false;
+    }
+    return kDav3510SupportedSocVersion.count(std::string(npuArch)) > 0;
+}
+
+bool CheckPlatformSupportReshapePattern()
+{
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) != SUCCESS) {
+        OP_LOGW(kPassName, "Get platform information failed.");
+        return false;
+    }
+    return platformInfo.ai_core_intrinsic_dtype_map.find(kFixPipeIntrinsic) !=
+           platformInfo.ai_core_intrinsic_dtype_map.end();
+}
+
+bool IsWeightQuant(const GNode& groupedMatmulNode)
+{
+    TensorDesc xDesc;
+    TensorDesc weightDesc;
+    if (groupedMatmulNode.GetInputDesc(kXIndex, xDesc) != GRAPH_SUCCESS ||
+        groupedMatmulNode.GetInputDesc(kWeightIndex, weightDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    return ge::GetSizeByDataType(xDesc.GetDataType()) != ge::GetSizeByDataType(weightDesc.GetDataType());
+}
+
+bool IsMxQuantMode(const GNode& groupedMatmulNode)
+{
+    TensorDesc scaleDesc;
+    TensorDesc pertokenScaleDesc;
+    if (groupedMatmulNode.GetInputDesc(kScaleIndex, scaleDesc) != GRAPH_SUCCESS ||
+        groupedMatmulNode.GetInputDesc(kPertokenScaleIndex, pertokenScaleDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    return scaleDesc.GetDataType() == DT_FLOAT8_E8M0;
+}
+
+bool IsMxWeightQuantMode(const GNode& groupedMatmulNode)
+{
+    TensorDesc pertokenScaleDesc;
+    if (groupedMatmulNode.GetInputDesc(kPertokenScaleIndex, pertokenScaleDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    TensorDesc antiquantScaleDesc;
+    return groupedMatmulNode.GetInputDesc(kAntiquantScaleIndex, antiquantScaleDesc) == GRAPH_SUCCESS &&
+           antiquantScaleDesc.GetDataType() == DT_FLOAT8_E8M0;
+}
+
+bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
+{
+    if (!IsType(nodePerInput, kOpTypeReshape) || index == kXIndex || index == kWeightIndex ||
+        index == kAntiquantScaleIndex) {
+        return false;
+    }
+
+    TensorDesc inputDesc;
+    if (nodePerInput->GetInputDesc(0, inputDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    auto shape = inputDesc.GetShape();
+    if (IsUnknownShape(shape)) {
+        return true;
+    }
+    if (shape.GetDimNum() < kMiniShapeLen) {
+        return false;
+    }
+    return shape.GetDim(shape.GetDimNum() - 1) == 1 || shape.GetDim(shape.GetDimNum() - kMiniShapeLen) == 1;
+}
+
+bool GetTransposePerm(const GNodePtr& transposeNode, std::vector<int64_t>& perm)
+{
+    if (transposeNode == nullptr) {
+        return false;
+    }
+    if (IsType(transposeNode, kOpTypeTranspose)) {
+        Tensor permTensor;
+        if (transposeNode->GetInputConstData(kPermInputIndex, permTensor) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Get transpose perm const data failed.");
+            return false;
+        }
+
+        TensorDesc permDesc;
+        if (transposeNode->GetInputDesc(kPermInputIndex, permDesc) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Get transpose perm desc failed.");
+            return false;
+        }
+        const uint8_t* constDataPtr = permTensor.GetData();
+        if (constDataPtr == nullptr) {
+            OP_LOGW(kPassName, "Get transpose perm data failed.");
+            return false;
+        }
+
+        auto permDtype = permDesc.GetDataType();
+        size_t size = 0;
+        if (permDtype == DT_INT32) {
+            size = permTensor.GetSize() / sizeof(int32_t);
+            for (size_t i = 0; i < size; ++i) {
+                perm.emplace_back(static_cast<int64_t>(*(reinterpret_cast<const int32_t*>(constDataPtr) + i)));
+            }
+        } else if (permDtype == DT_INT64) {
+            size = permTensor.GetSize() / sizeof(int64_t);
+            for (size_t i = 0; i < size; ++i) {
+                perm.emplace_back(*(reinterpret_cast<const int64_t*>(constDataPtr) + i));
+            }
+        } else {
+            OP_LOGW(kPassName, "Transpose perm dtype must be int32 or int64.");
+            return false;
+        }
+        return true;
+    }
+
+    if (IsType(transposeNode, kOpTypeTransposeD)) {
+        if (transposeNode->GetAttr("perm", perm) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Get TransposeD perm attr failed.");
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+std::vector<int64_t> GetExpectedPerm(
+    int32_t index, const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, bool isMxQuantMode)
+{
+    std::vector<int64_t> inputPerm = kPermX;
+    if (reshapePattern[index].isReshapePattern) {
+        if (index == kWeightIndex || index == kScaleIndex) {
+            inputPerm = kPermWeightReshapePattern;
+        }
+        if (index == kAntiquantScaleIndex) {
+            inputPerm = isMxQuantMode ? kPermAntiquantScaleReshapePatternMx : kPermAntiquantScaleReshapePattern;
+        }
+        if (index == kScaleIndex && isMxQuantMode) {
+            inputPerm = kPermScaleReshapePattern;
+        }
+        return inputPerm;
+    }
+
+    if (index == kAntiquantScaleIndex) {
+        inputPerm = isMxQuantMode ? kPermAntiquantScaleMx : kPermAntiquantScale;
+    }
+    if (index == kWeightIndex || index == kScaleIndex) {
+        inputPerm = kPermWeight;
+    }
+    if (index == kScaleIndex && isMxQuantMode) {
+        inputPerm = kPermScale;
+    }
+    if (index == kPertokenScaleIndex && isMxQuantMode) {
+        inputPerm = kPermPertoken;
+    }
+    return inputPerm;
+}
+
+bool CheckTransposePara(
+    const GNodePtr& transposeNode, int32_t index, const std::vector<GmmReshapePatternMatchInfo>& reshapePattern,
+    bool isMxQuantMode)
+{
+    std::vector<int64_t> perm;
+    if (!GetTransposePerm(transposeNode, perm)) {
+        OP_LOGW(kPassName, "Get transpose perm failed for input index %d.", index);
+        return false;
+    }
+    auto inputPerm = GetExpectedPerm(index, reshapePattern, isMxQuantMode);
+    if (perm != inputPerm) {
+        OP_LOGW(kPassName, "Transpose perm is invalid for input index %d.", index);
+        return false;
+    }
+    if (GetOutputConsumerNum(transposeNode) != 1) {
+        OP_LOGW(kPassName, "Transpose output must be used by only one node.");
+        return false;
+    }
+    return true;
+}
+
+bool CheckFusionNodePara(const GNodePtr& transposeNode, GNode& groupedMatmulNode, int32_t index)
+{
+    if (!IsTransposeType(transposeNode)) {
+        OP_LOGW(kPassName, "GroupedMatmul input index %d can only fuse transpose-like node.", index);
+        return false;
+    }
+
+    bool transposeValue = true;
+    if (index == kXIndex) {
+        if (groupedMatmulNode.GetAttr(kTransposeXAttr, transposeValue) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Failed to get grouped matmul attr transpose_x.");
+            return false;
+        }
+    } else if (index == kWeightIndex) {
+        if (groupedMatmulNode.GetAttr(kTransposeWeightAttr, transposeValue) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Failed to get grouped matmul attr transpose_weight.");
+            return false;
+        }
+    }
+
+    if ((index == kXIndex || index == kWeightIndex) && transposeValue) {
+        OP_LOGW(kPassName, "GroupedMatmul transpose attr for x/weight must be false before fusion.");
+        return false;
+    }
+    return true;
+}
+
+bool IsTransposeWithTwoReshape(const GNodePtr& node)
+{
+    if (!IsType(node, kOpTypeReshape)) {
+        return false;
+    }
+    auto transNode = GetInputNode(*node, 0);
+    auto reshapeNode1 = transNode == nullptr ? nullptr : GetInputNode(*transNode, 0);
+    return IsType(reshapeNode1, kOpTypeReshape) && IsTransposeType(transNode);
+}
+
+bool IsScaleNodeWithBitcastAndTwoReshape(const GNodePtr& node)
+{
+    if (!IsType(node, kOpTypeBitcast)) {
+        return false;
+    }
+    auto reshapeNode2 = GetInputNode(*node, 0);
+    auto transNode = reshapeNode2 == nullptr ? nullptr : GetInputNode(*reshapeNode2, 0);
+    auto reshapeNode1 = transNode == nullptr ? nullptr : GetInputNode(*transNode, 0);
+    return IsType(reshapeNode1, kOpTypeReshape) && IsTransposeType(transNode) &&
+           IsType(reshapeNode2, kOpTypeReshape);
+}
+
+GmmReshapePatternMatchInfo AnalyzeNodePattern(const GNodePtr& node)
+{
+    GmmReshapePatternMatchInfo reshapePatternInfo;
+    reshapePatternInfo.isReshapePattern = IsTransposeWithTwoReshape(node);
+    reshapePatternInfo.isBitcastReshapePattern = IsScaleNodeWithBitcastAndTwoReshape(node);
+    if (reshapePatternInfo.isBitcastReshapePattern) {
+        reshapePatternInfo.isReshapePattern = true;
+    }
+    return reshapePatternInfo;
+}
+
+Status CheckGmmNode(GNode& groupedMatmulNode)
+{
+    if (!IsType(groupedMatmulNode, kOpTypeGroupedMatmul)) {
+        return GRAPH_NOT_CHANGED;
+    }
+    if (GetInputNode(groupedMatmulNode, kXIndex) == nullptr || GetInputNode(groupedMatmulNode, kWeightIndex) == nullptr) {
+        OP_LOGW(kPassName, "GroupedMatmul x/weight input node is null.");
+        return GRAPH_NOT_CHANGED;
+    }
+
+    TensorDesc xDesc;
+    TensorDesc weightDesc;
+    if (groupedMatmulNode.GetInputDesc(kXIndex, xDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "GroupedMatmul x input desc is invalid.");
+        return GRAPH_FAILED;
+    }
+    if (groupedMatmulNode.GetInputDesc(kWeightIndex, weightDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "GroupedMatmul weight input desc is invalid.");
+        return GRAPH_FAILED;
+    }
+    return SUCCESS;
+}
+
+void DetectReshapePattern(GNode& groupedMatmulNode, std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+{
+    reshapePattern.assign(kPertokenScaleIndex + 1, GmmReshapePatternMatchInfo());
+    reshapePattern[kXIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kXIndex));
+    reshapePattern[kWeightIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kWeightIndex));
+    reshapePattern[kScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kScaleIndex));
+    reshapePattern[kAntiquantScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kAntiquantScaleIndex));
+    reshapePattern[kPertokenScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kPertokenScaleIndex));
+
+    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
+    const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
+    if (isDav3510 && !isWeightQuant) {
+        return;
+    }
+
+    const bool hasReshapePattern = std::any_of(
+        reshapePattern.begin(), reshapePattern.end(), [](const GmmReshapePatternMatchInfo& nodePattern) {
+            return nodePattern.isReshapePattern;
+        });
+    if (!hasReshapePattern) {
+        return;
+    }
+
+    if (!CheckPlatformSupportReshapePattern()) {
+        reshapePattern.assign(reshapePattern.size(), GmmReshapePatternMatchInfo());
+        return;
+    }
+
+    const bool weightReshapeFlag = reshapePattern[kWeightIndex].isReshapePattern;
+    const bool antiquantScaleBitcastReshapeFlag = reshapePattern[kAntiquantScaleIndex].isBitcastReshapePattern;
+    reshapePattern.assign(reshapePattern.size(), GmmReshapePatternMatchInfo());
+    if (weightReshapeFlag) {
+        reshapePattern[kWeightIndex].isReshapePattern = true;
+    }
+    if (antiquantScaleBitcastReshapeFlag) {
+        reshapePattern[kAntiquantScaleIndex].isReshapePattern = true;
+        reshapePattern[kAntiquantScaleIndex].isBitcastReshapePattern = true;
+    }
+}
+
+bool BuildInputPattern(GNode& groupedMatmulNode, int32_t index,
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, GmmInputPattern& pattern)
+{
+    pattern.immediateInput = GetInputNode(groupedMatmulNode, index);
+    if (pattern.immediateInput == nullptr) {
+        return false;
+    }
+    pattern.isReshapePattern = reshapePattern[index].isReshapePattern;
+    pattern.isBitcastReshapePattern = reshapePattern[index].isBitcastReshapePattern;
+
+    if (pattern.isBitcastReshapePattern) {
+        pattern.bitcastNode = pattern.immediateInput;
+        pattern.reshapeNode2 = GetInputNode(*pattern.bitcastNode, 0);
+        pattern.transposeNode = pattern.reshapeNode2 == nullptr ? nullptr : GetInputNode(*pattern.reshapeNode2, 0);
+        pattern.reshapeNode1 = pattern.transposeNode == nullptr ? nullptr : GetInputNode(*pattern.transposeNode, 0);
+        if (pattern.reshapeNode1 == nullptr) {
+            return false;
+        }
+        pattern.sourceNode = GetInputNode(*pattern.reshapeNode1, 0, &pattern.sourceOutputPort);
+        pattern.oldSrcNode = pattern.reshapeNode2;
+        return pattern.sourceNode != nullptr && pattern.transposeNode != nullptr;
+    }
+
+    if (pattern.isReshapePattern) {
+        pattern.reshapeNode2 = pattern.immediateInput;
+        pattern.transposeNode = GetInputNode(*pattern.reshapeNode2, 0);
+        pattern.reshapeNode1 = pattern.transposeNode == nullptr ? nullptr : GetInputNode(*pattern.transposeNode, 0);
+        if (pattern.reshapeNode1 == nullptr) {
+            return false;
+        }
+        pattern.sourceNode = GetInputNode(*pattern.reshapeNode1, 0, &pattern.sourceOutputPort);
+        pattern.oldSrcNode = pattern.reshapeNode2;
+        return pattern.sourceNode != nullptr && pattern.transposeNode != nullptr;
+    }
+
+    if (IsType(pattern.immediateInput, kOpTypeBitcast)) {
+        pattern.bitcastNode = pattern.immediateInput;
+        pattern.transposeNode = GetInputNode(*pattern.bitcastNode, 0);
+    } else {
+        pattern.transposeNode = pattern.immediateInput;
+    }
+
+    if (pattern.transposeNode == nullptr) {
+        return false;
+    }
+    pattern.sourceNode = GetInputNode(*pattern.transposeNode, 0, &pattern.sourceOutputPort);
+    pattern.oldSrcNode = pattern.transposeNode;
+    return pattern.sourceNode != nullptr;
+}
+
+bool CheckEquivalentTransposeNode(GNode& groupedMatmulNode, int32_t index,
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, const GmmInputPattern& pattern)
+{
+    if (IsReshapeTransForScale(index, pattern.transposeNode)) {
+        return GetOutputConsumerNum(pattern.transposeNode) == 1;
+    }
+
+    TensorDesc xDesc;
+    TensorDesc weightDesc;
+    if (groupedMatmulNode.GetInputDesc(kXIndex, xDesc) != GRAPH_SUCCESS ||
+        groupedMatmulNode.GetInputDesc(kWeightIndex, weightDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    const bool isWeightQuant =
+        ge::GetSizeByDataType(xDesc.GetDataType()) != ge::GetSizeByDataType(weightDesc.GetDataType());
+    const bool isMxQuantMode =
+        isWeightQuant ? IsMxWeightQuantMode(groupedMatmulNode) : IsMxQuantMode(groupedMatmulNode);
+    return CheckFusionNodePara(pattern.transposeNode, groupedMatmulNode, index) &&
+           CheckTransposePara(pattern.transposeNode, index, reshapePattern, isMxQuantMode);
+}
+
+bool UpdateBitcastDesc(GNode& bitcastNode, TensorDesc& sourceOutputDesc)
+{
+    TensorDesc bitcastOutputDesc;
+    if (bitcastNode.GetOutputDesc(0, bitcastOutputDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to get bitcast output desc.");
+        return false;
+    }
+    if (bitcastNode.UpdateInputDesc(0, sourceOutputDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to update bitcast input desc.");
+        return false;
+    }
+
+    sourceOutputDesc.SetDataType(bitcastOutputDesc.GetDataType());
+    sourceOutputDesc.SetOriginDataType(bitcastOutputDesc.GetDataType());
+    if (bitcastNode.UpdateOutputDesc(0, sourceOutputDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to update bitcast output desc.");
+        return false;
+    }
+    return true;
+}
+
+bool RelinkInput(GraphPtr& graph, GNode& groupedMatmulNode, int32_t index, const GmmInputPattern& pattern)
+{
+    if (graph == nullptr || !graph->IsValid() || pattern.sourceNode == nullptr || pattern.oldSrcNode == nullptr) {
+        return false;
+    }
+
+    GNode& dstNode = pattern.bitcastNode == nullptr ? groupedMatmulNode : *pattern.bitcastNode;
+    const int32_t dstInputPort = pattern.bitcastNode == nullptr ? index : 0;
+    if (graph->RemoveEdge(*pattern.oldSrcNode, 0, dstNode, dstInputPort) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to remove edge before relinking GroupedMatmul input.");
+        return false;
+    }
+    if (graph->AddDataEdge(*pattern.sourceNode, pattern.sourceOutputPort, dstNode, dstInputPort) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to add edge after relinking GroupedMatmul input.");
+        return false;
+    }
+
+    TensorDesc sourceOutputDesc;
+    if (pattern.sourceNode->GetOutputDesc(pattern.sourceOutputPort, sourceOutputDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to get source output desc.");
+        return false;
+    }
+    if (pattern.bitcastNode != nullptr && !UpdateBitcastDesc(*pattern.bitcastNode, sourceOutputDesc)) {
+        return false;
+    }
+    if (groupedMatmulNode.UpdateInputDesc(index, sourceOutputDesc) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to update GroupedMatmul input desc.");
+        return false;
+    }
+    return true;
+}
+
+bool RemoveNodeIfUnused(GraphPtr& graph, const GNodePtr& node)
+{
+    if (graph == nullptr || !graph->IsValid() || node == nullptr) {
+        return true;
+    }
+    if (!node->GetOutDataNodesAndPortIndexs(0).empty()) {
+        return true;
+    }
+
+    std::vector<GNodePtr> inputConstNodes;
+    const auto inputSize = node->GetInputsSize();
+    for (size_t inputIndex = 0; inputIndex < inputSize; ++inputIndex) {
+        int32_t srcOutputPort = 0;
+        auto srcNode = GetInputNode(*node, static_cast<int32_t>(inputIndex), &srcOutputPort);
+        if (srcNode == nullptr) {
+            continue;
+        }
+        if (graph->RemoveEdge(*srcNode, srcOutputPort, *node, static_cast<int32_t>(inputIndex)) != GRAPH_SUCCESS) {
+            OP_LOGW(kPassName, "Failed to remove input edge before removing node.");
+            return false;
+        }
+        if (IsType(srcNode, kOpTypeConst)) {
+            inputConstNodes.emplace_back(srcNode);
+        }
+    }
+
+    if (graph->RemoveNode(*node) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to remove unused transpose-like node.");
+        return false;
+    }
+
+    for (const auto& constNode : inputConstNodes) {
+        if (!RemoveNodeIfUnused(graph, constNode)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool RemoveFusionNodes(GraphPtr& graph, const GmmInputPattern& pattern)
+{
+    if (pattern.isReshapePattern) {
+        if (!RemoveNodeIfUnused(graph, pattern.reshapeNode2)) {
+            return false;
+        }
+        if (!RemoveNodeIfUnused(graph, pattern.transposeNode)) {
+            return false;
+        }
+        return RemoveNodeIfUnused(graph, pattern.reshapeNode1);
+    }
+    return RemoveNodeIfUnused(graph, pattern.transposeNode);
+}
+
+Status FusionTransposeNode(GraphPtr& graph, GNode& groupedMatmulNode, int32_t index,
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+{
+    GmmInputPattern pattern;
+    if (!BuildInputPattern(groupedMatmulNode, index, reshapePattern, pattern)) {
+        return GRAPH_NOT_CHANGED;
+    }
+    if (!CheckEquivalentTransposeNode(groupedMatmulNode, index, reshapePattern, pattern)) {
+        return GRAPH_NOT_CHANGED;
+    }
+    if (!RelinkInput(graph, groupedMatmulNode, index, pattern)) {
+        return GRAPH_FAILED;
+    }
+    if (!RemoveFusionNodes(graph, pattern)) {
+        return GRAPH_FAILED;
+    }
+    return SUCCESS;
+}
+
+Status FusionNodeX(GraphPtr& graph, GNode& groupedMatmulNode,
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+{
+    if (!CheckPlatformIsDav3510ForGmm() || IsWeightQuant(groupedMatmulNode)) {
+        return GRAPH_NOT_CHANGED;
+    }
+
+    auto fusionNodeXResult = FusionTransposeNode(graph, groupedMatmulNode, kXIndex, reshapePattern);
+    if (fusionNodeXResult != SUCCESS) {
+        return fusionNodeXResult;
+    }
+
+    bool transposeX = true;
+    if (groupedMatmulNode.SetAttr(kTransposeXAttr, transposeX) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to set grouped matmul attr transpose_x.");
+        return GRAPH_FAILED;
+    }
+
+    if (GetInputNode(groupedMatmulNode, kPertokenScaleIndex) != nullptr) {
+        auto pertokenScaleRet =
+            FusionTransposeNode(graph, groupedMatmulNode, kPertokenScaleIndex, reshapePattern);
+        if (pertokenScaleRet == GRAPH_FAILED) {
+            return GRAPH_FAILED;
+        }
+    }
+    return SUCCESS;
+}
+
+Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
+    const std::vector<GmmReshapePatternMatchInfo>& reshapePattern)
+{
+    auto fusionNodeWeightResult = FusionTransposeNode(graph, groupedMatmulNode, kWeightIndex, reshapePattern);
+    if (fusionNodeWeightResult != SUCCESS) {
+        return fusionNodeWeightResult;
+    }
+
+    bool transposeWeight = true;
+    if (groupedMatmulNode.SetAttr(kTransposeWeightAttr, transposeWeight) != GRAPH_SUCCESS) {
+        OP_LOGW(kPassName, "Failed to set grouped matmul attr transpose_weight.");
+        return GRAPH_FAILED;
+    }
+
+    if (!CheckPlatformIsDav3510ForGmm()) {
+        return SUCCESS;
+    }
+
+    const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
+    if (!isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+        auto scaleRet = FusionTransposeNode(graph, groupedMatmulNode, kScaleIndex, reshapePattern);
+        if (scaleRet == GRAPH_FAILED) {
+            return GRAPH_FAILED;
+        }
+    } else if (isWeightQuant && GetInputNode(groupedMatmulNode, kAntiquantScaleIndex) != nullptr) {
+        auto antiquantScaleRet =
+            FusionTransposeNode(graph, groupedMatmulNode, kAntiquantScaleIndex, reshapePattern);
+        if (antiquantScaleRet == GRAPH_FAILED) {
+            return GRAPH_FAILED;
+        }
+    }
+    return SUCCESS;
+}
+
+Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode)
+{
+    auto checkResult = CheckGmmNode(groupedMatmulNode);
+    if (checkResult != SUCCESS) {
+        return checkResult;
+    }
+
+    std::vector<GmmReshapePatternMatchInfo> reshapePattern;
+    DetectReshapePattern(groupedMatmulNode, reshapePattern);
+
+    auto fusionNodeXResult = FusionNodeX(graph, groupedMatmulNode, reshapePattern);
+    if (fusionNodeXResult == GRAPH_FAILED) {
+        return GRAPH_FAILED;
+    }
+
+    auto fusionNodeWeightResult = FusionNodeWeight(graph, groupedMatmulNode, reshapePattern);
+    if (fusionNodeWeightResult == GRAPH_FAILED) {
+        return GRAPH_FAILED;
+    }
+
+    if (fusionNodeXResult == GRAPH_NOT_CHANGED && fusionNodeWeightResult == GRAPH_NOT_CHANGED) {
+        return GRAPH_NOT_CHANGED;
+    }
+    return SUCCESS;
+}
+
+Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passContext)
+{
+    OP_LOGD(kPassName, "Enter GroupedMatmul transpose fusion pass.");
+    if (!IsGraphFusionRuntimeSupported()) {
+        OP_LOGD(kPassName, "Skip GroupedMatmul transpose fusion pass because graph fusion runtime is unsupported.");
+        return GRAPH_NOT_CHANGED;
+    }
+    if (graph == nullptr || !graph->IsValid()) {
+        OP_LOGW(kPassName, "Graph is null or invalid.");
+        return GRAPH_NOT_CHANGED;
+    }
+
+    std::vector<GNode> groupedMatmulNodes;
+    for (auto& node : graph->GetDirectNode()) {
+        if (IsType(node, kOpTypeGroupedMatmul)) {
+            groupedMatmulNodes.emplace_back(node);
+        }
+    }
+    if (groupedMatmulNodes.empty()) {
+        return GRAPH_NOT_CHANGED;
+    }
+
+    passContext.SetPassName(kPassName);
+    bool changed = false;
+    for (auto& groupedMatmulNode : groupedMatmulNodes) {
+        auto status = Fusion(graph, groupedMatmulNode);
+        if (status == SUCCESS) {
+            changed = true;
+            continue;
+        }
+        if (status != GRAPH_NOT_CHANGED) {
+            return status;
+        }
+    }
+    return changed ? SUCCESS : GRAPH_NOT_CHANGED;
+}
+} // namespace
+
+Status GroupedMatmulTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
+{
+    OP_LOGI(kPassName, "[GMM_TRANSPOSE_REBUILD_PASS_ENTER] Enter newly rebuilt GroupedMatmul transpose fusion pass.");
+    return RunGroupedMatmulTransposeFusion(graph, passContext);
+}
+
+REG_FUSION_PASS(GroupedMatmulTransposeFusionPass).Stage(GetGroupedMatmulTransposeFusionPassStage());
+} // namespace ops
+#endif // CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
