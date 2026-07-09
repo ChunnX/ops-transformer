@@ -203,6 +203,8 @@ public:
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
                         CrossCoreWaitFlag(0x5);
                         CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], deltaOut, bf16In);
+                        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+                        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     } else {
                         auto curState = (cId == 0) ? sTP_->curState[nvId * Dv_ * Dk_] : sTP_->finalState[nvId * Dv_ * Dk_];
