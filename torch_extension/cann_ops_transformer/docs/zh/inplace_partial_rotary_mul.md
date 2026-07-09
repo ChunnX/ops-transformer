@@ -72,7 +72,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     - <term>Ascend 950PR/Ascend 950DT</term>：`r1`、`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`r1`、`r2`的shape当前只支持BS1D、B11D排布。
 - `x`的各维度值必须大于0；当`partial_slice`不是空切片时，`r1`、`r2`参与计算的维度值必须大于0。
-- **自动微分约束**：仅计算 `x` 的梯度；`r1`、`r2` 的梯度不计算，始终为 None。`x` 必须是非叶子张量（non-leaf tensor，即由前序运算产生的中间激活），不能是对 `requires_grad=True` 的叶子张量直接做 inplace 操作。
+- **自动微分约束**：仅计算 `x` 的梯度；`r1`、`r2` 的梯度不计算，始终为 None。
 
 ## 确定性计算
 
