@@ -468,7 +468,7 @@ get_mega_moe_ccl_buffer_size(ep_world_size, moe_expert_num, num_max_tokens_per_r
 - get_symm_buffer_for_mega_moe：
 
 ```python
-get_symm_buffer_for_mega_moe(group, moe_expert_num, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer
 ```
 
 - mega_moe：
@@ -577,7 +577,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>EP通信域名称（专家并行通信域）。</td>
     </tr>
     <tr>
-        <td>moe_expert_num</td>
+        <td>num_experts</td>
         <td>int</td>
         <td>必选</td>
         <td>MoE模型的总专家数量。</td>
@@ -677,7 +677,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>topk_ids</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>专家索引矩阵，表示每个token选择的num_topk个专家。元素取值范围为<code>[0, moe_expert_num)</code>，且同一token选择的num_topk个专家不能重复。</td>
+        <td>专家索引矩阵，表示每个token选择的num_topk个专家。元素取值范围为<code>[0, num_experts)</code>，且同一token选择的num_topk个专家不能重复。</td>
         <td>INT32</td>
         <td>ND</td>
         <td>(num_tokens, num_topk)</td>
@@ -1049,7 +1049,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     </table>
 
 - **参数一致性约束**：
-    - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 `moe_expert_num`、`hidden`、`intermediate_hidden` 等）保持一致。
+    - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
     - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
@@ -1304,7 +1304,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       ep_hcomm_info, ep_group = init_hccl_comm(rank, buffer_size)
       # 步骤3：构造distribute_buffer（SymmBuffer结构体）
       distribute_buffer = get_symm_buffer_for_mega_moe(
-          ep_group, moe_expert_num=moe_expert_num,
+          ep_group, num_experts=moe_expert_num,
           num_max_tokens_per_rank=0, num_topk=topK,
           hidden=H, intermediate_hidden=0,
           dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2

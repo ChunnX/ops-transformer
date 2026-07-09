@@ -87,7 +87,7 @@ class SymmBuffer:
     def __init__(
         self,
         group,
-        moe_expert_num: int,
+        num_experts: int,
         num_max_tokens_per_rank: int,
         num_topk: int,
         hidden: int,
@@ -110,7 +110,7 @@ class SymmBuffer:
         })
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-        self.moe_expert_num = moe_expert_num
+        self.num_experts = num_experts
         self.max_recv_token_num = max_recv_token_num
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
         self.num_topk = num_topk
@@ -158,7 +158,7 @@ def get_mega_moe_ccl_buffer_size(
 
 def get_symm_buffer_for_mega_moe(
     group,
-    moe_expert_num: int,
+    num_experts: int,
     num_max_tokens_per_rank: int,
     num_topk: int,
     hidden: int,
@@ -174,7 +174,7 @@ def get_symm_buffer_for_mega_moe(
 
     return SymmBuffer(
         group,
-        moe_expert_num,
+        num_experts,
         num_max_tokens_per_rank,
         num_topk,
         hidden,
@@ -212,7 +212,7 @@ def mega_moe(
         topk_weights,
         l1_weights,
         l2_weights,
-        sym_buffer.moe_expert_num,
+        sym_buffer.num_experts,
         sym_buffer.ep_world_size,
         sym_buffer.ccl_buffer_size,
         weight_scales1=l1_weights_sf,
