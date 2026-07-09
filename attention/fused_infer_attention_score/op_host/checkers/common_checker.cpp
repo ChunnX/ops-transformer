@@ -1395,30 +1395,30 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) const
+ge::graphStatus CommonChecker::CheckNonKVContiguous(const FiaTilingInfo &fiaInfo) const
 {
-    if (fiaInfo.isTensorV1) {
+    if (fiaInfo.isTensorV1 ||
+        fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
+        fiaInfo.pageAttentionFlag) {
         return ge::GRAPH_SUCCESS;
     }
-    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-        return ge::GRAPH_SUCCESS;
-    }
+    
     const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
     uint32_t keyDimNum = keyShape.GetDimNum();
     uint32_t valueDimNum = valueShape.GetDimNum();
     int32_t dimIndex = 0;
 
-    if (!fiaInfo.pageAttentionFlag) {
-        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
-                        fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
-                    (CheckTensorContiguous(valueDimNum, valueShape,
-                        fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
-                    OP_LOGE(fiaInfo.opName,
-                            "In non-PA scenarios, key/value tensors must be contiguous."),
-                    return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    }
+
+    OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
+                    fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+                (CheckTensorContiguous(valueDimNum, valueShape,
+                    fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
+                OP_LOGE(fiaInfo.opName,
+                        "In non-PA scenarios, key/value tensors must be contiguous."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+
 
     if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
         OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
@@ -1526,7 +1526,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
     }
 
     if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
-        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
+        enableNonQuant_ && CheckNonKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -241,6 +241,21 @@ ge::graphStatus FiaInfoParser::GetStrides()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FiaInfoParser::GetKvisContiguous(){
+    if (isTensorV1_ || keyStrides_ == nullptr || valueStrides_ == nullptr){
+        return ;
+    }
+
+    if (KvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
+        return ;
+    }
+
+    // PA场景：检测kv是否非连续，是则标记NON_CONTIGUOUS并记dimIndex供checker复用
+    int32_t keyDimIdx = 0;
+    int32_t valDimIdx = 0;
+    const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+}
+
 ge::graphStatus FiaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();

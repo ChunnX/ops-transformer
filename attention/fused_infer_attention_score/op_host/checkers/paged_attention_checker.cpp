@@ -721,6 +721,14 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureInputLayoutForAntiquant(const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PagedAttentionChecker::CheckNonKVContiguousSupport(const FiaTilingInfo &fiaInfo){
+    if (fiaInfo.isTensorV1){
+        return ge::GRAPH_SUCCESS;
+    }
+
+    
+}
+
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
