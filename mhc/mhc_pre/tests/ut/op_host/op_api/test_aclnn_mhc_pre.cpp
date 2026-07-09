@@ -9,6 +9,10 @@
  */
 
 #include <gtest/gtest.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 #include "../../../../op_host/op_api/aclnn_mhc_pre.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -40,6 +44,54 @@ constexpr int64_t PHI_ROWS = N * N + 2 * N;
 constexpr int64_t ND = N * D;
 constexpr double NORM_EPS = 1e-6;
 constexpr double HC_EPS = 1e-6;
+
+using TensorDescPtr = std::unique_ptr<TensorDesc>;
+
+TensorDescPtr MakeTensor(const std::vector<int64_t> &shape, aclDataType dtype, double low, double high)
+{
+    TensorDescPtr tensor(new TensorDesc(shape, dtype, ACL_FORMAT_ND));
+    tensor->ValueRange(low, high);
+    return tensor;
+}
+
+struct MhcPreTensors {
+    TensorDescPtr x;
+    TensorDescPtr phi;
+    TensorDescPtr alpha;
+    TensorDescPtr bias;
+    TensorDescPtr gamma;
+    TensorDescPtr hIn;
+    TensorDescPtr hPost;
+    TensorDescPtr hRes;
+    TensorDescPtr invRms;
+    TensorDescPtr hMix;
+    TensorDescPtr hPre;
+};
+
+MhcPreTensors MakeValidTensors()
+{
+    MhcPreTensors tensors;
+    tensors.x = MakeTensor({B, S, N, D}, ACL_FLOAT16, -1, 1);
+    tensors.phi = MakeTensor({PHI_ROWS, ND}, ACL_FLOAT, -1, 1);
+    tensors.alpha = MakeTensor({3}, ACL_FLOAT, 0.5, 1.5);
+    tensors.bias = MakeTensor({PHI_ROWS}, ACL_FLOAT, -1, 1);
+    tensors.gamma = MakeTensor({N, D}, ACL_FLOAT, -1, 1);
+    tensors.hIn = MakeTensor({B, S, D}, ACL_FLOAT16, 0, 0);
+    tensors.hPost = MakeTensor({B, S, N}, ACL_FLOAT, 0, 0);
+    tensors.hRes = MakeTensor({B, S, N, N}, ACL_FLOAT, 0, 0);
+    tensors.invRms = MakeTensor({B, S}, ACL_FLOAT, 0, 0);
+    tensors.hMix = MakeTensor({B, S, PHI_ROWS}, ACL_FLOAT, 0, 0);
+    tensors.hPre = MakeTensor({B, S, N}, ACL_FLOAT, 0, 0);
+    return tensors;
+}
+
+using CaseMutator = std::function<void(MhcPreTensors &)>;
+
+struct InvalidCase {
+    std::string name;
+    std::string detail;
+    CaseMutator mutate;
+};
 
 aclnnStatus RunMhcPre(TensorDesc &x, TensorDesc &phi, TensorDesc &alpha, TensorDesc &bias, TensorDesc &gamma,
                       TensorDesc &hIn, TensorDesc &hPost, TensorDesc &hRes, TensorDesc &invRms, TensorDesc &hMix,
@@ -85,105 +137,134 @@ aclnnStatus RunMhcPrePartialOptional(TensorDesc &x, TensorDesc &phi, TensorDesc 
 
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_valid_4d_fp16_with_optional_outputs)
 {
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto invRms = TensorDesc({B, S}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hMix = TensorDesc({B, S, PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPre = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto tensors = MakeValidTensors();
 
-    EXPECT_NE(RunMhcPre(x, phi, alpha, bias, gamma, hIn, hPost, hRes, invRms, hMix, hPre), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_NE(RunMhcPre(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma, *tensors.hIn,
+                        *tensors.hPost, *tensors.hRes, *tensors.invRms, *tensors.hMix, *tensors.hPre),
+              ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_input_dtype_x)
+TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_dtype_shape_cases)
 {
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    std::vector<InvalidCase> cases = {
+        {"invalid_x_dtype_float32", "x dtype is float32", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, S, N, D}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_x_shape_rank2", "x shape rank is 2D, expected 3D or 4D", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_x_shape_value_n3", "x shape value has n=N-1", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, S, N - 1, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_phi_dtype_float16", "phi dtype is float16", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({PHI_ROWS, ND}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_phi_shape_rank1", "phi shape rank is 1D, expected 2D", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({ND}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_phi_shape_value_first_dim", "phi first dim is PHI_ROWS-1", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({PHI_ROWS - 1, ND}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_alpha_dtype_float16", "alpha dtype is float16", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({3}, ACL_FLOAT16, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_rank2", "alpha shape rank is 2D, expected 1D", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({1, 3}, ACL_FLOAT, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_value_len4", "alpha shape value is [4], expected [3]", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({4}, ACL_FLOAT, 0.5, 1.5);
+         }},
+        {"invalid_bias_dtype_float16", "bias dtype is float16", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({PHI_ROWS}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_bias_shape_rank2", "bias shape rank is 2D, expected 1D", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({1, PHI_ROWS}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_bias_shape_value_len23", "bias shape value is PHI_ROWS-1", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({PHI_ROWS - 1}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_gamma_dtype_float16", "gamma dtype is float16", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({N, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_gamma_shape_rank1", "gamma shape rank is 1D, expected 2D", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({D}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_gamma_shape_value_last_dim", "gamma last dim is D+1", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({N, D + 1}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_hin_dtype_float32", "hIn dtype is float32", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({B, S, D}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hin_shape_rank1", "hIn shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({D}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hin_shape_value_last_dim", "hIn last dim is D+1", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({B, S, D + 1}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpost_dtype_float16", "hPost dtype is float16", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpost_shape_rank1", "hPost shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpost_shape_value_last_dim", "hPost last dim is N+1", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hres_dtype_float16", "hRes dtype is float16", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({B, S, N, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hres_shape_rank2", "hRes shape rank is 2D, expected 4D", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({N, N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hres_shape_value_last_dim", "hRes last dim is N+1", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({B, S, N, N + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_invrms_dtype_float16", "invRms dtype is float16", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_invrms_shape_rank3", "invRms shape rank is 3D, expected 2D", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S, 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_invrms_shape_value_len", "invRms second dim is S+1", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hmix_dtype_float16", "hMix dtype is float16", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({B, S, PHI_ROWS}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hmix_shape_rank1", "hMix shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({PHI_ROWS}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hmix_shape_value_last_dim", "hMix last dim is PHI_ROWS+1", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({B, S, PHI_ROWS + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpre_dtype_float16", "hPre dtype is float16", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpre_shape_rank1", "hPre shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpre_shape_value_last_dim", "hPre last dim is N+1", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0);
+         }},
+    };
 
-    EXPECT_EQ(RunMhcPreNoOptional(x, phi, alpha, bias, gamma, hIn, hPost, hRes), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_input_shape_phi)
-{
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS - 1, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-
-    EXPECT_EQ(RunMhcPreNoOptional(x, phi, alpha, bias, gamma, hIn, hPost, hRes), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_output_dtype_hin)
-{
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-
-    EXPECT_EQ(RunMhcPreNoOptional(x, phi, alpha, bias, gamma, hIn, hPost, hRes), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_output_shape_hpost)
-{
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N + 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-
-    EXPECT_EQ(RunMhcPreNoOptional(x, phi, alpha, bias, gamma, hIn, hPost, hRes), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_optional_output_shape_hmix)
-{
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto invRms = TensorDesc({B, S}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hMix = TensorDesc({B, S, PHI_ROWS + 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPre = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-
-    EXPECT_EQ(RunMhcPre(x, phi, alpha, bias, gamma, hIn, hPost, hRes, invRms, hMix, hPre), ACLNN_ERR_PARAM_INVALID);
+    for (const auto &invalidCase : cases) {
+        auto tensors = MakeValidTensors();
+        invalidCase.mutate(tensors);
+        auto actual = RunMhcPre(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma, *tensors.hIn,
+                                *tensors.hPost, *tensors.hRes, *tensors.invRms, *tensors.hMix, *tensors.hPre);
+        auto result = actual == ACLNN_ERR_PARAM_INVALID ? "PASS" : "FAIL";
+        cout << "[" << result << "] case=" << invalidCase.name << ", detail=" << invalidCase.detail
+             << ", expected=" << ACLNN_ERR_PARAM_INVALID << ", actual=" << actual << endl;
+        EXPECT_EQ(actual, ACLNN_ERR_PARAM_INVALID) << invalidCase.name;
+    }
 }
 
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_partial_optional_outputs)
 {
-    auto x = TensorDesc({B, S, N, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto phi = TensorDesc({PHI_ROWS, ND}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto bias = TensorDesc({PHI_ROWS}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gamma = TensorDesc({N, D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto hIn = TensorDesc({B, S, D}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hPost = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hRes = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto invRms = TensorDesc({B, S}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto tensors = MakeValidTensors();
 
-    EXPECT_EQ(RunMhcPrePartialOptional(x, phi, alpha, bias, gamma, hIn, hPost, hRes, invRms), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunMhcPrePartialOptional(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma, *tensors.hIn,
+                                       *tensors.hPost, *tensors.hRes, *tensors.invRms),
+              ACLNN_ERR_PARAM_INVALID);
 }
