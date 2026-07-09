@@ -312,6 +312,11 @@ public:
     bool slidingFlag = false;
     bool learnableSinkFlag = false;
     bool isQKVDDifferent = false;
+
+    int32_t keyNonContigDim = -1;
+    int32_t valueNonContigDim = -1;
+    int32_t keyRopeNonContigDim = -1;
+
     // DType
     FiaTilingInOutMode inOutMode = FiaTilingInOutMode::FP16_FP16;
     ge::DataType inputQType = ge::DT_FLOAT16;
