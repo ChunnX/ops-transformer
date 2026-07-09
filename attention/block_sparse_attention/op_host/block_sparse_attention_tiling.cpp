@@ -1030,8 +1030,10 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
-    selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
+    selectIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * CeilDiv(maxKvBlockNum_, 32) * 32
+                   * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
+    selectNumIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * sizeof(uint32_t) * 32
+                      * batch_ * numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
 
     mm1OutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
@@ -1041,9 +1043,11 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
 
     workSpaceSize_ = libapiSize_ + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + selectNumIdxSize_ + selectIdxSize_ + syncSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
-    uint32_t totalTaskNumMask = batch_ * numHeads_ * maxQBlockNum_;
-    avgRowNumPerSubCore_ = CeilDiv(totalTaskNumMask, blockDim_ * 2);
-    preActivateSubCoreNum_ = CeilDiv(totalTaskNumMask, avgRowNumPerSubCore_);
+    uint64_t totalTaskNumMask = static_cast<uint64_t>(batch_) * numHeads_ * maxQBlockNum_;
+    uint64_t blockDim2 = static_cast<uint64_t>(blockDim_) * 2;
+    avgRowNumPerSubCore_ = static_cast<uint32_t>((totalTaskNumMask + blockDim2 - 1) / blockDim2);
+    preActivateSubCoreNum_ =
+        static_cast<uint32_t>((totalTaskNumMask + avgRowNumPerSubCore_ - 1) / avgRowNumPerSubCore_);
 
     return ge::GRAPH_SUCCESS;
 }
