@@ -47,12 +47,15 @@ struct ComputeBlockInfo {
 };
 
 // ============================================================
-// CopyInQue: GM→UB 并自动 EnQue
+// CopyInQue: GM→UB (Que) 并自动 EnQue
 //
+// 参数:
 //   rowCount:   搬运行数
 //   elemPerRow: 每行有效元素数（从 GM 搬多少）
 //   srcStride:  GM 行间字节跨步 (0 = 紧凑连续)
-//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时自动 padding 对齐)
+//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时自动 padding 到对齐)
+//
+// stride 单位: GM 端 srcStride 为字节, UB 端 dstStride 内部自动算为 dataBlock(32B)
 //
 // 用法:
 //   CopyInQue(que, src, 1, totalElems);                     // 连续
@@ -88,10 +91,13 @@ __aicore__ inline void CopyInQue(
 }
 
 // ============================================================
-// CopyOutQue: UB→GM 并自动 DeQue + FreeTensor
+// CopyOutQue: UB (Que)→GM 并自动 DeQue + FreeTensor
 //
+// 参数:
 //   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时跳过 padding)
 //   dstStride:  GM 目标端行间字节跨步 (0 = 连续)
+//
+// stride 单位: UB 端 srcStride 内部自动算为 dataBlock(32B), GM 端 dstStride 为字节
 //
 // 用法:
 //   CopyOutQue(que, dst, 1, totalElems);                      // 连续
@@ -123,9 +129,17 @@ __aicore__ inline void CopyOutQue(
 }
 
 // ============================================================
-// CopyInBuf: GM→Buf (不涉及 EnQue/DeQue)
+// CopyInBuf: GM→Buf (TBuf, 不涉及 EnQue/DeQue)
 //
-//   用法同 CopyInQue, 传入 TBuf 替代 TQue
+// 参数:
+//   buf:        TBuf<TPosition::VECCALC> 引用
+//   srcGm:      GM 源 tensor
+//   rowCount:   搬运行数
+//   elemPerRow: 每行有效元素数（从 GM 搬多少）
+//   srcStride:  GM 行间字节跨步 (0 = 紧凑连续)
+//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时自动 padding 到对齐)
+//
+// stride 单位: GM 端 srcStride 为字节, UB 端 dstStride 内部自动算为 dataBlock(32B)
 // ============================================================
 template <typename T>
 __aicore__ inline void CopyInBuf(
@@ -152,10 +166,19 @@ __aicore__ inline void CopyInBuf(
 }
 
 // ============================================================
-// CopyOutBuf: Buf→GM
+// CopyOutBuf: Buf (TBuf)→GM
 //
-//   用法同 CopyOutQue, 传入 TBuf 替代 TQue
-//   srcOffset: UB 端起始偏移(元素数), 用于逐行搬非32B对齐padding的场景
+// 参数:
+//   buf:        TBuf<TPosition::VECCALC> 引用
+//   dstGm:      GM 目标 tensor
+//   rowCount:   搬运行数
+//   elemPerRow: 每行有效元素数（搬到 GM 多少）
+//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时跳过 padding)
+//   dstStride:  GM 目标端行间字节跨步 (0 = 连续)
+//   srcOffset:  UB 端起始偏移(元素数), 用于从 buf 的指定位置搬出
+//               适用于逐行搬非32B对齐padding的场景
+//
+// stride 单位: UB 端 srcStride 内部自动算为 dataBlock(32B), GM 端 dstStride 为字节
 // ============================================================
 template <typename T>
 __aicore__ inline void CopyOutBuf(
@@ -178,6 +201,85 @@ __aicore__ inline void CopyOutBuf(
     copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);
     copyParams.dstStride  = static_cast<uint32_t>(dstStride);
     DataCopyPad(dstGm, local[srcOffset], copyParams);
+}
+
+// ============================================================
+// CopyInBufEx: GM→Buf (TBuf) 带 dstOffset
+//
+// 参数:
+//   buf:        TBuf<TPosition::VECCALC> 引用
+//   srcGm:      GM 源 tensor
+//   rowCount:   搬运行数
+//   elemPerRow: 每行有效元素数（从 GM 搬多少）
+//   srcStride:  GM 行间字节跨步 (0 = 紧凑连续)
+//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时自动 padding 到对齐)
+//   dstOffset:  UB 端起始偏移(元素数), 用于写入 buf 的指定位置
+//               适用于多次搬入同一 buf 不同区段的场景 (CopyInBuf 不支持此参数)
+//
+// stride 单位: GM 端 srcStride 为字节, UB 端 dstStride 内部自动算为 dataBlock(32B)
+// ============================================================
+template <typename T>
+__aicore__ inline void CopyInBufEx(
+    TBuf<TPosition::VECCALC> &buf,
+    const GlobalTensor<T> &srcGm,
+    int64_t rowCount,
+    int64_t elemPerRow,
+    int64_t srcStride = 0,
+    int64_t ubAlignLen = 0,
+    int64_t dstOffset = 0)
+{
+    auto local = buf.template Get<T>();
+    int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
+    int64_t rightPad = alignLen - elemPerRow;
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
+
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = static_cast<uint16_t>(rowCount);
+    copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
+    copyParams.srcStride  = static_cast<uint32_t>(srcStride);
+    copyParams.dstStride  = static_cast<uint32_t>(ubStrideBlocks);
+
+    DataCopyPadExtParams<T> padParams{rightPad > 0, 0, static_cast<uint8_t>(rightPad), static_cast<T>(0)};
+    DataCopyPad(local[dstOffset], srcGm, copyParams, padParams);
+}
+
+// ============================================================
+// CopyOutQueEx: Que→GM 带 srcOffset
+//
+// 参数:
+//   que:        TQue 引用 (自动 DeQue + FreeTensor)
+//   dstGm:      GM 目标 tensor
+//   rowCount:   搬运行数
+//   elemPerRow: 每行有效元素数（搬到 GM 多少）
+//   ubAlignLen: UB 行对齐元素数 (0 = 紧凑=elemPerRow, >0 时跳过 padding)
+//   dstStride:  GM 目标端行间字节跨步 (0 = 连续)
+//   srcOffset:  UB 端起始偏移(元素数), 用于从 Que tensor 的指定位置搬出
+//               适用于从 Que tensor 的非零偏移位置搬出 (CopyOutQue 不支持此参数)
+//
+// stride 单位: UB 端 srcStride 内部自动算为 dataBlock(32B), GM 端 dstStride 为字节
+// ============================================================
+template <typename T, typename QueT>
+__aicore__ inline void CopyOutQueEx(
+    QueT &que,
+    const GlobalTensor<T> &dstGm,
+    int64_t rowCount,
+    int64_t elemPerRow,
+    int64_t ubAlignLen = 0,
+    int64_t dstStride = 0,
+    int64_t srcOffset = 0)
+{
+    auto local = que.template DeQue<T>();
+    int64_t alignLen = (ubAlignLen > 0) ? ubAlignLen : elemPerRow;
+    int64_t rightPad = alignLen - elemPerRow;
+    int64_t ubStrideBlocks = (rightPad * static_cast<int64_t>(sizeof(T))) / ONE_BLK_SIZE;
+
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = static_cast<uint16_t>(rowCount);
+    copyParams.blockLen   = static_cast<uint32_t>(elemPerRow * sizeof(T));
+    copyParams.srcStride  = static_cast<uint32_t>(ubStrideBlocks);
+    copyParams.dstStride  = static_cast<uint32_t>(dstStride);
+    DataCopyPad(dstGm, local[srcOffset], copyParams);
+    que.FreeTensor(local);
 }
 
 // ============================================================
@@ -453,7 +555,7 @@ __aicore__ inline void ComputeGradXFromRms(const LocalTensor<T> &xFp32Local, con
         MicroAPI::RegTensor<T> ncCountReg;
         MicroAPI::Duplicate(ncCountReg, static_cast<T>(ncCount));
 
-            MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);
+        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);
         for (uint16_t i = 0; i < repeatTimes; i++) {
             MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<T>(i, repeatCount);
             MicroAPI::LoadAlign(xFp32Reg, (__local_mem__ T *)xFp32Addr, offset);
