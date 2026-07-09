@@ -24,6 +24,27 @@
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
 #include "opdev/format_utils.h"
+#include <sys/types.h>
+#include <queue>
+#include <vector>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sys/types.h>
+#include <unistd.h>
+#include <cmath>
+#include <cstdint>
+#include <string>
+// #include "acl/acl_sys.h"
+// #include <acl/acl_sys.h>
+#include <acl/acl_rt.h>
+
+// 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
+// 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
+// #define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90100000
 
 using namespace op;
 
@@ -192,6 +213,33 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
+
+    aclDataType dataType = aclDataType::ACL_FLOAT8_E8M0;
+    if (dequantScaleXOptional !=nullptr){
+        if(aclGetDataType(dequantScaleXOptional,&dataType) == ACLNN_SUCCESS){
+            std::printf("***********fp8_e8m0 dtype is support on cann version 9.1.0*************");
+        }
+    }
+    if (dequantScaleXOptional !=nullptr){
+        // OP_LOGE("MlaPrologV3","fp8_e8m0 dtype is support on cann version 9.1.0");
+        int32_t runtimeVersionNum = 0;
+        // int32_t metadefVersionNum = 0;
+
+        if (aclsysGetVersionNum("cann", &runtimeVersionNum) != ACL_SUCCESS) {
+            aclsysGetVersionNum("runtime", &runtimeVersionNum);
+            OP_LOGW("MlaPrologV3", "Get runtime version failed when register exception func.");
+            return ge::GRAPH_FAILED;
+        }
+
+        if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+            OP_LOGW("MlaPrologV3",
+                "The runtime(%d) version is lower than the version(%d) supporting exception func.",
+                runtimeVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_FAILED;
+    }
+    std::printf("***********200 fp8_e8m0 dtype is support on cann version 9.1.0*************");
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };
