@@ -100,7 +100,9 @@ public:
         pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
+        // xPowBuffer 被 Get<float>() 当成 2 段各 ubFactor 长的 float(xPowLocal1 / xPowLocal2=[ubFactor])使用,
+        // 必须按 sizeof(float) 申请; 之前用 sizeof(T_KV) 对 fp16/bf16 只给了一半 -> x2 段 VEC 访问越界(aivec 340/341)。
+        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(float));
         
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {

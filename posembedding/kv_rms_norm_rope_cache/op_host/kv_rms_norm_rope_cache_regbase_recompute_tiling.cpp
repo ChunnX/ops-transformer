@@ -338,7 +338,11 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_cacheMode(currentCacheMode_);
 
     int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
-    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
+    // xPowBuffer kernel 侧按 float(而非 T_KV)申请 2*ubFactor 个元素, 对 fp16/bf16 比模型多占
+    // DOUBLE_BUFFER*(sizeof(float)-kvDtypeSize) 字节/ubFactor, 计入分母避免顶穿 UB(fp32 时该项为 0)。
+    int64_t ubFactor = FloorDiv(ubFlexible_,
+        CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_ +
+        DOUBLE_BUFFER * (static_cast<int64_t>(sizeof(float)) - kvDtypeSize_));
 
     OP_CHECK_IF(
         (ubFactor <= 0),
