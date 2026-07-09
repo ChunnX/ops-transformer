@@ -888,6 +888,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
     cu_seqlens_kv = torch.tensor(np.cumsum([0] + seq_lens_kv), dtype=torch.int32).npu()
     seqused_q = torch.tensor(seq_lens_q, dtype=torch.int32).npu()
     seqused_kv = torch.tensor(seq_lens_kv, dtype=torch.int32).npu()
+    max_seqlen_kv_val = max(seq_lens_kv)
 
     torch.npu.synchronize()
 
@@ -897,6 +898,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         seqused_q=seqused_q, seqused_kv=seqused_kv,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        max_seqlen_kv=max_seqlen_kv_val,
     )
 
     atten_out, lse_out = quant_flash_attn(
@@ -913,6 +915,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         pa_block_size=block_size,
+        max_seqlen_kv=max_seqlen_kv_val,
         **_get_npu_fa_kwargs(),
     )
     torch.npu.synchronize()

@@ -229,18 +229,18 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
-    opParamInfo_.maskMode = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
-    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
-    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
-    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
+    opParamInfo_.softmaxScale = attrs->GetAttrPointer<double>(ATTR_SOFTMAX_SCALE_INDEX);
+    opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int32_t>(ATTR_WIN_LEFT_INDEX);
+    opParamInfo_.winRight = attrs->GetAttrPointer<int32_t>(ATTR_WIN_RIGHT_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
+    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_KV_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
-    opParamInfo_.paBlockSize = attrs->GetAttrPointer<int64_t>(ATTR_PA_BLOCK_SIZE_INDEX);
-    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.paBlockSize = attrs->GetAttrPointer<int32_t>(ATTR_PA_BLOCK_SIZE_INDEX);
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_LSE_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
