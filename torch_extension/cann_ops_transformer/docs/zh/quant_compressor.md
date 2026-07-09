@@ -3,7 +3,7 @@
 ## 产品支持情况
 
 - <term>Ascend 950PR/Ascend 950DT</term>：不支持
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
 - <term>Atlas 推理系列产品</term>：不支持
@@ -12,7 +12,7 @@
 ## 功能说明
 
 - 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[compressor](./compressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化后参与计算，从而降低显存占用与搬运开销。主要计算过程为：
-    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
+    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$x\_descale$、$wkv\_descale$、$wgate\_descale$缩放因子进行反量化，与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
     3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
 
