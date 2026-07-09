@@ -20,6 +20,9 @@
 
 using namespace AscendC;
 
+#ifndef BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+#define BSA_ENABLE_SOFTMAX_SECOND_PASS_VF 1
+#endif
 constexpr uint8_t SYNC_V1_TO_C1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_C1_TO_V1_FLAG[9] = {2, 3, 4, 5, 6, 7, 8, 9, 10};
 constexpr uint32_t SYNC_C1_TO_V1_FLAG_NUMS = 9;

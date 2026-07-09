@@ -412,6 +412,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     SetFlag<HardEvent::MTE2_V>(eventSft);
     WaitFlag<HardEvent::MTE2_V>(eventSft);
 
+#if BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+    BSASelectBlockMaskVF::DoSoftmaxSecondPassFp32VfWrapper(
+        scoreUb, globalMax, globalSum, static_cast<float>(constInfo.scaleValue), actualQExcuteRow, kChunkSizeAlign16);
+#else
     Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
@@ -421,6 +425,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     AscendC::PipeBarrier<PIPE_V>();
 
     DivBroadcast(scoreUb, scoreUb, globalSumBroc, actualQExcuteRow, kChunkSizeAlign16);
+#endif
 
     AscendC::Cast(scoreFp16Ub, scoreUb, AscendC::RoundMode::CAST_ROUND, actualQExcuteRow * kChunkSizeAlign16);
     AscendC::PipeBarrier<PIPE_V>();
