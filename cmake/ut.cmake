@@ -148,6 +148,39 @@ if(UT_TEST_ALL OR OP_API_UT)
   endfunction()
 endif()
 
+if(UT_TEST_ALL OR OP_GRAPH_UT)
+  set(OP_GRAPH_MODULE_NAME
+      ${PKG_NAME}_op_graph_ut
+      CACHE STRING "op_graph ut module name" FORCE
+    )
+  function(add_op_graph_ut_modules OP_GRAPH_MODULE_NAME)
+    if(NOT TARGET ${OP_GRAPH_MODULE_NAME}_cases_obj)
+      add_library(${OP_GRAPH_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
+    endif()
+    target_include_directories(
+      ${OP_GRAPH_MODULE_NAME}_cases_obj
+      PRIVATE ${UT_COMMON_INC} ${GTEST_INCLUDE} ${OPBASE_INC_DIRS}
+              ${PROJECT_SOURCE_DIR}/common/include
+              ${PROJECT_SOURCE_DIR}/common/graph_fusion
+              ${METADEF_INCLUDE_DIRS}
+              ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc
+              $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+              $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/external>>
+              ${CMAKE_BINARY_DIR}/es_packages_math/include/es_math/
+              ${CMAKE_BINARY_DIR}/es_packages/include/es_nn/
+      )
+    target_compile_definitions(${OP_GRAPH_MODULE_NAME}_cases_obj PRIVATE LOG_CPP)
+    target_compile_options(${OP_GRAPH_MODULE_NAME}_cases_obj PRIVATE -fno-access-control)
+    target_link_libraries(
+      ${OP_GRAPH_MODULE_NAME}_cases_obj
+      PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+              $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+              $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+              gtest graph graph_base ge_common_base exe_graph register
+      )
+  endfunction()
+endif()
+
 if(UT_TEST_ALL OR OP_KERNEL_UT)
   set(OP_KERNEL_MODULE_NAME
       ${PKG_NAME}_op_kernel_ut
@@ -196,6 +229,7 @@ endif()
 if(UT_TEST_ALL
    OR OP_HOST_UT
    OR OP_API_UT
+   OR OP_GRAPH_UT
   )
   function(add_modules_ut_sources)
     set(options OPTION_RESERVED)
@@ -320,6 +354,23 @@ if(UT_TEST_ALL
       endif()
       file(GLOB OPAPI_CASES_SRC ${MODULE_DIR}/test_aclnn_*.cpp)
       target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPAPI_CASES_SRC})
+    endif()
+
+    if("${MODULE_UT_NAME}" STREQUAL "${OP_GRAPH_MODULE_NAME}")
+      get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
+      get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
+      get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
+      get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
+      list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
+        return()
+      endif()
+
+      if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
+        add_op_graph_ut_modules(${OP_GRAPH_MODULE_NAME})
+      endif()
+      file(GLOB OPGRAPH_CASES_SRC ${MODULE_DIR}/test_*_pass.cpp)
+      target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPGRAPH_CASES_SRC})
     endif()
   endfunction()
 endif()
