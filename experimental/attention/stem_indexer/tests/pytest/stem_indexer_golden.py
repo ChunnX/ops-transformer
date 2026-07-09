@@ -22,6 +22,8 @@ K_BLOCK_NUM_BIAS_MEDIUM = 30
 K_BLOCK_NUM_RATE_LARGE = 0.1
 K_BLOCK_NUM_BIAS_LARGE = 30
 METADATA_SIZE = 2048
+GOLDEN_TOPK_SCORE_TYPE = "uint16"
+SUPPORTED_GOLDEN_TOPK_SCORE_TYPES = {"uint32", "uint16"}
 
 DTYPE_MAP = {
     "BF16": torch.bfloat16,
@@ -59,6 +61,26 @@ def dtype_from_name(dtype_name):
     if dtype_name not in DTYPE_MAP:
         raise ValueError(f"Unsupported dtype name in StemIndexer test case: {dtype_name}")
     return DTYPE_MAP[dtype_name]
+
+
+def get_golden_topk_score_type(case):
+    special = parse_special_setting(case.get("special_setting", ""))
+    score_type = case.get("golden_topk_score_type", special.get(
+        "golden_topk_score_type", GOLDEN_TOPK_SCORE_TYPE
+    ))
+    score_type = str(score_type).strip().lower()
+    if score_type not in SUPPORTED_GOLDEN_TOPK_SCORE_TYPES:
+        raise ValueError(
+            f"Unsupported golden_topk_score_type: {score_type}. "
+            f"Supported values: {sorted(SUPPORTED_GOLDEN_TOPK_SCORE_TYPES)}"
+        )
+    return score_type
+
+
+def get_topk_sort_scores(scores, score_type):
+    if score_type == "uint16":
+        return scores.to(torch.bfloat16).float()
+    return scores
 
 
 def make_float_tensor(shape, dtype, pattern, seed):
@@ -203,6 +225,7 @@ def stem_indexer_golden(case, inputs):
     stem_block_size = case["stem_block_size"]
     stem_stride = case["stem_stride"]
     score_scale = 1.0 / ((stem_block_size // stem_stride) ** 2)
+    topk_score_type = get_golden_topk_score_type(case)
 
     max_qb = qflat.shape[2]
     max_kb = kflat.shape[2]
@@ -241,7 +264,8 @@ def stem_indexer_golden(case, inputs):
                     forced = get_forced_indices(s2_valid, case["initial_blocks"], case["window_size"])
                     candidate_indices = [idx for idx in range(s2_valid) if idx not in forced]
                     scores = score_group[local_q_head_idx, q_block_idx]
-                    ranked = sorted(candidate_indices, key=lambda idx: (-float(scores[idx]), idx))
+                    sort_scores = get_topk_sort_scores(scores, topk_score_type)
+                    ranked = sorted(candidate_indices, key=lambda idx: (-float(sort_scores[idx]), idx))
                     selected = sorted(forced.union(ranked[:topk_select_num]))
                     sparse_seq_len[batch_idx, q_head_idx, q_block_idx] = len(selected)
                     if selected:
