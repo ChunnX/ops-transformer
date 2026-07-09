@@ -301,7 +301,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         // 解析两个合并字段
         if constexpr (isReconstructTemp  == true) {
             run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType,
-                isFd, emptyTensor, enableS1OutSplit>( query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
+                isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
                 blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else{
             PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);

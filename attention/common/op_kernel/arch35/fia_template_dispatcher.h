@@ -66,7 +66,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
     __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreTilingData, fiaMetaData);
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, 
+    op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable,
             queryRope, keyRope, softmaxLse, attentionOut, workspace, fiaMetaData, tilingData, &tPipe);
     op.Process();
 }
