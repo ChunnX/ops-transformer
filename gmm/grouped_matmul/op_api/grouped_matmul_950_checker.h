@@ -47,6 +47,7 @@ private:
     aclnnStatus CheckGeneralQuantShape() const;
     aclnnStatus CheckQuantCasesFormat() const;
     aclnnStatus CheckWeightNzSpecialParams() const;
+    aclnnStatus CheckWeightNzMultiTensorElements() const;
     aclnnStatus CheckWeightNzTensorShapes() const;
     aclnnStatus CheckWeightNzTensorShape(const aclTensor *weightTensor, const aclTensor *firstWeightTensor,
                                          size_t index, int64_t &firstKDimValue, int64_t &firstNDimValue) const;
