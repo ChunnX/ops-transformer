@@ -228,14 +228,14 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         if (aclsysGetVersionNum("cann", &runtimeVersionNum) != ACL_SUCCESS) {
             aclsysGetVersionNum("runtime", &runtimeVersionNum);
             OP_LOGW("MlaPrologV3", "Get runtime version failed when register exception func.");
-            return;
+            return GRAPH_FAILED;
         }
 
         if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
             OP_LOGW("MlaPrologV3",
                 "The runtime(%d) version is lower than the version(%d) supporting exception func.",
                 runtimeVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
-            return;
+            return GRAPH_FAILED;
         }
         return ge::GRAPH_FAILED;
     }
