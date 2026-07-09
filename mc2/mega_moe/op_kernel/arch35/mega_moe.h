@@ -742,8 +742,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
-    // Phase 2 drain: 6 个 buffer-free flag
-    for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
+    // Phase 2 drain: 只等实际 prime 过的槽位，避免 copyNum < BufferNum 时死等未使用的槽
+    for (int32_t bufferIdx = 0; bufferIdx < primeCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
 }
