@@ -19,9 +19,51 @@
 namespace op_api {
 using namespace at_npu::native;
 
- inline TensorWrapper make_wrapper(const at::Tensor& tensor, aclDataType tensor_acltype)
+inline TensorWrapper MakeTensorWrapper(const at::Tensor &tensor)
 {
-    return {tensor, tensor_acltype};
+    return {tensor, ConvertToAclDataType(tensor.scalar_type())};
+}
+
+inline bool IsMxQuantMode(int64_t quant_mode)
+{
+    return quant_mode == 3 || quant_mode == 5;
+}
+
+inline bool IsE8M0Tensor(const at::Tensor &tensor)
+{
+    return tensor.scalar_type() == at::kFloat8_e8m0fnu;
+}
+
+inline void FixQLIV2AclDtypes(int64_t quant_mode, TensorWrapper &query_wrapper, TensorWrapper &key_wrapper,
+                              TensorWrapper &query_scale_wrapper, TensorWrapper &key_scale_wrapper)
+{
+    if (quant_mode == 4) {
+        TORCH_CHECK(query_wrapper.tensor_.scalar_type() == at::kByte,
+            "When quant_mode is 4, query must be hifp8 type");
+        TORCH_CHECK(key_wrapper.tensor_.scalar_type() == at::kByte,
+            "When quant_mode is 4, key must be hifp8 type");
+        query_wrapper.dtype = ACL_HIFLOAT8;
+        key_wrapper.dtype = ACL_HIFLOAT8;
+        return;
+    }
+
+    if (quant_mode == 5) {
+        TORCH_CHECK(query_wrapper.tensor_.scalar_type() == at::kFloat4_e2m1fn_x2,
+            "When quant_mode is 5, query must be torch.float4_e2m1fn_x2");
+        TORCH_CHECK(key_wrapper.tensor_.scalar_type() == at::kFloat4_e2m1fn_x2,
+            "When quant_mode is 5, key must be torch.float4_e2m1fn_x2");
+        query_wrapper.dtype = ACL_FLOAT4_E2M1;
+        key_wrapper.dtype = ACL_FLOAT4_E2M1;
+    }
+
+    if (IsMxQuantMode(quant_mode)) {
+        TORCH_CHECK(IsE8M0Tensor(query_scale_wrapper.tensor_),
+            "When quant_mode is 3 or 5, query_dequant_scale must be torch.float8_e8m0fnu");
+        TORCH_CHECK(IsE8M0Tensor(key_scale_wrapper.tensor_),
+            "When quant_mode is 3 or 5, key_dequant_scale must be torch.float8_e8m0fnu");
+        query_scale_wrapper.dtype = ACL_FLOAT8_E8M0;
+        key_scale_wrapper.dtype = ACL_FLOAT8_E8M0;
+    }
 }
 
 // npu tensor max size
@@ -137,26 +179,17 @@ std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer(
     char *query_layout_ptr = const_cast<char *>(query_layout_str.c_str());
     char *key_layout_ptr = const_cast<char *>(key_layout_str.c_str());
 
-    if (quant_mode == 4) {
-        //  hifp8接收数据类型为Uint8
-        TORCH_CHECK(query.scalar_type() == at::kByte,
-            "When quant_mode is 4, query must be hifp8 type");
-        TORCH_CHECK(key.scalar_type() == at::kByte,
-            "When quant_mode is 4, key must be hifp8 type");
-        TensorWrapper query_wrapper = make_wrapper(query, ACL_HIFLOAT8);
-        TensorWrapper key_wrapper = make_wrapper(key, ACL_HIFLOAT8);
-        ACLNN_CMD(aclnnQuantLightningIndexerV2, query_wrapper, key_wrapper,
-            weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-            cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
-            max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
-            sparse_indices_out, sparse_values_out);
-    } else {
-        ACLNN_CMD(aclnnQuantLightningIndexerV2, query, key,
-            weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-            cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
-            max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
-            sparse_indices_out, sparse_values_out);
-    }
+    auto query_wrapper = MakeTensorWrapper(query);
+    auto key_wrapper = MakeTensorWrapper(key);
+    auto query_scale_wrapper = MakeTensorWrapper(query_dequant_scale);
+    auto key_scale_wrapper = MakeTensorWrapper(key_dequant_scale);
+    FixQLIV2AclDtypes(quant_mode, query_wrapper, key_wrapper, query_scale_wrapper, key_scale_wrapper);
+
+    ACLNN_CMD(aclnnQuantLightningIndexerV2, query_wrapper, key_wrapper,
+        weights, query_scale_wrapper, key_scale_wrapper, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
+        max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
+        sparse_indices_out, sparse_values_out);
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
