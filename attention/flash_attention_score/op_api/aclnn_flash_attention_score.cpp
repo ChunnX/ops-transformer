@@ -597,7 +597,7 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
 
     // 硬件亲和dim适配
     if ((shapeInfo.axes.d != shapeInfo.axes.dv) &&
-        (shapeInfo.axes.d == HEAD_DIM_128 || shapeInfo.axes.d == HEAD_DIM_64 || shapeInfo.axes.d == HEAD_DIM_80)) {
+        (shapeInfo.axes.d == HEAD_DIM_88 || shapeInfo.axes.d == HEAD_DIM_64 || shapeInfo.axes.d == HEAD_DIM_80)) {
         shapeInfo.needPad = true;
         shapeInfo.padNumv = shapeInfo.padNum + shapeInfo.axes.d - shapeInfo.axes.dv;
     }
