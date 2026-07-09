@@ -21,7 +21,7 @@ import torch
 #                   PA_BBND 时 seqused_k 必传
 TEST_PARAMS = {
     # BSND+PA+mask0+s2整除基本块: b=1,s1=1,s2=2048,g=64,blockSize=128,sparse=2048,mask=0,ratio=1
-    "rdv_1":{
+    "stc_1":{
         "batch_size": [1],
         "q_seq": [1],
         "k_seq": [2048],
@@ -58,7 +58,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+PA+mask0+s2小于一个基本块: b=1,s1=1,s2=120,g=64,blockSize=128,sparse=100,mask=0,ratio=1
-    "rdv_2":{
+    "stc_2":{
         "batch_size": [1],
         "q_seq": [1],
         "k_seq": [120],
@@ -95,7 +95,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+PA+mask3+s2不整除基本块: b=1,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
-    "rdv_3":{
+    "stc_3":{
         "batch_size": [1],
         "q_seq": [2],
         "k_seq": [3000],
@@ -132,7 +132,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+PA+mask3+刚好满核: b=64,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
-    "rdv_4":{
+    "stc_4":{
         "batch_size": [64],
         "q_seq": [2],
         "k_seq": [3000],
@@ -169,7 +169,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+PA+mask3+满核还多: b=65,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
-    "rdv_5":{
+    "stc_5":{
         "batch_size": [65],
         "q_seq": [2],
         "k_seq": [3000],
@@ -206,7 +206,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # TND+PA+mask0+s2切成大于基本块临界值: b=1,s1=3,s2=513,g=4,blockSize=896,sparse=512,mask=0,ratio=64
-    "rdv_6":{
+    "stc_6":{
         "batch_size": [1],
         "q_seq": [3],
         "k_seq": [513],
@@ -243,7 +243,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+mask0+不传seqused+s2切成小于基本块临界值: b=2,s1=16,s2=3967,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
-    "rdv_7":{
+    "stc_7":{
         "batch_size": [2],
         "q_seq": [16],
         "k_seq": [3967],
@@ -280,7 +280,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # TND+mask3+s2为一半基本块: b=4,s1=64,s2=512,g=64,blockSize=768,sparse=511,mask=3,ratio=32
-    "rdv_8":{
+    "stc_8":{
         "batch_size": [4],
         "q_seq": [64],
         "k_seq": [512],
@@ -317,7 +317,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # TND+PA+mask3+大batch+s2切成大于基本块临界值: b=48,s1=48,s2=2049,g=5,blockSize=1024,sparse=513,mask=3,ratio=128
-    "rdv_9":{
+    "stc_9":{
         "batch_size": [48],
         "q_seq": [48],
         "k_seq": [2049],
@@ -354,7 +354,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # BSND+mask0+s2不整除基本块但是整除16: b=2,s1=15,s2=4000,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
-    "rdv_10":{
+    "stc_10":{
         "batch_size": [2],
         "q_seq": [15],
         "k_seq": [4000],
@@ -391,7 +391,7 @@ TEST_PARAMS = {
         "output_idx_offset_datarange": [[0, 100]]
     },
     # TND+mask0+s2仅最后一个batch整除基本块: b=4,s1=49,s2=2051,g=64,blockSize=640,sparse=2048,mask=0,ratio=16
-    "rdv_11":{
+    "stc_11":{
         "batch_size": [4],
         "q_seq": [49],
         "k_seq": [2051],
@@ -432,15 +432,15 @@ TEST_PARAMS = {
 # 按需选择要启用的测试参数（例如默认启用所有）
 properties = torch.npu.get_device_properties()
 ENABLED_PARAMS = [
-    TEST_PARAMS["rdv_1"],
-    TEST_PARAMS["rdv_2"],
-    TEST_PARAMS["rdv_3"],
-    TEST_PARAMS["rdv_4"],
-    TEST_PARAMS["rdv_5"],
-    TEST_PARAMS["rdv_6"],
-    TEST_PARAMS["rdv_7"],
-    TEST_PARAMS["rdv_8"],
-    TEST_PARAMS["rdv_9"],
-    TEST_PARAMS["rdv_10"],
-    TEST_PARAMS["rdv_11"],
+    TEST_PARAMS["stc_1"],
+    TEST_PARAMS["stc_2"],
+    TEST_PARAMS["stc_3"],
+    TEST_PARAMS["stc_4"],
+    TEST_PARAMS["stc_5"],
+    TEST_PARAMS["stc_6"],
+    TEST_PARAMS["stc_7"],
+    TEST_PARAMS["stc_8"],
+    TEST_PARAMS["stc_9"],
+    TEST_PARAMS["stc_10"],
+    TEST_PARAMS["stc_11"],
     ]
