@@ -60,6 +60,8 @@ constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
 constexpr uint32_t RESERVED_LENGTH = 1024U;
+constexpr uint16_t FIRST_TENSOR_INDEX = 0U;
+constexpr uint16_t SECOND_TENSOR_INDEX = 1U;
 
 constexpr size_t WEIGHTNZ_DIM_NUM = 5;
 constexpr size_t WEIGHTNZ_FIRST_DIM = 0;
