@@ -22,8 +22,9 @@ import copy
 import ast
 import cann_ops_transformer
 
-DEFAULT_SPLIT_S1 = False
-DEFAULT_S1SIZE = 2048
+DISCONTINUOUS_KEYS = True      # key非连续
+DEFAULT_SPLIT_S1 = False       # golden切分S1Flag
+DEFAULT_S1SIZE = 2048          # s1切分基本块大小
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -1168,7 +1169,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                         key_dequant_scale_block[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         properties = torch.npu.get_device_properties()
-        if quant_mode != 4 and "Ascend950" in properties.name:
+        if quant_mode != 4 and "Ascend950" in properties.name and DEFAULT_SPLIT_S1:
             bytes_per_token = head_dim + key_dequant_scale_block.element_size() // key.element_size()
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
             key_flat = key.view(block_num, block_size * k_head_num * head_dim)
@@ -1194,7 +1195,6 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
 
-    metadata = metadata.npu()
     if is_batch:
         if qk_dtype == torch.float8_e4m3fn:
             query = query.to(dtype=torch.float16)
@@ -1251,6 +1251,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                                     layout_q = layout_query,
                                     layout_k = layout_key,
                                     cmp_ratio = cmp_ratio)
+        metadata = metadata.npu()
         npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
