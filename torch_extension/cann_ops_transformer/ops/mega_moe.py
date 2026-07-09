@@ -111,7 +111,7 @@ class SymmBuffer:
             num_topk,
             hidden,
             dispatch_quant_mode,
-            dispatch_quant_out_dtype if dispatch_quant_out_dtype is not None else 28,
+            dispatch_quant_out_dtype,
             combine_quant_mode,
             comm_alg,
         )
