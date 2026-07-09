@@ -97,6 +97,10 @@ DATA_RANGE_V = 1.0
 DEVICE_ID = 0
 
 SPARSE_BLOCK_SIZE = 128
+HEAD_DIM = 128
+QUANT_MODE_MXFP8 = 2
+KEY_LAYOUT = "PA_BNSD"
+SPARSE_INDICES_LAYOUT = "PA_BNSD"
 
 
 def _get_npu_fa_kwargs():
@@ -657,15 +661,21 @@ def generate_data():
                 idx += 1
 
     ############## sparse_indices begin
+    sparse_indices = None
+    sparse_seq_len = None
+    #sparse_indices = torch.full((batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32)
+    #sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
     if 1:
         q_block = max(ACTUAL_SEQ_Q) / SPARSE_BLOCK_SIZE
         kv_block = max(ACTUAL_SEQ_KV) / SPARSE_BLOCK_SIZE
         #sparse_indices_list = torch.randperm(B*N1*q_block*kv_block, dtype=torch.int32);
         sparse_indices_list = torch.cat([torch.randperm(kv_block, dtype=torch.int32) for _ in range(B*N1*q_block)])
+        sparse_seq_len = torch.zeros((B, N1, q_block), dtype=torch.int32)
         idx = 0
         for batch_idx in range(B):
             for n_idx in range(N1):
                 for q_block_idx in range(q_block):
+                    sparse_seq_len[batch_idx, n_idx, q_block_idx] = ACTUAL_SEQ_KV[batch_idx] / SPARSE_BLOCK_SIZE
                     if q_block_idx > ACTUAL_SEQ_Q[batch_idx] / SPARSE_BLOCK_SIZE:
                             sparse_indices_list[idx] = -1
                     for kv_block_idx in range(kv_block):
@@ -679,7 +689,7 @@ def generate_data():
 
     return (q_fp8, k_fp8, v_fp8,
             dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-            qr_bf16, kr_bf16, block_table_torch)
+            qr_bf16, kr_bf16, block_table_torch, sparse_indices, sparse_seq_len)
 
 
 # ==============================================================================
@@ -899,31 +909,110 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
 def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                    block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype):
+                    block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype,sparse_indices, sparse_seq_len):
     """调用 NPU 单算子"""
-    torch.npu.synchronize()
-    atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
-        q, k, v,
-        query_rope=q_rope,
-        key_rope=k_rope,
-        atten_mask=mask,
-        actual_seq_qlen=actual_seq_q,
-        actual_seq_kvlen=actual_seq_kv,
-        dequant_scale_query=dequant_scale_q,
-        dequant_scale_key=dequant_scale_k,
-        dequant_scale_value=dequant_scale_v,
-        block_table=block_table,
-        block_size=block_size,
-        num_query_heads=q_n,
-        num_key_value_heads=kv_n,
-        softmax_scale=softmax_scale,
-        input_layout=layout,
-        sparse_mode=sparse_mode,
-        quant_scale_p=p_scale,
-        out_dtype=out_dtype,
-        **_get_npu_fa_kwargs(),
+
+    ###准备输入
+    seqused_q[0] = actual_seq_q[0]
+    seqused_q[1:] = actual_seq_q[1:] - actual_seq_q[:-1]
+    seqused_kv = actual_seq_kv
+
+    cu_seqlens_kv = torch.cumsum(actual_seq_kv,dim=0)
+    cu_seqlens_q = actual_seq_q
+
+    max_sq = max(ACTUAL_SEQ_Q)
+    max_skv = max(ACTUAL_SEQ_KV)
+
+    ###准备输入
+
+    ###########metaData
+    torch_npu.npu.synchronize()
+    device_id = 0
+    torch_npu.npu.set_device(device_id)
+    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+        sparse_seq_len,
+        q_n,#metadata_input["num_heads_q"],
+        kv_n,#metadata_input["num_heads_kv"],
+        HEAD_DIM,#metadata_input["head_dim"],
+        cu_seqlens_q=cu_seqlens_q,#cu_seqlens_q=_to_npu(inputs["cu_seqlens_q"]),
+        cu_seqlens_kv=cu_seqlens_kv,#cu_seqlens_kv=_to_npu(inputs["cu_seqlens_kv"]),
+        seqused_q=seqused_q,#seqused_q=_to_npu(inputs["seqused_q"]),
+        seqused_kv=seqused_kv,#seqused_kv=_to_npu(inputs["seqused_kv"]),
+        batch_size=B,#metadata_input.get("batch_size", int(inputs["sparse_seq_len"].shape[0])),
+        sparse_block_size_q=SPARSE_BLOCK_SIZE,#inputs["sparse_q_block_size"],
+        sparse_block_size_k=SPARSE_BLOCK_SIZE,#inputs["sparse_kv_block_size"],
+        quant_mode=QUANT_MODE_MXFP8,#inputs["quant_mode"],
+        mask_mode=SPARSE_MODE,#inputs["mask_mode"],
+        max_seqlen_q=max_sq,#metadata_input.get("max_seqlen_q", inputs["max_seqlen_q"]),
+        max_seqlen_kv=max_skv,#metadata_input.get("max_seqlen_kv", inputs["max_seqlen_kv"]),
+        layout_q=INPUT_LAYOUT,#metadata_input.get("layout_q", inputs["layout_q"]),
+        layout_kv=KEY_LAYOUT,#metadata_input.get("layout_kv", inputs["layout_kv"]),
+        layout_sparse_indices=SPARSE_INDICES_LAYOUT,#metadata_input.get("layout_sparse_indices", inputs["layout_sparse_indices"]),
     )
-    torch.npu.synchronize()
+    torch_npu.npu.synchronize()
+    ###########metaData
+
+    ##############
+    torch_npu.npu.synchronize()
+    device_id = 0
+    torch_npu.npu.set_device(device_id)
+    output = torch.ops.custom.npu_quant_block_sparse_attn(
+        _to_npu(inputs["query"]),
+        key,
+        value,
+        _to_npu(inputs["q_descale"]),
+        k_descale,
+        _to_npu(inputs["v_descale"]),
+        _to_npu(inputs["p_scale"]),
+        _to_npu(inputs["sparse_indices"]),
+        _to_npu(inputs["sparse_seq_len"]),
+        _to_npu(inputs["atten_mask"]),
+        inputs["softmax_scale"],
+        inputs["sparse_q_block_size"],
+        inputs["sparse_kv_block_size"],
+        cu_seqlens_q=_to_npu(inputs["cu_seqlens_q"]),
+        cu_seqlens_kv=_to_npu(inputs["cu_seqlens_kv"]),
+        seqused_q=_to_npu(inputs["seqused_q"]),
+        seqused_kv=_to_npu(inputs["seqused_kv"]),
+        block_table=_to_npu(inputs["block_table"]),
+        metadata=metadata,
+        max_seqlen_q=inputs["max_seqlen_q"],
+        max_seqlen_kv=inputs["max_seqlen_kv"],
+        pa_block_stride=inputs.get("pa_block_stride", inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
+        layout_kv=inputs["layout_kv"],
+        layout_q=inputs["layout_q"],
+        layout_sparse_indices=inputs["layout_sparse_indices"],
+        layout_out=inputs["layout_out"],
+        quant_mode=inputs["quant_mode"],
+        mask_mode=inputs["mask_mode"],
+        return_softmax_lse=inputs["return_softmax_lse"],
+    )
+    torch_npu.npu.synchronize()
+    #############
+
+    # torch.npu.synchronize()
+    # # atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
+    # #     q, k, v,
+    # #     query_rope=q_rope,
+    # #     key_rope=k_rope,
+    # #     atten_mask=mask,
+    # #     actual_seq_qlen=actual_seq_q,
+    # #     actual_seq_kvlen=actual_seq_kv,
+    # #     dequant_scale_query=dequant_scale_q,
+    # #     dequant_scale_key=dequant_scale_k,
+    # #     dequant_scale_value=dequant_scale_v,
+    # #     block_table=block_table,
+    # #     block_size=block_size,
+    # #     num_query_heads=q_n,
+    # #     num_key_value_heads=kv_n,
+    # #     softmax_scale=softmax_scale,
+    # #     input_layout=layout,
+    # #     sparse_mode=sparse_mode,
+    # #     quant_scale_p=p_scale,
+    # #     out_dtype=out_dtype,
+    # #     **_get_npu_fa_kwargs(),
+    # # )
+    # torch.npu.synchronize()
     return atten_out, lse_out
 
 
@@ -1000,7 +1089,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                  dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                  actual_seq_q, actual_seq_kv,
                  block_table_torch=None,
-                 qr_bf16=None, kr_bf16=None):
+                 qr_bf16=None, kr_bf16=None,sparse_indices=None,sparse_seq_len=None):
     """调用 NPU 算子，支持 N2TGD layout"""
     torch_npu.npu.set_device(int(DEVICE_ID))
 
@@ -1076,7 +1165,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         atten_out, lse_out = mxfp8_fa_torch_npu(
             q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg, accum_seq_q, actual_seq_kv,
             deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, block_table_npu,
-            N_q, N_kv, softmax_scale, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
+            N_q, N_kv, softmax_scale, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype, sparse_indices,sparse_seq_len)
     else:
         # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
         k_npu = convert_kv_bnsd_to_layout(k_fp8, actual_seq_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
@@ -1111,13 +1200,13 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 
 def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
                        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                       block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype):
+                       block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype, sparse_indices, sparse_seq_len):
     if GRAPH_PATH == 0:
         logger.info("[NPU] 调用单算子模式...")
         return _call_npu_fa_op(
             q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
             dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-            block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype)
+            block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype, sparse_indices, sparse_seq_len)
 
     npu_mode = Network().to("npu:%s" % int(DEVICE_ID))
     config = CompilerConfig()
@@ -1206,7 +1295,7 @@ if __name__ == '__main__':
         logger.info("\n[Step 1] 数据生成")
         (q_fp8, k_fp8, v_fp8,
          dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-         qr_bf16, kr_bf16, block_table_torch) = generate_data()
+         qr_bf16, kr_bf16, block_table_torch,sparse_indices) = generate_data()
         golden_cache.save_input(case_name, golden_cache.build_input_dict(
             q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v,
             p_scale, qr_bf16, kr_bf16, block_table_torch
@@ -1240,7 +1329,7 @@ if __name__ == '__main__':
         atten_out, lse_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
-                               block_table_torch, qr_bf16, kr_bf16)
+                               block_table_torch, qr_bf16, kr_bf16,sparse_indices)
         golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cdir)
     else:
         atten_out, lse_out = golden_cache.load_npu_output(case_name, cache_dir=cdir)
