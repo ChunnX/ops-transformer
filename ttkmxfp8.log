@@ -1,20 +1,19 @@
 (fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-09 13:00:02,476 [INFO] [2051346 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
-2026-07-09 13:00:06,892 [INFO] [2051346 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 13:00:07,435 [INFO] [2051346 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-09 13:00:07,435 [INFO] [2051346 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-09 13:00:07,435 [INFO] [2051346 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-09 13:00:07,435 [INFO] [2051346 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-09 13:00:08,605 [INFO] [2051346 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-09 13:00:08,611 [INFO] [2051346 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-09 13:00:08,612 [INFO] [2051346 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-09 13:00:09,749 [INFO] [2051346 MP MT] [instance.py:42]: Device count: 1 
-2026-07-09 13:00:09,749 [INFO] [2051346 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-09 13:00:09,749 [INFO] [2051346 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-09 13:00:09,750 [INFO] [2051346 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
-2026-07-09 13:00:09,750 [INFO] [2051346 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-09 13:00:09,750 [INFO] [2051346 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
-API [fia_mxfp8_wrapper.npu_fia_mxfp8] requires at least 8 input tensor parameters (excluding out), but testcase configured 7. (source: inspect.signature)
+2026-07-09 13:11:40,057 [INFO] [2061754 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
+2026-07-09 13:11:44,396 [INFO] [2061754 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 13:11:44,954 [INFO] [2061754 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-09 13:11:44,954 [INFO] [2061754 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-09 13:11:44,954 [INFO] [2061754 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-09 13:11:44,954 [INFO] [2061754 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-09 13:11:46,102 [INFO] [2061754 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-09 13:11:46,108 [INFO] [2061754 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-09 13:11:46,108 [INFO] [2061754 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-09 13:11:47,246 [INFO] [2061754 MP MT] [instance.py:42]: Device count: 1 
+2026-07-09 13:11:47,247 [INFO] [2061754 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-09 13:11:47,247 [INFO] [2061754 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-09 13:11:47,247 [INFO] [2061754 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
+2026-07-09 13:11:47,248 [INFO] [2061754 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-09 13:11:47,248 [INFO] [2061754 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 Checking testcase name...
 Case number: 1
 Initialize output csv file...
@@ -25,16 +24,63 @@ Preparing Task Executors...
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2051648 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 2062066 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-09 13:00:15,306 [INFO] [2051648 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 13:00:15,870 [INFO] [2051648 TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 MainThread] [profiling.py:176]: 
- ####################################### Eager Result Summary  ######################################## 
-EAGER:       TENSOR_COUNT_MISMATCH
-  DEVICE: None us
-  CPU:    None us
-STATUS: FAIL
-Golden Shapes: ()
-Golden Dtypes: ()
-####################################################################################################### 
+2026-07-09 13:11:52,941 [INFO] [2062066 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Input generation failure
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 550, in _do_profile
+    raw_inputs = generate_inputs(testcase, switches, backend, plan)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/input_generation.py", line 72, in generate_inputs
+    input_func(*args, **kwargs)
+TypeError: generate_fia_mxfp8_inputs() missing 11 required keyword-only arguments: 'B', 'N_q', 'N_kv', 'D', 'actual_seq_q', 'actual_seq_kv', 'enable_pa', 'kv_cache_layout', 'block_size', 'sparse_mode', and 'q_scale_layout'
+[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 550, in _do_profile
+    raw_inputs = generate_inputs(testcase, switches, backend, plan)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/input_generation.py", line 72, in generate_inputs
+    input_func(*args, **kwargs)
+TypeError: generate_fia_mxfp8_inputs() missing 11 required keyword-only arguments: 'B', 'N_q', 'N_kv', 'D', 'actual_seq_q', 'actual_seq_kv', 'enable_pa', 'kv_cache_layout', 'block_size', 'sparse_mode', and 'q_scale_layout'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 553, in _do_profile
+    return_struct.precision = "INPUT_GEN_FAILURE"
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2062066, fail reason:
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 550, in _do_profile
+    raw_inputs = generate_inputs(testcase, switches, backend, plan)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/input_generation.py", line 72, in generate_inputs
+    input_func(*args, **kwargs)
+TypeError: generate_fia_mxfp8_inputs() missing 11 required keyword-only arguments: 'B', 'N_q', 'N_kv', 'D', 'actual_seq_q', 'actual_seq_kv', 'enable_pa', 'kv_cache_layout', 'block_size', 'sparse_mode', and 'q_scale_layout'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 553, in _do_profile
+    return_struct.precision = "INPUT_GEN_FAILURE"
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
+    function_return = func(*func_args, **func_kwargs)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
+    return_struct.precision = str(e)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+
 ttk Profiling complete
