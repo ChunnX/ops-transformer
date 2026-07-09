@@ -20,7 +20,7 @@ import pandas as pd
 
 PARAM_NAMES = (
     "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num",
-    "k_head_num", "head_dim", "block_size", "block_num", "qk_dtype",
+    "k_head_num", "head_dim", "block_size", "block_num", "qk_dtype", "weight_dtype",
     "dequant_dtype", "actual_seq_dtype", "cu_seq_q", "cu_seq_k", "act_seq_q",
     "act_seq_k", "cmp_residual_k", "max_seqlen_q", "quant_mode", "layout_query",
     "layout_key", "sparse_count", "sparse_mode", "query_datarange", "key_datarange",
@@ -137,9 +137,9 @@ class QliV2ResultWriter:
         readable = (
             f"QLI_B{values[0]}_S1{values[1]}_S2{values[2]}_"
             f"N1{values[5]}_N2{values[6]}_D{values[7]}_"
-            f"{values[20]}_{values[21]}_{values[10]}_"
-            f"QM{values[19]}_SM{values[23]}_CR{values[29]}_"
-            f"K{values[22]}_RV{values[30]}"
+            f"{values[21]}_{values[22]}_{values[10]}_"
+            f"QM{values[20]}_SM{values[24]}_CR{values[30]}_"
+            f"K{values[23]}_RV{values[31]}"
         )
         return re.sub(r"[^A-Za-z0-9_.-]+", "_", readable)
 

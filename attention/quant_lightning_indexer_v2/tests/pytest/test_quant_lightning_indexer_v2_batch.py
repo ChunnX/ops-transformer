@@ -86,9 +86,11 @@ def qliv2(testcase_file):
         else:
             result = "Failed"
             fulfill_percent = 0
-        return_value = params[30]
+        return_value = params[31]
         if return_value:
-            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(
+                cpu_topk_value, npu_topk_value, params, cpu_result, npu_result,
+                topk_value, output_idx_offset)
             print(f"result_return_value: {result_return_value}")
             print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
         else:
@@ -100,7 +102,7 @@ def qliv2(testcase_file):
         fulfill_percent = 0
         result_return_value = "N/A"
         fulfill_precent_return_value = 0
-        params = [None] * 32
+        params = [None] * 33
 
     row_data = QliV2ResultWriter.row(
         Path(testcase_file).stem,
