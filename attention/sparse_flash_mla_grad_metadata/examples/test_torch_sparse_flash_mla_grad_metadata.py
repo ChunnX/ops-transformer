@@ -7,8 +7,8 @@ import torch.nn as nn
 
 metadata = torch.ops.cann_ops_transformer.sparse_flash_mla_grad_metadata(
     cu_seqlens_q = torch.tensor([0, 10], dtype=torch.int32).npu(),
-    cu_seqlens_ori_kv = None,
-    cu_seqlens_cmp_kv = None,
+    cu_seqlens_ori_kv = torch.tensor([0, 8192], dtype=torch.int32).npu(),
+    cu_seqlens_cmp_kv = torch.tensor([0, 64], dtype=torch.int32).npu(),
     seqused_q = None,
     seqused_ori_kv = torch.tensor([8192], dtype=torch.int32).npu(),
     seqused_cmp_kv = torch.tensor([64], dtype=torch.int32).npu(),
