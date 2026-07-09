@@ -20,6 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
+#include "bsa_vec_sm_vf.h"
 
 
 template <typename BSAT>
