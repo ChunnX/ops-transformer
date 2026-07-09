@@ -58,7 +58,10 @@ def test_qliv2_process(filepath, device_id=0):
         cu_seqlens_key = test_data['cu_seqlens_key'].npu()
     else:
         cu_seqlens_key = None
-    block_table = test_data['block_table'].npu()
+    if test_data['block_table'] is not None:
+        block_table = test_data['block_table'].npu()
+    else:
+        block_table = None
     metadata = test_data['metadata'].npu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
