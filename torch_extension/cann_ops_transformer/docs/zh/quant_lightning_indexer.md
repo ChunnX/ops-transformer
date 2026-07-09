@@ -50,7 +50,7 @@ cann_ops_transformer.quant_lightning_indexer_metadata(
 | num_heads_k | int | 必选 | 表示Key的head个数，当前仅支持1。 | int32 | - |
 | head_dim | int | 必选 | 表示注意力头的维度，当前仅支持128。 | int32 | - |
 | topk | int | 必选 | 表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]。 | int32 | - |
-| quant_mode | int | 必选 | 表示量化模式，当前仅支持1/2/4。1表示qk: fp8(e4m3) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；4表示qk: hif8 per-tensor, scale: fp32。 | int32 | - |
+| quant_mode | int | 必选 | 表示量化模式，当前支持1/2/3/4/5。1表示qk: fp8(e4m3) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；3表示qk: mxfp8(e4m3), scale: fp8(e8m0)；4表示qk: hif8 per-tensor, scale: fp32；5表示qk: mxfp4(e2m1), scale: fp8(e8m0)。 | int32 | - |
 | cu_seqlens_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
 | cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
 | seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
@@ -65,8 +65,10 @@ cann_ops_transformer.quant_lightning_indexer_metadata(
 | cmp_ratio | int | 可选 | 表示Key的压缩率，取值范围[1, 128]，默认值为1，表示无压缩。 | int32 | - |
 
 - <term>Ascend 950PR/Ascend 950DT</term>：不支持quant_mode = 2。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/4，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/3/4/5，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持num_heads_q = 32，不支持quant_mode = 1/3/4/5，不支持layout_k = BSND/TND，不支持cmp_ratio在[1, 128]任意取值，仅支持cmp_ratio = 1/2/4/8/16/32/64/128。
+- PyTorch接口中，quant_mode = 3/5时query_dequant_scale和key_dequant_scale必须为torch.float8_e8m0fnu。
+- PyTorch接口中，quant_mode = 5时query和key必须为torch.float4_e2m1fn_x2；每个物理字节打包两个E2M1逻辑元素。
 
 ## 返回值说明
 
