@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 from typing import List, Optional
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
