@@ -241,26 +241,24 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            // constInfo需要增加一个strides参数传入init中，该参数的值通过tiling传递进来
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
-                         constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
-                         constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
-            InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                             constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
-                             dequantScaleKey, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
-            InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, actualSeqLengthsGmKv,
-                             constInfo.actualSeqLenKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
-                             constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
-                             constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
-        }
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        // constInfo需要增加一个strides参数传入init中，该参数的值通过tiling传递进来
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
+                        constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                        constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
+        InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
+                            constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
+                            dequantScaleKey, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
+        InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / MXFP_DIVISOR_SIZE, actualSeqLengthsGmKv,
+                            constInfo.actualSeqLenKVSize, constInfo.n2Size, constInfo.blockSize / MXFP_DIVISOR_SIZE,
+                            constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
+                            constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
 
         if constexpr (HAS_ROPE) {
             InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
@@ -508,7 +506,7 @@ public:
         };
         // CopyKey的控制参数
         GmKvCoord gmCoord {
-            .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.n2Idx,
             .s2Idx = s2Offset,
             .dIdx = dOffset,
@@ -527,7 +525,7 @@ public:
             };
 
             GmKvCoord gmCoord = {
-                .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+                .bIdx = runInfo.bIdx,
                 .n2Idx = runInfo.n2Idx,
                 .s2Idx = s2Offset,
                 .dIdx = 0,
@@ -587,7 +585,7 @@ public:
         };
 
         GmKvCoord gmCoord {
-            .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.n2Idx,
             .s2Idx = s2Offset,
             .dIdx = dOffset,
@@ -652,11 +650,6 @@ public:
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
         if constexpr (USE_DN) {
             IterateBmm1Dn(outputBuf, runInfo, subLoop);
         } else {
@@ -878,12 +871,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
         if constexpr (USE_DN) {
             IterateBmm2Dn(outputBuf, inputBuf, runInfo);
         } else {
