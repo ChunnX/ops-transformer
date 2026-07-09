@@ -693,7 +693,7 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
     uint32_t n2 = N / 2;
     OP_TILING_CHECK(n2 % HIDDEN_SIZE_ALIGN != 0,
         OP_LOGE(K_INNER_DEBUG, "weight2's dim0(intermediate_hidden) should be %ld aligned, but got %ld.",
-            HIDDEN_SIZE_ALIGN, N), return GRAPH_FAILED);
+            HIDDEN_SIZE_ALIGN, n2), return GRAPH_FAILED);
 
     OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN || n2 > MAX_INTERMEDIATE_HIDDEN,
         OP_LOGE(K_INNER_DEBUG, "weight2's dim0(intermediate_hidden) is invalid, should be in [%ld, %ld], but got %ld.",
