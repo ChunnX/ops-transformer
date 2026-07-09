@@ -55,7 +55,6 @@ static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *con
                     context->GetNodeName(), ("input " + std::to_string(index) + " shape").c_str(), "nullptr",
                     "Input shape should not be null."),
                 return std::make_tuple(0, 0));
-    // check shape length is DIM_SIZE_TWO
     OP_CHECK_IF(
         shapePtr->GetStorageShape().GetDimNum() != DIM_SIZE_TWO,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
@@ -213,7 +212,9 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
                                           "0 or 1"),
                 return ge::GRAPH_FAILED);
     if (hasTopkWeight_) {
-        auto outputTopkWeightType = context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX)->GetDataType();
+        auto outputTopkWeightDesc = context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, outputTopkWeightDesc);
+        auto outputTopkWeightType = outputTopkWeightDesc->GetDataType();
         OP_CHECK_IF(outputTopkWeightType != ge::DT_FLOAT,
                     OP_LOGE(context_->GetNodeName(), "permute_topk_weight should be DT_FLOAT, actual %s.",
                             ge::TypeUtils::DataTypeToSerialString(outputTopkWeightType).c_str()),
@@ -244,10 +245,10 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
                         "Output shape should not be null."),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(outScaleShapePtr->GetStorageShape() !=
-                        context->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape(),
+                        context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape(),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                        context->GetNodeName(), "per_token_scales and permute_per_token_scales",
-                        (Ops::Base::ToString(context->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape())
+                        context_->GetNodeName(), "per_token_scales and permute_per_token_scales",
+                        (Ops::Base::ToString(context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape())
                          + " and " + Ops::Base::ToString(outScaleShapePtr->GetStorageShape())).c_str(),
                         "The output permute_per_token_scales shape should be the same as per_token_scales."),
                     return ge::GRAPH_FAILED);
@@ -403,26 +404,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
         scaleDtype_ = scalePtr->GetDataType();
         hasScale_ = true;
     }
-
-    auto topkWeightPtr = context_->GetOptionalInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX);
-    if (topkWeightPtr != nullptr) {
-        topkWeightDtype_ = topkWeightPtr->GetDataType();
-        OP_CHECK_IF(topkWeightDtype_ != ge::DT_FLOAT,
-                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight only supports DT_FLOAT, actual %s.",
-                            ge::TypeUtils::DataTypeToSerialString(topkWeightDtype_).c_str()),
-                    return ge::GRAPH_FAILED);
-        hasTopkWeight_ = true;
-        auto topkWeightShapeTuple = GetShapeTuple(context_, IN_EXPERT_TOPK_WEIGHT_INDEX, true);
-        auto topkWeightSum = std::get<0>(topkWeightShapeTuple);
-        auto topkWeightDim1 = std::get<1>(topkWeightShapeTuple);
-        OP_CHECK_IF(topkWeightSum != tokenSum_,
-                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim0: %ld should equal tokenSum: %ld.",
-                            topkWeightSum, tokenSum_),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(topkWeightDim1 != 1,
-                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.", topkWeightDim1),
-                    return ge::GRAPH_FAILED);
-    }
+    hasTopkWeight_ = false;
 
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);

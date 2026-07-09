@@ -60,7 +60,7 @@ if _TORCHAIR_AVAILABLE:
                       per_token_scales: Optional[Tensor], expert_topk_weight: Optional[Tensor], *,
                       expert_token_num_type: int, idx_type: int,
                       dependencies=[], node_name=None):
-        """REG_OP(MoeReRouting)\n
+        """REG_OP(MoeReRoutingV2)\n
         .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
                                    DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .INPUT(expert_token_num_per_rank, TensorType({DT_INT32, DT_INT64}))\n
@@ -96,12 +96,12 @@ if _TORCHAIR_AVAILABLE:
         ]
 
         return ge_op(
-            op_type="MoeReRouting",
+            op_type="MoeReRoutingV2",
             inputs=inputs,
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MoeReRouting") \
+            ir=IrDef("MoeReRoutingV2") \
             .input("tokens", "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
                    "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .input("expert_token_num_per_rank", "DT_INT32, DT_INT64") \
