@@ -191,7 +191,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    aclnnStatus ret = InnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
@@ -221,7 +221,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(void *workspace, uint64_t workspaceS
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
-    return aclnnInnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
+    return InnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
 }
 
 } // namespace
