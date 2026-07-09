@@ -30,6 +30,30 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
+template <LayOutTypeEnum LAYOUT, uint8_t kvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetKVGmFormat()
+{
+    if constexpr (kvLayoutType == 0) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+        }
+    } else if constexpr (kvLayoutType == 1) {
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (kvLayoutType == 2) {
+        return GmFormat::PA_BnNBsD;
+    } else {
+        return GmFormat::PA_NZ;
+    }
+}
+
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
@@ -242,16 +266,12 @@ public:
         keyPtr = key;
         valuePtr = value;
         if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
             // constInfo需要增加一个strides参数传入init中，该参数的值通过tiling传递进来
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
+                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key,
                          constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value,
                          constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
             InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.cuSeqLensKVSize,
                              constInfo.n2Size, constInfo.blockSize, constInfo.dSize / MXFP_GROUP_SIZE, keyScaleGm,
@@ -261,7 +281,6 @@ public:
                              constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, valueScaleGm, dequantScaleValue,
                              constInfo.vScaleStrides.bnStride, constInfo.vScaleStrides.n2Stride);
         }
-
         if constexpr (HAS_ROPE) {
             InitQRopeBuffer(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
                         constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, queryRopeGm, queryRope);

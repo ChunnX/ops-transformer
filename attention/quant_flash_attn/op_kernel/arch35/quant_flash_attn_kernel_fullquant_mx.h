@@ -82,7 +82,7 @@ public:
 
     ConstInfoX constInfo;
 
-    const QuantFlashAttnTilingData *__restrict tilingData;
+    const __gm__ QuantFlashAttnTilingData *__restrict tilingData;
     TPipe *pipe = nullptr;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -117,7 +117,7 @@ public:
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attnOut,
                                 __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                const QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
@@ -205,10 +205,10 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        auto qfaBaseParams = this->tilingData->baseTiling.quantFlashAttnBaseParams;
-        auto qfaAttenMaskParams = this->tilingData->baseTiling.quantFlashAttnAttenMaskParams;
-        auto qfaPageAttentionParams = this->tilingData->baseTiling.quantFlashAttnPageAttentionParams;
-        auto qfaWorkspaceParams = this->tilingData->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto& qfaBaseParams = this->tilingData->baseTiling.quantFlashAttnBaseParams;
+        const auto& qfaAttenMaskParams = this->tilingData->baseTiling.quantFlashAttnAttenMaskParams;
+        const auto& qfaPageAttentionParams = this->tilingData->baseTiling.quantFlashAttnPageAttentionParams;
+        const auto& qfaWorkspaceParams = this->tilingData->baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo.bSize = qfaBaseParams.bSize;
         constInfo.t1Size = qfaBaseParams.t1Size;
@@ -231,6 +231,7 @@ public:
         constInfo.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
         constInfo.isKvContinuous = qfaBaseParams.isKvContinuous != 0;
         constInfo.coreNum = qfaBaseParams.coreNum;
+        constInfo.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
@@ -240,7 +241,6 @@ public:
         constInfo.attenMaskBatch = qfaAttenMaskParams.attenMaskBatch;
         constInfo.attenMaskS1Size = qfaAttenMaskParams.attenMaskS1Size;
         constInfo.attenMaskS2Size = qfaAttenMaskParams.attenMaskS2Size;
-        constInfo.isExistRowInvalid = qfaAttenMaskParams.isExistRowInvalid;
         // }
 
         constInfo.accumOutSize = qfaWorkspaceParams.accumOutSize;

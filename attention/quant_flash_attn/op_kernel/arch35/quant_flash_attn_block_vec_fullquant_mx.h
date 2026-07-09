@@ -242,7 +242,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        return constInfo.isExistRowInvalid;
+        return constInfo.needInitOutput;
     }
 
     __aicore__ inline void InitOutputSingleCore()
