@@ -400,7 +400,6 @@ static aclnnStatus InputOutputDtypeCheck(const aclTensor *query, const aclTensor
 {
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
-
     if (qDtype != outDtype) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input query tensor's dtype should be same with attentionOut tensor's dtype");
         return ACLNN_ERR_PARAM_INVALID;
@@ -565,7 +564,6 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
                                  const aclIntArray *actualSeqQLenOptional = nullptr,
                                  const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
-
     NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
     if (npuArch == NpuArch::DAV_2201) {
         size_t layoutLen = strlen(inputLayout);
