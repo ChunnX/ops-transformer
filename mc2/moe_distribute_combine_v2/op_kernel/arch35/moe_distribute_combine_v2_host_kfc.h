@@ -696,7 +696,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
         
         // 使用Write接口发送数据
         // Write<commit=false> 表示先不提交，手动控制提交时机
-        HcommHandle writeHandle = hcomm.Write<false>(channelHandle_, 
+        HcommHandle writeHandle = hcomm.Write<false>(channelHandle, 
                                                       remoteWindowAddr,  // 目标地址：Rank 1的window
                                                       localWindowAddr,   // 源地址：Rank 0的window
                                                       TEST_DATA_SIZE);   // 数据大小
