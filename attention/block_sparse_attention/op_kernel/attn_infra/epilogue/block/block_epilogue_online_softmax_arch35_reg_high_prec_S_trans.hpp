@@ -56,6 +56,7 @@ public:
     static constexpr uint32_t MAX_UB_P_ELEM_NUM = 8320;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -78,6 +79,8 @@ public:
     static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
     static constexpr uint32_t UB_S_P_BUF_STAGES = 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
+
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_, UBufTileHelper &uBufTileHelper)
@@ -206,7 +209,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
+        uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : nRound;
+        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId],
             ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
@@ -216,7 +220,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
         
         AscendC::DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = nRound / 16; // 分两次搬运
+        dataCopyParams.blockCount = FULL_QUANT_FP8 ? curNRound / ELE_NUM_PER_C0_FP8 : curNRound / ELE_NUM_PER_C0; // 分两次搬运
         dataCopyParams.blockLen = mRound / 2;
         dataCopyParams.srcStride = 1;
         dataCopyParams.dstStride = mRound / 2;
@@ -289,24 +293,40 @@ private:
         RegTensor<ElementP> deInterleave2Vreg;
         RegTensor<ElementP> deInterleave3Vreg;
 
-        constexpr static CastTrait castTraitZero = {
+        //FP8 RegTensor
+        RegTensor<ElementP> deInterleave4Vreg;
+        RegTensor<ElementP> deInterleave5Vreg;
+        RegTensor<ElementP> deInterleave6Vreg;
+        RegTensor<ElementP> deInterleave7Vreg;
+        RegTensor<ElementP> exp0Vreg8;
+        RegTensor<ElementP> exp1Vreg8;
+        RegTensor<ElementP> exp2Vreg8;
+        RegTensor<ElementP> exp3Vreg8;
+        RegTensor<ElementP> deInterleave0ResultVreg;
+        RegTensor<ElementP> deInterleave1ResultVreg;
+        RegTensor<ElementP> deInterleave2ResultVreg;
+        RegTensor<ElementP> deInterleave3ResultVreg;
+
+
+        constexpr static CastTrait castTraitZeroROUND = {
             RegLayout::ZERO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
             AscendC::RoundMode::CAST_ROUND,
         };
 
-        constexpr static CastTrait castTraitOne = {
-            RegLayout::ONE,
+        constexpr static CastTrait castTraitZeroRINT = {
+            RegLayout::ZERO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_ROUND,
+            AscendC::RoundMode::CAST_RINT,
         };
 
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<float>(tailN);
-        uint32_t vecLenBit16 = 128;
-        MaskReg pregVL128 = UpdateMask<uint16_t>(vecLenBit16);
+        uint32_t twoVecLenCombined = 128;
+        MaskReg pregFp16VL128 = UpdateMask<uint16_t>(twoVecLenCombined);
+        MaskReg pregFp8VL128 = UpdateMask<uint8_t>(twoVecLenCombined);
         __ubuf__ ElementP *exp0Ub = expUb;
         __ubuf__ ElementP *exp1Ub = expUb + (mRound * 4);
 
@@ -371,28 +391,67 @@ private:
             FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
             FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
 
-            Cast<ElementP, float, castTraitZero>(exp0Vreg16, exp0Vreg32, pregFull);
-            Cast<ElementP, float, castTraitZero>(exp2Vreg16, exp2Vreg32, pregFull);
-            DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
-            Cast<ElementP, float, castTraitZero>(exp1Vreg16, exp1Vreg32, pregFull);
-            Cast<ElementP, float, castTraitZero>(exp3Vreg16, exp3Vreg32, pregFull);
-            DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
-            StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregVL128); 
+            if constexpr (FULL_QUANT_FP8) {
+                constexpr half maxValueFP8 = static_cast<half>(448.0f);
+                Muls(exp0Vreg32, exp0Vreg32, maxValueFP8, pregTailN);
+                Muls(exp1Vreg32, exp1Vreg32, maxValueFP8, pregTailN);
+                Muls(exp2Vreg32, exp2Vreg32, maxValueFP8, pregTailN);
+                Muls(exp3Vreg32, exp3Vreg32, maxValueFP8, pregTailN);
+                Cast<ElementP, float, castTraitZeroRINT>(exp0Vreg8, exp0Vreg32, pregFull);
+                Cast<ElementP, float, castTraitZeroRINT>(exp1Vreg8, exp1Vreg32, pregFull);
+                Cast<ElementP, float, castTraitZeroRINT>(exp2Vreg8, exp2Vreg32, pregFull);
+                Cast<ElementP, float, castTraitZeroRINT>(exp3Vreg8, exp3Vreg32, pregFull);
+                DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg8, exp0Vreg8);
+                DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp2Vreg8, exp2Vreg8);
+                DeInterleave(deInterleave0ResultVreg, deInterleave1ResultVreg, deInterleave0Vreg, deInterleave2Vreg);
+                DeInterleave(deInterleave4Vreg, deInterleave5Vreg, exp1Vreg8, exp1Vreg8);
+                DeInterleave(deInterleave6Vreg, deInterleave7Vreg, exp3Vreg8, exp3Vreg8);
+                DeInterleave(deInterleave2ResultVreg, deInterleave3ResultVreg, deInterleave4Vreg, deInterleave6Vreg);
+                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ ElementP *&)exp0Ub), deInterleave0ResultVreg, blockStride, 1, pregFp8VL128);
 
-            if constexpr (mTileNum >= MAligendTileNum::Zero) {
-                Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Two) {
-                Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
-            }
-            StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregVL128);
-            if constexpr (mTileNum >= MAligendTileNum::One) {
-                Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
-            }
-            if constexpr (mTileNum >= MAligendTileNum::Three) {
-                Add(sum3Vreg, exp3Vreg32, sum3Vreg, pregTailN);
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
+                }
+                if constexpr (mTileNum >= MAligendTileNum::Two) {
+                    Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
+                }
+                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ ElementP *&)exp1Ub), deInterleave2ResultVreg, blockStride, 1, pregFp8VL128);
+                if constexpr (mTileNum >= MAligendTileNum::One) {
+                    Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
+                }
+                if constexpr (mTileNum >= MAligendTileNum::Three) {
+                    Add(sum3Vreg, exp3Vreg32, sum3Vreg, pregTailN);
+                }
+            } else {
+                Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
+                Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
+                DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
+                Cast<ElementP, float, castTraitZeroROUND>(exp1Vreg16, exp1Vreg32, pregFull);
+                Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
+                DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
+                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
+
+                if constexpr (mTileNum >= MAligendTileNum::Zero) {
+                    Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
+                }
+                if constexpr (mTileNum >= MAligendTileNum::Two) {
+                    Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
+                }
+                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                           AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
+                if constexpr (mTileNum >= MAligendTileNum::One) {
+                    Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
+                }
+                if constexpr (mTileNum >= MAligendTileNum::Three) {
+                    Add(sum3Vreg, exp3Vreg32, sum3Vreg, pregTailN);
+                }
             }
         }
         if constexpr (mTileNum < MAligendTileNum::Four) {
@@ -411,26 +470,64 @@ private:
                 FusedExpSub(exp1Vreg32, src1Vreg, max0Vreg, pregTailN);
                 FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
                 FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
-                
-                Cast<ElementP, float, castTraitZero>(exp0Vreg16, exp0Vreg32, pregFull);
-                Cast<ElementP, float, castTraitZero>(exp2Vreg16, exp2Vreg32, pregFull);
-                DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
-                Cast<ElementP, float, castTraitZero>(exp1Vreg16, exp1Vreg32, pregFull);
-                Cast<ElementP, float, castTraitZero>(exp3Vreg16, exp3Vreg32, pregFull);
-                DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
-                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                    ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregVL128); 
 
-                if constexpr (mTileNum > MAligendTileNum::Zero) {
-                    Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
-                }
-                if constexpr (mTileNum > MAligendTileNum::Two) {
-                    Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
-                }
-                StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                    ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregVL128);
-                if constexpr (mTileNum > MAligendTileNum::One) {
-                    Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
+                if constexpr (FULL_QUANT_FP8) {
+                    constexpr half maxValueFP8 = static_cast<half>(448.0f);
+                    Muls(exp0Vreg32, exp0Vreg32, maxValueFP8, pregTailN);
+                    Muls(exp1Vreg32, exp1Vreg32, maxValueFP8, pregTailN);
+                    Muls(exp2Vreg32, exp2Vreg32, maxValueFP8, pregTailN);
+                    Muls(exp3Vreg32, exp3Vreg32, maxValueFP8, pregTailN);
+                    Cast<ElementP, float, castTraitZeroRINT>(exp0Vreg8, exp0Vreg32, pregFull);
+                    Cast<ElementP, float, castTraitZeroRINT>(exp1Vreg8, exp1Vreg32, pregFull);
+                    Cast<ElementP, float, castTraitZeroRINT>(exp2Vreg8, exp2Vreg32, pregFull);
+                    Cast<ElementP, float, castTraitZeroRINT>(exp3Vreg8, exp3Vreg32, pregFull);
+                    DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg8, exp0Vreg8);
+                    DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp2Vreg8, exp2Vreg8);
+                    DeInterleave(deInterleave0ResultVreg, deInterleave1ResultVreg, deInterleave0Vreg,
+                                 deInterleave2Vreg);
+                    DeInterleave(deInterleave4Vreg, deInterleave5Vreg, exp1Vreg8, exp1Vreg8);
+                    DeInterleave(deInterleave6Vreg, deInterleave7Vreg, exp3Vreg8, exp3Vreg8);
+                    DeInterleave(deInterleave2ResultVreg, deInterleave3ResultVreg, deInterleave4Vreg,
+                                 deInterleave6Vreg);
+                    StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ ElementP *&)exp0Ub), deInterleave0ResultVreg, blockStride, 1, pregFp8VL128);
+
+                    if constexpr (mTileNum > MAligendTileNum::Zero) {
+                        Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
+                    }
+                    if constexpr (mTileNum > MAligendTileNum::Two) {
+                        Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
+                    }
+                    StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ ElementP *&)exp1Ub), deInterleave2ResultVreg, blockStride, 1, pregFp8VL128);
+                    if constexpr (mTileNum > MAligendTileNum::One) {
+                        Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
+                    }
+                } else {
+                    Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
+                    Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
+                    DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
+                    Cast<ElementP, float, castTraitZeroROUND>(exp1Vreg16, exp1Vreg32, pregFull);
+                    Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
+                    DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
+                    StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
+
+                    if constexpr (mTileNum > MAligendTileNum::Zero) {
+                        Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
+                    }
+                    if constexpr (mTileNum > MAligendTileNum::Two) {
+                        Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
+                    }
+                    StoreAlign<ElementP, AscendC::MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
+                    if constexpr (mTileNum > MAligendTileNum::One) {
+                        Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
+                    }
                 }
             }
         }
