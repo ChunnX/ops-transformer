@@ -232,46 +232,70 @@ def tilelang_grad_kl_loss_single_kernel(
 
             # ============================================================
             # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
-            # 手动同步（auto-sync 关）：单缓冲 serial，mte2↔mte3 全串行
-            #   RAW: MTE3 drain 等 MTE2 fill；WAR: 下轮 fill 等本轮 drain
+            # 手动同步（auto-sync 关）：chunk 级 double buffer，MTE2 fill ∥ MTE3 drain
+            #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
             # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
             # ============================================================
             num_chunks = n_block // GATHER_CHUNK_SIZE
             with T.Scope("V"):
-                key_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, DQuery), input_dtype)
-                ki_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
-                kr_chunk_ub = T.alloc_ub((GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
+                # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
+                # 照抄官方 examples/elementwise/elementwise_add_pipeline.py 的 WAR-safe 结构：
+                #   MTE3_MTE2 = "slot 可写" WAR 事件（预置两个 slot，末尾 clear 排空）
+                #   MTE2_MTE3 = "slot 已填" RAW 事件（drain 等 fill）
+                # 3D 前导索引 buf[slot, i, :] 由官方范例验证可用。
+                key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
+                ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
+                kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
+
+                def _fill(slot, cstart, s1_id):
+                    # MTE2：逐行随机读 16 行 → buffer[slot]
+                    for i in T.serial(GATHER_CHUNK_SIZE):
+                        k_id = cstart + i
+                        idx = SparseIndices[bz, s1_id, 0, k_id]
+                        if idx >= 0:
+                            T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[slot, i, 0:DQuery])
+                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[slot, i, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[slot, i, 0:d_rope])
+
+                def _drain(slot, cstart, s1_id):
+                    # MTE3：整块 burst 写出 buffer[slot] → workspace
+                    T.copy(key_chunk_ub[slot, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                           GatherKey_ws[bz, s1_id, cstart:cstart + GATHER_CHUNK_SIZE, 0:DQuery])
+                    T.copy(ki_chunk_ub[slot, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                           GatherKeyIndex_ws[bz, s1_id, cstart:cstart + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                    if d_rope > 0:
+                        T.copy(kr_chunk_ub[slot, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                               GatherKeyRope_ws[bz, s1_id, cstart:cstart + GATHER_CHUNK_SIZE, 0:d_rope])
+
+                # 预置：两个 slot 都标记为"已 drain（可 fill）"
+                T.set_flag("mte3", "mte2", 0)
+                T.set_flag("mte3", "mte2", 1)
 
                 for s1_id in T.serial(s1_start, s1_end):
+                    # prologue：fill chunk 0 → slot 0
+                    T.wait_flag("mte3", "mte2", 0)
+                    _fill(0, k_start, s1_id)
+                    T.set_flag("mte2", "mte3", 0)
+
                     for chunk_id in T.serial(num_chunks):
-                        chunk_start = k_start + chunk_id * GATHER_CHUNK_SIZE
+                        cur = chunk_id % 2
+                        nxt = (chunk_id + 1) % 2
+                        # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
+                        if chunk_id + 1 < num_chunks:
+                            next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                            T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
+                            _fill(nxt, next_start, s1_id)
+                            T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
+                        # drain 本 chunk（MTE3）
+                        T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
+                        cur_start = k_start + chunk_id * GATHER_CHUNK_SIZE
+                        _drain(cur, cur_start, s1_id)
+                        T.set_flag("mte3", "mte2", cur)        # WAR：slot cur 已 drain，可复用
 
-                        # MTE2: fill chunk (16 rows of random reads)
-                        for i in T.serial(GATHER_CHUNK_SIZE):
-                            k_id = chunk_start + i
-                            idx = SparseIndices[bz, s1_id, 0, k_id]
-                            if idx >= 0:
-                                T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[i, 0:DQuery])
-                                T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[i, 0:DQueryIndex])
-                                if d_rope > 0:
-                                    T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[i, 0:d_rope])
-
-                        # RAW: MTE3 drain 等 MTE2 fill 完成
-                        T.set_flag("mte2", "mte3", 0)
-                        T.wait_flag("mte2", "mte3", 0)
-
-                        # MTE3: write chunk to workspace (16KB burst)
-                        T.copy(key_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQuery],
-                               GatherKey_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                        T.copy(ki_chunk_ub[0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
-                        if d_rope > 0:
-                            T.copy(kr_chunk_ub[0:GATHER_CHUNK_SIZE, 0:d_rope],
-                                   GatherKeyRope_ws[bz, s1_id, chunk_start:chunk_start + GATHER_CHUNK_SIZE, 0:d_rope])
-
-                        # WAR: 下轮 MTE2 fill（复用同 buffer）等本轮 MTE3 drain 完成
-                        T.set_flag("mte3", "mte2", 0)
-                        T.wait_flag("mte3", "mte2", 0)
+                # clear：排空剩余 2 个 WAR set（保持 event 平衡）
+                T.wait_flag("mte3", "mte2", 0)
+                T.wait_flag("mte3", "mte2", 1)
 
                 T.set_cross_flag("V", 10)
 
