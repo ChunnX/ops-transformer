@@ -4,13 +4,13 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
- * \file stem_oam_prep_paged_kv_tiling_simd.h
- * \brief StemOamPrepPagedKV arch35 TilingData definition and Tiling class (split_mode=2)
+ * \file stem_oam_prep_paged_kv_tiling.h
+ * \brief StemOamPrepPagedKV simd TilingData definition and Tiling class
  */
 #ifndef STEM_OAM_PREP_PAGED_KV_TILING_SIMD_H
 #define STEM_OAM_PREP_PAGED_KV_TILING_SIMD_H
@@ -19,14 +19,36 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_base.h"
-#include "attention/stem_oam_prep_paged_kv/op_kernel/arch35/stem_oam_prep_paged_kv_tiling_data.h"
-#include "attention/stem_oam_prep_paged_kv/op_kernel/arch35/stem_oam_prep_paged_kv_tiling_key.h"
 
 namespace optiling {
 
-class StemOamPrepPagedKVSimd : public Ops::Transformer::OpTiling::TilingBaseClass {
+constexpr uint64_t MAX_KV_PADDED = 262144;
+
+BEGIN_TILING_DATA_DEF(StemPrepKVTilingData)
+TILING_DATA_FIELD_DEF(uint32_t, batchSize);
+TILING_DATA_FIELD_DEF(uint32_t, numKvHeads);
+TILING_DATA_FIELD_DEF(uint32_t, totalBh);
+TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, totalBlocks);
+TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, dimQk);
+TILING_DATA_FIELD_DEF(uint32_t, maxKvBlocks);
+TILING_DATA_FIELD_DEF(uint32_t, stemBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, stemStride);
+TILING_DATA_FIELD_DEF(float, lambdaMag);
+TILING_DATA_FIELD_DEF(uint32_t, kvLayout);
+TILING_DATA_FIELD_DEF(uint64_t, vFlatOutGM);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(StemOamPrepPagedKV, StemPrepKVTilingData)
+
+struct StemPrepKVCompileInfo {
+    uint32_t coreNum = 0;
+    uint64_t ubSize = 0;
+};
+
+class StemPrepKVTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit StemOamPrepPagedKVSimd(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit StemPrepKVTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
 
@@ -39,30 +61,22 @@ protected:
     uint64_t GetTilingKey() const override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    void DumpTilingInfo() override;
 
 private:
     uint64_t totalCoreNum_ = 0;
-    uint64_t ubSize_ = 0;
 
-    int64_t batchSize_ = 0;
-    int64_t numKvHeads_ = 0;
-    int64_t dimQk_ = 0;
-    int64_t dimV_ = 0;
-    int64_t stemBlockSize_ = 0;
-    int64_t stemStride_ = 0;
-    int64_t rVal_ = 0;
-    int64_t kFlatDim_ = 0;
-    int64_t kvBlockSize_ = 0;
-    int64_t kvLayout_ = 0;
-    int64_t maxKb_ = 0;
-    int64_t maxKvBlocks_ = 0;
-    float lambdaMag_ = 0;
-    int64_t kCacheStride_[4] = {0};
-    int64_t vCacheStride_[4] = {0};
-    int64_t kScakarCacheStride_[4] = {0};
+    uint32_t batchSize_ = 0;
+    uint32_t numKvHeads_ = 0;
+    uint32_t kvLayout_ = 0;
+    uint32_t kvBlockSize_ = 64;
+    uint32_t stemBlockSize_ = 128;
+    uint32_t stemStride_ = 16;
+    float lambdaMag_ = 0.3f;
+    uint32_t totalBlocks_ = 0;
+    uint32_t maxKvBlockSize_ = 0;
+    uint32_t dimQk_ = 128;
 
-    const char* opName = "StemOamPrepPagedKv";
+    StemPrepKVTilingData tilingData_;
 };
 
 } // namespace optiling
