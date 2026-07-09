@@ -54,7 +54,7 @@ public:
     static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
     static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
-    using SCORE_T = uint32_t;
+    using SCORE_T = typename SIT::scoreType;
 
     SIMatmul<SIT> matmulService;
     SIVector<SIT> vectorService;
@@ -97,7 +97,7 @@ protected:
     GlobalTensor<int32_t> sparseSeqLenGm;
 
     // ================================类成员变量====================================
-    // AIC/AIV information.
+    // aic、aiv核信息
     uint32_t tmpBlockIdx = 0U;
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
@@ -111,8 +111,7 @@ protected:
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     // ================================Split Core================================
-    __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx,
-                                            GlobalTensor<uint32_t> &metadataGm);
+    __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     // ================================Process functions================================
@@ -151,15 +150,15 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.stemStride = tilingData->stemStride;
     constInfo.initialBlocks = tilingData->initialBlocks;
     constInfo.windowSize = tilingData->windowSize;
+    constInfo.mBaseSize = tilingData->mBaseSize;
+    constInfo.s2BaseSize = tilingData->s2BaseSize;
+    constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
     constInfo.rSquare = tilingData->rSquare;
+    constInfo.alpha = tilingData->alpha;
     constInfo.kBlockNumRateMedium = tilingData->kBlockNumRateMedium;
     constInfo.kBlockNumBiasMedium = tilingData->kBlockNumBiasMedium;
     constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
-    constInfo.mBaseSize = tilingData->mBaseSize;
-    constInfo.s2BaseSize = tilingData->s2BaseSize;
-    constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
-    constInfo.alpha = tilingData->alpha;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     constInfo.attenMaskFlag = tilingData->causal != 0U;
     if (Q_LAYOUT_T == SI_LAYOUT::TND) {
@@ -301,37 +300,36 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
     splitCoreInfo.s2End  = metadataGm.GetValue(s2EndIndex);
 
     if (splitCoreInfo.s2End != 0) {
-        // Move s2End back by one block while keeping bN2End and gS1End unchanged.
+        // 此时只需要s2End往前退一格，bN2End和gS1End都不变
         splitCoreInfo.s2End = splitCoreInfo.s2End - 1;
     } else {
         if (splitCoreInfo.gS1End != 0) {
-            // Move gS1End back by one when s2End is 0, while keeping bN2End unchanged.
-            // Use bIdx to get actual S2 for s2End calculation.
+            // splitCoreInfo.gS1End != 0 splitCoreInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
+            // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             splitCoreInfo.gS1End = splitCoreInfo.gS1End - 1;
-            // Get current actual S2.
+            // 需要获取当前的Actaul S2
             uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kvHeadNum;
             uint32_t actS1Size, actS2Size;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
-            // S2 block count.
+            // s2的切块数量
             uint32_t s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2Size);
             splitCoreInfo.s2End = (s2BaseNum == 0U) ? 0U : s2BaseNum - 1U;
-        } else {
-            // Move bN2End back by one when both gS1End and s2End are 0.
-            // Use bIdx to get actual S1/S2 for gS1End and s2End calculation.
+        } else { 
+            // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
+            // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             splitCoreInfo.bN2End = splitCoreInfo.bN2End - 1;
 
-            // Get current actual S1 and S2.
+            // 需要获取当前的Actaul S1 S2
             uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kvHeadNum;
             uint32_t actS1Size, actS2Size;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
 
-            // Block count in the M(gS1) dimension.
+            // m轴(gS1)方向的切块数量
             uint32_t gS1BaseNum = static_cast<uint32_t>(
-                CeilDiv(static_cast<uint64_t>(actS1Size) * constInfo.gSize,
-                        static_cast<uint64_t>(constInfo.mBaseSize)));
+                CeilDiv(static_cast<uint64_t>(actS1Size) * constInfo.gSize, static_cast<uint64_t>(constInfo.mBaseSize)));
             splitCoreInfo.gS1End = (gS1BaseNum == 0U) ? 0U : gS1BaseNum - 1U;
 
-            // S2 block count.
+            // s2的切块数量
             uint32_t s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2Size);
             splitCoreInfo.s2End = (s2BaseNum == 0U) ? 0U : s2BaseNum - 1U;
         }
@@ -401,8 +399,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
     numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens, constInfo.batchSize);
-
-    // Get split information calculated by AICPU metadata.
+    // 获取 AICPU metadata 算好的分核信息。
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
     SplitCoreByAICPU(aiCoreIdx, tmpBlockIdx, metadataGm);
 

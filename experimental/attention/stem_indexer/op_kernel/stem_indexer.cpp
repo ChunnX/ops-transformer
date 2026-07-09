@@ -46,7 +46,7 @@ __global__ __aicore__ void stem_indexer(__gm__ uint8_t *qflat, __gm__ uint8_t *k
     AscendC::TPipe tPipe;
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    INVOKE_LI_NO_KFC_OP_IMPL(SIKernel::SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL);
+    INVOKE_LI_NO_KFC_OP_IMPL(SIKernel::SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL, uint16_t);
 #else
     (void)qflat;
     (void)kflat;
