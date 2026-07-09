@@ -110,7 +110,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Init(GM_ADDR h_res, GM_ADDR
     if constexpr (OUT_FLAG) {
         pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nAlign_ * sizeof(float));
     } else {
-        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, 0 * sizeof(float));
+        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, 32 * sizeof(float));
     }
     loop_ = tilingData_.tNormCoreLoop;
     tailHandelSize_ = tilingData_.tUbFactorTail;    // 尾循环处理的数量
