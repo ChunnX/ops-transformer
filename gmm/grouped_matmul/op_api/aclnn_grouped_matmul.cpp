@@ -644,7 +644,8 @@ static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams);
 
 static bool IsWeightNzMultiTensorCase(const gmm::GroupedMatmulParams &gmmParams)
 {
-    return gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams.groupType == gmm::SPLIT_M &&
+    return gmmParams.x != nullptr && gmmParams.y != nullptr && gmmParams.weight != nullptr &&
+           gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams.groupType == gmm::SPLIT_M &&
            gmmParams.x->Size() == 1 && gmmParams.y->Size() == 1 && gmmParams.biasOptional == nullptr &&
            IsMultiTensorWeight(gmmParams);
 }
@@ -2096,7 +2097,9 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
 
 static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
 {
-    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
+    return gmmParams.weight != nullptr && gmmParams.weight->Size() > 0UL &&
+           (*gmmParams.weight)[0] != nullptr &&
+           (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
 static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
