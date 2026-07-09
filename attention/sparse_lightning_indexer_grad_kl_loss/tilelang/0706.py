@@ -521,8 +521,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
-                    cmp_row_ub = T.alloc_ub(n_block, calc_dtype)
-                    zero_row_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
@@ -530,7 +528,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
-                    T.tile.fill(zero_row_ub, 0.0)
 
                     # dWeight, reluGrad for MY K block
                     # RAW: SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成
@@ -561,10 +558,12 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
                             T.pipe_barrier("v")
-                            # mask_i = (bmm2_row > 0) ? 1.0 : 0.0  (ReLU grad, exact step, replaces mul→exp→sub)
-                            T.tile.compare(cmp_row_ub, dw_chunk_ub[i, :], 0.0, "GT")
+                            # mask_i = 1 - exp(bmm2_row * (-10000))
+                            T.tile.mul(rsy_tmp_ub[i, :], dw_chunk_ub[i, :], -10000.0)
                             T.pipe_barrier("v")
-                            T.tile.select(rsy_tmp_ub[i, :], cmp_row_ub, ones_2d_ub[i, :], zero_row_ub, "VSEL_CMPMASK_SPR")
+                            T.tile.exp(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :])
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_tmp_ub[i, :], ones_2d_ub[i, :], rsy_tmp_ub[i, :])
                             # rg_i = weight_2d_row * diff * mask_i  (read weight_2d_ub directly)
                             T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
                             T.pipe_barrier("v")
