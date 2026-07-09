@@ -20,6 +20,7 @@
 #include "basic_modules/sparse_flash_mla_grad_vec_op.h"
 #include "basic_modules/sparse_flash_mla_grad_common_header.h"
 #include "post.h"
+#include "smlag_deterministic.h"
 
 namespace SMLAG_BASIC {
 
@@ -48,6 +49,9 @@ private:
                                 const GM_ADDR cmp_residual_kv);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
+    // 确定性(SWA/CFA)：非重叠(逐 task 顺序)计算，便于每 singleN 轮后做保序 owner 累加。
+    __aicore__ inline void CubeComputeDetTask(CubeOp<SMLAGT> &cubeOp);
+    __aicore__ inline void VecComputeDetTask(VecOp<SMLAGT> &vecOp);
     __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
     __aicore__ inline void SaveLastInfo();
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx, int32_t &s1Loop);
@@ -135,6 +139,10 @@ private:
     constexpr static uint32_t VEC_WAIT_CUBE_PING = 2;
     constexpr static uint32_t VEC_WAIT_CUBE_PONG = 3;
     constexpr static uint32_t POST_WAIT_CUBE = 4;
+    // part(2) 确定性：AIC 每 task 完成 cube345（私有区就绪）后通知配对 AIV
+    constexpr static uint32_t SCATTER_SYNC_FLAG = 5;
+    // AIV 每 task 保序累加完成后通知 AIC，避免双缓冲槽(task%2)被提前覆写
+    constexpr static uint32_t DET_ROUND_DONE = 6;
 
     // GM_ADDR
     const GM_ADDR cu_seqlens_q;
@@ -220,6 +228,39 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         CubeOp<SMLAGT> cubeOp;
         cubeOp.Init(query, ori_kv, cmp_kv, attention_out_grad, workspace, tilingData, &pipeCube);
         AllocEventID();
+
+        // ==== 确定性(SWA/CFA)：逐 task 顺序计算，dK/dV 落各核私有区(cube4/5 重定向) ====
+        if (tilingData->opInfo.deterministic == 1) {
+            int64_t task = 0;
+            mmPingPongIdx = 0;   // 逐 task 单缓冲；私有区双缓冲由 runInfo.detRound(=task) 选择
+            for (int32_t i = 0; i < processBS1ByCore; i++) {
+                int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
+                GetTndSeqLen(t1Index, bIndex, s1Loop);
+                int32_t s1BasicAccum = 0;
+                for (int32_t j = 0; j < s1Loop; j++) {
+                    bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+                    curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                    for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                        GetActualSelCount(t1Index, n2Index, s2Loop);
+                        for (int32_t loop = 0; loop < s2Loop; loop++) {
+                            UpdateGmOffset(task, loop);
+                            if (task > 0 && (task % 2) == 0) {
+                                CrossCoreWaitFlag<2, PIPE_MTE2>(DET_ROUND_DONE);
+                            }
+                            CubeComputeDetTask(cubeOp);
+                            task++;
+                        }
+                    }
+                    s1BasicAccum += curLoopS1Basic;
+                    if (changeB) {
+                        ChangeBatchUpdate();
+                    }
+                }
+            }
+            FreeEventID();
+            return;
+        }
+
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
@@ -259,6 +300,78 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
                     cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
         SyncAll();
+
+        // ==== 确定性(SWA/CFA)：逐 task 计算 + 每 singleN 轮后保序 owner 累加 ====
+        // 死锁不变量：每个 AIV（含 idle 核）本段对 SyncAll() 的调用次数恒为 2*dkvDetMaxRoundSingleN。
+        //   - active 核：real 轮(每轮2次) + padding 轮(每轮2次) = 2*dkvDetMaxRoundSingleN；
+        //   - idle 核：仅 padding 轮 = 2*dkvDetMaxRoundSingleN。
+        //   前提(HW验证项)：任一核 real task 数 <= dkvDetMaxRoundSingleN。
+        if (tilingData->opInfo.deterministic == 1) {
+            int64_t task = 0;
+            int64_t maxRound = static_cast<int64_t>(tilingData->opInfo.dkvDetMaxRoundSingleN);
+            mmPingPongIdx = 0;
+            if (cubeBlockIdx < usedCoreNum) {
+                for (int32_t i = 0; i < processBS1ByCore; i++) {
+                    int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
+                    GetTndSeqLen(t1Index, bIndex, s1Loop);
+                    int32_t s1BasicAccum = 0;
+                    for (int32_t j = 0; j < s1Loop; j++) {
+                        bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+                        curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                        for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                            GetActualSelCount(t1Index, n2Index, s2Loop);
+                            for (int32_t loop = 0; loop < s2Loop; loop++) {
+                                UpdateGmOffset(task, loop);
+                                VecComputeDetTask(vecOp);
+                                // (a) 等本核 AIC 完成本 task cube345（私有区落地），再发布 meta
+                                CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                                vecOp.PublishOriMetaDet(task, 1, runInfo[0]);
+                                SyncAll();                    // (b) 各核本轮 meta+私有区就绪
+                                vecOp.AccumulateDkvDet(task); // (c) owner 保序累加进 dkWorkspace
+                                SyncAll();                    // (d) owner 读完，双缓冲(task%2) 可在 task+2 复用
+                                CrossCoreSetFlag<2, PIPE_MTE3>(DET_ROUND_DONE);
+                                task++;
+                            }
+                        }
+                        s1BasicAccum += curLoopS1Basic;
+                        if (changeB) {
+                            ChangeBatchUpdate();
+                        }
+                    }
+                }
+            }
+            // padding 轮：补齐到统一轮数上界，保证全 AIV 的 SyncAll() 次数一致
+            for (; task < maxRound; task++) {
+                if (cubeBlockIdx < usedCoreNum) {
+                    vecOp.PublishOriMetaDet(task, 0, runInfo[0]);   // valid=0
+                }
+                SyncAll();
+                if (cubeBlockIdx < usedCoreNum) {
+                    vecOp.AccumulateDkvDet(task);                   // 其它核可能仍有产物
+                }
+                SyncAll();
+            }
+
+            vecOp.CopyOutDsinks();
+            SyncAll();
+            pipeVec.Destroy();
+
+            {
+                TPipe pipeDet;
+                SMLAG_DET::SmlagDetPost<TILING_CLASS> detPost;
+                detPost.Init(dsinks, workspace, tilingData, &pipeDet);
+                detPost.ReduceDsinks();
+                pipeDet.Destroy();
+                SyncAll();
+            }
+
+            TPipe pipeCast;
+            SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0> opCast;
+            opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
+            opCast.Process();
+            return;
+        }
+
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
@@ -287,6 +400,16 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
+
+        // 确定性通路：d_sinks 多核保序归约（替代跨核 atomicAdd）
+        if (tilingData->opInfo.deterministic == 1) {
+            TPipe pipeDet;
+            SMLAG_DET::SmlagDetPost<TILING_CLASS> detPost;
+            detPost.Init(dsinks, workspace, tilingData, &pipeDet);
+            detPost.ReduceDsinks();
+            pipeDet.Destroy();
+            SyncAll();
+        }
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0, MODE> opCast;
@@ -320,6 +443,25 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
     vecOp.Process(runInfo[mmPingPongIdx]);
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
     mmPingPongIdx = 1 - mmPingPongIdx;
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::CubeComputeDetTask(CubeOp<SMLAGT> &cubeOp)
+{
+    // 非重叠(逐 task)：cube12 -> 通知 vec -> 等 vec 产出 ds/p -> cube345 -> 通知 vec 私有区就绪
+    cubeOp.cube12Process(runInfo[0], blkCntOffset, 0);
+    CrossCoreSetFlag<2, PIPE_FIX>(VEC_WAIT_CUBE_PING);
+    CrossCoreWaitFlag<2, PIPE_MTE2>(CUBE_WAIT_VEC_PING);
+    cubeOp.cube345Process(runInfo[0], blkCntOffset, 0);
+    CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecComputeDetTask(VecOp<SMLAGT> &vecOp)
+{
+    CrossCoreWaitFlag(VEC_WAIT_CUBE_PING);
+    vecOp.Process(runInfo[0]);
+    CrossCoreSetFlag<2, PIPE_MTE3>(CUBE_WAIT_VEC_PING);
 }
 
 template <typename SMLAGT>
@@ -359,6 +501,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : 
                                                        cmpKeyGmOffset + blkCntOffset * dimN2 * dimDqk;
     runInfo[mmPingPongIdx].task = task;
+    runInfo[mmPingPongIdx].detRound = task;   // part(2) 私有区双缓冲槽位 = task%2；AIC/AIV 逐 task 序一致
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
     runInfo[mmPingPongIdx].blkCntOffset = blkCntOffset;
     runInfo[mmPingPongIdx].queryGmOffset = queryGmOffset;

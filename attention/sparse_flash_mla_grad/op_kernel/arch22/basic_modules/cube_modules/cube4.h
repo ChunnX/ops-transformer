@@ -38,14 +38,31 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
     int64_t dsL1CachedSize = 0;
 
     int64_t mm4ResOutBaseOffset;
+    // part(2) 确定性：dK 重定向到本核私有区（dK 段=第二块），无跨核原子。
+    // SWA/CFA 全段 + SCFA 的 ori 段走私有区；SCFA cmp 仍写 mm4Res 供 scatterAddDet。
+    bool detOriRedirect = (deterministic == 1) && (MODE != SMLAG_SCFA_MODE || runInfo.isOri);
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
             mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDTotal + cBlockIdx * selectedBlockCount * dimDTotal;
             mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
+        } else if (detOriRedirect) {
+            int64_t privRoundBase = dkvDetWsBaseF + static_cast<int64_t>(cBlockIdx) * dkvDetPerCoreStrideF +
+                                    (runInfo.detRound & 1) * singleN * (dimDAlignC + dimDAlignC) +
+                                    singleN * dimDAlignC;
+            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + privRoundBase);
+            mm4ResOutBaseOffset = -blkCntOffset * selectedBlockSize * dimDTotal;
+            mmParam.dstStride = dimDTotal;
         } else {
             mm4ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
             mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + usedWorkspaceLen / sizeof(float));
         }
+    } else if (detOriRedirect) {
+        int64_t privRoundBase = dkvDetWsBaseF + static_cast<int64_t>(cBlockIdx) * dkvDetPerCoreStrideF +
+                                (runInfo.detRound & 1) * singleN * (dimDAlignC + dimDAlignC) +
+                                singleN * dimDAlignC;   // dK 段（第二块）
+        mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + privRoundBase);
+        mm4ResOutBaseOffset = -blkCntOffset * selectedBlockSize * dimDTotal;   // 行从 0 起，紧排
+        mmParam.dstStride = dimDTotal;                                          // 私有区无 n2 间隔
     } else {
         mm4ResOutBaseOffset = runInfo.isOri ? 
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
@@ -90,7 +107,11 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
 
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            if (runInfo.isOri) {
+            if (detOriRedirect) {
+                MmadInnerWithSync<T1, false>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
+                    aL0TensorPingPong, bL0TensorPingPong,
+                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
+            } else if (runInfo.isOri) {
                 MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
@@ -116,7 +137,11 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
 
         int64_t currentOutGmOffset = mm4ResOutOffset + (dLoopTimes - 1) * perLoopDSize;
         
-        if (runInfo.isOri) {
+        if (detOriRedirect) {
+            MmadInnerWithSync<T1, false>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
+                    aL0TensorPingPong, bL0TensorPingPong,
+                    mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, mm4ResWorkspaceGm[currentOutGmOffset]);
+        } else if (runInfo.isOri) {
             MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, mm4ResWorkspaceGm[currentOutGmOffset]);

@@ -34,14 +34,28 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
     mmParam.dstStride = dimDv * dimN2;
 
     int64_t mm5ResOutBaseOffset;
+    // part(2) 确定性：dV 重定向到本核私有区（dV 段=第一块），无跨核原子。
+    bool detOriRedirect = (deterministic == 1) && (MODE != SMLAG_SCFA_MODE || runInfo.isOri);
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
             mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDv + cBlockIdx * selectedBlockCount * dimDv;
             mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+        } else if (detOriRedirect) {
+            int64_t privRoundBase = dkvDetWsBaseF + static_cast<int64_t>(cBlockIdx) * dkvDetPerCoreStrideF +
+                                    (runInfo.detRound & 1) * singleN * (dimDAlignC + dimDAlignC);
+            mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + privRoundBase);
+            mm5ResOutBaseOffset = -blkCntOffset * selectedBlockSize * dimDTotal;
+            mmParam.dstStride = dimDv;
         } else {
             mm5ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
             mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
         }
+    } else if (detOriRedirect) {
+        int64_t privRoundBase = dkvDetWsBaseF + static_cast<int64_t>(cBlockIdx) * dkvDetPerCoreStrideF +
+                                (runInfo.detRound & 1) * singleN * (dimDAlignC + dimDAlignC);   // dV 段（第一块）
+        mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + privRoundBase);
+        mm5ResOutBaseOffset = -blkCntOffset * selectedBlockSize * dimDTotal;   // 行从 0 起，紧排
+        mmParam.dstStride = dimDv;                                              // 私有区无 n2 间隔
     } else {
         mm5ResOutBaseOffset = runInfo.isOri ? 
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
@@ -66,7 +80,11 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
             int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            if (runInfo.isOri) {
+            if (detOriRedirect) {
+                MmadInnerWithSync<T1, false>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                    aL0TensorPingPong, bL0TensorPingPong,
+                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            } else if (runInfo.isOri) {
                 MmadInnerWithSync<T1, true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);

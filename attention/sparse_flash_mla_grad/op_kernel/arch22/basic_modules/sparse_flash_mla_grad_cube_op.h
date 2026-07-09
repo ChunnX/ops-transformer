@@ -215,6 +215,12 @@ private:
     int64_t dqAddr;
     int64_t dkAddr;
 
+    // part(2) 确定性：cube4/5 私有区重定向
+    uint32_t deterministic{0};
+    int64_t dkvDetWsBaseF{0};       // 私有区基址(float，workspace 相对)
+    int64_t dkvDetPerCoreStrideF{0};// 每核步长(float)
+    int64_t dimDAlignC{0};          // ceil(D/16)*16
+
     GM_ADDR workspace;                                          
 };
 
@@ -249,6 +255,10 @@ __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_AD
     }
 
     usedCoreNum = tilingData->opInfo.usedCoreNum;
+    deterministic = tilingData->opInfo.deterministic;
+    dimDAlignC = AlignTo<int64_t>(dimDqk, SIZE_16);
+    dkvDetWsBaseF = static_cast<int64_t>(tilingData->opInfo.dkvDetWsOffset) / static_cast<int64_t>(sizeof(float));
+    dkvDetPerCoreStrideF = static_cast<int64_t>(tilingData->opInfo.dkvDetPerCoreStride) / static_cast<int64_t>(sizeof(float));
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
     pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
     AscendC::SetLoadDataPaddingValue<uint64_t>(0);

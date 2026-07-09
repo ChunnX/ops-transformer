@@ -74,6 +74,7 @@ struct RunInfo {
     int64_t curS1Basic;
     int64_t oriWinDiagOffset;
     int64_t cmpDiagOffset;
+    int64_t detRound{0};   // part(2) 确定性：全局 singleN 轮计数（cube4/5 私有区双缓冲用 detRound%2）
     bool isLastBasicBlock;
     bool isOri;
     event_t vWaitMte3Proc;

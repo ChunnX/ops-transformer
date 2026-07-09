@@ -43,6 +43,18 @@ public:
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
     __aicore__ inline void CopyOutDsinks();
+    // ---- part(1) SCFA cmp 确定性保序 scatter ----
+    // 每核（subBlockIdx==0）将本轮 cmp scatter 描述符发布到共享元数据 GM（双缓冲 round%2）。
+    __aicore__ inline void PublishScatterMetaDet(int64_t round, int64_t valid, const RunInfo &runInfo);
+    // owner AIV 按固定 (round, core, row) 序，把各核本轮 cmp 产物累加进自己独占的 dCmpKv 槽位（无跨核原子）。
+    __aicore__ inline void ScatterAddDet(int64_t round);
+    // ---- part(2) ori(& CFA cmp) 确定性保序累加 ----
+    // 每核（subBlockIdx==0）发布本 singleN 轮 dkv 描述符（dVbase/dKbase/numRows）到共享元数据 GM。
+    __aicore__ inline void PublishOriMetaDet(int64_t round, int64_t valid, const RunInfo &runInfo);
+    // owner AIV 按固定 (round, core, row) 序，把各核私有区 dV/dK 累加进 dkWorkspace 的精确落点（无跨核原子/不缩放）。
+    __aicore__ inline void AccumulateDkvDet(int64_t round);
+    // dkWorkspaceGm[dstIdx .. +dimDAlign) += dkvDetWsGm[srcIdx .. +dimDAlign)（owner 单写者，无原子）
+    __aicore__ inline void DetRmwAddRow(int64_t dstIdx, int64_t srcIdx);
 protected:
     __aicore__ inline void InitParams(const TILING_CLASS *__restrict ordTilingData);
     __aicore__ inline void InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
@@ -89,6 +101,16 @@ protected:
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
     GlobalTensor<float> additionalWorkspaceGm;
+    // 确定性专用 workspace
+    GlobalTensor<float> dsinksDetWsGm;     // [aivNum, G]，d_sinks 各核独占槽位
+    GlobalTensor<float> cmpL1DetWsGm;      // [aivNum, singleN]，cmp_softmax_l1 aiv1 交付槽位
+    // part(1) SCFA cmp 保序 scatter：每核每轮描述符 [DB, usedCoreNum, META_FIELDS]
+    GlobalTensor<int64_t> dkvDetScatterMetaGm;
+    // part(2) ori(& CFA cmp) 保序累加：各核私有区 + 每核每 singleN 轮描述符
+    GlobalTensor<float> dkvDetWsGm;        // 所有核私有区基址（本核 = base + cubeBlockIdx*strideF）
+    GlobalTensor<int64_t> dkvDetOriMetaGm; // [DB, usedCoreNum, META_FIELDS]
+    int64_t dkvDetPerCoreStrideF{0};       // 每核私有区步长(float)
+    int64_t singleNDet{0};                 // = splitCoreParams.singleN
 
     TBuf<> vecQue;
     LocalTensor<uint8_t> helpTensor;
@@ -189,6 +211,10 @@ protected:
     DataCopyExtParams outParamK;
     uint32_t mergePingPong{0};
     int32_t pingPongIdx = 0;
+
+    // 确定性开关与同步 flag（mode=1：同一 block 的 aiv0/aiv1 间同步）
+    uint32_t deterministic{0};
+    constexpr static uint32_t DET_CMPL1_FLAG = 8;
 };
 
 template <typename SMLAGT>
@@ -230,6 +256,7 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
 
     cmpRatio = tilingData->opInfo.cmpRatio;
     scaleValue = tilingData->opInfo.scaleValue;
+    deterministic = tilingData->opInfo.deterministic;
     selectedBlockCount = tilingData->opInfo.selectedBlockCount;
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
@@ -331,6 +358,25 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
     additionalWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + additionalAddr);
+
+    // 确定性 workspace：偏移由 Host Tiling 计算（user 相对，单位 B）
+    if (deterministic == 1) {
+        dsinksDetWsGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                      tilingData->opInfo.dsinksDetWsOffset / sizeof(float));
+        cmpL1DetWsGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->opInfo.cmpL1DetWsOffset / sizeof(float));
+        if constexpr (MODE == SMLAG_SCFA_MODE) {
+            dkvDetScatterMetaGm.SetGlobalBuffer((__gm__ int64_t *)workspace +
+                                                tilingData->opInfo.dkvDetScatterMetaOffset / sizeof(int64_t));
+        }
+        // part(2) 私有区 + 描述符（SWA/CFA/SCFA ori 段保序累加）
+        dkvDetWsGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                   tilingData->opInfo.dkvDetWsOffset / sizeof(float));
+        dkvDetOriMetaGm.SetGlobalBuffer((__gm__ int64_t *)workspace +
+                                        tilingData->opInfo.dkvDetOriMetaOffset / sizeof(int64_t));
+        dkvDetPerCoreStrideF = static_cast<int64_t>(tilingData->opInfo.dkvDetPerCoreStride) / static_cast<int64_t>(sizeof(float));
+        singleNDet = static_cast<int64_t>(tilingData->splitCoreParams.singleN);
+    }
 }
 
 template <typename SMLAGT>
@@ -452,6 +498,9 @@ __aicore__ inline void VecOp<SMLAGT>::AtomicClean()
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         DumpGmZero(additionalWorkspaceGm, additionalWorkspaceLen / sizeof(float));
         DumpGmZero(cmpSoftmaxL1Gm, dimTq * dimN2 * selectedBlockCount);
+    }
+    if (deterministic == 1 && dkvDetPerCoreStrideF > 0) {
+        DumpGmZero(dkvDetWsGm, dkvDetPerCoreStrideF * usedCoreNum);
     }
 }
 
@@ -726,6 +775,12 @@ __aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t processM, const Ru
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::CopyOutDsinks()
 {
+    if (deterministic == 1) {
+        // 确定性：写本核独占槽位（无原子，核间无冲突），保序合并交由 SMLAG_DET::ReduceDsinks 完成
+        DataCopyPad(dsinksDetWsGm[static_cast<int64_t>(vecBlockIdx) * dimG], dSinkTensor,
+                    {static_cast<uint16_t>(dimG), sizeof(float), 0, 0});
+        return;
+    }
     SetAtomicAdd<float>();
     DataCopyPad(dSinksGm, dSinkTensor, {static_cast<uint16_t>(dimG), sizeof(float), 0, 0});
     SetAtomicNone();
@@ -893,13 +948,41 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
     }
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
-            Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
-            SET_FLAG(V, MTE3, mte3WaitV);
-            WAIT_FLAG(V, MTE3, mte3WaitV);
-            SetAtomicAdd<float>();
-            DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
-            SetAtomicNone();
-            SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            if (deterministic == 1) {
+                // 确定性：同一 block 内 aiv0/aiv1 二分 reduce 的结果，按 aiv0+aiv1 固定序合并后单写者写回。
+                // 每个 (s1,n2,blkCntOffset) 段仅由本 block 产生，不存在跨 block 冲突。
+                if (subBlockIdx == 1) {
+                    // aiv1：把本核部分结果（归一化前）交付到槽位，并通知 aiv0
+                    SET_FLAG(V, MTE3, mte3WaitV);
+                    WAIT_FLAG(V, MTE3, mte3WaitV);
+                    DataCopyPad(cmpL1DetWsGm[static_cast<int64_t>(cubeBlockIdx) * params.singleN], cmpL1NormTensor,
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+                    AscendC::CrossCoreSetFlag<1, PIPE_MTE3>(DET_CMPL1_FLAG);
+                } else {
+                    // aiv0：等待 aiv1 交付，按固定序累加 (aiv0 + aiv1)，归一化后无原子覆盖写
+                    AscendC::CrossCoreWaitFlag<1, PIPE_MTE2>(DET_CMPL1_FLAG);
+                    DataCopyPad(dSinkSumTensor, cmpL1DetWsGm[static_cast<int64_t>(cubeBlockIdx) * params.singleN],
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
+                    SET_FLAG(MTE2, V, vWaitMte2);
+                    WAIT_FLAG(MTE2, V, vWaitMte2);
+                    Add(cmpL1NormTensor, cmpL1NormTensor, dSinkSumTensor, actualSelS2);
+                    PIPE_BARRIER(PIPE_V);
+                    Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
+                    SET_FLAG(V, MTE3, mte3WaitV);
+                    WAIT_FLAG(V, MTE3, mte3WaitV);
+                    DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor,
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+                }
+                SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            } else {
+                Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
+                SET_FLAG(V, MTE3, mte3WaitV);
+                WAIT_FLAG(V, MTE3, mte3WaitV);
+                SetAtomicAdd<float>();
+                DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+                SetAtomicNone();
+                SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            }
         }
     }
 
@@ -998,6 +1081,189 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
 
     SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
+}
+
+// META 字段布局：[0]=valid, [1]=indicesGmOffset, [2]=actualSelectedBlockCount, [3]=cmpKeyGmOffset
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::PublishScatterMetaDet(int64_t round, int64_t valid, const RunInfo &runInfo)
+{
+    // 每核仅由 subBlockIdx==0 发布一次，避免同槽位重复写
+    if (subBlockIdx != 0) {
+        return;
+    }
+    constexpr int64_t META_FIELDS = 8;
+    uint32_t base = static_cast<uint32_t>((round & 1) * usedCoreNum * META_FIELDS +
+                                          static_cast<int64_t>(cubeBlockIdx) * META_FIELDS);
+    dkvDetScatterMetaGm.SetValue(base + 0, static_cast<int64_t>(valid));
+    dkvDetScatterMetaGm.SetValue(base + 1, valid ? runInfo.indicesGmOffset : (int64_t)0);
+    dkvDetScatterMetaGm.SetValue(base + 2, valid ? runInfo.actualSelectedBlockCount : (int64_t)0);
+    dkvDetScatterMetaGm.SetValue(base + 3, valid ? runInfo.cmpKeyGmOffset : (int64_t)0);
+    // 依赖随后的 SyncAll() 提供跨核可见性/内存序（scatter meta 在 barrier 后被 owner 读取）
+}
+
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::ScatterAddDet(int64_t round)
+{
+    constexpr int64_t META_FIELDS = 8;
+    int64_t aivNum = usedCoreNum * 2;
+    int64_t aivId = static_cast<int64_t>(vecBlockIdx);
+
+    // dCmpKv 在 dkWorkspace 中的 float 区间：[dOriKvSize, dOriKvSize + dCmpKvSize)
+    int64_t dCmpKvSize = IS_BSND ? dimB * dimS3 * dimN2 * dimDqk : dimS3 * dimN2 * dimDqk;
+    if (dCmpKvSize <= 0) {
+        return;
+    }
+    // 连续切片，按 dimDAlign 对齐（一行 KV = dimDAlign 个 float），保证 row-start 归属唯一 owner
+    int64_t perAiv = AlignTo<int64_t>((dCmpKvSize + aivNum - 1) / aivNum, dimDAlign);
+    int64_t ownerBegin = dOriKvSize + aivId * perAiv;
+    int64_t ownerEnd = Min(ownerBegin + perAiv, dOriKvSize + dCmpKvSize);
+    if (ownerBegin >= ownerEnd) {
+        return;
+    }
+
+    LocalTensor<float> accUb = scatterAddTensorK[0];
+    LocalTensor<float> dkUb = scatterAddTensorK[dimDAlign];
+    LocalTensor<float> dvUb = scatterAddTensorV[0];
+
+    // 固定核序 c=0..usedCoreNum-1，固定行序 j=0..count-1 → 累加顺序确定
+    for (int64_t c = 0; c < usedCoreNum; ++c) {
+        uint32_t mbase = static_cast<uint32_t>((round & 1) * usedCoreNum * META_FIELDS + c * META_FIELDS);
+        int64_t valid = dkvDetScatterMetaGm.GetValue(mbase + 0);
+        if (valid == 0) {
+            continue;
+        }
+        int64_t indicesOff = dkvDetScatterMetaGm.GetValue(mbase + 1);
+        int64_t count = dkvDetScatterMetaGm.GetValue(mbase + 2);
+        int64_t cmpKeyOff = dkvDetScatterMetaGm.GetValue(mbase + 3);
+        if (count <= 0) {
+            continue;
+        }
+        int64_t base = cmpKeyOff + dOriKvSize;
+        GlobalTensor<int32_t> idxGm = topkIndicesGm[indicesOff];
+        int64_t dkCoreBase = (round & 1) * MAX_CORE_NUM * selectedBlockCount * dimDAlign +
+                             c * selectedBlockCount * dimDAlign;
+        int64_t dvCoreBase = (round & 1) * MAX_CORE_NUM * selectedBlockCount * dimD2Align +
+                             c * selectedBlockCount * dimD2Align;
+        for (int64_t j = 0; j < count; ++j) {
+            int32_t s2Idx = idxGm.GetValue(static_cast<uint32_t>(j));
+            if (s2Idx < 0) {
+                continue;
+            }
+            int64_t target = base + static_cast<int64_t>(s2Idx) * dimDAlign;
+            if (target < ownerBegin || target >= ownerEnd) {
+                continue;   // 不属于本 owner 的槽位，跳过（其它 owner 负责）
+            }
+            // read-modify-write：owner 是该槽位的唯一写者，跨轮/跨核安全，无需原子
+            DataCopy(accUb, dkWorkspaceGm[target], dimDAlign);
+            DataCopy(dkUb, mm4ResWorkspaceGm[dkCoreBase + j * dimDAlign], dimDAlign);
+            DataCopy(dvUb, mm5ResWorkspaceGm[dvCoreBase + j * dimD2Align], dimD2Align);
+            SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+            Muls(dkUb, dkUb, (float)tilingData->opInfo.scaleValue, dimDAlign);
+            PipeBarrier<PIPE_V>();
+            Add(dkUb, dkUb, dvUb, dimDAlign);
+            PipeBarrier<PIPE_V>();
+            Add(accUb, accUb, dkUb, dimDAlign);
+            SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+            WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+            DataCopy(dkWorkspaceGm[target], accUb, dimDAlign);
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+        }
+    }
+}
+
+// ---- part(2) ori(& CFA cmp) 确定性保序累加实现 ----
+
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::PublishOriMetaDet(int64_t round, int64_t valid, const RunInfo &runInfo)
+{
+    // 每核仅 subBlockIdx==0 发布本核本 singleN 轮的 dV/dK 落点与行数；barrier 提供跨核可见性。
+    if (subBlockIdx != 0) {
+        return;
+    }
+    constexpr int64_t META_FIELDS = 8;
+    int64_t dCmpKvSize = IS_BSND ? dimB * dimS3 * dimN2 * dimDqk : dimS3 * dimN2 * dimDqk;
+    uint32_t base = static_cast<uint32_t>((round & 1) * usedCoreNum * META_FIELDS +
+                                          static_cast<int64_t>(cubeBlockIdx) * META_FIELDS);
+    int64_t rows = valid ? (runInfo.actualSelCntOffset * static_cast<int64_t>(selectedBlockSize)) : (int64_t)0;
+    // dst 落点（相对 dkWorkspaceGm 基址=dkAddr），与 cube4/5 非确定原子路径 + post.h 读取完全一致：
+    //   dV: ori->[selectedKGmOffset]，cmp->[selectedKGmOffset+dOriKvSize]
+    //   dK(staging): ori->[+dOriKvSize+dCmpKvSize]，cmp->[+2*dOriKvSize+dCmpKvSize]
+    int64_t dVbase = runInfo.selectedKGmOffset + (runInfo.isOri ? (int64_t)0 : dOriKvSize);
+    int64_t dKbase = runInfo.selectedKGmOffset +
+                     (runInfo.isOri ? (dOriKvSize + dCmpKvSize) : (2 * dOriKvSize + dCmpKvSize));
+    dkvDetOriMetaGm.SetValue(base + 0, valid);
+    dkvDetOriMetaGm.SetValue(base + 1, valid ? dVbase : (int64_t)0);
+    dkvDetOriMetaGm.SetValue(base + 2, valid ? dKbase : (int64_t)0);
+    dkvDetOriMetaGm.SetValue(base + 3, rows);
+}
+
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::DetRmwAddRow(int64_t dstIdx, int64_t srcIdx)
+{
+    // owner 单写者：dkWorkspaceGm[dstIdx..) += dkvDetWsGm[srcIdx..)（长度 dimDAlign），无跨核原子。
+    LocalTensor<float> accUb = scatterAddTensorK[0];
+    LocalTensor<float> srcUb = scatterAddTensorK[dimDAlign];
+    DataCopy(accUb, dkWorkspaceGm[dstIdx], dimDAlign);
+    DataCopy(srcUb, dkvDetWsGm[srcIdx], dimDAlign);
+    SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+    Add(accUb, accUb, srcUb, dimDAlign);
+    SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+    DataCopy(dkWorkspaceGm[dstIdx], accUb, dimDAlign);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+}
+
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::AccumulateDkvDet(int64_t round)
+{
+    constexpr int64_t META_FIELDS = 8;
+    int64_t aivNum = usedCoreNum * 2;
+    int64_t aivId = static_cast<int64_t>(vecBlockIdx);
+
+    int64_t dCmpKvSize = IS_BSND ? dimB * dimS3 * dimN2 * dimDqk : dimS3 * dimN2 * dimDqk;
+    // 全 dkv workspace（含 dV 终区 + dK staging 区）：[0, 2*(dOriKvSize+dCmpKvSize))
+    int64_t totalRange = 2 * dOriKvSize + 2 * dCmpKvSize;
+    if (totalRange <= 0) {
+        return;
+    }
+    // 按 dimDAlign 对齐切片，保证每行(row-start)归属唯一 owner；dV 与 dK 行分属不同 owner 亦可。
+    int64_t perAiv = AlignTo<int64_t>((totalRange + aivNum - 1) / aivNum, dimDAlign);
+    int64_t ownerBegin = aivId * perAiv;
+    int64_t ownerEnd = Min(ownerBegin + perAiv, totalRange);
+    if (ownerBegin >= ownerEnd) {
+        return;
+    }
+
+    // 固定核序 c，固定行序 R → 累加顺序确定
+    for (int64_t c = 0; c < usedCoreNum; ++c) {
+        uint32_t mbase = static_cast<uint32_t>((round & 1) * usedCoreNum * META_FIELDS + c * META_FIELDS);
+        int64_t valid = dkvDetOriMetaGm.GetValue(mbase + 0);
+        if (valid == 0) {
+            continue;
+        }
+        int64_t dVbase = dkvDetOriMetaGm.GetValue(mbase + 1);
+        int64_t dKbase = dkvDetOriMetaGm.GetValue(mbase + 2);
+        int64_t rows = dkvDetOriMetaGm.GetValue(mbase + 3);
+        if (rows <= 0) {
+            continue;
+        }
+        int64_t coreBaseV = c * dkvDetPerCoreStrideF + (round & 1) * singleNDet * (dimDAlign + dimDAlign);
+        int64_t coreBaseK = coreBaseV + singleNDet * dimDAlign;
+        for (int64_t R = 0; R < rows; ++R) {
+            int64_t dVt = dVbase + R * dimDAlign;
+            if (dVt >= ownerBegin && dVt < ownerEnd) {
+                DetRmwAddRow(dVt, coreBaseV + R * dimDAlign);
+            }
+            int64_t dKt = dKbase + R * dimDAlign;
+            if (dKt >= ownerBegin && dKt < ownerEnd) {
+                DetRmwAddRow(dKt, coreBaseK + R * dimDAlign);
+            }
+        }
+    }
 }
 
 } // namespace SMLAG_BASIC

@@ -80,6 +80,19 @@ TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft);
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
+TILING_DATA_FIELD_DEF(uint32_t, deterministic);        // 0=非确定, 1=确定
+TILING_DATA_FIELD_DEF(uint64_t, dsinksDetWsOffset);    // d_sinks 保序 workspace 偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, cmpL1DetWsOffset);     // cmp_softmax_l1 保序 workspace 偏移(B, user相对)
+// dKV 确定性（保序累加）：
+//  part(1) SCFA cmp：无新增 workspace，复用 mm4Res/mm5Res，每轮 S1 后 SyncAll + 按核序 scatterAdd
+//  part(2) ori & CFA cmp：每核每 singleN 私有区 dkvDetWs[aic][DB][singleN*(Dk+Dv)]，每 singleN 后 SyncAll + 按核序累加
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetWsOffset);       // part(2) 每核私有区偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetPerCoreStride);  // part(2) 每核步长(B) = DB * singleN * (Dk+Dv) * 4
+TILING_DATA_FIELD_DEF(uint32_t, dkvDetMaxRoundS1);     // part(1) 全核统一 S1 轮数上界(= formerCoreProcessNNum)
+TILING_DATA_FIELD_DEF(uint32_t, dkvDetMaxRoundSingleN);// part(2) SWA/CFA 全核统一 singleN(task) 轮数上界
+TILING_DATA_FIELD_DEF(uint32_t, dkvDetMaxTasksPerS1Round); // SCFA：每 S1 轮内 task 数上界(用于 ori 保序 SyncAll 对齐)
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetScatterMetaOffset); // part(1) 每核每轮 scatter 描述符元数据偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetOriMetaOffset);     // part(2) 每核每 singleN 轮 dkv 描述符元数据偏移(B, user相对)
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGradBasicParamsOp, SparseFlashMlaGradBasicParams)
 
