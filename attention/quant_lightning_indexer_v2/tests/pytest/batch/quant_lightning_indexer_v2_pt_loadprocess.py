@@ -98,7 +98,6 @@ def test_qliv2_process(filepath, device_id=0):
         block_table = test_data['block_table'].npu()
     else:
         block_table = None
-    metadata = test_data['metadata'].npu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
@@ -109,6 +108,28 @@ def test_qliv2_process(filepath, device_id=0):
         cmp_residual_k_for_npu = test_data['cmp_residual_k_for_npu'].npu()
     else:
         cmp_residual_k_for_npu = None
+
+    max_seqlen_q_meta = test_data['max_seqlen_q_meta']
+    max_seqlen_k_meta = test_data['max_seqlen_k_meta']
+    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                                    cu_seqlens_q = cu_seqlens_query,
+                                    cu_seqlens_k = cu_seqlens_key,
+                                    seqused_q = actual_seq_lengths_query,
+                                    seqused_k = actual_seq_lengths_key,
+                                    cmp_residual_k = cmp_residual_k_for_npu,
+                                    batch_size = params[0],
+                                    max_seqlen_q = max_seqlen_q_meta,
+                                    max_seqlen_k = max_seqlen_k_meta,
+                                    num_heads_q = params[5],
+                                    num_heads_k = params[6],
+                                    head_dim = params[7],
+                                    topk = sparse_count,
+                                    quant_mode = quant_mode,
+                                    mask_mode = sparse_mode,
+                                    layout_q = layout_query,
+                                    layout_k = layout_key,
+                                    cmp_ratio = cmp_ratio)
+    metadata = metadata.npu()
 
     #调用qli算子
     npu_result, npu_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
