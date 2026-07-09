@@ -1,19 +1,19 @@
 (fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-09 14:17:01,724 [INFO] [2121178 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
-2026-07-09 14:17:06,122 [INFO] [2121178 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 14:17:06,672 [INFO] [2121178 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-09 14:17:06,672 [INFO] [2121178 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-09 14:17:06,673 [INFO] [2121178 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-09 14:17:06,673 [INFO] [2121178 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-09 14:17:07,843 [INFO] [2121178 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-09 14:17:07,849 [INFO] [2121178 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-09 14:17:07,850 [INFO] [2121178 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-09 14:17:08,988 [INFO] [2121178 MP MT] [instance.py:42]: Device count: 1 
-2026-07-09 14:17:08,988 [INFO] [2121178 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-09 14:17:08,988 [INFO] [2121178 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-09 14:17:08,988 [INFO] [2121178 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
-2026-07-09 14:17:08,989 [INFO] [2121178 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-09 14:17:08,989 [INFO] [2121178 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+2026-07-09 14:21:19,157 [INFO] [2125319 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
+2026-07-09 14:21:23,624 [INFO] [2125319 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 14:21:24,188 [INFO] [2125319 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-09 14:21:24,188 [INFO] [2125319 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-09 14:21:24,188 [INFO] [2125319 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-09 14:21:24,188 [INFO] [2125319 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-09 14:21:25,334 [INFO] [2125319 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-09 14:21:25,340 [INFO] [2125319 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-09 14:21:25,340 [INFO] [2125319 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-09 14:21:26,466 [INFO] [2125319 MP MT] [instance.py:42]: Device count: 1 
+2026-07-09 14:21:26,467 [INFO] [2125319 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-09 14:21:26,467 [INFO] [2125319 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-09 14:21:26,467 [INFO] [2125319 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
+2026-07-09 14:21:26,468 [INFO] [2125319 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-09 14:21:26,468 [INFO] [2125319 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 Checking testcase name...
 Case number: 1
 Initialize output csv file...
@@ -24,9 +24,9 @@ Preparing Task Executors...
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2121494 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 2125659 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-09 14:17:14,642 [INFO] [2121494 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 14:21:32,156 [INFO] [2125659 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
 
 ----------------------------------------------------------------------------------------------------
 API Name: fia_mxfp8_wrapper.npu_fia_mxfp8
@@ -69,106 +69,98 @@ Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None
 Precision Tolerance: None
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 2121494
+PID: 2125659
 Device: 0
 ----------------------------------------------------------------------------------------------------
-[WRAPPER] customize_inputs 缓存为空,使用 TTK 传入的占位 tensor(可能出错)
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
 [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[NPU TND] q=torch.Size([3, 1, 128])
+[NPU TND] q=torch.Size([3, 1, 64])
 [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[NPU TND] k=torch.Size([640, 1, 128]), v=torch.Size([640, 1, 128])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
 [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
 [NPU] 调用 TND 模式...
 [NPU] 调用单算子模式...
-[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-14:17:19 (PID:2121494, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2121494] 2026-07-09-14:17:19.344.777 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[NPU TND] q=torch.Size([3, 1, 64])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 1, 64])
+[CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
+[CPU Golden] output=torch.Size([1, 1, 3, 64])
+[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Eager comparison failure
 Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py", line 99, in npu_fia_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1075, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(
-                         ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1094, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 882, in _call_npu_fa_op
-    atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_ops.py", line 1269, in __call__
-    return self._op(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-14:17:19 (PID:2121494, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2121494] 2026-07-09-14:17:19.344.777 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 471, in _evaluate_eager_precision
+    custom_result = _try_custom_compare(testcase, result_nps, golden_nps, switches)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 455, in _try_custom_compare
+    raise ValueError(
+ValueError: [TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] compare output[0] missing 'pass' or 'precision'
 
-Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2121494, fail reason:
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py", line 99, in npu_fia_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1075, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(
-                         ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1094, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 882, in _call_npu_fa_op
-    atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_ops.py", line 1269, in __call__
-    return self._op(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-14:17:19 (PID:2121494, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2121494] 2026-07-09-14:17:19.344.777 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
-
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
-    function_return = func(*func_args, **func_kwargs)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
-    return_struct.precision = str(e)
-    ^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
-
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       COMPARE_FAILURE
+  DEVICE: None us
+  CPU:    None us
+STATUS: FAIL
+Golden Shapes: ((3, 1, 64),)
+Golden Dtypes: ('float32',)
+#######################################################################################################
 ttk Profiling complete
