@@ -1395,3 +1395,86 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
 
+
+// dk放不下UB、dv可全载，走Dk切分模板
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_dk_split_is_output_kv)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{64, 1, 1, 16512},{64, 1, 1, 16512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 16384},{64, 1, 1, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 16384},{64, 1, 1, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1},{64, 1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 1, 1, 16384},{64, 1, 1, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128},{64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+            {{{64, 1, 1, 128},{64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {{{64, 1, 1, 16384},{64, 1, 1, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128},{64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 16384},{64, 1, 1, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128},{64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 30000, "");
+}
+
+// test_kv_large.py 的场景：dk=2^31、dv=1、fp8 cache、标量scale、不输出kv
+TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_dk_split_huge_dk_tiny_dv)
+{
+    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
+    compileInfo.coreNum = 48;
+    compileInfo.ubSize = 196608;
+    const int64_t dk = 2147483648L;
+    gert::TilingContextPara tilingContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{1, 1, 1, dk + 1},{1, 1, 1, dk + 1}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1},{1}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 1, dk},{1, 1, 1, dk}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 1, dk},{1, 1, 1, dk}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1},{1}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{1, 1, 1, dk},{1, 1, 1, dk}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{1, 1, 1, 1},{1, 1, 1, 1}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{1},{1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1},{1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput
+        },
+        {
+            {{{1, 1, 1, dk},{1, 1, 1, dk}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{1, 1, 1, 1},{1, 1, 1, 1}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{1, 1, 1, dk},{1, 1, 1, dk}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 1, 1},{1, 1, 1, 1}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo,
+        "Ascend950",
+        64,
+        196608);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 30000, "");
+}

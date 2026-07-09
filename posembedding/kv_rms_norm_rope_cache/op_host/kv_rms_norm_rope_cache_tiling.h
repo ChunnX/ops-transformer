@@ -110,6 +110,43 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10000, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
 
+// Dk切分：Dk放不下UB、Dv可全载
+BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheRegbaseDkSplitTilingData)
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numHead);
+TILING_DATA_FIELD_DEF(int64_t, seqLength);
+TILING_DATA_FIELD_DEF(int64_t, cacheLength);
+TILING_DATA_FIELD_DEF(int64_t, blockSize);
+TILING_DATA_FIELD_DEF(int64_t, cosSinNeedBrc);
+TILING_DATA_FIELD_DEF(int64_t, kScaleType);
+TILING_DATA_FIELD_DEF(int64_t, kOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, vScaleType);
+TILING_DATA_FIELD_DEF(int64_t, vOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, isOutputKv);
+TILING_DATA_FIELD_DEF(int64_t, cacheMode);
+TILING_DATA_FIELD_DEF(int64_t, dk);
+TILING_DATA_FIELD_DEF(int64_t, halfDk);
+TILING_DATA_FIELD_DEF(int64_t, dkUbFactor);        // 单次UB处理的dk长度，2*VL_FP32的整数倍
+TILING_DATA_FIELD_DEF(int64_t, dkUbFactorAlign);   // kOut在UB上的行间距
+TILING_DATA_FIELD_DEF(int64_t, dkUbFactorB8Align); // 量化kOut在UB上的行间距
+TILING_DATA_FIELD_DEF(int64_t, halfDkUbFactor);
+TILING_DATA_FIELD_DEF(int64_t, halfDkUbFactorAlign); // cos/sin/kScale各段在UB上的容量
+TILING_DATA_FIELD_DEF(int64_t, dkLoop);
+TILING_DATA_FIELD_DEF(int64_t, dkTail); // 最后一个dk子块的长度
+TILING_DATA_FIELD_DEF(int64_t, dv);
+TILING_DATA_FIELD_DEF(int64_t, dvAlign);
+TILING_DATA_FIELD_DEF(int64_t, dvB8Align);
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);
+TILING_DATA_FIELD_DEF(int64_t, inUbSize);
+TILING_DATA_FIELD_DEF(int64_t, outUbSize);
+TILING_DATA_FIELD_DEF(int64_t, rmsNormWspSize);
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_30000, KvRmsNormRopeCacheRegbaseDkSplitTilingData)
+
 // Recompute
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheRegbaseRecomputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, bs);
@@ -144,6 +181,7 @@ REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_20000, KvRmsNormRopeCacheRegbaseRe
 
 constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
 constexpr int32_t TEMPLATE_D_FULL_LOAD_PRIORITY = 2000;
+constexpr int32_t TEMPLATE_D_DK_SPLIT_PRIORITY = 2500;
 constexpr int32_t TEMPLATE_D_RECOMPUTE_PRIORITY = 3000;
 
 struct KvRmsNormRopeCacheCompileInfo {
@@ -202,6 +240,7 @@ constexpr int64_t QUANT_MODE = 1;
 static constexpr int64_t UB_RESERVED_BYTE = 1024;
 static constexpr int64_t FULL_LOAD_BASE_TILING_KEY = 10000;
 static constexpr int64_t NON_FULL_LOAD_BASE_TILING_KEY = 20000;
+static constexpr int64_t DK_SPLIT_BASE_TILING_KEY = 30000;
 
 class KvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -336,6 +375,38 @@ protected:
 
 private:
     KvRmsNormRopeCacheRegbaseFullLoadTilingData tilingData_;
+};
+
+class KvRmsNormRopeCacheRegbaseDkSplitTiling : virtual public KvRmsNormRopeCacheTilingBase {
+public:
+    explicit KvRmsNormRopeCacheRegbaseDkSplitTiling(gert::TilingContext* tillingContext)
+        : KvRmsNormRopeCacheTilingBase(tillingContext)
+    {}
+    ~KvRmsNormRopeCacheRegbaseDkSplitTiling() override
+    {}
+
+    uint64_t usedCoreNum_ = 0;
+    int64_t kScaleType_ = 0;
+    int64_t kOffsetType_ = 0;
+    int64_t vScaleType_ = 0;
+    int64_t vOffsetType_ = 0;
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus PostTiling() override;
+
+protected:
+    bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
+    bool CheckInputDtype();
+    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
+    ge::graphStatus CheckInputShapeIsEmpty();
+    // 给定dk子块大小，返回可容纳的行数ubFactor，<=0表示放不下
+    int64_t CalcUbFactor(int64_t dkUbFactor) const;
+    bool CheckNzInnerAxisAligned() const;
+
+private:
+    KvRmsNormRopeCacheRegbaseDkSplitTilingData tilingData_;
 };
 
 class KvRmsNormRopeCacheRegbaseRecomputeTiling : virtual public KvRmsNormRopeCacheTilingBase {
