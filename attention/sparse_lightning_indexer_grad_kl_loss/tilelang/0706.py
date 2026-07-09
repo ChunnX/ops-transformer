@@ -640,6 +640,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # dKeyIndex: queryIndex (K=Nidx1,N=DQI)
+                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # dKeyIndex: part (M=n_block,N=DQI)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
@@ -653,6 +655,16 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("m", "fix", 7)
                         T.wait_flag("m", "fix", 7)
                         T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
+
+                    # dKeyIndex 部分积：reluGrad^T @ queryIndex（transpose_A，复用已载入的 RG_L1）
+                    # 放在已证明执行的 C2 块内，避免新增第 3 个 AIC 块
+                    T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
+                    T.set_flag("mte2", "m", 8)
+                    T.wait_flag("mte2", "m", 8)
+                    T.gemm_v0(RG_L1, QI_L1_dk, DK_L0C, transpose_A=True, transpose_B=False, init=True)
+                    T.set_flag("m", "fix", 9)
+                    T.wait_flag("m", "fix", 9)
+                    T.tile.atomic_add(dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex], DK_L0C)
 
                 T.set_cross_flag("FIX", 3)
 
@@ -683,60 +695,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.pipe_barrier("mte3")
                             T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
-                # 为 C3 预转置 reluGrad tile: (Nidx1, n_block) -> (n_block, Nidx1)
-                # 借用 C2 之后已空闲的 GatherKeyIndex_ws 前 Nidx1 列做中转，避免新 workspace
-                # 目的：C3 可用与 C2 相同的 (F,F) gemm，绕开 transpose_A + 手动同步的坑
-                rg_in_ub = T.alloc_ub((Nidx1, n_block), input_dtype)
-                rg_t_ub = T.alloc_ub((n_block, Nidx1), input_dtype)
-                for s1_row in T.serial(s1_start, s1_end):
-                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], rg_in_ub)
-                    T.set_flag("mte2", "v", 5)
-                    T.wait_flag("mte2", "v", 5)
-                    T.tile.transpose(rg_t_ub, rg_in_ub)
-                    T.set_flag("v", "mte3", 7)
-                    T.wait_flag("v", "mte3", 7)
-                    T.copy(rg_t_ub, GatherKeyIndex_ws[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1])
-                # 排空 MTE3 store，保证 C3（另一核）读到已落地的转置结果（WAR/RAW 跨核依赖）
-                T.set_flag("mte3", "v", 3)
-                T.wait_flag("mte3", "v", 3)
-
-                T.set_cross_flag("V", 13)  # signal C scope 3 (dKeyIndex matmul)
-
-            # ============================================================
-            # C scope 3: Matmul5 — dKeyIndex 部分积 reluGrad^T @ QueryIndex
-            #   reluGrad 已在 V3 预转置为 (n_block, Nidx1) 存入 GatherKeyIndex_ws；
-            #   这里用与 C2 完全相同的 (F,F) gemm：(n_block,Nidx1)@(Nidx1,DQI)->(n_block,DQI)
-            # ============================================================
-            with T.Scope("C"):
-                T.wait_cross_flag(13)
-
-                RG_L1_dk = T.alloc_L1((n_block, Nidx1), input_dtype)       # (M=n_block, K=Nidx1) 已转置
-                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # (K=Nidx1, N=DQI)
-                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # (M=n_block, N=DQI)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    # 从 V3 写入的转置 reluGrad 中转区加载 (n_block, Nidx1)
-                    T.copy(GatherKeyIndex_ws[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1], RG_L1_dk)
-                    T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
-                    # RAW: gemm 等 L1 载入
-                    T.set_flag("mte2", "m", 6)
-                    T.wait_flag("mte2", "m", 6)
-                    # 与 C2 完全相同的 (F,F) gemm — 绕开 transpose_A + 手动同步的坑
-                    T.gemm_v0(RG_L1_dk, QI_L1_dk, DK_L0C, transpose_A=False, transpose_B=False, init=True)
-                    # M→FIX: atomic_add 等 gemm 完成
-                    T.set_flag("m", "fix", 7)
-                    T.wait_flag("m", "fix", 7)
-                    T.tile.atomic_add(dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex], DK_L0C)
-
-                T.set_cross_flag("FIX", 14)  # signal V scope 4 (scatter)
-
             # ============================================================
             # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
+            #   dk_matmul_partial 现由 C2 算好（避免第 3 个 AIC 块）；V4 紧跟 V3 同 AIV 核
+            #   顺序执行，C2 的写经 FIX:3→V3.wait 已落地，故无需额外跨核 flag。
             #   基指针 atomic_add：dst 全点索引无切片，extent 从 src (1,DQI) 推导
             # ============================================================
             with T.Scope("V"):
-                T.wait_cross_flag(14)
-
                 dk_chunk_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)  # (1,128) fp32
 
                 for s1_row in T.serial(s1_start, s1_end):
