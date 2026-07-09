@@ -254,7 +254,7 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, output_idx_offset, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, _ = params
@@ -458,8 +458,8 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
 
 def check_result_return_value(expect, result, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
-    seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
