@@ -123,6 +123,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto DQ_L0C = ascend_l0c.GetWithOffset<float>(8192, 49152);
   auto dq_fp32_ub = ascend_ub.GetWithOffset<float>(512, 193664);
   auto dq_fp16_ub = ascend_ub.GetWithOffset<half>(512, 0);
+  auto rg_in_ub = ascend_ub.GetWithOffset<half>(4096, 0);
+  auto rg_t_ub = ascend_ub.GetWithOffset<half>(4096, 8192);
   auto RG_L1_dk = ascend_l1.GetWithOffset<half>(4096, 106496);
   auto QI_L1_dk = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto DK_L0C = ascend_l0c.GetWithOffset<float>(8192, 81920);
@@ -419,15 +421,24 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
       AscendC::PipeBarrier<PIPE_MTE3>();
       tl::ascend::copy_ub_to_gm<half, 128, 4>(dQueryIndex[(g_id_1 * 512)], dq_fp16_ub[0], 128, 4, 128);
     }
+    tl::ascend::copy_gm_to_ub<half, 64, 64>(rg_in_ub[0], reluGradRes[(cid * 64)], 2048, 64, 64, half(0.000000e+00f));
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(5);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(5);
+    tl::ascend::transpose<half, 64, 64>(rg_t_ub[0], rg_in_ub[0]);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(7);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(7);
+    tl::ascend::copy_ub_to_gm<half, 64, 64>(GatherKeyIndex_ws[(cid * 8192)], rg_t_ub[0], 128, 64, 64);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
     AscendC::CrossCoreSetFlag<0x2, PIPE_V>(13);
   }
   if ASCEND_IS_AIC {
     AscendC::CrossCoreWaitFlag(13);
-    tl::ascend::copy_gm_to_l1<half, 64, 64>(RG_L1_dk[0], reluGradRes[(cid * 64)], 2048, 64, 64, true);
+    tl::ascend::copy_gm_to_l1<half, 64, 64>(RG_L1_dk[0], GatherKeyIndex_ws[(cid * 8192)], 128, 64, 64, true);
     tl::ascend::copy_gm_to_l1<half, 64, 128>(QI_L1_dk[0], QueryIndex[0], 128, 64, 128, true);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_M>(6);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_M>(6);
-    tl::ascend::gemm_v0<half, float, 64, 128, 64, true, false>(RG_L1_dk[0], QI_L1_dk[0], DK_L0C[0], ascend_l0a, ascend_l0b, (bool)1);
+    tl::ascend::gemm_v0<half, float, 64, 128, 64, false, false>(RG_L1_dk[0], QI_L1_dk[0], DK_L0C[0], ascend_l0a, ascend_l0b, (bool)1);
     AscendC::SetFlag<AscendC::HardEvent::M_FIX>(7);
     AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(7);
     tl::ascend::atomic_add_l0c_to_gm<float, float, layout::RowMajor, 64, 128>(dk_matmul_partial[(cid * 8192)], DK_L0C[0], 128, 64, 128);
