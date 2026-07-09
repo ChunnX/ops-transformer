@@ -20,6 +20,7 @@
 #include "basic_modules/sparse_flash_mla_grad_vec_op.h"
 #include "basic_modules/sparse_flash_mla_grad_common_header.h"
 #include "post.h"
+#include "smlag_deterministic.h"
 
 namespace SMLAG_BASIC {
 
@@ -43,6 +44,9 @@ private:
     __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
+    // 确定性 SCFA：非重叠(逐 task 顺序)计算，便于每轮 S1 结束做保序 owner scatter。
+    __aicore__ inline void CubeComputeDetTask(CubeOp<SMLAGT> &cubeOp);
+    __aicore__ inline void VecComputeDetTask(VecOp<SMLAGT> &vecOp);
     __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
     __aicore__ inline void SaveLastInfo();
     __aicore__ inline void GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
@@ -134,6 +138,7 @@ private:
     constexpr static uint32_t CUBE_WAIT_VEC_GATHER_PING = 4;
     constexpr static uint32_t CUBE_WAIT_VEC_GATHER_PONG = 5;
     constexpr static uint32_t SCATTER_SYNC_FLAG = 6;
+    constexpr static uint32_t DET_ROUND_DONE = 7;
     bool changePingpong = false;
     bool isLastBlockSelected = false;
 
@@ -214,6 +219,44 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         CubeOp<SMLAGT> cubeOp;
         cubeOp.Init(query, ori_kv, cmp_kv, attention_out_grad, workspace, tilingData, &pipeCube);
         AllocEventID();
+
+        // ==== 确定性 SCFA：逐 task 顺序计算 + 每 S1 轮结束发 SCATTER_SYNC_FLAG ====
+        if (tilingData->opInfo.deterministic == 1) {
+            int64_t task = 0;
+            int32_t maxRoundS1 = static_cast<int32_t>(tilingData->opInfo.dkvDetMaxRoundS1);
+            int32_t maxTasksInner = static_cast<int32_t>(tilingData->opInfo.dkvDetMaxTasksPerS1Round);
+            for (int32_t i = 0; i < maxRoundS1; i++) {
+                scatterTaskId = i % 2;
+                if (i > 0 && cubeBlockIdx < usedCoreNum) {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(DET_ROUND_DONE);
+                }
+                if (cubeBlockIdx < usedCoreNum && i < static_cast<int32_t>(processBS1ByCore)) {
+                    int64_t t1Index = static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i;
+                    GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
+                    mmPingPongIdx = 0;
+                    int64_t taskRoundBegin = task;
+                    int32_t actualTasks = 0;
+                    for (n2Index = 0; n2Index < dimN2 && actualTasks < maxTasksInner; n2Index++) {
+                        GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
+                        for (int32_t loop = 0; loop < s2Loop && actualTasks < maxTasksInner; loop++) {
+                            task = taskRoundBegin + actualTasks;
+                            UpdateGmOffset(task, loop);
+                            CubeComputeDetTask(cubeOp);
+                            actualTasks++;
+                        }
+                    }
+                    task = taskRoundBegin + maxTasksInner;
+                } else if (cubeBlockIdx < usedCoreNum) {
+                    task += maxTasksInner;
+                }
+                if (cubeBlockIdx < usedCoreNum) {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(DET_ROUND_DONE);
+                }
+            }
+            FreeEventID();
+            return;
+        }
+
         int64_t task = 0;
         bool changeS1 = false;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -258,6 +301,87 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         vWaitMte3Proc = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
         SET_FLAG(MTE3, V, vWaitMte3Proc);
         
+        // ==== 确定性 SCFA：ori 段每 S1 轮 batch 保序累加(part2) + cmp scatter(part1) ====
+        if (tilingData->opInfo.deterministic == 1) {
+            int64_t task = 0;
+            int32_t maxRoundS1 = static_cast<int32_t>(tilingData->opInfo.dkvDetMaxRoundS1);
+            int32_t maxTasksInner = static_cast<int32_t>(tilingData->opInfo.dkvDetMaxTasksPerS1Round);
+            for (int32_t i = 0; i < maxRoundS1; i++) {
+                scatterTaskId = i % 2;
+                int64_t roundValid = 0;
+                RunInfo roundCmpInfo = runInfo[0];
+                int64_t taskRoundBegin = task;
+                int32_t actualTasks = 0;
+                if (cubeBlockIdx < usedCoreNum && i < static_cast<int32_t>(processBS1ByCore)) {
+                    int64_t t1Index = static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i;
+                    GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
+                    mmPingPongIdx = 0;
+                    for (n2Index = 0; n2Index < dimN2 && actualTasks < maxTasksInner; n2Index++) {
+                        GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
+                        for (int32_t loop = 0; loop < s2Loop && actualTasks < maxTasksInner; loop++) {
+                            task = taskRoundBegin + actualTasks;
+                            UpdateGmOffset(task, loop);
+                            VecComputeDetTask(vecOp);
+                            // 等本核 AIC 完成 cube345（ori 私有区 / cmp mm45 就绪）再发布 meta
+                            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                            vecOp.PublishOriMetaDet(task, runInfo[0].isOri ? 1 : 0, runInfo[0]);
+                            if (!runInfo[0].isOri && actualSelectedBlockCount > 0) {
+                                roundCmpInfo = runInfo[0];
+                                roundValid = 1;
+                            }
+                            actualTasks++;
+                        }
+                    }
+                }
+                // part(2) ori：固定 maxTasksInner 次 (SyncAll + Accumulate)，各核次数对齐
+                for (int32_t ti = 0; ti < maxTasksInner; ti++) {
+                    int64_t t = taskRoundBegin + ti;
+                    if (ti >= actualTasks && cubeBlockIdx < usedCoreNum) {
+                        vecOp.PublishOriMetaDet(t, 0, runInfo[0]);
+                    }
+                    SyncAll();
+                    if (cubeBlockIdx < usedCoreNum) {
+                        vecOp.AccumulateDkvDet(t);
+                    }
+                    SyncAll();
+                }
+                task = taskRoundBegin + maxTasksInner;
+                // part(1) cmp scatter
+                if (cubeBlockIdx < usedCoreNum && i < static_cast<int32_t>(processBS1ByCore)) {
+                    vecOp.PublishScatterMetaDet(i, roundValid, roundCmpInfo);
+                } else if (cubeBlockIdx < usedCoreNum) {
+                    vecOp.PublishScatterMetaDet(i, 0, roundCmpInfo);
+                }
+                SyncAll();
+                if (cubeBlockIdx < usedCoreNum) {
+                    vecOp.ScatterAddDet(i);
+                }
+                SyncAll();
+                if (cubeBlockIdx < usedCoreNum) {
+                    CrossCoreSetFlag<2, PIPE_MTE3>(DET_ROUND_DONE);
+                }
+            }
+            WAIT_FLAG(MTE3, V, vWaitMte3Proc);
+            vecOp.CopyOutDsinks();
+            SyncAll();
+            pipeVec.Destroy();
+
+            {
+                TPipe pipeDet;
+                SMLAG_DET::SmlagDetPost<TILING_CLASS> detPost;
+                detPost.Init(dsinks, workspace, tilingData, &pipeDet);
+                detPost.ReduceDsinks();
+                pipeDet.Destroy();
+                SyncAll();
+            }
+
+            TPipe pipeCast;
+            SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0> opCast;
+            opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
+            opCast.Process();
+            return;
+        }
+
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
@@ -295,6 +419,16 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
+
+        // 确定性通路：d_sinks 多核保序归约（cmp_softmax_l1 的保序已在 VecOp::Process 内完成）
+        if (tilingData->opInfo.deterministic == 1) {
+            TPipe pipeDet;
+            SMLAG_DET::SmlagDetPost<TILING_CLASS> detPost;
+            detPost.Init(dsinks, workspace, tilingData, &pipeDet);
+            detPost.ReduceDsinks();
+            pipeDet.Destroy();
+            SyncAll();
+        }
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0> opCast;
@@ -355,6 +489,31 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLA
 }
 
 template <typename SMLAGT>
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::CubeComputeDetTask(CubeOp<SMLAGT> &cubeOp)
+{
+    // 非重叠(逐 task)：cube12 -> 通知 vec -> 等 vec 产出 ds/p -> cube345
+    CrossCoreWaitFlag<2, PIPE_MTE2>(CUBE_WAIT_VEC_GATHER_PING);
+    cubeOp.cube12Process(runInfo[0], blkCntOffset, 0);
+    CrossCoreSetFlag<2, PIPE_FIX>(VEC_WAIT_CUBE_PING);
+    CrossCoreWaitFlag<2, PIPE_MTE2>(CUBE_WAIT_VEC_PING);
+    cubeOp.cube345Process(runInfo[0], blkCntOffset, 0);
+    CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecComputeDetTask(VecOp<SMLAGT> &vecOp)
+{
+    if (cubeBlockIdx < usedCoreNum && !runInfo[0].isOri) {
+        vecOp.GatherKV(n2Index, t1Offset, runInfo[0]);
+    }
+    CrossCoreSetFlag<2, PIPE_MTE3>(CUBE_WAIT_VEC_GATHER_PING);
+
+    CrossCoreWaitFlag(VEC_WAIT_CUBE_PING);
+    vecOp.Process(runInfo[0]);
+    CrossCoreSetFlag<2, PIPE_MTE3>(CUBE_WAIT_VEC_PING);
+}
+
+template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_t task, int32_t loop)
 {
     /*
@@ -399,6 +558,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_
 
     runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
     runInfo[mmPingPongIdx].task = task;
+    runInfo[mmPingPongIdx].detRound = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
     runInfo[mmPingPongIdx].blkCntOffset = blkCntOffset;
     runInfo[mmPingPongIdx].queryGmOffset = queryGmOffset;

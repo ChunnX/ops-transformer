@@ -201,6 +201,114 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     workspaceOffsets = workspaceOffsets + dqWorkspaceLen;
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);
 
+    // ---- 确定性 workspace（追加到末尾，偏移为 user 相对，单位 B）----
+    uint64_t dsinksDetWsOffset = 0;
+    uint64_t cmpL1DetWsOffset = 0;
+    uint64_t dkvDetWsOffset = 0;
+    uint64_t dkvDetPerCoreStride = 0;
+    uint32_t dkvDetMaxRoundS1 = 0;
+    uint32_t dkvDetMaxRoundSingleN = 0;
+    uint32_t dkvDetMaxTasksPerS1Round = 0;
+    uint64_t dkvDetScatterMetaOffset = 0;
+    uint64_t dkvDetOriMetaOffset = 0;
+    if (tilingData.opInfo.get_deterministic() == 1) {
+        int64_t aivNum = currentUseCoreNum * 2;                  // 每个 AIC 配 2 个 AIV
+        int64_t userEnd = static_cast<int64_t>(workspaces[0]) - sysLen;   // user 相对末尾
+        // d_sinks: 每个 aiv 一个 [G] 槽位
+        dsinksDetWsOffset = static_cast<uint64_t>(userEnd);
+        int64_t dsinksDetWsLen = AlignData(aivNum * tilingData.opInfo.get_G() * B32, GM_ALIGN);
+        workspaces[0] += dsinksDetWsLen;
+        userEnd += dsinksDetWsLen;
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            // cmp_softmax_l1: 每个 block 一个 [singleN] 槽位（按 aivNum 预留）
+            cmpL1DetWsOffset = static_cast<uint64_t>(userEnd);
+            int64_t cmpL1DetWsLen = AlignData(aivNum * tmpData.singleN * B32, GM_ALIGN);
+            workspaces[0] += cmpL1DetWsLen;
+            userEnd += cmpL1DetWsLen;
+        }
+
+        // ---- dKV 确定性（保序累加） ----
+        int64_t singleN = static_cast<int64_t>(tmpData.singleN);
+        int64_t dAlign = (tilingData.opInfo.get_D() + 15) / 16 * 16;
+        int64_t sblkCnt = static_cast<int64_t>(tmpData.selected_block_count);
+        int64_t sblkSize = static_cast<int64_t>(tilingData.opInfo.get_selectedBlockSize());
+        int64_t oriWinLen = tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight() + 1;
+        int64_t s1Basic = static_cast<int64_t>(tmpData.s1BasicSize);
+        int64_t dimN2 = tilingData.opInfo.get_N2();
+
+        // 复刻 kernel 侧 selectedCountOffset（每个 singleN 轮处理的 block 数）
+        int64_t selCntOffset = singleN;
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            if (tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight() + sblkCnt <= singleN) {
+                selCntOffset = tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight() + sblkCnt;
+            }
+        } else {
+            if (sblkSize * sblkCnt <= singleN) {
+                selCntOffset = sblkCnt;
+            }
+        }
+        selCntOffset = selCntOffset > 0 ? selCntOffset : 1;
+
+        // part(2) 每核私有区：DB * singleN * (dK + dV)，与 mm45 逐 singleN 产物同布局
+        dkvDetPerCoreStride = static_cast<uint64_t>(
+            AlignData(PING_PONG_BUFFER * singleN * (dAlign + dAlign) * B32, GM_ALIGN));
+        dkvDetWsOffset = static_cast<uint64_t>(userEnd);
+        int64_t dkvDetWsLen = static_cast<int64_t>(dkvDetPerCoreStride) * currentUseCoreNum;
+        workspaces[0] += dkvDetWsLen;
+        userEnd += dkvDetWsLen;
+
+        // part(1) SCFA cmp：每轮 S1 后 SyncAll，全核统一轮数上界
+        dkvDetMaxRoundS1 = tilingData.opInfo.get_formerCoreProcessNNum();
+
+        // part(2) ori(& CFA cmp)：每 singleN(=每 task) 后 SyncAll，全核统一轮数上界（保守上界，宁大勿小以防死锁）
+        int64_t oriLoopUB = (oriWinLen + s1Basic + selCntOffset - 1) / selCntOffset + 1;
+        int64_t cmpLoopUB = (tmpData.mode == SMLAG_CFA_MODE)
+                                ? (sblkCnt + selCntOffset - 1) / selCntOffset + 1
+                                : 0;
+        // kernel 每个 i(s1Basic 块) 内还有 j(s1Loop) 批次拆分循环：一个 s1Basic 窗口最多跨越 s1LoopUB 个 batch。
+        //  BSND: 每 batch S1 行 → 跨越数 <= ceil(s1Basic/S1)+1
+        //  TND : 各 batch 长度运行时才知 → 退化上界 s1Basic+1（每 batch 至少 1 token），保证不死锁
+        bool isTnd = (tmpData.layout == static_cast<uint32_t>(InputLayout::TND));
+        int64_t s1Val = tilingData.opInfo.get_S1();
+        int64_t s1LoopUB = isTnd ? (s1Basic + 1)
+                                 : ((s1Val > 0 ? (s1Basic + s1Val - 1) / s1Val : s1Basic) + 1);
+        dkvDetMaxRoundSingleN = static_cast<uint32_t>(
+            tilingData.opInfo.get_formerCoreProcessNNum() * s1LoopUB * dimN2 * (oriLoopUB + cmpLoopUB));
+
+        // SCFA：每 S1 轮内 task 数上界 = N2 * (oriS2Loop + cmpS2Loop)，保证各核 ori 保序 SyncAll 次数一致
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            int64_t cmpLoopScfa = (sblkCnt + selCntOffset - 1) / selCntOffset + 1;
+            dkvDetMaxTasksPerS1Round = static_cast<uint32_t>(dimN2 * (oriLoopUB + cmpLoopScfa));
+        }
+
+        // part(1) SCFA cmp scatter 描述符元数据：DB * usedCoreNum * META_FIELDS(8) int64
+        constexpr int64_t META_FIELDS = 8;   // {valid, f1, f2, f3, ...reserved}
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            dkvDetScatterMetaOffset = static_cast<uint64_t>(userEnd);
+            int64_t metaLen = AlignData(
+                PING_PONG_BUFFER * currentUseCoreNum * META_FIELDS * static_cast<int64_t>(sizeof(int64_t)), GM_ALIGN);
+            workspaces[0] += metaLen;
+            userEnd += metaLen;
+        }
+
+        // part(2) ori(& CFA cmp) dkv 描述符元数据：DB * usedCoreNum * META_FIELDS(8) int64
+        // {valid, dVbase, dKbase, numRows, ...reserved}
+        dkvDetOriMetaOffset = static_cast<uint64_t>(userEnd);
+        int64_t oriMetaLen = AlignData(
+            PING_PONG_BUFFER * currentUseCoreNum * META_FIELDS * static_cast<int64_t>(sizeof(int64_t)), GM_ALIGN);
+        workspaces[0] += oriMetaLen;
+        userEnd += oriMetaLen;
+    }
+    tilingData.opInfo.set_dsinksDetWsOffset(dsinksDetWsOffset);
+    tilingData.opInfo.set_cmpL1DetWsOffset(cmpL1DetWsOffset);
+    tilingData.opInfo.set_dkvDetWsOffset(dkvDetWsOffset);
+    tilingData.opInfo.set_dkvDetPerCoreStride(dkvDetPerCoreStride);
+    tilingData.opInfo.set_dkvDetMaxRoundS1(dkvDetMaxRoundS1);
+    tilingData.opInfo.set_dkvDetMaxRoundSingleN(dkvDetMaxRoundSingleN);
+    tilingData.opInfo.set_dkvDetMaxTasksPerS1Round(dkvDetMaxTasksPerS1Round);
+    tilingData.opInfo.set_dkvDetScatterMetaOffset(dkvDetScatterMetaOffset);
+    tilingData.opInfo.set_dkvDetOriMetaOffset(dkvDetOriMetaOffset);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -410,10 +518,10 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     const int64_t *cmpMaskModePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
 
     // -------------------------------------
-    if (context_->GetDeterministic() == 1) {
-        OP_LOGE(context_, "SparseFlashMlaGrad not support deterministic yet.");
-        return ge::GRAPH_FAILED;
-    }
+    // 确定性计算：记录开关，具体保序逻辑在 Kernel 内按 deterministic 分支执行。
+    // 当前已实现确定性：d_sinks、cmp_softmax_l1_norm；d_ori_kv/d_cmp_kv 保序为后续阶段。
+    uint32_t deterministic = (context_->GetDeterministic() == 1) ? 1U : 0U;
+    tilingData.opInfo.set_deterministic(deterministic);
 
     if (dimDq != dimOriKv) {
         OP_LOGE(context_, "The headDim of query, ori_kv should be the same. But got dimDq=%ld, dimOriKv=%ld",
