@@ -98,9 +98,12 @@ DEVICE_ID = 0
 
 SPARSE_BLOCK_SIZE = 128
 HEAD_DIM = 128
+HEAD_DIM_V = 128
 QUANT_MODE_MXFP8 = 2
 KEY_LAYOUT = "PA_BNSD"
 SPARSE_INDICES_LAYOUT = "PA_BNSD"
+OUT_LAYOUT = "TND" 
+FP32_BYTE = 4
 
 
 def _get_npu_fa_kwargs():
@@ -957,35 +960,35 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
     device_id = 0
     torch_npu.npu.set_device(device_id)
     output = torch.ops.custom.npu_quant_block_sparse_attn(
-        _to_npu(inputs["query"]),
-        key,
-        value,
-        _to_npu(inputs["q_descale"]),
-        k_descale,
-        _to_npu(inputs["v_descale"]),
-        _to_npu(inputs["p_scale"]),
-        _to_npu(inputs["sparse_indices"]),
-        _to_npu(inputs["sparse_seq_len"]),
-        _to_npu(inputs["atten_mask"]),
-        inputs["softmax_scale"],
-        inputs["sparse_q_block_size"],
-        inputs["sparse_kv_block_size"],
-        cu_seqlens_q=_to_npu(inputs["cu_seqlens_q"]),
-        cu_seqlens_kv=_to_npu(inputs["cu_seqlens_kv"]),
-        seqused_q=_to_npu(inputs["seqused_q"]),
-        seqused_kv=_to_npu(inputs["seqused_kv"]),
-        block_table=_to_npu(inputs["block_table"]),
-        metadata=metadata,
-        max_seqlen_q=inputs["max_seqlen_q"],
-        max_seqlen_kv=inputs["max_seqlen_kv"],
-        pa_block_stride=inputs.get("pa_block_stride", inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
-        layout_kv=inputs["layout_kv"],
-        layout_q=inputs["layout_q"],
-        layout_sparse_indices=inputs["layout_sparse_indices"],
-        layout_out=inputs["layout_out"],
-        quant_mode=inputs["quant_mode"],
-        mask_mode=inputs["mask_mode"],
-        return_softmax_lse=inputs["return_softmax_lse"],
+        q,#_to_npu(inputs["query"]),
+        k,#key,
+        v,#value,
+        dequant_scale_q,#_to_npu(inputs["q_descale"]),
+        dequant_scale_k,#k_descale,
+        dequant_scale_v,#_to_npu(inputs["v_descale"]),
+        p_scale,#_to_npu(inputs["p_scale"]),
+        sparse_indices,#_to_npu(inputs["sparse_indices"]),
+        sparse_seq_len,#_to_npu(inputs["sparse_seq_len"]),
+        mask,#_to_npu(inputs["atten_mask"]),
+        softmax_scale,#inputs["softmax_scale"],
+        SPARSE_BLOCK_SIZE,#inputs["sparse_q_block_size"],
+        SPARSE_BLOCK_SIZE,#inputs["sparse_kv_block_size"],
+        cu_seqlens_q=cu_seqlens_q,#_to_npu(inputs["cu_seqlens_q"]),
+        cu_seqlens_kv=cu_seqlens_kv,#_to_npu(inputs["cu_seqlens_kv"]),
+        seqused_q=seqused_q,#to_npu(inputs["seqused_q"]),
+        seqused_kv=seqused_kv,#_to_npu(inputs["seqused_kv"]),
+        block_table=block_table,#to_npu(inputs["block_table"]),
+        metadata=metadata,#metadata,
+        max_seqlen_q=max_sq,#inputs["max_seqlen_q"],
+        max_seqlen_kv=seqused_kv,#inputs["max_seqlen_kv"],
+        pa_block_stride=kv_n*SPARSE_BLOCK_SIZE*(HEAD_DIM + HEAD_DIM_V + FP32_BYTE),#inputs.get("pa_block_stride", inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
+        layout_kv=INPUT_LAYOUT,#inputs["layout_kv"],
+        layout_q=KEY_LAYOUT,#inputs["layout_q"],
+        layout_sparse_indices=SPARSE_INDICES_LAYOUT,#inputs["layout_sparse_indices"],
+        layout_out=OUT_LAYOUT,#inputs["layout_out"],
+        quant_mode=QUANT_MODE_MXFP8,#inputs["quant_mode"],
+        mask_mode=SPARSE_MODE,#inputs["mask_mode"],
+        return_softmax_lse=ENABLE_LSE,#inputs["return_softmax_lse"],
     )
     torch_npu.npu.synchronize()
     #############
