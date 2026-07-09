@@ -70,9 +70,11 @@ def qliv2(testcase_files):
         else:
             result = "Failed"
             fulfill_percent = 0
-        return_value = params[30]
+        return_value = params[31]
         if return_value:
-            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(
+                cpu_topk_value, npu_topk_value, params, cpu_result, npu_result,
+                topk_value, output_idx_offset)
             print(f"result_return_value: {result_return_value}")
             print(f"fulfill_precent_return_value: {fulfill_precent_return_value}")
         else:
@@ -84,7 +86,7 @@ def qliv2(testcase_files):
         fulfill_percent = 0
         result_return_value = "N/A"
         fulfill_precent_return_value = 0
-        params = [None] * 32
+        params = [None] * 33
 
     row_data = {
         "case_name": Path(testcase_files).stem,
@@ -99,26 +101,28 @@ def qliv2(testcase_files):
         "block_size": params[8],
         "block_num": params[9],
         "qk_dtype": params[10],
-        "dequant_dtype": params[11],
-        "actual_seq_dtype": params[12],
-        "cu_seq_q": params[13],
-        "cu_seq_k": params[14],
-        "act_seq_q": params[15],
-        "act_seq_k": params[16],
-        "cmp_residual_k": params[17],
-        "max_seqlen_q": params[18],
-        "quant_mode": params[19],
-        "layout_query": params[20],
-        "layout_key": params[21],
-        "sparse_count": params[22],
-        "sparse_mode": params[23],
-        "query_datarange": params[24],
-        "key_datarange": params[25],
-        "weights_datarange": params[26],
-        "q_scale_datarange": params[27],
-        "k_scale_datarange": params[28],
-        "cmp_ratio": params[29],
-        "output_idx_offset": params[31],
+        "weight_dtype": params[11],
+        "dequant_dtype": params[12],
+        "actual_seq_dtype": params[13],
+        "cu_seq_q": params[14],
+        "cu_seq_k": params[15],
+        "act_seq_q": params[16],
+        "act_seq_k": params[17],
+        "cmp_residual_k": params[18],
+        "max_seqlen_q": params[19],
+        "quant_mode": params[20],
+        "layout_query": params[21],
+        "layout_key": params[22],
+        "sparse_count": params[23],
+        "sparse_mode": params[24],
+        "query_datarange": params[25],
+        "key_datarange": params[26],
+        "weights_datarange": params[27],
+        "q_scale_datarange": params[28],
+        "k_scale_datarange": params[29],
+        "cmp_ratio": params[30],
+        "return_value": params[31],
+        "output_idx_offset": params[32],
         "result": result,
         "fulfill_percent": fulfill_percent,
         "result_return_value": result_return_value,
