@@ -448,7 +448,7 @@ public:
 
         if (useCustomBuffer_) {
             GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
-            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
+            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_) * 2ULL * 1024ULL * 1024ULL;
             ASCEND_LOGI("Get custom HCCL CommResource success");
             return;
         }
