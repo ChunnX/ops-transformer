@@ -199,6 +199,10 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
             std::printf("***********fp8_e8m0 dtype is support on cann version 9.1.0*************");
         }
     }
+    if (dequantScaleXOptional !=nullptr){
+        OP_LOGE("MlaPrologV3","fp8_e8m0 dtype is support on cann version 9.1.0");
+        return ge::GRAPH_FAILED;
+    }
     std::printf("***********200 fp8_e8m0 dtype is support on cann version 9.1.0*************");
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
