@@ -693,22 +693,22 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("C"):
                 T.wait_cross_flag(13)
 
-                RG_L1_dk = T.alloc_L1((Nidx1, n_block), input_dtype)       # (K=Nidx1, M=n_block)
+                RG_L1_dk = T.alloc_L1((n_block, Nidx1), input_dtype)       # (M=n_block, K=Nidx1) — 隐式转置:copy 时切片对调
                 QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # (K=Nidx1, N=DQI)
                 DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # (M=n_block, N=DQI)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1_dk)
+                    # 切片对调 K 列 vs Nidx1 行 → GM→L1 阶段隐式转置，L1 里就是 (n_block, Nidx1)
+                    T.copy(reluGradRes[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1], RG_L1_dk)
                     T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
                     # RAW: gemm 等 L1 载入
                     T.set_flag("mte2", "m", 6)
                     T.wait_flag("mte2", "m", 6)
-                    T.gemm_v0(RG_L1_dk, QI_L1_dk, DK_L0C, transpose_A=True, transpose_B=False, init=True)
-                    # M→FIX: copy_l0c 等 gemm 完成
+                    # 与 C2 完全相同的 (no-transpose) gemm — 绕开 transpose_A 的坑
+                    T.gemm_v0(RG_L1_dk, QI_L1_dk, DK_L0C, transpose_A=False, transpose_B=False, init=True)
+                    # M→FIX: atomic_add 等 gemm 完成
                     T.set_flag("m", "fix", 7)
                     T.wait_flag("m", "fix", 7)
-                    # 每 core 写自己不相交的 64 个 K 行；用 atomic_add_l0c_to_gm 导出
-                    # （对齐已验证的 C2 dQueryIndex 导出；纯 affine 切片，需 host 预先清零 dk_matmul_partial）
                     T.tile.atomic_add(dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex], DK_L0C)
 
                 T.set_cross_flag("FIX", 14)  # signal V scope 4 (scatter)
