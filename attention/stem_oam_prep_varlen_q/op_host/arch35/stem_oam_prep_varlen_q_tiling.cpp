@@ -116,7 +116,7 @@ static ge::graphStatus ValidateInputs(gert::TilingContext* context,
         return ge::GRAPH_FAILED;
     }
 
-    auto qScaleDesc = context->GetOptionalInputDesc(0);
+    auto qScaleDesc = context->GetOptionalInputDesc(3);
     if (qScaleDesc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "qScale is required for FP8 input");
         return ge::GRAPH_FAILED;
