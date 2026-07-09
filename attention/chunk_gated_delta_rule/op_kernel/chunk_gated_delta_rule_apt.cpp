@@ -38,7 +38,7 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
         CGDR<bfloat16_t, float, float> op(&pipe, &tilingData);
         op.Init(initParams, user);
         op.Process();
-    } else {
+    } else if (TILING_KEY_IS(TILING_KEY_CGDR_BF16_STATE)) {
         CGDR<bfloat16_t, float, bfloat16_t> op(&pipe, &tilingData);
         op.Init(initParams, user);
         op.Process();
