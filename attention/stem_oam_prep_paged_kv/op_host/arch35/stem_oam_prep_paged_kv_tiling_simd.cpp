@@ -129,7 +129,7 @@ ge::graphStatus StemPrepKVTiling::DoLibApiTiling()
 
 uint64_t StemPrepKVTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(0);
+    return GET_TPL_TILING_KEY(true);
 }
 
 ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
