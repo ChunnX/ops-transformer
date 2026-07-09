@@ -790,10 +790,6 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
             OP_LOGE(bsaContext->GetNodeName(), "On chip 950, only innerPrec = 0 or 4 is supported, "
                 "but got %u.", innerPrecise_);
             return ge::GRAPH_FAILED;
-        } else if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED && dtypeQ == ge::DT_FLOAT8_E4M3FN) {
-            OP_LOGE(bsaContext->GetNodeName(), "On chip 950, when input dtype is fp8_e4m3, "
-                "only innerPrec = 4 is supported, but got %u.", innerPrecise_);
-            return ge::GRAPH_FAILED;
         }
     } else {
         auto qInputDesc = bsaContext->GetInputDesc(QUERY_INDEX);
