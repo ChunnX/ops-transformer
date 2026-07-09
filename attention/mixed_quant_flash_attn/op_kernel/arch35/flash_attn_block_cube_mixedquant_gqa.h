@@ -216,9 +216,9 @@ public:
 
     __aicore__ inline void FreeEventID()
     {
-        l1QBuffers.Uninit((*l1BufferManagerPtr));
-        l1KBuffers.Uninit((*l1BufferManagerPtr));
-        l1VBuffers.Uninit((*l1BufferManagerPtr));
+        // l1QBuffers.Uninit((*l1BufferManagerPtr));
+        // l1KBuffers.Uninit((*l1BufferManagerPtr));
+        // l1VBuffers.Uninit((*l1BufferManagerPtr));
     }
 
 private:

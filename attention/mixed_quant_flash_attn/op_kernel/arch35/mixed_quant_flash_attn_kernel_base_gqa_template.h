@@ -183,7 +183,6 @@ public:
     {
         this->pipe = tPipe;
         this->tilingData = tilingData;
-
         InitConstInfo();
 
         keyPtr = key;
@@ -208,7 +207,6 @@ public:
         InitKvCuSeqLensParser();
 
         InitMMResBuf(workspace);
-
         if ASCEND_IS_AIV {
             fdMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(metaData + MQFA_METADATA_HEADER_OFFSET +
                                                              MIXED_QUANT_FLASH_ATTN_METADATA_SIZE * MQFA_AIC_CORE_NUM *
@@ -791,7 +789,6 @@ public:
                 FlashDecode(sectionIdx);
             }
         }
-
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();

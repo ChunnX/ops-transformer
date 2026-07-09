@@ -35,7 +35,6 @@ const std::string K_DESCALE_NAME = "k_descale";
 const std::string V_DESCALE_NAME = "v_descale";
 const std::string BLOCK_TABLE_NAME = "block_table";
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string CU_SEQLENS_KV_NAME = "cu_seqlens_kv";
 const std::string SEQUSED_Q_NAME = "seqused_q";
 const std::string SEQUSED_KV_NAME = "seqused_kv";
 const std::string SINKS_NAME = "sinks";
@@ -50,7 +49,7 @@ const std::string MAX_SEQLEN_Q_NAME = "max_seqlen_q";
 const std::string MAX_SEQLEN_KV_NAME = "max_seqlen_kv";
 const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_KV_NAME = "layout_kv";
-const std::string LAYOUT_OUT_NAME = "layout_out";
+const std::string LAYOUT_ATTN_OUT_NAME = "layout_attn_out";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
@@ -67,12 +66,11 @@ constexpr uint32_t K_DESCALE_INDEX = 3;
 constexpr uint32_t V_DESCALE_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
 constexpr uint32_t CU_SEQLENS_Q_INDEX = 6;
-constexpr uint32_t CU_SEQLENS_KV_INDEX = 7;
-constexpr uint32_t SEQUSED_Q_INDEX = 8;
-constexpr uint32_t SEQUSED_KV_INDEX = 9;
-constexpr uint32_t SINKS_INDEX = 10;
-constexpr uint32_t ATTN_MASK_INDEX = 11;
-constexpr uint32_t METADATA_INDEX = 12;
+constexpr uint32_t SEQUSED_Q_INDEX = 7;
+constexpr uint32_t SEQUSED_KV_INDEX = 8;
+constexpr uint32_t SINKS_INDEX = 9;
+constexpr uint32_t ATTN_MASK_INDEX = 10;
+constexpr uint32_t METADATA_INDEX = 11;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
@@ -85,7 +83,8 @@ constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 9;
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 10;
+constexpr uint32_t ATTR_PA_BLOCK_SIZE_INDEX = 10;
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -94,7 +93,6 @@ constexpr uint32_t ATTR_NEXT_TOKEN_INDEX = ATTR_WIN_RIGHT_INDEX;
 constexpr uint32_t SOFTMAX_LSE_FLAG_INDEX = ATTR_RETURN_LSE_INDEX;
 constexpr uint32_t ATTR_INPUT_LAYOUT_INDEX = ATTR_LAYOUT_Q_INDEX;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = CU_SEQLENS_Q_INDEX;
-constexpr uint32_t ACTUAL_SEQ_KV_INDEX = CU_SEQLENS_KV_INDEX;
 
 // Output Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
@@ -205,10 +203,11 @@ struct FAParaInfo {
     const int64_t *winRight = nullptr;
     const int64_t *maxSeqlenQ = nullptr;
     const int64_t *maxSeqlenKV = nullptr;
+    const int64_t *blockSize = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
-    const int64_t *returnSoftMaxLse = nullptr;
+    const bool *returnSoftMaxLse = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};

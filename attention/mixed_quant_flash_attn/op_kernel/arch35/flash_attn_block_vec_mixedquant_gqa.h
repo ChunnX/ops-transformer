@@ -212,22 +212,22 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
-        mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        // mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        // mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        // vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        // vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
+        // WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
+        // WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)

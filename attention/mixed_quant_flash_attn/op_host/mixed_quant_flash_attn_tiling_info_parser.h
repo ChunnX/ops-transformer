@@ -136,7 +136,7 @@ public:
 
     // SoftmaxLSE 信息
     bool softmaxLseFlag_ = false;
-    int64_t returnSoftmaxLse_ = 0;
+    bool returnSoftmaxLse_ = false;
 
     // 其他属性信息
     float softmaxScale_ = 0.0f;

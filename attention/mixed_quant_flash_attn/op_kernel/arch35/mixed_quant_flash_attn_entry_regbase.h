@@ -67,7 +67,6 @@ mixed_quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __
 #else
     using Kernel = BaseApi::FlashAttentionMixedQuantGqaKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
-
     size_t offset = (size_t)(&((optiling::MixedQuantFlashAttnTilingData *)0)->baseTiling);
     const __gm__ optiling::MixedQuantFlashAttnTilingArch35 *__restrict tilingData =
         (const __gm__ optiling::MixedQuantFlashAttnTilingArch35 *__restrict)(tiling + offset);
