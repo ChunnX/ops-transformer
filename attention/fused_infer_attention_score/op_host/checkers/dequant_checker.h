@@ -133,7 +133,8 @@ private:
         ge::DataType inputKvType);
     ge::graphStatus CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputKVTypeForAntiquantByMode(const FiaTilingInfo &fiaInfo,
-        ge::DataType inputKvType, int64_t keyAntiquantMode, int64_t valueAntiquantMode);
+        ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor,
+        int64_t keyAntiquantMode, int64_t valueAntiquantMode);
     
     // Existence
     ge::graphStatus CheckExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
