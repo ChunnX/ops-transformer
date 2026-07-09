@@ -20,7 +20,7 @@ QuantBlockSparseAttn（QBSA）用于 FP8 量化场景下的分块稀疏注意力
 计算语义如下：
 
 $$
-P = \text{softmax}((QK^T) \times q\_descale \times k\_descale \times softmax\_scale + mask)
+P = \text{softmax}((QK^T) \times q\_descale \times k\_descale \times softmax\_scale, mask)
 $$
 
 $$
