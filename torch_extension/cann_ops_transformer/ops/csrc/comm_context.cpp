@@ -506,6 +506,7 @@ public:
     {
         uint32_t rankId = commContextStruct->epRankId;
         commContextStruct->epHcclBuffer_[rankId] = reinterpret_cast<uint64_t>(*customDeviceBuffer_);
+        ASCEND_LOGI("MegaMoe custom buffer local rank=%u addr=%lu", rankId, commContextStruct->epHcclBuffer_[rankId]);
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == rankId) {
                 continue;
@@ -524,6 +525,9 @@ public:
                 }
                 if (memTags[j] != nullptr && targetTag == memTags[j]) {
                     commContextStruct->epHcclBuffer_[peer] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                    ASCEND_LOGI("MegaMoe custom buffer remote rank=%u peer=%u channelIdx=%u hcomm=%lu addr=%lu tag=%s",
+                                rankId, peer, idx, commContextStruct->hcommHandle_[idx],
+                                commContextStruct->epHcclBuffer_[peer], memTags[j]);
                     hasTargetMem = true;
                     break;
                 }
