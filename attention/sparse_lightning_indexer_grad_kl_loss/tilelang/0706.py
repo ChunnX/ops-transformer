@@ -939,11 +939,14 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # Block size: match NPU core count, ensure divisible by GATHER_CHUNK_SIZE
+        # Block size: fit within NPU core count, K 整除 n_block, n_block 整除 GATHER_CHUNK_SIZE
+        # 优先找 ≤ core_count 的最大可用核数（避免超核导致多波串行）
         core_count = _get_aicore_count()
         n_num_ws = core_count
-        while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
-            n_num_ws += 1
+        while n_num_ws > 0:
+            if K % n_num_ws == 0 and (K // n_num_ws) % GATHER_CHUNK_SIZE == 0:
+                break
+            n_num_ws -= 1
         block_n = K // n_num_ws
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
