@@ -210,7 +210,8 @@ private:
 
 template <TemplateMoeDistributeDispatchA5TypeClass>
 __aicore__ inline void
-MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::InitGlobalAttrs(const MoeDistributeDispatchV2TilingData *tilingData)
+MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::InitGlobalAttrs(
+    const MoeDistributeDispatchV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
     axisH_ = tilingData->moeDistributeDispatchV2Info.h;
@@ -293,14 +294,15 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 }
 
 template <TemplateMoeDistributeDispatchA5TypeClass>
-__aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::InitCommAndStatus(GM_ADDR workspaceGM,
-                                                                                       const MoeDistributeDispatchV2TilingData *tilingData)
+__aicore__ inline void
+MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::InitCommAndStatus(
+    GM_ADDR workspaceGM, const MoeDistributeDispatchV2TilingData *tilingData)
 {
     __gm__ HcclCombineOpParam* context = (__gm__ HcclCombineOpParam*)(GetHcclContext<0>());
     // 结构体切换后，V1版本初始化方法不可用（已废弃），改用V2版本
     hccl_.InitV2((GM_ADDR)context, tilingData);
     hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchV2TilingData, mc2CcTiling1));
-    
+
     sendBufGM_ = workspaceGM;
     sendSizeGM_ = sendBufGM_ + perRankDataSize_ * epWorldSize_;
     sendOffsetGM_ = sendSizeGM_ + epWorldSize_ * sizeof(uint64_t) * DUAL_DATA;
@@ -401,7 +403,8 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     perTokenInSize_ = axisH_ * sizeof(XType);
     perTokenOutSize_ = axisH_ * sizeof(ExpandXOutType);
     perTokenMergeSize_ = Align32(axisH_) * sizeof(ExpandXOutType);
-    scaleInBytes_ = tilingData->moeDistributeDispatchV2Info.scalesCol * tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
+    scaleInBytes_ = tilingData->moeDistributeDispatchV2Info.scalesCol *
+                    tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
     scaleOutBytes_ = 0;
     QuantInit();
 
@@ -482,7 +485,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
         SetDeqScale((half)1.000000e+00f);
         Cast(tokenF16LT, tokenI32LT, RoundMode::CAST_ROUND, axisH_);
         Cast(outLocal, tokenF16LT, RoundMode::CAST_TRUNC, axisH_);
-    } else if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value || 
+    } else if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
         Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
         Cast(outLocal, tokenF32LT_, RoundMode::CAST_RINT, axisH_);
     }
@@ -580,7 +583,8 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 }
 
 template <TemplateMoeDistributeDispatchA5TypeClass>
-__aicore__ inline uint32_t MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::CalcToSharedRankId(uint32_t sendCnt)
+__aicore__ inline uint32_t
+MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::CalcToSharedRankId(uint32_t sendCnt)
 {
     uint32_t toSharedExpertIdx = sendCnt / activeBs_;
     uint32_t sharedExpertRankIdInGroup = epRankId_ % rankNumPerSharedExpert_;
@@ -897,7 +901,8 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 }
 
 template <TemplateMoeDistributeDispatchA5TypeClass>
-__aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::TokenGatherInit(uint32_t localExpertNum)
+__aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::TokenGatherInit(
+    uint32_t localExpertNum)
 {
     TBuf<> recvCntBuf;
     uint32_t alignSize = Align32<uint32_t>(epWorldSize_ * sizeof(int32_t));
@@ -976,8 +981,8 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 }
 
 template <TemplateMoeDistributeDispatchA5TypeClass>
-__aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::CopyScalesToOut(uint32_t currentTokenIndex,
-    LocalTensor<ExpandXOutType> &quantTok, int32_t expertIndex)
+__aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::CopyScalesToOut(
+    uint32_t currentTokenIndex, LocalTensor<ExpandXOutType> &quantTok, int32_t expertIndex)
 {
     DataCopyParams scaleOutParams = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U};
     if constexpr (((QuantMode > UNQUANT) && (QuantMode != STATIC_QUANT)) ||

@@ -649,7 +649,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Genera
 {
     maskStrideTensor_ = tokenBuf_.Get<bool>();
     LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
-    
+
     if (isInputTokenMaskFlag_) {
         // 根据一维场景下的activeMaskBsCnt_，构造出二维mask
         uint32_t calcCnt = Ceil(axisBS_ * axisK_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
@@ -706,7 +706,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::MaskSp
         calcCnt);
     PipeBarrier<PIPE_V>();
     Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
-    
+
     // 通过GM对齐内轴元素个数
     MaskAlign();
 
@@ -824,9 +824,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SplitC
     // 对需要发送的token数平均分核，得到每个核上处理的卡的数量
     sendCntNum_ = selfSendCnt_ / aivNum_;
     uint32_t remainderRankNum = selfSendCnt_ % aivNum_;
- 
     startTokenId_ = sendCntNum_ * coreIdx_;
- 
+    
     if (coreIdx_ < remainderRankNum) {
         sendCntNum_++;
         startTokenId_ += coreIdx_;
@@ -1423,7 +1422,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     for (uint32_t topkId = axisK_; topkId < (axisK_ + sharedExpertNum_); topkId++) {
         wAddr = (__gm__ uint8_t*)(epWindowGM_) + (tokenIndexOffset + topkId) * hAlignWinSize_;
         rowTmpGlobal_.SetGlobalBuffer((__gm__ XType*)wAddr);
-    
         tmpUb = moeMainSumQueue_.AllocTensor<XType>();
 
         if constexpr (QuantMode > UNQUANT) {

@@ -83,7 +83,7 @@ public:
     constexpr static uint64_t GM2IPC_SYNC_FLAG = 12345UL;
     constexpr static uint64_t RDMA_TOKEN_ARRIVED_FLAG = 123UL;
     constexpr static uint64_t RDMA_TOKEN_END_FLAG = 321UL;
-    __aicore__ inline MoeDistributeCombineV2Layered(){};
+    __aicore__ inline MoeDistributeCombineV2Layered() {};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount,
                                 GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineV2TilingData *tilingData, GM_ADDR contextGM);
@@ -653,7 +653,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 
     // 每个核使用的链路要岔开，不能有冲突
     for (uint32_t i = 0U; i < maxLocalBs_; i++) {
-        if ((i % coreNumPerServer) == coreSeverId){
+        if ((i % coreNumPerServer) == coreSeverId) {
             int offsetCur = static_cast<int32_t>(countReduceInnerLocal_.GetValue(i));
             uint32_t dataOffset = i * tokenScaleLen;
             if (i != 0U) {

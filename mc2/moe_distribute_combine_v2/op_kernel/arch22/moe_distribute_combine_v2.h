@@ -57,10 +57,11 @@ template <CombineMC2TypeClass>
 class MoeDistributeCombineV2 {
 public:
     __aicore__ inline MoeDistributeCombineV2() {};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-                                GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
-                                GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut, 
-                                GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
+                                GM_ADDR residualX, GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
+                                GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+                                GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut,
+                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void Process();
 private:
     __aicore__ inline void InitInputAndOutput(GM_ADDR residualX, GM_ADDR gamma, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
@@ -461,7 +462,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
     GM_ADDR epSendCount, GM_ADDR residualX, GM_ADDR gamma, GM_ADDR expertScales,
     GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
-    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut, 
+    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut,
     GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -555,7 +556,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::GenerateActiv
 {
     maskStrideTensor_ = tokenBuf_.Get<bool>();
     LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
-    
+
     if (isInputTokenMaskFlag_) {
         // 根据一维场景下的activeMaskBsCnt_，构造出二维mask
         uint32_t calcCnt = Ceil(axisBS_ * axisK_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
@@ -599,7 +600,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MaskSpecialEx
     PipeBarrier<PIPE_V>();
     int32_t moeExpertNumInt32 = static_cast<int32_t>(moeExpertOriginalNum_);
     CompareScalar(maskTensor, expertIdsFloat, static_cast<float>(moeExpertNumInt32), AscendC::CMPMODE::LT, calcCnt);
-    PipeBarrier<PIPE_V>();    
+    PipeBarrier<PIPE_V>();
     if (isInputExpertMaskFlag_) {
         Cast(maskCalcTensor, expertMaskTensor_.ReinterpretCast<uint8_t>(), RoundMode::CAST_NONE, calcCnt);
     } else {
@@ -611,7 +612,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MaskSpecialEx
         calcCnt);
     PipeBarrier<PIPE_V>();
     Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
-    
+
     // 通过GM对齐内轴元素个数
     MaskAlign();
 
@@ -649,8 +650,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllCommB
     tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_);                    // 32K add
     tpipe_->InitBuffer(moeSumQueue_, bufferNum_, hExpandXAlign32Size_);      // 32K 搬入
     if constexpr (HasAddRmsNorm) {
-        tpipe_->InitBuffer(gammaBuf_, hExpandXAlign32Size_);                    
-        tpipe_->InitBuffer(reduceFp32Buf_, NUM_PER_REP_FP32 * sizeof(float) * 2);      
+        tpipe_->InitBuffer(gammaBuf_, hExpandXAlign32Size_);
+        tpipe_->InitBuffer(reduceFp32Buf_, NUM_PER_REP_FP32 * sizeof(float) * 2);
         // H取最大值时，根据ReduceSum接口公式计算所需空间至少为64 * 2 = 128个元素
     }
     tpipe_->InitBuffer(stateBuf_, (flagRcvCount_) * STATE_OFFSET);
@@ -718,9 +719,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::SplitCoreCal(
     // 对需要发送的token数平均分核，得到每个核上处理的卡的数量
     sendCntNum_ = selfSendCnt_ / aivNum_;
     uint32_t remainderRankNum = selfSendCnt_ % aivNum_;
- 
     startTokenId_ = sendCntNum_ * coreIdx_;
- 
     if (coreIdx_ < remainderRankNum) {
         sendCntNum_++;
         startTokenId_ += coreIdx_;
@@ -898,8 +897,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(
     DataCopy<float>(stateTensor, stateGMTensor, copyCount);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     if (isPerformanceFlag_) {
- 	    PerformanceInfoPerToken(tokenIndex, performanceTimeStart, beginIndex, stateTensor);
- 	}
+         PerformanceInfoPerToken(tokenIndex, performanceTimeStart, beginIndex, stateTensor);
+     }
     Sum(stateSumTensor, stateTensor, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();
     localState = stateSumTensor(0);
