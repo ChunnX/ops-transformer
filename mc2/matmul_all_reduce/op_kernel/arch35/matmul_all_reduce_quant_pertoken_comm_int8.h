@@ -164,7 +164,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
     const int64_t offsetTailPadPerRank = offsetTailPad  / rankNum;
 
     for (uint32_t i = 0U; i < mc2Tiling.tileCnt; ++i) { // 头块偏移
-        const int64_t indexOffsetTile = i * tempBufOffsetTilePad;
+        const int64_t indexOffsetTile = i * offsetTilePad;
         const int64_t indexGatherOffsetTile = offsetTilePadPerRank * hccl_.GetRankId();
         all2allSendGM_[i] = all2allInGM_ + indexOffsetTile;
         all2allRecvGM_[i] = all2allOutGM_ + indexOffsetTile;
