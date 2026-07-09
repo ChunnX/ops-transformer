@@ -11,6 +11,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
+import random
+
+import numpy as np
 import torch
 import torch_npu
 from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMS
@@ -18,9 +21,11 @@ import result_compare_method
 import quant_lightning_indexer_v2_golden
 import pytest
 
+TEST_SEED = 3
+
 param_names = [
     "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim",
-    "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
+    "block_size", "block_num", "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
     "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
     "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
     "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value",
@@ -29,7 +34,12 @@ param_names = [
 
 param_combinations = []
 for params in ENABLED_PARAMS:
-    param_values = [params.get(name, ["eager"]) for name in param_names]
+    param_values = []
+    for name in param_names:
+        if name == "weight_dtype":
+            param_values.append(params.get(name, params["dequant_dtype"]))
+        else:
+            param_values.append(params.get(name, ["eager"]))
     for combo in itertools.product(*param_values):
         param_combinations.append(dict(zip(param_names, combo)))
 
@@ -48,6 +58,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     block_size = param_combinations['block_size']
     block_num = param_combinations['block_num']
     qk_dtype= param_combinations['qk_dtype']
+    weight_dtype = param_combinations['weight_dtype']
     dequant_dtype = param_combinations['dequant_dtype']
     actual_seq_dtype = param_combinations['actual_seq_dtype']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
@@ -71,13 +82,19 @@ def test_qliv2(param_combinations):   # Init params and tensors
     output_idx_offset = param_combinations['output_idx_offset']
     run_mode = param_combinations['run_mode']
     torch_npu.npu.set_device(0)
+    random.seed(TEST_SEED)
+    np.random.seed(TEST_SEED)
+    torch.manual_seed(TEST_SEED)
+    torch.npu.manual_seed_all(TEST_SEED)
+    print(f"[single stage] seed_ready seed={TEST_SEED}", flush=True)
     test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+                block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
                 seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                 sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset
 
     # Get CPU golden and NPU result
+    print(f"[single stage] qliv2_output_start run_mode={run_mode}", flush=True)
     if run_mode == "eager":
         cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
     elif run_mode == "graph":
@@ -85,13 +102,23 @@ def test_qliv2(param_combinations):   # Init params and tensors
         cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = quant_lightning_indexer_v2_acl_graph.qliv2_output_acl_graph(test_data)
     else:
         raise ValueError(f"unsupported run_mode: {run_mode}")
+    print("[single stage] qliv2_output_done", flush=True)
     # print("npu_result", npu_result)
     # print("cpu_result:", cpu_result)
     # Compare result accuracy
+    print("[single stage] index_compare_start", flush=True)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, test_data)
+    print("[single stage] index_compare_done", flush=True)
     print("result", result)
     print("result", fulfill_percent)
     if return_value:
-        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, test_data)
+        print("[single stage] return_value_compare_start", flush=True)
+        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(
+            cpu_topk_value, npu_topk_value, test_data, cpu_result, npu_result)
+        print("[single stage] return_value_compare_done", flush=True)
         print(f"result_return_value: {result_return_value}")
         print(f"result_return_value: {fulfill_precent_return_value}")
+        assert result_return_value == "Pass", (
+            f"return value mismatch, fulfill_percent={fulfill_precent_return_value}"
+        )
+    assert result == "Pass", f"index result mismatch, fulfill_percent={fulfill_percent}"
