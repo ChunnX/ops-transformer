@@ -57,8 +57,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
 // 入参教验
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
                                const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
-                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                               aclTensor* tpRecvCounts)
+                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts),
@@ -104,7 +103,7 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
 {
     OP_LOGD("aclnnMoeDistributeDispatchGetWorkspaceSize start");
     auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
-                                 expertTokensNums, epRecvCounts, tpRecvCounts);
+                                 expertTokensNums, epRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
