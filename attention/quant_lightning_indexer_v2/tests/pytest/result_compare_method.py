@@ -238,10 +238,100 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                     max_re = max(max_re, npu_re)
     return npu_pass, max_re
 
-def compare_return_value(cur_npu_output_value=None, cur_cpu_output_value=None):
+def _bf16_debug_codes(values):
+    fp32_values = np.asarray(values, dtype=np.float32)
+    bf16_bits = (fp32_values.view(np.uint32) >> 16).astype(np.int32)
+    magnitude = bf16_bits & 0x7FFF
+    ordered = np.where((bf16_bits & 0x8000) != 0,
+                       0x8000 - magnitude,
+                       0x8000 + bf16_bits)
+    return bf16_bits.astype(np.uint16), ordered
+
+def _display_same_index_debug(index, cpu_rank, npu_rank, cpu_values, npu_values):
+    cpu_value = float(cpu_values[cpu_rank])
+    npu_value = float(npu_values[npu_rank])
+    bits, ordered = _bf16_debug_codes([cpu_value, npu_value])
+    ulp_distance = abs(int(ordered[0]) - int(ordered[1]))
+    abs_diff = abs(cpu_value - npu_value)
+    denominator = max(abs(cpu_value), abs(npu_value), np.finfo(np.float32).tiny)
+    print(f"  same_idx={index}: cpu_rank={cpu_rank}, npu_rank={npu_rank}, "
+          f"cpu={cpu_value}, npu={npu_value}, cpu_bf16=0x{int(bits[0]):04x}, "
+          f"npu_bf16=0x{int(bits[1]):04x}, ulp={ulp_distance}, "
+          f"abs_diff={abs_diff}, rel_diff={abs_diff / denominator}")
+
+
+def _display_return_value_debug(row_idx, npu_values, cpu_values,
+                                npu_indices=None, cpu_indices=None, limit=16):
+    npu_values = np.asarray(npu_values, dtype=np.float32)
+    cpu_values = np.asarray(cpu_values, dtype=np.float32)
+    close_mask = np.isclose(npu_values, cpu_values, rtol=0.005, atol=0.000025, equal_nan=True)
+    error_ranks = np.flatnonzero(~close_mask)
+
+    npu_bits, npu_ordered = _bf16_debug_codes(npu_values)
+    cpu_bits, cpu_ordered = _bf16_debug_codes(cpu_values)
+    ulp_distance = np.abs(npu_ordered - cpu_ordered)
+    finite_mask = np.isfinite(npu_values) & np.isfinite(cpu_values)
+    finite_ulp = ulp_distance[finite_mask]
+    max_ulp = int(finite_ulp.max()) if finite_ulp.size else 0
+    ulp_1_count = int(np.count_nonzero(finite_ulp == 1))
+    ulp_2_count = int(np.count_nonzero(finite_ulp == 2))
+    ulp_gt_2_count = int(np.count_nonzero(finite_ulp > 2))
+
+    print(f"[return debug] row={row_idx}, error_count={error_ranks.size}, max_bf16_ulp={max_ulp}, "
+          f"ulp1_count={ulp_1_count}, ulp2_count={ulp_2_count}, ulp_gt2_count={ulp_gt_2_count}")
+    cpu_rank_by_index = {}
+    npu_rank_by_index = {}
+    if cpu_indices is not None and npu_indices is not None:
+        cpu_indices = np.asarray(cpu_indices).reshape(-1)
+        npu_indices = np.asarray(npu_indices).reshape(-1)
+        cpu_rank_by_index = {
+            int(index): rank for rank, index in enumerate(cpu_indices) if int(index) >= 0
+        }
+        npu_rank_by_index = {
+            int(index): rank for rank, index in enumerate(npu_indices) if int(index) >= 0
+        }
+        cpu_index_set = set(cpu_rank_by_index)
+        npu_index_set = set(npu_rank_by_index)
+        print(f"[return debug] only_cpu_count={len(cpu_index_set - npu_index_set)}, "
+              f"only_npu_count={len(npu_index_set - cpu_index_set)}")
+
+    for rank in error_ranks[:limit]:
+        cpu_value = float(cpu_values[rank])
+        npu_value = float(npu_values[rank])
+        abs_diff = abs(cpu_value - npu_value)
+        denominator = max(abs(cpu_value), abs(npu_value), np.finfo(np.float32).tiny)
+        rel_diff = abs_diff / denominator
+        cpu_index = int(cpu_indices[rank]) if cpu_indices is not None else -1
+        npu_index = int(npu_indices[rank]) if npu_indices is not None else -1
+        print(f"rank={rank}, cpu_idx={cpu_index}, npu_idx={npu_index}, "
+              f"cpu={cpu_value}, npu={npu_value}, cpu_bf16=0x{int(cpu_bits[rank]):04x}, "
+              f"npu_bf16=0x{int(npu_bits[rank]):04x}, ulp={int(ulp_distance[rank])}, "
+              f"abs_diff={abs_diff}, rel_diff={rel_diff}")
+        if cpu_rank_by_index and npu_rank_by_index:
+            npu_same_rank = npu_rank_by_index.get(cpu_index)
+            if npu_same_rank is None:
+                print(f"  same_idx={cpu_index}: not found in NPU TopK")
+            else:
+                _display_same_index_debug(
+                    cpu_index, int(rank), npu_same_rank, cpu_values, npu_values)
+
+            if npu_index != cpu_index:
+                cpu_same_rank = cpu_rank_by_index.get(npu_index)
+                if cpu_same_rank is None:
+                    print(f"  same_idx={npu_index}: not found in CPU TopK")
+                else:
+                    _display_same_index_debug(
+                        npu_index, cpu_same_rank, int(rank), cpu_values, npu_values)
+
+
+def compare_return_value(cur_npu_output_value=None, cur_cpu_output_value=None, row_idx=-1,
+                         cur_npu_indices=None, cur_cpu_indices=None):
     max_re = 0.0
     npu_pass = True
     npu_pass = judge_value_by_isclose(cur_npu_output_value, cur_cpu_output_value)
+    if not npu_pass:
+        _display_return_value_debug(row_idx, cur_npu_output_value, cur_cpu_output_value,
+                                    cur_npu_indices, cur_cpu_indices)
     return npu_pass, max_re
 def trans_tnd_actseq(list):
     list_len = len(list)
@@ -259,7 +349,7 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, output_idx_offset, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, _ = params
@@ -461,47 +551,75 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
                                 err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
 
-def check_result_return_value(expect, result, params):
+def _to_flat_numpy(value, dtype=np.int64):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = ast.literal_eval(value)
+    if isinstance(value, torch.Tensor):
+        value = value.detach().cpu().numpy()
+    return np.asarray(value, dtype=dtype).reshape(-1)
+
+
+def _get_tnd_query_prefix(cu_seqlens_q, batch_size):
+    prefix = _to_flat_numpy(cu_seqlens_q)
+    if prefix is None:
+        raise ValueError("cu_seqlens_q is required")
+    if prefix.size == batch_size + 1 and prefix[0] == 0:
+        return prefix
+    if prefix.size == batch_size:
+        return np.concatenate((np.array([0], dtype=prefix.dtype), prefix))
+    raise ValueError(f'invalid TND cu_seqlens_q length: {prefix.size}')
+
+
+def _gather_return_values_by_index(topk_value, result_indices, params, output_idx_offset):
+    batch_size = params[0]
+    q_seq = params[1]
+    q_t_size = params[3]
+    k_head_num = params[6]
+    cu_seqlens_q = params[14]
+    layout_query = params[21]
+    sparse_count = params[23]
+
+    full_score = topk_value.detach().cpu().float().numpy()
+    npu_indices = result_indices.detach().cpu().numpy().reshape(-1, sparse_count)
+    expected = np.full(npu_indices.shape, -np.inf, dtype=np.float32)
+    invalid_index = np.zeros(npu_indices.shape, dtype=bool)
+    offsets = _to_flat_numpy(output_idx_offset)
+    query_prefix = _get_tnd_query_prefix(cu_seqlens_q, batch_size) if layout_query == "TND" else None
+
+    for row_idx in range(npu_indices.shape[0]):
+        if layout_query == "BSND":
+            b_idx, s1_idx, n2_idx = np.unravel_index(
+                row_idx, (batch_size, q_seq, k_head_num))
+            offset_pos = b_idx * q_seq + s1_idx
+        elif layout_query == "TND":
+            t_idx, n2_idx = np.unravel_index(row_idx, (q_t_size, k_head_num))
+            b_idx = int(np.searchsorted(query_prefix[1:], t_idx, side="right"))
+            s1_idx = int(t_idx - query_prefix[b_idx])
+            offset_pos = t_idx
+        else:
+            raise ValueError(f"unsupported query layout: {layout_query}")
+
+        row_indices = npu_indices[row_idx]
+        logical_indices = row_indices.astype(np.int64, copy=True)
+        if offsets is not None:
+            logical_indices[row_indices >= 0] -= int(offsets[offset_pos])
+        row_score = full_score[b_idx, n2_idx, s1_idx]
+        valid = (row_indices >= 0) & (logical_indices >= 0) & (logical_indices < row_score.shape[-1])
+        expected[row_idx, valid] = row_score[logical_indices[valid]]
+        invalid_index[row_idx] = (row_indices >= 0) & ~valid
+
+    return expected, invalid_index
+
+
+def check_result_return_value(expect, result, params, expect_indices=None, result_indices=None,
+                              topk_value=None, output_idx_offset=None):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
-    seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
-
-    if isinstance(cu_seqlens_q, int):
-        cu_seqlens_q = [cu_seqlens_q]
-    elif isinstance(cu_seqlens_q, list):
-        cu_seqlens_q = cu_seqlens_q
-    elif cu_seqlens_q is not None:
-        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
-    
-    if isinstance(cu_seqlens_k, int):
-        cu_seqlens_k = [cu_seqlens_k]
-    elif isinstance(cu_seqlens_k, list):
-        cu_seqlens_k = cu_seqlens_k
-    elif cu_seqlens_k is not None:
-        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
-
-    if isinstance(seqused_q, int):
-        seqused_q = [seqused_q]
-    elif isinstance(seqused_q, list):
-        seqused_q = seqused_q
-    elif seqused_q is not None:
-        seqused_q = ast.literal_eval(seqused_q)
-    
-    if isinstance(seqused_k, int):
-        seqused_k = [seqused_k]
-    elif isinstance(seqused_k, list):
-        seqused_k = seqused_k
-    elif seqused_k is not None:
-        seqused_k = ast.literal_eval(seqused_k)
-
-    if layout_query == 'TND':
-        if len(cu_seqlens_q) == batch_size + 1:
-            cu_seqlens_q = cu_seqlens_q[1:]
-    if layout_key == 'TND':
-        if len(cu_seqlens_k) == batch_size + 1:
-            cu_seqlens_k = cu_seqlens_k[1:]
+    k_scale_datarange, cmp_ratio, return_value, _ = params
 
     npu_pass = True
     max_error = 0
@@ -513,10 +631,15 @@ def check_result_return_value(expect, result, params):
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    cpu_output = expect.cpu().float().numpy()
     npu_output = result.cpu().float().numpy()
-    real_data = result.cpu().float().numpy()
-    data_compe = expect.cpu().float().numpy()
+    if topk_value is not None and result_indices is not None:
+        if output_idx_offset is None:
+            output_idx_offset = params[32]
+        cpu_output, invalid_index = _gather_return_values_by_index(
+            topk_value, result_indices, params, output_idx_offset)
+    else:
+        cpu_output = expect.cpu().float().numpy()
+        invalid_index = np.zeros(cpu_output.shape, dtype=bool)
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
 
@@ -532,25 +655,27 @@ def check_result_return_value(expect, result, params):
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
+    npu_indices_reshape = None
+    if result_indices is not None:
+        npu_indices_reshape = result_indices.cpu().numpy().reshape([total_rows, sparse_count])
+    invalid_index_reshape = invalid_index.reshape([total_rows, sparse_count])
+
     start_time = time()
-    invalid_data = cpu_reshape != -1
-    valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
 
     for t_id in range(total_rows):
-        bsn = np.unravel_index(t_id, sp)
-        if layout_query == "TND":
-            if seqused_q is not None:
-                b_idx, s1_idx = find_batch_and_position(seqused_q, bsn[0])
-            else:
-                b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
-            bsn = (b_idx, s1_idx, bsn[-1])
         cur_cpu_output_value = cpu_reshape[t_id, :]
         cur_npu_output_value = npu_reshape[t_id, :]
-        npu_pass_t = True
         max_re_t = 0
-        valid_len = valid_lens[t_id]
+        cur_npu_indices = npu_indices_reshape[t_id, :] if npu_indices_reshape is not None else None
         npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
-                                                    cur_cpu_output_value)
+                                                    cur_cpu_output_value,
+                                                    t_id,
+                                                    cur_npu_indices,
+                                                    cur_npu_indices)
+        invalid_count = int(np.count_nonzero(invalid_index_reshape[t_id]))
+        if invalid_count:
+            print(f"[return debug] row={t_id}, out_of_range_index_count={invalid_count}")
+            npu_pass_t = False
         if not npu_pass_t:
             npu_pass = False
     end_time = time()
