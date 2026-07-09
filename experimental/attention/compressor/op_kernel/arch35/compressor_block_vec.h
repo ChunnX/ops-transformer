@@ -60,13 +60,17 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
     // =================================资源管理=================================
+    __aicore__ inline void InitXCacheUpdateBuffers(TPipe *pipe);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
+    __aicore__ inline void UpdateXCache();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
                                                 GlobalTensor<T> vec1ResGm, GlobalTensor<T> vec2InputGm);
@@ -197,12 +201,16 @@ private:
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
     GlobalTensor<T> stateCacheGm_;
+    GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<T> normWeightGm_;
     GlobalTensor<T> ropeSinGm_;
     GlobalTensor<T> ropeCosGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
+    bool isExistXCache_ = false;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -213,6 +221,7 @@ private:
     TBuf<TPosition::VECCALC> tmpBuff2;
     TBuf<TPosition::VECCALC> apeBuf;
     TBuf<TPosition::VECCALC> normWeightBuf;
+    TBuf<TPosition::VECCALC> xCacheUpdateBuf;
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
@@ -239,8 +248,21 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
                                                          __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
                                                          __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
                                                          __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
+                                                         __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
 {
+    xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr && constInfo_.xCacheReadSize > 0);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+        if (constInfo_.aiCoreIdx == 0) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] VecInit xCache=1 xCacheSlotMapping=%d\n",
+                            static_cast<int32_t>(xCacheSlotMapping != nullptr));
+        }
+    } else if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] VecInit xCache=0\n");
+    }
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
@@ -259,6 +281,75 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
+{
+    if (!isExistXCache_) {
+        if (constInfo_.aiCoreIdx == 0) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache skip: xCache absent\n");
+        }
+        return;
+    }
+    constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
+    uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
+    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * hBlockNum;
+    uint32_t aivCoreIdx = constInfo_.aiCoreIdx;
+    uint32_t aivCoreNum = constInfo_.usedCoreNum;
+    if ASCEND_IS_AIV {
+        uint32_t subBlockNum = static_cast<uint32_t>(GetSubBlockNum());
+        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+        aivCoreIdx = constInfo_.aiCoreIdx * subBlockNum + subBlockIdx;
+        aivCoreNum = constInfo_.usedCoreNum * subBlockNum;
+    }
+    if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache enter batch=%d updateBatch=%d hSize=%d xCacheSize=%d "
+                        "hBlockNum=%d totalTaskNum=%d usedCore=%d cmpRatio=%d seqSize=%d xCacheReadSize=%d\n",
+                        static_cast<int32_t>(constInfo_.batchSize),
+                        static_cast<int32_t>(constInfo_.xCacheUpdateBatchSize),
+                        static_cast<int32_t>(constInfo_.hSize), static_cast<int32_t>(constInfo_.xCacheSize),
+                        static_cast<int32_t>(hBlockNum), static_cast<int32_t>(totalTaskNum),
+                        static_cast<int32_t>(constInfo_.usedCoreNum), static_cast<int32_t>(constInfo_.cmpRatio),
+                        static_cast<int32_t>(constInfo_.sSize), static_cast<int32_t>(constInfo_.xCacheReadSize));
+    }
+    for (uint32_t taskIdx = aivCoreIdx; taskIdx < totalTaskNum; taskIdx += aivCoreNum) {
+        uint32_t bIdx = taskIdx / hBlockNum;
+        uint32_t hBlockIdx = taskIdx % hBlockNum;
+        uint32_t hStart = hBlockIdx * COPY_BASE;
+        uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
+        uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
+        uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
+        uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
+        bool dumpTask = taskIdx < 2;
+        if (dumpTask) {
+            COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache task=%d core=%d bIdx=%d hBlockIdx=%d slot=%d "
+                            "hStart=%d hDealSize=%d srcOffset=%d dstOffset=%d\n",
+                            static_cast<int32_t>(taskIdx), static_cast<int32_t>(aivCoreIdx),
+                            static_cast<int32_t>(bIdx), static_cast<int32_t>(hBlockIdx), static_cast<int32_t>(slot),
+                            static_cast<int32_t>(hStart), static_cast<int32_t>(hDealSize),
+                            static_cast<int32_t>(srcOffset), static_cast<int32_t>(dstOffset));
+        }
+        LocalTensor<X_T> inputUb =
+            constInfo_.batchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();
+        DataCopy(inputUb, xGm_[srcOffset], hDealSize);
+        event_t eventMte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventMte2ToMte3);
+        DataCopy(xCacheGm_[dstOffset], inputUb, hDealSize);
+        event_t eventMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventMte3ToMte2);
+    }
+    if (constInfo_.aiCoreIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] UpdateXCache exit\n");
+    }
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVector<COMP>::InitXCacheUpdateBuffers(TPipe *pipe)
+{
+    pipe->InitBuffer(xCacheUpdateBuf, BUFFER_SIZE_BYTE_32K);
 }
 
 template <typename COMP>
@@ -745,6 +836,19 @@ CompressorBlockVector<COMP>::ReadFromCacheState(const LocalTensor<T> &output, co
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+            if (GetBlockIdx() == 0 && batchIdx < 2 && copyFinishRowCnt == 0 && dStartIdx == 0) {
+                COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] ReadState b=%d start=%d end=%d cur=%d "
+                                "blockBase=%d blockOffset=%d blockId=%d remain=%d rows=%d stateOffset=%d "
+                                "stateIdx=%d stride0=%d blockSize=%d maxBlock=%d\n",
+                                static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                static_cast<int32_t>(idInBlockTable), static_cast<int32_t>(remainRowCnt),
+                                static_cast<int32_t>(copyRowCount), static_cast<int32_t>(stateOffset),
+                                static_cast<int32_t>(stateIdx), static_cast<int32_t>(constInfo_.stateCacheStrideDim0),
+                                static_cast<int32_t>(constInfo_.blockSize),
+                                static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+            }
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
                                  dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
@@ -794,10 +898,35 @@ CompressorBlockVector<COMP>::WriteToCacheState(const GlobalTensor<T> &state, con
             if (copyFinishRowCnt + copyRowCount > seqCnt) {
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
+            if (idInBlockTable == 0 && GetBlockIdx() == 0 && batchIdx < 2 &&
+                copyFinishRowCnt == 0 && dStartIdx == 0) {
+                COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] WriteStateSkipZero b=%d start=%d end=%d cur=%d "
+                                "blockBase=%d blockOffset=%d remain=%d rows=%d stateIdx=%d maxBlock=%d\n",
+                                static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                static_cast<int32_t>(remainRowCnt), static_cast<int32_t>(copyRowCount),
+                                static_cast<int32_t>(stateIdx),
+                                static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+            }
             if (idInBlockTable != 0) { // 32
                 uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                        remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                        stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+                if (GetBlockIdx() == 0 && batchIdx < 2 && copyFinishRowCnt == 0 && dStartIdx == 0) {
+                    COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] WriteState b=%d start=%d end=%d cur=%d "
+                                    "blockBase=%d blockOffset=%d blockId=%d remain=%d rows=%d stateOffset=%d "
+                                    "stateIdx=%d stride0=%d blockSize=%d maxBlock=%d\n",
+                                    static_cast<int32_t>(batchIdx), static_cast<int32_t>(startSeqIdx),
+                                    static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(curSeqIdx),
+                                    static_cast<int32_t>(blockTablebaseOffset), static_cast<int32_t>(blockIdOffset),
+                                    static_cast<int32_t>(idInBlockTable), static_cast<int32_t>(remainRowCnt),
+                                    static_cast<int32_t>(copyRowCount), static_cast<int32_t>(stateOffset),
+                                    static_cast<int32_t>(stateIdx),
+                                    static_cast<int32_t>(constInfo_.stateCacheStrideDim0),
+                                    static_cast<int32_t>(constInfo_.blockSize),
+                                    static_cast<int32_t>(constInfo_.maxBlockNumPerBatch));
+                }
                 DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
                                       dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
             }
@@ -837,6 +966,16 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
+    if (GetBlockIdx() == 0 && sliceInfo.bIdx < 2 && dStartIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] SaveState b=%d bStartPos=%d sIdx=%d valid=%d "
+                        "dealed=%d start=%d end=%d stateIdx=%d compressTc=%d headHolder=%d\n",
+                        static_cast<int32_t>(sliceInfo.bIdx), static_cast<int32_t>(sliceInfo.bStartPos),
+                        static_cast<int32_t>(sliceInfo.sIdx), static_cast<int32_t>(sliceInfo.validSeqCnt),
+                        static_cast<int32_t>(sliceInfo.dealedSeqCnt), static_cast<int32_t>(startSeqIdx),
+                        static_cast<int32_t>(endSeqIdx), static_cast<int32_t>(stateIdx),
+                        static_cast<int32_t>(sliceInfo.compressTcSize),
+                        static_cast<int32_t>(sliceInfo.headHolderSeqCnt));
+    }
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
         uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
@@ -889,6 +1028,14 @@ CompressorBlockVector<COMP>::ReadState(const LocalTensor<T> &dstLocal, const Glo
     // 没有需要压缩的块时, 不需要读state的信息
     if (sliceInfo.compressTcSize == 0) {
         return;
+    }
+    if (GetBlockIdx() == 0 && sliceInfo.bIdx < 2 && dStartIdx == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorDebug] ReadStateEntry b=%d bStartPos=%d sIdx=%d valid=%d "
+                        "compressTc=%d headHolder=%d stateIdx=%d\n",
+                        static_cast<int32_t>(sliceInfo.bIdx), static_cast<int32_t>(sliceInfo.bStartPos),
+                        static_cast<int32_t>(sliceInfo.sIdx), static_cast<int32_t>(sliceInfo.validSeqCnt),
+                        static_cast<int32_t>(sliceInfo.compressTcSize),
+                        static_cast<int32_t>(sliceInfo.headHolderSeqCnt), static_cast<int32_t>(stateIdx));
     }
     // 填充右边
     if (sliceInfo.headHolderSeqCnt > 0) {

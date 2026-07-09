@@ -28,7 +28,7 @@ using namespace Compressor;
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
         op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,  \
-                cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);                                                    \
+                cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut, workspace);                        \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -46,6 +46,8 @@ __global__ __aicore__ void compressor(
     __gm__ uint8_t *cuSeqlens,
     __gm__ uint8_t *seqUsed,
     __gm__ uint8_t *startPos,
+    __gm__ uint8_t *xCache,
+    __gm__ uint8_t *xCacheSlotMapping,
     __gm__ uint8_t *cmpKvOut,
     __gm__ uint8_t *stateCacheOut,
     __gm__ uint8_t *workspace,
@@ -55,6 +57,14 @@ __global__ __aicore__ void compressor(
     GET_TILING_DATA_WITH_STRUCT(optiling::CompressorTilingData, tilingDataIn, tiling);
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
+    }
+    if (GetBlockIdx() == 0) {
+        COMPRESSOR_XCACHE_PRINTF("[CompressorXCacheDebug] kernel enter layout=%d dtype=%d coff=%d rotary=%d cacheMode=%d "
+                        "template=%d xCache=%d xCacheSlotMapping=%d\n",
+                        static_cast<int32_t>(XLayout), static_cast<int32_t>(XDType), static_cast<int32_t>(Coff),
+                        static_cast<int32_t>(RotaryMode), static_cast<int32_t>(CacheMode),
+                        static_cast<int32_t>(TemplateId), static_cast<int32_t>(xCache != nullptr),
+                        static_cast<int32_t>(xCacheSlotMapping != nullptr));
     }
     const optiling::CompressorTilingData *__restrict tilingData = &tilingDataIn;
     TPipe pipe;

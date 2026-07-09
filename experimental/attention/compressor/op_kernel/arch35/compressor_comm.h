@@ -24,6 +24,18 @@
 
 using namespace AscendC;
 
+#ifndef COMPRESSOR_XCACHE_DEBUG_PRINTF
+#define COMPRESSOR_XCACHE_DEBUG_PRINTF 0
+#endif
+
+#if COMPRESSOR_XCACHE_DEBUG_PRINTF
+#define COMPRESSOR_XCACHE_PRINTF(...) AscendC::PRINTF(__VA_ARGS__)
+#else
+#define COMPRESSOR_XCACHE_PRINTF(...) \
+    do {                              \
+    } while (0)
+#endif
+
 namespace Compressor {
 template <typename T>
 __aicore__ inline T CeilDivT(T num1, T num2)
@@ -182,6 +194,8 @@ struct ConstInfo {
 
     // shape及参数
     uint32_t batchSize = 0;
+    uint32_t xCacheUpdateBatchSize = 0;
+    uint32_t xCacheReadSize = 0;
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;
@@ -190,6 +204,7 @@ struct ConstInfo {
     float normEps = 1e-6;
     float reciprocalD = 0;
     uint64_t stateCacheStrideDim0 = 0;
+    uint32_t xCacheSize = 0;
 
     uint32_t curGroupIdx = 0;
     uint32_t tailGroupIdx = 0;
@@ -405,41 +420,5 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
     nd2nzPara.dstNzMatrixStride = 0;
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
 }
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
-                                         uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
-                                         uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
 } // namespace Compressor
 #endif
