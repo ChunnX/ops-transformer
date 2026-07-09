@@ -19,6 +19,7 @@ using namespace at_npu::native;
 const int SIZE = 8;
 const int64_t DIM_THREE = 3;
 const int64_t FP32_BYTES = 4;
+const int64_t BSA_MXFP8_FULL_QUANT_MODE = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
 //   - attention_out: BF16，shape 跟随 query 布局（BSND/TND），head-dim 取自 value
@@ -88,9 +89,6 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
         TORCH_CHECK(value.stride(0) == paBlockStride,
                     "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
                     " and key.stride(0)=", paBlockStride);
-        TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
-                    " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
-                    " and key.stride(0)=", paBlockStride);
         TORCH_CHECK(
             key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) && key.stride(3) == 1,
             "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
@@ -100,9 +98,24 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                 value.stride(3) == 1,
             "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
             value.strides());
-        TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1,
-                    "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1], but got ",
-                    k_descale.strides());
+        if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
+            TORCH_CHECK(k_descale.dim() == 4,
+                        "k_descale should be 4D [Tkv, Nkv, D / 64, 2] in quant_mode=2 MXFP8 full-quant "
+                        "scenario, but got dim=",
+                        k_descale.dim());
+            TORCH_CHECK(k_descale.stride(3) == 1 && k_descale.stride(2) == k_descale.size(3) &&
+                            k_descale.stride(1) == k_descale.size(2) * k_descale.size(3),
+                        "k_descale should use contiguous [Tkv, Nkv, D / 64, 2] stride in quant_mode=2 MXFP8 "
+                        "full-quant scenario, but got ",
+                        k_descale.strides());
+        } else {
+            TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride, "k_descale.stride(0) * ", FP32_BYTES,
+                        " should equal key.stride(0), but got k_descale.stride(0)=", k_descale.stride(0),
+                        " and key.stride(0)=", paBlockStride);
+            TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1,
+                        "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1], but got ",
+                        k_descale.strides());
+        }
     }
 
     // construct the output tensors

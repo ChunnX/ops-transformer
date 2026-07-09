@@ -2354,13 +2354,7 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor,
     const T minValue, float keepProb, const LocalTensor<T>& preLoopMaxTensor,
     const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop)
 {
-    // MXFP8 V1 wrapper：
-    //   - srcTensor 是 cube 侧输出的一块 256-column subLoop fp32 C1；
-    //   - scale 对应 softmax_scale；pScale 是输入 quantScale1 解码后的 float 值；
-    //     deScaleQK 为 1.0，因为 Q/K scale 已由 cube 侧 MX LoadData 消费；
-    //   - dstTensor 接收量化后的 P(fp8_e4m3fn)；
-    //   - pScaleSubLoop0Tensor 接收 V1 额外生成的 C2 用 P 反量化 scale(fp8_e8m0)。
-    // isUpdate 用于区分 online-softmax update 中的首个 sparse S2 loop 与后续 loop。
+    // 将 256-column C1 转为 P(e4m3)/PScale(e8m0)；isUpdate 控制 online-softmax 更新。
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
