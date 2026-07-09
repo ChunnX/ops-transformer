@@ -129,7 +129,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 
     # 正向：自动追踪计算图（x 被 inplace 修改，无需接收返回值）
     inplace_partial_rotary_mul(
-        x, r1, r2,
+        y, r1, r2,
         rotary_mode="interleave",
         partial_slice=[slice_start, slice_end],
     )
