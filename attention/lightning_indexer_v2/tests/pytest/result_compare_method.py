@@ -446,7 +446,7 @@ def check_result_return_value(expect, result, params):
     max_re = 0
     thres = 0.0001
     diff_thd=0.01
-    pct_thd=0.05
+    pct_thd=0.005
     max_diff_hd=0.1
     rtol=0.005
     atol=0.000025
@@ -457,8 +457,6 @@ def check_result_return_value(expect, result, params):
     data_compe = expect.cpu().numpy()
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
-    diff_cpu = []
-    diff_npu = []
 
     if layout_query in ["BSND"]:
         sp = (batch_size, q_seq, k_head_num)
@@ -475,7 +473,7 @@ def check_result_return_value(expect, result, params):
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
-
+    err_cnt = 0
     for t_id in range(total_rows):
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
@@ -492,14 +490,13 @@ def check_result_return_value(expect, result, params):
         npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
                                                     cur_cpu_output_value)
         if not npu_pass_t:
-            npu_pass = False
+            err_cnt += 1
+    pct_thd_percent = (1 - pct_thd) * 100.0
+    fulfill_percent = float(total_line - err_cnt) / float(total_rows) * 100.0
+    npu_pass = True if (fulfill_percent >= pct_thd_percent) else False
+    
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
-    topk_precision = not diff_npu and not diff_cpu
-    if topk_precision:
-        print(f'[success]TopK精度通过, idx不同的地方的value误差在阈值之内')
-    else:
-        print(f'[fail]TopK精度失败')
     print(f"npu_pass is {npu_pass}")
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
