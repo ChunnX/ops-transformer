@@ -27,7 +27,9 @@ namespace {
 
 inline constexpr int64_t QLI_V2_QUANT_MODE_1 = 1;
 inline constexpr int64_t QLI_V2_QUANT_MODE_2 = 2;
+inline constexpr int64_t QLI_V2_QUANT_MODE_3 = 3;
 inline constexpr int64_t QLI_V2_QUANT_MODE_4 = 4;
+inline constexpr int64_t QLI_V2_QUANT_MODE_5 = 5;
 inline constexpr int64_t QLI_V2_NO_MASK_MODE = 0;
 inline constexpr int64_t QLI_V2_CAUSAL_MASK_MODE = 3;
 inline constexpr int64_t QLI_V2_CMP_RATIO_LOWER_BOUND = 1;
@@ -154,9 +156,11 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
             QLI_V2_TOPK_LOWER_BOUND, QLI_V2_A5_TOPK_UPPER_BOUND, topk);
         // quant_mode 校验
         CHECK_COND((quantMode == QLI_V2_QUANT_MODE_1) || (quantMode == QLI_V2_QUANT_MODE_2) ||
-            (quantMode == QLI_V2_QUANT_MODE_4), ACLNN_ERR_PARAM_INVALID,
-            "For Ascend 950PR/Ascend 950DT, quant_mode should be %lld/%lld/%lld, but got %lld",
-            QLI_V2_QUANT_MODE_1, QLI_V2_QUANT_MODE_2, QLI_V2_QUANT_MODE_4, quantMode);
+            (quantMode == QLI_V2_QUANT_MODE_3) || (quantMode == QLI_V2_QUANT_MODE_4) ||
+            (quantMode == QLI_V2_QUANT_MODE_5), ACLNN_ERR_PARAM_INVALID,
+            "For Ascend 950PR/Ascend 950DT, quant_mode should be %lld/%lld/%lld/%lld/%lld, but got %lld",
+            QLI_V2_QUANT_MODE_1, QLI_V2_QUANT_MODE_2, QLI_V2_QUANT_MODE_3, QLI_V2_QUANT_MODE_4,
+            QLI_V2_QUANT_MODE_5, quantMode);
         // cmp_ratio 校验
         CHECK_COND((cmpRatio >= QLI_V2_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= QLI_V2_CMP_RATIO_UPPER_BOUND),
             ACLNN_ERR_PARAM_INVALID, "For Ascend 950PR/Ascend 950DT, cmp_ratio should be between [%lld, %lld], "
