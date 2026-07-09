@@ -50,7 +50,8 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
         MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false> op;
         op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr,
                 scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
-                constExpertAlpha2, constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
+                constExpertAlpha2, constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM,
+                &pipe, &tilingData);
         op.Process();
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);

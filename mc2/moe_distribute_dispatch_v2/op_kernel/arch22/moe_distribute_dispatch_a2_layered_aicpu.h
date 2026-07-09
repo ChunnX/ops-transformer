@@ -384,7 +384,7 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
     uint32_t realBS = tokenCntGlobalTensor.GetValue(0);
     PipeBarrier<PIPE_ALL>();
 
-    if(realBS == 0){
+    if (realBS == 0) {
         uint32_t copyTokenNum = aivNum_ < globalBs_ ? aivNum_ : globalBs_;
         LocalTensor<int16_t> zeroTemp = tBuf.GetWithOffset<int16_t>(copyTokenNum * sizeof(int16_t), 0);
         Duplicate<int16_t>(zeroTemp, 0, RoundUp(copyTokenNum, B16_PER_BLOCK));
@@ -1219,7 +1219,7 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
         cntSum += tokenCntUB(i << 3);
         tokenCntUB(i) = cntSum;
     }
-    for (uint32_t i = 0; i < localMoeExpertNum_; ++i){
+    for (uint32_t i = 0; i < localMoeExpertNum_; ++i) {
         if (expertTokenNumsType_ == 1) {
             int32_t preValue = (i == 0) ? 0 : tokenCntUB(i * worldSize_ - 1);
             tokenCntByExpUB(i) = static_cast<int64_t>(tokenCntUB(i * worldSize_ + worldSize_ - 1) - preValue);

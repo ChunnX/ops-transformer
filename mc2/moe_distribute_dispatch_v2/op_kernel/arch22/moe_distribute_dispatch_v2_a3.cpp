@@ -57,8 +57,9 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
             return;
         } else if constexpr (FullMesh == TILINGKEY_ENABLE_HIERARCHY) {
             MoeDistributeDispatchV2Layered<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
-            op.Init(x, expertIds, scales, xActiveMask, expertScales, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                epSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+            op.Init(x, expertIds, scales, xActiveMask, expertScales, expandXOut, dynamicScalesOut,
+                    assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM,
+                    &pipe, &tilingData);
             op.Process();
             return;
         }
@@ -104,8 +105,9 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
         } else if constexpr (FullMesh == TILINGKEY_ENABLE_HIERARCHY) {
             if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
                 MoeDistributeDispatchV2Layered<DTYPE_X, DTYPE_EXPAND_X, false, true, false> op;
-                op.Init(x, expertIds, scales, xActiveMask, expertScales, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
-                    epSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+                op.Init(x, expertIds, scales, xActiveMask, expertScales, expandXOut, dynamicScalesOut,
+                        assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM,
+                        &pipe, &tilingData);
                 op.Process();
                 return;
             }
