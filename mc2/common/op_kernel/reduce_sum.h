@@ -179,6 +179,7 @@ __aicore__ inline void ReduceSumForAlltoAll<DataType>::ReadDataBlockReduceSum(ui
     tempBuf = vecInQueue_.DeQue<DataType>();
     // 执行累加: sumTensor_ += tempBuf
     Add(sumTensor_, sumTensor_, tempBuf, elemsPerBlock);
+    PipeBarrier<PIPE_V>();
 
     // 释放临时 buffer
     vecInQueue_.FreeTensor(tempBuf);
