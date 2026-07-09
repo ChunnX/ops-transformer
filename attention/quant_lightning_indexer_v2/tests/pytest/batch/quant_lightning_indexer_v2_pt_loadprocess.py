@@ -39,8 +39,8 @@ def test_qliv2_process(filepath, device_id=0):
         query = test_data['query'].npu()
         key = test_data['key'].npu()
 
-    max_seqlen_q = params[18]
-    return_value = params[30]
+    max_seqlen_q = params[19]
+    return_value = params[31]
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
@@ -58,7 +58,10 @@ def test_qliv2_process(filepath, device_id=0):
         cu_seqlens_key = test_data['cu_seqlens_key'].npu()
     else:
         cu_seqlens_key = None
-    block_table = test_data['block_table'].npu()
+    if test_data['block_table'] is not None:
+        block_table = test_data['block_table'].npu()
+    else:
+        block_table = None
     metadata = test_data['metadata'].npu()
     quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
@@ -72,7 +75,7 @@ def test_qliv2_process(filepath, device_id=0):
         cmp_residual_k_for_npu = None
 
     #调用SFA算子
-    npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
+    npu_result,_ = cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,

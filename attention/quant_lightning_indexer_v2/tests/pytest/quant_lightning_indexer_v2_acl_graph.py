@@ -51,8 +51,8 @@ class QLIV2Network(nn.Module):
 
 def qliv2_output_acl_graph(params):
     qk_dtype = params[10]
-    max_seqlen_q = params[18]
-    return_value = params[30]
+    max_seqlen_q = params[19]
+    return_value = params[31]
 
     test_data = quant_lightning_indexer_v2_golden.qliv2_output_single(params, is_batch=True)
     cpu_result = test_data["cpu_result"]
