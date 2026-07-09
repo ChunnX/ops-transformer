@@ -49,7 +49,8 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
         "actlen_mode":["full"],
-        "S1EQS2":[False]
+        "S1EQS2":[False],
+        "return_softmax_lse": [False]
     },
 
     "prefill_first":{
@@ -88,7 +89,8 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "template_run_mode": ["SWA"],
         "actlen_mode":["full"],
-        "S1EQS2":[False]
+        "S1EQS2":[False],
+        "return_softmax_lse": [False]
     }
 }
 
