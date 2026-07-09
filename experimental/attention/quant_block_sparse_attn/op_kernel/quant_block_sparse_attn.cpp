@@ -99,7 +99,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         // MXFP8 全量化当前具备固定的高层约束：
         // Q/K/V 为 fp8_e4m3fn，scale 为 fp8_e8m0，layout 为 TND + PA BNBD，
-        // 单个 sparse KV block 按 S2=512 处理。
+        // kernel 以 S2=512 logical tile 计算，tile 内可拼接多个 sparse KV block。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
         BSA_MX_OP_IMPL(USE_DN);
