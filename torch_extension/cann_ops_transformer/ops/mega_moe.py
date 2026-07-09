@@ -118,9 +118,11 @@ class SymmBuffer:
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
-            backend="channel",
-            commAlg="ub-mem",
-            opName="mega_moe",
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel"
+            },
             customCclBufferSize=required_ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
