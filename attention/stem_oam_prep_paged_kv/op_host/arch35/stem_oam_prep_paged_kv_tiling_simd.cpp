@@ -174,7 +174,10 @@ ge::graphStatus StemPrepKVTiling::PostTiling()
     tilingData_->kvLayout = kvLayout_;
     tilingData_->rVal = rVal_;
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4a93fae9e0d33ecab3ec842d5c38b49f32349b12
     context_->SetBlockDim(usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
