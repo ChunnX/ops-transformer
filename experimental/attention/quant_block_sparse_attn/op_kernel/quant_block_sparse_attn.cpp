@@ -74,7 +74,7 @@ using namespace optiling;
 
 
 template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE,
-          uint32_t Config, bool USE_DN, uint32_t QUANT_MODE>
+          uint32_t Config, uint32_t QUANT_MODE>
 __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
     __gm__ uint8_t *vScale, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
@@ -94,15 +94,15 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr BSALayout kvLayout = static_cast<BSALayout>(KV_LAYOUT_T);
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
-    constexpr bool bsaUseDn = USE_DN;
+    constexpr bool bsaUseDn = true;
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         // MXFP8 全量化当前具备固定的高层约束：
         // Q/K/V 为 fp8_e4m3fn，scale 为 fp8_e8m0，layout 为 TND + PA BNBD，
-        // 单个 sparse KV block 按 S2=512 处理。
+        // kernel 以 S2=512 logical tile 计算，tile 内可拼接多个 sparse KV block。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
-        BSA_MX_OP_IMPL(USE_DN);
+        BSA_MX_OP_IMPL(true);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");

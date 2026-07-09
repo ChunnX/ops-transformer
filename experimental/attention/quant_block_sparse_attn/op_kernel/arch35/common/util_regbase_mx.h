@@ -20,13 +20,17 @@
 
 namespace regbasemx {
 constexpr uint32_t BSA_MX_SCALE_LAST_DIM = 2U;
+constexpr uint32_t BSA_MX_S2_BASE_SIZE = 512U;
+constexpr uint32_t BSA_MX_MIN_KV_BLOCK_SIZE = 64U;
+constexpr uint32_t BSA_MX_MAX_SPARSE_BLOCK_PER_TASK = BSA_MX_S2_BASE_SIZE / BSA_MX_MIN_KV_BLOCK_SIZE;
 
-// 单个 MX sparse-block task 的运行期状态。kernel 会为每个
-// (B, N1, S1 outer block, sparse S2 block) 创建一个 MxRunInfo，并用三槽环形缓存保存，
-// 使延迟执行的 C2/V2 可以消费前序 C1/V1 生成的 P tile。
+// 单个 MX S2 tile task 的运行期状态。kernel 会为每个
+// (B, N1, S1 outer block, 512-token logical S2 tile) 创建一个 MxRunInfo。
+// 当 sparse_kv_block_size 为 128 或 64 时，一个 512-token tile 会由多个
+// sparseIndices entry 拼接而成，最多 8 个 64-token sparse block。
 struct MxRunInfo {
-    // 当前有效 sparse-block task 的全局流水序号。
-    // 来源：ProcessMainLoop 每处理一个有效 sparse block 后递增。
+    // 当前有效 S2 tile task 的全局流水序号。
+    // 来源：ProcessMainLoop 每处理一个有效 512-token logical tile 后递增。
     // 用途：选择 taskRunInfo 三槽环形缓存、V1 stage1 ping-pong buffer 和 softmaxExp buffer。
     uint32_t loop = 0U;
     // 当前 S1 outer task 的序号。
@@ -37,11 +41,11 @@ struct MxRunInfo {
     // 来源：FillRunInfo 置 true；无效 tail 或 C2/V2 完成后置 false。
     // 用途：HasValidTask 和 ExecuteTask 判断尾部流水是否还需要 drain。
     bool isValid = false;
-    // 当前 sparse block 是否是该 query block 的第一个 S2 loop。
+    // 当前 S2 tile 是否是该 query block 的第一个 S2 loop。
     // 来源：s2LoopIdx == 0。
     // 用途：BMM1 首次拷贝 Q/QScale，V1 初始化 online softmax，V2 直接写初始累计输出。
     bool isFirstS2Loop = false;
-    // 当前 sparse block 是否是该 query block 的最后一个 S2 loop。
+    // 当前 S2 tile 是否是该 query block 的最后一个 S2 loop。
     // 来源：s2LoopIdx == s2LoopEnd。
     // 用途：释放/复用 Q L1 buffer，V1 写 softmax_lse，V2 做最终归一化并写 attentionOut。
     bool isLastS2Loop = false;
@@ -99,38 +103,56 @@ struct MxRunInfo {
     // 用途：V2 写 attentionOut/softmaxLse 时定位当前 subBlock 的输出起始 token。
     uint32_t vecMbaseIdx = 0U;
 
-    // 当前 sparse block 的逻辑 S2 有效长度。
-    // 来源：s2SparseBlk1RealSize。
-    // 用途：判断当前 512-token block 是否需要拆成两个 256-token C1/V1 subLoop。
+    // 当前 logical S2 tile 的有效长度。它来自 4 个 128-token sparse block
+    // 或 8 个 64-token sparse block 的拼接。
+    // 用途：判断当前 tile 是否需要拆成两个 256-token C1/V1 subLoop。
     uint32_t actSingleLoopS2Size = 0U;
     // actSingleLoopS2Size 向上 64 对齐后的长度。
-    // 来源：AlignUp(s2SparseBlk1RealSize, 64)。
+    // 来源：AlignUp(actSingleLoopS2Size, 64)。
     // 用途：V1 softmax/VF 的 N 维对齐长度，以及 MX scale/PScale 的 group 对齐。
     uint32_t actSingleLoopS2SizeAlign = 0U;
 
     // sparseIndices[B, N1, Qb, 0] 的基地址，单位为 int32 元素。
     // 来源：ProcessMainLoop 根据 bIdx/n1Idx/s1OuterIdx/maxQb/maxKb 计算。
-    // 用途：FillRunInfo 通过 sparseBase + s2LoopIdx 读取当前逻辑 KV block id。
+    // 用途：FillRunInfo 通过 sparseBase + s2LoopIdx 读取当前 tile 内的多个逻辑 KV block id。
     uint64_t sparseBase = 0U;
     // 当前 query block 有效 sparse KV block 数。
     // 来源：sparseSeqLen[B, N1, Qb]。
     // 用途：记录当前 task 对应的 sparse 长度；ProcessMainLoop 已用 sparseLen 控制 s2LoopEnd。
     int32_t actSparseLen = 0;
-    // 当前 sparse block 在逻辑 KV token 维度上的起始 offset。
-    // 来源：sparseBlkIdx1 * kvSparseBlockSize。
+    // 当前 task 在 sparseIndices 中的起始 block 下标。
+    // 来源：ProcessMainLoop 的 s2LoopIdx。
+    // 用途：调试和后续 mask 扩展时定位当前 512-token tile 对应的 sparseIndices 区间。
+    uint32_t sparseBlockStartIdx = 0U;
+    // 当前 task 内拼接的 sparse block 数量。
+    // 来源：min(S2_BASE / kvSparseBlockSize, sparseLen - sparseBlockStartIdx)。
+    // 用途：cube 拷贝 K/V/KScale/VScale 时逐块拼接到同一个 L1 tile。
+    uint32_t sparseBlockCount = 0U;
+    // 当前 task 内每个 sparse block 的逻辑 block id。
+    // 来源：sparseIndicesGm[sparseBase + sparseBlockStartIdx + i]。
+    int64_t sparseBlockIdx[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    // 当前 task 内每个 sparse block 在逻辑 KV token 维度上的起始 offset。
+    // 来源：sparseBlockIdx[i] * kvSparseBlockSize。
+    int64_t sparseBlockTokenOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    // 当前 task 内每个 sparse block 的真实有效 token 数。
+    // 来源：min(kvSparseBlockSize, actS2Size - sparseBlockTokenOffset[i])。
+    uint32_t sparseBlockRealSize[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    // 当前 tile 第一个 sparse block 在逻辑 KV token 维度上的起始 offset。
+    // 来源：sparseBlockTokenOffset[0]。
     // 用途：计算 S2 tail 长度，并参与 causal partial-mask 判断。
     int64_t sparseS2TokenOffset = 0;
-    // 当前 sparseIndices 读出的逻辑 KV block id。
+    // 当前 tile 第一个 sparseIndices 读出的逻辑 KV block id。保留该字段是为了复用
+    // 现有 partial-mask/debug 语义；真正的拼接拷贝使用 sparseBlockIdx 数组。
     // 来源：sparseIndicesGm[sparseBase + s2LoopIdx]。
-    // 用途：cube 拷贝 K/V/KScale/VScale 时先得到逻辑 block，再结合 block_table 定位 PA BNBD 物理 block。
+    // 用途：参与 causal partial-mask 判断。
     int64_t sparseBlkIdx1 = -1;
-    // 当前逻辑 KV block 的真实有效 token 数，最大为 kvSparseBlockSize=512。
-    // 来源：min(kvSparseBlockSize, actS2Size - sparseS2TokenOffset)。
-    // 用途：BMM1/V1/C2 的 S2/K 维真实长度，尾块为 0 时跳过 task。
+    // 当前 tile 第一个逻辑 KV block 的真实有效 token 数。
+    // 来源：sparseBlockRealSize[0]。
+    // 用途：保留原字段语义，主流程改用 actSingleLoopS2Size。
     uint32_t s2SparseBlk1RealSize = 0U;
-    // s2SparseBlk1RealSize 向上 64 对齐后的长度。
-    // 来源：AlignUp(s2SparseBlk1RealSize, 64)。
-    // 用途：MX value/P scale、V1 VF 和 BMM2 K 维对齐。
+    // 当前 tile 的有效 token 数向上 64 对齐后的长度。
+    // 来源：AlignUp(actSingleLoopS2Size, 64)。
+    // 用途：保留原字段语义，主流程改用 actSingleLoopS2SizeAlign。
     uint32_t s2SparseBlk1RealAlignedSize = 0U;
     // 当前 sparse block 是否与 causal mask 边界相交。
     // 来源：AttentionMaskFullProcessingOrRequired。
