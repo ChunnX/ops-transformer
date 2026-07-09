@@ -2375,7 +2375,8 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantPerTokenGroup(const 
 }
 
 ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquantByMode(const FiaTilingInfo &fiaInfo,
-    ge::DataType inputKvType, int64_t keyAntiquantMode, int64_t valueAntiquantMode)
+    ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode)
 {
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
         return CheckInputKVTypeForAntiquantPerChannel(fiaInfo, inputKvType, keyAntiquantScaleTensor);
@@ -2424,7 +2425,8 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
         valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
     }
 
-    return CheckInputKVTypeForAntiquantByMode(fiaInfo, inputKvType, keyAntiquantMode, valueAntiquantMode);
+    return CheckInputKVTypeForAntiquantByMode(fiaInfo, inputKvType, keyAntiquantScaleTensor,
+        keyAntiquantMode, valueAntiquantMode);
 }
 
 // existence
