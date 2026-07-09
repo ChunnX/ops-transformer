@@ -16,6 +16,7 @@
 #define STEM_INDEXER_VECTOR1_H
 
 #include "kernel_operator.h"
+#include "../stem_indexer_common.h"
 
 namespace vector1 {
 
@@ -51,6 +52,7 @@ struct FloatSortConstCtx {
     AscendC::MicroAPI::RegTensor<UInt> signMask;
     AscendC::MicroAPI::RegTensor<UInt> nan;
 };
+
 
 template <typename FloatT>
 __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
@@ -137,9 +139,217 @@ __simd_callee__ inline void FloatX2ToSortableKey(
     AscendC::MicroAPI::Xor(outKey1, outKey1, regMask[1], maskAll);
 }
 
-// QK_T in, sortable key out
+template <typename SCORE_T>
+__simd_callee__ inline void PadMrgRowRangeVFCore(__ubuf__ SCORE_T* rowBuf,
+                                                const uint32_t padStart,
+                                                const uint32_t padEnd)
+{
+    constexpr uint32_t VF_ELEMS = 256U / sizeof(SCORE_T);
+    // Arange only supports signed index tensors; later casts reuse the same lane bits for SCORE_T comparisons.
+    using IDX_T = std::conditional_t<std::is_same_v<SCORE_T, uint16_t>, int16_t, int32_t>;
+    const uint32_t blockStart = (padStart / VF_ELEMS) * VF_ELEMS;
+    const uint32_t blockEnd = ((padEnd + VF_ELEMS - 1U) / VF_ELEMS) * VF_ELEMS;
+
+    MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<SCORE_T, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskGeStart;
+    MicroAPI::MaskReg maskLtEnd;
+    MicroAPI::MaskReg maskPad;
+    MicroAPI::RegTensor<IDX_T> regIdx;
+    MicroAPI::RegTensor<SCORE_T> regOldValue;
+    MicroAPI::RegTensor<SCORE_T> regZero;
+    MicroAPI::RegTensor<SCORE_T> regOutValue;
+    MicroAPI::Duplicate(regZero, (SCORE_T)0, maskAll);
+
+    for (uint32_t blockBase = blockStart; blockBase < blockEnd; blockBase += VF_ELEMS) {
+        MicroAPI::Arange(regIdx, static_cast<IDX_T>(blockBase));
+        MicroAPI::LoadAlign<SCORE_T, MicroAPI::LoadDist::DIST_NORM>(regOldValue, rowBuf + blockBase);
+        MicroAPI::Compares<SCORE_T, CMPMODE::GE>(maskGeStart, (MicroAPI::RegTensor<SCORE_T>&)regIdx,
+                                                 (SCORE_T)padStart, maskAll);
+        MicroAPI::Compares<SCORE_T, CMPMODE::LT>(maskLtEnd, (MicroAPI::RegTensor<SCORE_T>&)regIdx,
+                                                 (SCORE_T)padEnd, maskAll);
+        MicroAPI::And(maskPad, maskGeStart, maskLtEnd, maskAll);
+        MicroAPI::Select(regOutValue, regZero, regOldValue, maskPad);
+        MicroAPI::StoreAlign<SCORE_T, MicroAPI::StoreDist::DIST_NORM>(rowBuf + blockBase, regOutValue, maskAll);
+    }
+}
+
+__simd_callee__ inline uint32_t PadMrgAlignUp(const uint32_t value, const uint32_t align)
+{
+    return ((value + align - 1U) / align) * align;
+}
+
+__simd_vf__ inline void PadMrgSingleRowRangeVFImpl(__ubuf__ uint32_t* rowBuf,
+                                                  const uint32_t padStart,
+                                                  const uint32_t padEnd)
+{
+    PadMrgRowRangeVFCore(rowBuf, padStart, padEnd);
+}
+
+template <typename SCORE_T>
+__simd_vf__ inline void PadMrgOneRowFirstS2RangeVFImpl(__ubuf__ SCORE_T* rowBuf,
+                                                      const uint32_t topkSelectNum,
+                                                      const uint32_t s2BlockValidLen,
+                                                      const uint32_t s2BlockValidLenAlign)
+{
+    const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+    PadMrgRowRangeVFCore(rowBuf,
+                         topkSelectNumAlign + s2BlockValidLen,
+                         topkSelectNumAlign + s2BlockValidLenAlign);
+}
+
+template <typename SCORE_T>
+__simd_vf__ inline void PadMrgOneRowNotFirstS2RangeVFImpl(__ubuf__ SCORE_T* rowBuf,
+                                                         const uint32_t topkSelectNum,
+                                                         const uint32_t s2BlockValidLen,
+                                                         const uint32_t s2BlockValidLenAlign)
+{
+    const uint32_t topkSelectNumAlign = PadMrgAlignUp(topkSelectNum, 256U);
+    PadMrgRowRangeVFCore(rowBuf, topkSelectNum, topkSelectNumAlign);
+    PadMrgRowRangeVFCore(rowBuf,
+                         topkSelectNumAlign + s2BlockValidLen,
+                         topkSelectNumAlign + s2BlockValidLenAlign);
+}
+
+__simd_vf__ inline void PadMrgRowsRangeVFImpl(__ubuf__ uint32_t* mrgValueBuf,
+                                             const uint32_t rowStride,
+                                             const uint32_t actS1Size,
+                                             const uint32_t s1Idx,
+                                             const uint32_t validGSize,
+                                             const uint32_t padStart,
+                                             const uint32_t padEnd)
+{
+    for (uint32_t gIdx = 0; gIdx < validGSize; gIdx++) {
+        const uint32_t mInnerIdx = gIdx * actS1Size + s1Idx;
+        PadMrgRowRangeVFCore(mrgValueBuf + mInnerIdx * rowStride, padStart, padEnd);
+    }
+}
+
+template <typename SCORE_T>
+__simd_vf__ inline void PadMrgRowsInitBlockVFImpl(__ubuf__ SCORE_T* mrgValueBuf,
+                                                 const uint32_t rowStride,
+                                                 const uint32_t rowNum,
+                                                 const uint32_t topkSelectNumAlign,
+                                                 const uint32_t initialBlocks)
+{
+    using IDX_T = std::conditional_t<std::is_same_v<SCORE_T, uint16_t>, int16_t, int32_t>;
+    MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<SCORE_T, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskInit;
+    MicroAPI::RegTensor<IDX_T> regIdx;
+    MicroAPI::RegTensor<SCORE_T> regZero;
+    MicroAPI::Duplicate(regZero, (SCORE_T)0, maskAll);
+    // Arange only supports signed index tensors; later casts reuse the same lane bits for SCORE_T comparisons.
+    MicroAPI::Arange(regIdx, static_cast<IDX_T>(0));
+    MicroAPI::Compares<SCORE_T, CMPMODE::LT>(maskInit, (MicroAPI::RegTensor<SCORE_T>&)regIdx,
+                                             (SCORE_T)initialBlocks, maskAll);
+
+    for (uint32_t rowIdx = 0; rowIdx < rowNum; rowIdx++) {
+        __ubuf__ SCORE_T* rowBuf = mrgValueBuf + rowIdx * rowStride + topkSelectNumAlign;
+        MicroAPI::StoreAlign<SCORE_T, MicroAPI::StoreDist::DIST_NORM>(rowBuf, regZero, maskInit);
+    }
+}
+
+__aicore__ inline void PadMrgSingleRowRangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                             const uint32_t rowOffset,
+                                             const uint32_t padStart,
+                                             const uint32_t padEnd)
+{
+    if (padEnd <= padStart) {
+        return;
+    }
+
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    PadMrgSingleRowRangeVFImpl(mrgValueBuf + rowOffset, padStart, padEnd);
+}
+
+template <typename SCORE_T>
+__aicore__ inline void PadMrgRowsInitBlockVF(LocalTensor<SCORE_T> &mrgValueLocal,
+                                             const uint32_t rowStride,
+                                             const uint32_t rowNum,
+                                             const uint32_t topkSelectNumAlign,
+                                             const uint32_t initialBlocks)
+{
+    if (rowNum == 0U || initialBlocks == 0U) {
+        return;
+    }
+
+    __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
+    PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+}
+
+template <typename SCORE_T>
+__aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal,
+                                                    const SICommon::RowIdx4 &rowIdx4,
+                                                    const SICommon::TopkNum4 &topkNum4,
+                                                    const SICommon::S2ValidLen4 &s2ValidLen4,
+                                                    const uint32_t batchRowNum,
+                                                    const uint32_t rowStride,
+                                                    const uint32_t trunkLen)
+{
+    if (batchRowNum == 0U) {
+        return;
+    }
+
+    __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, rowIdx);
+        const uint32_t topkSelectNum = SICommon::GetLane(topkNum4, rowIdx);
+        const uint32_t s2BlockValidLen = SICommon::GetLane(s2ValidLen4, rowIdx);
+        const uint32_t s2BlockValidLenAlign = SICommon::Align(s2BlockValidLen, trunkLen);
+        const uint32_t rowOffset = mInnerIdx * rowStride;
+        PadMrgOneRowFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                       topkSelectNum, s2BlockValidLen,
+                                       s2BlockValidLenAlign);
+    }
+}
+
+template <typename SCORE_T>
+__aicore__ inline void PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal,
+                                                       const SICommon::RowIdx4 &rowIdx4,
+                                                       const SICommon::TopkNum4 &topkNum4,
+                                                       const SICommon::S2ValidLen4 &s2ValidLen4,
+                                                       const uint32_t batchRowNum,
+                                                       const uint32_t rowStride,
+                                                       const uint32_t trunkLen)
+{
+    if (batchRowNum == 0U) {
+        return;
+    }
+
+    __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
+    for (uint32_t rowIdx = 0; rowIdx < batchRowNum; rowIdx++) {
+        const uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, rowIdx);
+        const uint32_t topkSelectNum = SICommon::GetLane(topkNum4, rowIdx);
+        const uint32_t s2BlockValidLen = SICommon::GetLane(s2ValidLen4, rowIdx);
+        const uint32_t s2BlockValidLenAlign = 256U;
+        const uint32_t rowOffset = mInnerIdx * rowStride;
+        PadMrgOneRowNotFirstS2RangeVFImpl(mrgValueBuf + rowOffset,
+                                          topkSelectNum, s2BlockValidLen,
+                                          s2BlockValidLenAlign);
+    }
+}
+
+__aicore__ inline void PadMrgRowsRangeVF(const LocalTensor<uint32_t> &mrgValueLocal,
+                                        const uint32_t rowStride,
+                                        const uint32_t actS1Size,
+                                        const uint32_t s1Idx,
+                                        const uint32_t curAivGS1ProcNum,
+                                        const uint32_t curAivGSize,
+                                        const uint32_t padStart,
+                                        const uint32_t padEnd)
+{
+    if (padEnd <= padStart || s1Idx >= curAivGS1ProcNum) {
+        return;
+    }
+
+    const uint32_t s1ValidGSize = CeilDiv(curAivGS1ProcNum - s1Idx, actS1Size);
+    const uint32_t validGSize = (curAivGSize < s1ValidGSize) ? curAivGSize : s1ValidGSize;
+    __ubuf__ uint32_t *mrgValueBuf = (__ubuf__ uint32_t *)mrgValueLocal.GetPhyAddr();
+    PadMrgRowsRangeVFImpl(mrgValueBuf, rowStride, actS1Size, s1Idx, validGSize, padStart, padEnd);
+}
+
+// float in uint32 out
 template <typename QK_T>
-__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortTraits<QK_T>::UInt* outBuf,
+__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
                                                     __ubuf__ QK_T* qkBuf,
                                                     __ubuf__ float* vBiasBuf,
                                                     const float rSquare,
@@ -147,34 +357,29 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortT
                                                     const int s2BaseSize,
                                                     const int mrgValueLen)
 {
-    using ScoreT = QK_T;
-    using KeyT = typename FloatSortTraits<QK_T>::UInt;
-    // Each vector register has 64 elements; split s2BaseSize into 4 registers.
-    constexpr int32_t S2_REG_ELEMS = 64;
+    MicroAPI::RegTensor<float> regvBias[4];
+    MicroAPI::RegTensor<float> regQK[4];
+    MicroAPI::RegTensor<float> regQKMul[4];
+    MicroAPI::RegTensor<float> regQKBias[4];
+    MicroAPI::RegTensor<uint32_t> regOut[4];
+    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::RegTensor<float> regvBias[4];   // vbias 恒为 FP32 输入
-    MicroAPI::RegTensor<ScoreT> regQK[4];
-    MicroAPI::RegTensor<ScoreT> regQKMul[4];
-    MicroAPI::RegTensor<ScoreT> regQKBias[4];
-    MicroAPI::RegTensor<KeyT> regOut[4];
-    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<ScoreT, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    // Float-to-sortable-key constants.
-    FloatSortConstCtx<ScoreT> scoreCtx;
-    InitFloatSortConstCtx(scoreCtx, maskAllB32);
+    // float -> uint32相关参数结构体
+    FloatSortConstCtx<float> fp32Ctx;
+    InitFloatSortConstCtx(fp32Ctx, maskAllB32);
 
     // s2BaseSize固定为256时，搬运vbias写在外面性能最佳
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + S2_REG_ELEMS);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 2 * S2_REG_ELEMS);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 3 * S2_REG_ELEMS);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
 
-    // Process 256 S2 elements per pass.
+    // 一次处理s2BaseSize 256个元素
     for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
-        MicroAPI::LoadAlign<ScoreT>(regQK[0], qkBuf + s2BaseSize * i); // RowStride是128, 行都落在一个bank上
-        MicroAPI::LoadAlign<ScoreT>(regQK[1], qkBuf + s2BaseSize * i + S2_REG_ELEMS);
-        MicroAPI::LoadAlign<ScoreT>(regQK[2], qkBuf + s2BaseSize * i + 2 * S2_REG_ELEMS);
-        MicroAPI::LoadAlign<ScoreT>(regQK[3], qkBuf + s2BaseSize * i + 3 * S2_REG_ELEMS);
+        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i); // RowStride是128, 行都落在一个bank上
+        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
+        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + 128);
+        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + 192);
         // qk * (stem_block_size / stem_stride) ^ 2
         MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
         MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
@@ -185,42 +390,101 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ typename FloatSortT
         MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[1], maskAllB32);
         MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[2], maskAllB32);
         MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[3], maskAllB32);
-        // ScoreT -> KeyT
-        FloatX2ToSortableKey<ScoreT>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], scoreCtx, maskAllB32);
-        FloatX2ToSortableKey<ScoreT>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], scoreCtx, maskAllB32);
+        // float -> uint32
+        FloatX2ToSortableKey<float>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], fp32Ctx, maskAllB32);
+        FloatX2ToSortableKey<float>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], fp32Ctx, maskAllB32);
         // 搬入outBuf的value部分
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + S2_REG_ELEMS, regOut[1], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + 2 * S2_REG_ELEMS, regOut[2], maskAllB32);
-        MicroAPI::StoreAlign<KeyT, MicroAPI::StoreDist::DIST_NORM>(
-            outBuf + (mrgValueLen * i) + 3 * S2_REG_ELEMS, regOut[3], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 64, regOut[1], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[2], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3], maskAllB32);
+    }
+}
+
+// float in uint16 out, use bf16 sortable key to match uint16 topk.
+template <typename QK_T>
+__simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t* outBuf,
+                                                    __ubuf__ QK_T* qkBuf,
+                                                    __ubuf__ float* vBiasBuf,
+                                                    const float rSquare,
+                                                    const int gS1BasePerVecSize_,
+                                                    const int s2BaseSize,
+                                                    const int mrgValueLen)
+{
+    MicroAPI::RegTensor<float> regvBias[4];
+    MicroAPI::RegTensor<float> regQK[4];
+    MicroAPI::RegTensor<float> regQKMul[4];
+    MicroAPI::RegTensor<float> regQKBias[4];
+    MicroAPI::RegTensor<bfloat16_t> regQKBiasBF16[2];
+    MicroAPI::RegTensor<uint16_t> regOut[2];
+    MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+
+    FloatSortConstCtx<bfloat16_t> bf16Ctx;
+    InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+    constexpr static MicroAPI::CastTrait castTraitF32ToF16_EVEN = {
+        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+    constexpr static MicroAPI::CastTrait castTraitF32ToF16_ODD = {
+        MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
+        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
+
+    for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
+        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i);
+        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
+        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + 128);
+        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + 192);
+        MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[2], regQK[2], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[3], regQK[3], rSquare, maskAllB32);
+        MicroAPI::Add(regQKBias[0], regQKMul[0], regvBias[0], maskAllB32);
+        MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[1], maskAllB32);
+        MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[2], maskAllB32);
+        MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[3], maskAllB32);
+
+        MicroAPI::DeInterleave(regQKBias[0], regQKBias[1], regQKBias[0], regQKBias[1]);
+        MicroAPI::DeInterleave(regQKBias[2], regQKBias[3], regQKBias[2], regQKBias[3]);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[0], regQKBias[1], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[1], regQKBias[3], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[0], regQKBias[0], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[1], regQKBias[2], maskAllB32);
+        FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regQKBiasBF16[0], regQKBiasBF16[1],
+                                         bf16Ctx, maskAllB16);
+
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1], maskAllB16);
     }
 }
 
 /**
- * @brief MUL RSquare后 上偏移
- * @param outLocal VEC1结果 转为uint32_t
+ * @brief MUL RSquare后加上偏移
+ * @param outLocal VEC1结果 转为SCORE_T sortable key
  * @param qkLocal mm1 res的结果 注意力分数
  * @param vBiasLocal kb的偏移向量
  * @param rSquare (stemStride / stemBlockSize) ^ 2
- * @param gS1BasePerVecSize_ g1S方向每个vec 分到基本块大小
- * @param s2BaseSize s2方向每个vec 分到基本块大小
+ * @param gS1BasePerVecSize_ g1S方向每个vec核分到基本块大小
+ * @param s2BaseSize s2方向每个vec核分到基本块大小
  * @param mrgValueLen 每次流式topk分到的长度
  */
-template <typename QK_T>
-__aicore__ inline void MulRSquareAndAddVBiasVF(
-    const LocalTensor<typename FloatSortTraits<QK_T>::UInt> &outLocal,   // out    [S2Base]       [256   ]
-    const LocalTensor<QK_T> &qkLocal,                                     // q*k^t  [qbG, S2Base]  [48 256]
-    const LocalTensor<float> &vBiasLocal,                                 // vBias  [1, S2Base]    [256   ]
-    const float rSquare, const int gS1BasePerVecSize_, const int s2BaseSize,
-    const int mrgValueLen)
+template<typename SCORE_T, typename QK_T>
+__aicore__ inline void MulRSquareAndAddVBiasVF(const LocalTensor<SCORE_T> &outLocal,   // out    [S2Base]       [256   ]
+                                               const LocalTensor<QK_T> &qkLocal,        // q*k^t  [qbG, S2Base]  [48 256]
+                                               const LocalTensor<float> &vBiasLocal,    // vBias  [1, S2Base]    [256   ]
+                                               const float rSquare,
+                                               const int gS1BasePerVecSize_,
+                                               const int s2BaseSize,
+                                               const int mrgValueLen)
 {
-    using KeyT = typename FloatSortTraits<QK_T>::UInt;
     __ubuf__ QK_T * qkBuf = (__ubuf__ QK_T *)qkLocal.GetPhyAddr();
     __ubuf__ float * vBiasBuf = (__ubuf__ float *)vBiasLocal.GetPhyAddr();
-    __ubuf__ KeyT * outBuf = (__ubuf__ KeyT *)outLocal.GetPhyAddr();
+    __ubuf__ SCORE_T * outBuf = (__ubuf__ SCORE_T *)outLocal.GetPhyAddr();
 
     MulRSquareAndAddVBiasVFImpl(outBuf, qkBuf, vBiasBuf, rSquare, gS1BasePerVecSize_, s2BaseSize, mrgValueLen);
 }
