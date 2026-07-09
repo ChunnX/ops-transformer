@@ -57,12 +57,14 @@ uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
                 cutRes.longTileLen, kValue);
         return HCCL_UNSUPPORTED;
     }
+
     uint64_t tileBytesPerRank = tileMKBytes * dtypeSize;
     if (tileMKBytes != 0 && tileBytesPerRank / tileMKBytes != dtypeSize) {
         OP_LOGE(opName.c_str(), "Multiplication overflow: tileMKBytes * dtypeSize=%lu",
                 dtypeSize);
         return HCCL_UNSUPPORTED;
     }
+
     uint64_t originalCommSize = tileBytesPerRank * rankDim;
     if (tileBytesPerRank != 0 && originalCommSize / tileBytesPerRank != rankDim) {
         OP_LOGE(opName.c_str(), "Multiplication overflow: tileBytesPerRank * rankDim=%lu",
@@ -165,7 +167,6 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
 
     uint64_t minTileM = (mValue + HCCL_MAX_TOTAL_TILES - 1) / HCCL_MAX_TOTAL_TILES;
     uint64_t minTileM_align = ((minTileM + ALIGN_LEN - 1) / ALIGN_LEN) * ALIGN_LEN;
-
     uint64_t finalTileM = HCCL_UNSUPPORTED;
     for (size_t i = 0; i < sizeof(TILE_M_CANDIDATES) / sizeof(TILE_M_CANDIDATES[0]); i++) {
         if (TILE_M_CANDIDATES[i] >= minTileM_align) {
@@ -270,17 +271,13 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
  *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信，仍优先使用优选候选值
  *   - 超大数据量：报错，无法同时满足256MB单次限制和HCCL_MAX_TOTAL_TILES次总限制
  */
-void AdjustCutResultForHCCL(CutResult& cutRes,
-                            uint64_t mValue, uint64_t kValue,
-                            uint64_t dtypeSize, uint64_t rankDim,
-                            const std::string& opName)
+void AdjustCutResultForCCU(CutResult& cutRes,
+                           uint64_t mValue, uint64_t kValue,
+                           uint64_t dtypeSize, uint64_t rankDim,
+                           const std::string& opName)
 {
     uint64_t maxTileM = CalcMaxTileMFromHcclLimit(cutRes, kValue, dtypeSize, rankDim, opName);
-    if (maxTileM == HCCL_NO_ADJUSTMENT) {
-        return;
-    }
-
-    if (maxTileM == HCCL_UNSUPPORTED) {
+    if (maxTileM == HCCL_NO_ADJUSTMENT || maxTileM == HCCL_UNSUPPORTED) {
         return;
     }
 
@@ -294,6 +291,65 @@ void AdjustCutResultForHCCL(CutResult& cutRes,
     }
 
     ApplyTileSplit(cutRes, mValue, tileM, kValue, dtypeSize, rankDim, opName);
+}
+
+/*!
+ * \brief AICPU通信模式减少切分，降低通信固定开销
+ *
+ * \param [inout] cutRes    公式化切分的原始结果（将被调整）
+ * \param [in] mValue       M维大小
+ * \param [in] baseM        Matmul基本块M（A5为256），用于tileM对齐
+ * \param [in] opName       算子名称（用于日志）
+ *
+ * \details 整体流程：
+ *   1. 判断当前tile数是否已满足AICPU_TARGET_TILE_CNT，若是则直接返回
+ *   2. 计算目标tileM = ceil(M / AICPU_TARGET_TILE_CNT)，向上对齐到baseM
+ *   3. 取max(对齐后tileM, 原始longTileLen)，确保不减少切分粒度
+ *   4. 重新切分并更新cutRes
+ *
+ * \note 与CCU路径的区别：
+ *   - AICPU无256MB单次通信限制，不需要CalcMaxTileMFromHcclLimit
+ *   - AICPU目标是减少切分数（≤AICPU_TARGET_TILE_CNT），降低每次通信的CPU侧固定开销
+ *   - CCU目标是在256MB和62次限制内优选tileM
+ */
+void AdjustCutResultForAICPU(CutResult& cutRes,
+                             uint64_t mValue,
+                             uint64_t baseM,
+                             const std::string& opName)
+{
+    uint64_t currentTileCnt = cutRes.numLongTile + cutRes.numShortTile;
+    if (currentTileCnt <= AICPU_TARGET_TILE_CNT) {
+        OP_LOGD(opName.c_str(), "AICPU: currentTileCnt=%lu <= target=%lu, no adjustment needed",
+                currentTileCnt, AICPU_TARGET_TILE_CNT);
+        return;
+    }
+
+    uint64_t idealTileM = (mValue + AICPU_TARGET_TILE_CNT - 1) / AICPU_TARGET_TILE_CNT;
+    uint64_t alignedTileM = idealTileM;
+    if (baseM > 0) {
+        alignedTileM = ((idealTileM + baseM - 1) / baseM) * baseM;
+    }
+
+    uint64_t newTileM = std::max(alignedTileM, cutRes.longTileLen);
+    uint64_t numLongTile = mValue / newTileM;
+    uint64_t tailM = mValue - numLongTile * newTileM;
+    if (numLongTile == 0) {
+        numLongTile = 1;
+        newTileM = mValue;
+        tailM = 0;
+    }
+
+    cutRes.longTileLen = newTileM;
+    cutRes.numLongTile = numLongTile;
+    cutRes.shortTileLen = tailM;
+    cutRes.numShortTile = (tailM > 0) ? 1 : 0;
+    cutRes.totalTileCnt = numLongTile + cutRes.numShortTile;
+
+    OP_LOGD(opName.c_str(),
+            "AICPU adjusted: tileM=%lu, numLongTile=%lu, tailM=%lu, "
+            "totalTileCnt=%lu (was %lu), shortTileAtBack=%d",
+            newTileM, numLongTile, tailM, cutRes.totalTileCnt,
+            currentTileCnt, cutRes.shortTileAtBack);
 }
 
 }  // namespace optiling
