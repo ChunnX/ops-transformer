@@ -29,7 +29,7 @@ RESULT_PATH = os.environ.get("QLIV2_SINGLE_RESULT_PATH", "").strip()
 
 param_names = [
     "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim",
-    "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
+    "block_size", "block_num", "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
     "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
     "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
     "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value",
@@ -38,7 +38,10 @@ param_names = [
 
 param_combinations = []
 for paramset_name, params in ENABLED_PARAMSETS:
-    param_values = [params.get(name, ["eager"]) for name in param_names]
+    param_values = [
+        params.get(name, params["dequant_dtype"] if name == "weight_dtype" else ["eager"])
+        for name in param_names
+    ]
     combinations = list(itertools.product(*param_values))
     for combo_index, combo in enumerate(combinations, start=1):
         param_dict = dict(zip(param_names, combo))
@@ -64,6 +67,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     block_size = param_combinations['block_size']
     block_num = param_combinations['block_num']
     qk_dtype= param_combinations['qk_dtype']
+    weight_dtype = param_combinations['weight_dtype']
     dequant_dtype = param_combinations['dequant_dtype']
     actual_seq_dtype = param_combinations['actual_seq_dtype']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
@@ -88,7 +92,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     run_mode = os.environ.get("QLIV2_RUN_MODE", param_combinations['run_mode']).strip().lower()
     torch_npu.npu.set_device(0)
     test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+                block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
                 seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                 sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset
@@ -133,7 +137,9 @@ def test_qliv2(param_combinations):   # Init params and tensors
     result_return_value = "N/A"
     fulfill_precent_return_value = 0
     if return_value:
-        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, test_data)
+        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(
+            cpu_topk_value, npu_topk_value, test_data, cpu_result, npu_result,
+            topk_value, output_idx_offset)
         print(f"result_return_value: {result_return_value}")
         print(f"result_return_value: {fulfill_precent_return_value}")
 

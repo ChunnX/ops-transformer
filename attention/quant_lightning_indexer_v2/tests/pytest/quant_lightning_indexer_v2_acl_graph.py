@@ -20,6 +20,8 @@ from torchair.configs.compiler_config import CompilerConfig
 import cann_ops_transformer
 import quant_lightning_indexer_v2_golden
 
+QUANT_MODE_MXFP4 = 5
+
 
 class QLIV2Network(nn.Module):
     def __init__(self):
@@ -55,8 +57,16 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
     兼容两个来源：generate_qliv2_test_data 返回值和 .pt 文件加载，二者都在 CPU。
     """
     qk_dtype = params[10]
+    quant_mode = tensor_dict['quant_mode']
 
-    if qk_dtype == 'FLOAT8_E4M3FN' or qk_dtype == torch.float8_e4m3fn:
+    if quant_mode == QUANT_MODE_MXFP4:
+        # TorchAir通过foreach_copy搬运图输入，当前不支持FP4 shell dtype；使用相同存储的
+        # packed uint8视图，C++入口会根据quant_mode恢复ACL_FLOAT4_E2M1语义。
+        query = tensor_dict['query'].view(torch.uint8).npu()
+        key = tensor_dict['key'].view(torch.uint8).npu()
+        if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
+            blockFusion = tensor_dict['blockFusion'].view(torch.uint8).npu()
+    elif qk_dtype == 'FLOAT8_E4M3FN' or qk_dtype == torch.float8_e4m3fn:
         query = tensor_dict["query"].to(dtype=torch.float8_e4m3fn).npu()
         key = tensor_dict["key"].to(dtype=torch.float8_e4m3fn).npu()
         if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
@@ -76,7 +86,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         block_size = int(params[8])
         head_dim = int(params[7])
         k_head_num = int(params[6])
-        dequant_dtype_str = params[11]
+        dequant_dtype_str = params[12]
         if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
         elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
@@ -94,7 +104,6 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
     block_table = tensor_dict["block_table"].npu() if tensor_dict["block_table"] is not None else None
     cmp_residual_k_for_npu = tensor_dict["cmp_residual_k_for_npu"].npu() if tensor_dict.get("cmp_residual_k_for_npu") is not None else None
 
-    quant_mode = tensor_dict["quant_mode"]
     layout_query = tensor_dict["layout_query"]
     layout_key = tensor_dict["layout_key"]
     sparse_count = tensor_dict["sparse_count"]
@@ -140,7 +149,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "seqused_k": seqused_k,
         "cmp_residual_k": cmp_residual_k_for_npu,
         "output_idx_offset": output_idx_offset,
-        "max_seqlen_q": params[18],
+        "max_seqlen_q": params[19],
         "block_table": block_table,
         "metadata": metadata,
         "quant_mode": quant_mode,
@@ -149,7 +158,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "sparse_count": sparse_count,
         "sparse_mode": sparse_mode,
         "cmp_ratio": cmp_ratio,
-        "return_value": params[30],
+        "return_value": params[31],
     }
     return run_args
 
@@ -165,7 +174,13 @@ def _qliv2_run_compiled_graph(run_args):
     npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=False, backend=npu_backend, dynamic=False)
     npu_result, npu_topk_value = npu_mode(**run_args)
     torch.npu.synchronize()
-    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    if run_args['return_value']:
+        if npu_topk_value.shape != npu_result.shape:
+            raise RuntimeError(
+                'sparse_values and sparse_indices must have the same shape when return_value=1, '
+                f'but got {tuple(npu_topk_value.shape)} and {tuple(npu_result.shape)}')
+        npu_topk_value, npu_sort_order = npu_topk_value.sort(dim=-1, descending=True)
+        npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
     return npu_result, npu_topk_value
 
 
