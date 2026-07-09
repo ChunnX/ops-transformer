@@ -283,6 +283,21 @@ ge::graphStatus Tiling4StemOamPrepVarlenQ(gert::TilingContext* context) {
 
     CalcCoreDistribution(context, tiling, totalBlocks, N);
 
+    // Calculate ub_factor: how many blocks can fit in UB at once
+    constexpr uint32_t UB_SIZE = 248 * 1024;  // 248KB
+    constexpr uint32_t VARLEN_BUF_SIZE = 1024 * sizeof(int32_t) * 2;  // 8KB
+    uint32_t perBlockUB = B * DIM_QK_HOST * 4     // qBlockFP32Buf (float)
+                        + B * DIM_QK_HOST * 1     // qBlockBuf (fp8)
+                        + B * 4                   // scalesBuf (float)
+                        + S * DIM_QK_HOST * 4     // groupSumBuf (float)
+                        + S * DIM_QK_HOST * 2;    // outQueueQflat (bf16)
+    uint32_t availableUB = UB_SIZE - VARLEN_BUF_SIZE;
+    uint32_t ubFactor = availableUB / perBlockUB;
+    tiling->ub_factor = ubFactor;
+
+    OP_LOGI(nodeName, "ub_factor=%u (perBlock=%u, available=%u)",
+            ubFactor, perBlockUB, availableUB);
+
     // Calculate workspace size (this operator doesn't need workspace for computation)
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
