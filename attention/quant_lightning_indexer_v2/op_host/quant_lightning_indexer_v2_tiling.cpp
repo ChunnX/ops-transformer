@@ -563,8 +563,9 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
-    OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
-               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
+    OP_CHECK_IF(gSize_ < G_SIZE_MIN || gSize_ > G_SIZE_MAX,
+               OP_LOGE(opName_, "N1 is %u, N2 is %u, G=N1/N2 must be in [%u, %u], but now is %u.",
+                       n1Size_, n2Size_, G_SIZE_MIN, G_SIZE_MAX, gSize_),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

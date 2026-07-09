@@ -161,7 +161,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
+        2 * CeilDiv(constInfo_.mBaseSizeAlign16, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight

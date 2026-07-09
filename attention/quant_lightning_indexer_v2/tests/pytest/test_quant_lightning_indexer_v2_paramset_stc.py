@@ -22,7 +22,7 @@ import torch
 # 字段映射: g → q_head_num=g, k_head_num=1; s1 → q_seq; s2 → k_seq; d → head_dim
 #           blockSize → block_size; mask_mode → sparse_mode
 TEST_PARAMS = {
-    # stc_1: BSND+PA+mask0+s2整除基本块: b=1,s1=1,s2=2048,g=64,blockSize=128,sparse=2048,mask=0,ratio=1
+    # stc_1: BSND+PA+mask0+s2整除基本块: b=1,s1=1,s2=2048,g=64,blockSize=128,sparse=1024,mask=0,ratio=1
     "stc_1":{
         "batch_size": [1],
         "q_seq": [1],
@@ -41,13 +41,13 @@ TEST_PARAMS = {
         "cu_seqlens_q": [None],
         "cu_seqlens_k": [None],
         "seqused_q": [[1]],
-        "seqused_k": [[1024]],
+        "seqused_k": [[2048]],
         "cmp_residual_k": [[0]],
         "max_seqlen_q": [1],
         "quant_mode": [3],
         "layout_query": ["BSND"],
         "layout_key":["PA_BBND"],
-        "sparse_count": [2048],
+        "sparse_count": [1024],
         "sparse_mode": [0],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],

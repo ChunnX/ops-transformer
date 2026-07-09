@@ -83,7 +83,8 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 8192;
 constexpr uint32_t TOPK_THRESHOLD = 2048;  // topk<=2048 使用 s1BaseSize=4/mBaseSize=256，否则 3/192
-constexpr uint32_t G_SIZE_LIMIT = 64;
+constexpr uint32_t G_SIZE_MIN = 1;
+constexpr uint32_t G_SIZE_MAX = 64;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;

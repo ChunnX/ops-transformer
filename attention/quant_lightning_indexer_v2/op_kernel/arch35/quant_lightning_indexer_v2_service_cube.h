@@ -144,12 +144,13 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    mBasicBlock_ = constInfo.mBaseSize;        // 256 或 192
-    mBasicBlockL0_ = constInfo.mBaseSize;      // L0 与 L1 的 M 基本块保持一致
-    queryBufferOffset_ = mBasicBlock_ * D_BASIC_BLOCK;
-    qscaleL1PingpongSize_ = mBasicBlock_ * D_BASIC_BLOCK / 32;
-    l0abBufferOffset_ = mBasicBlockL0_ * D_BASIC_BLOCK_L0;
-    l0cBufferOffset_ = mBasicBlockL0_ * S2_BASIC_BLOCK_L0;
+    mBasicBlock_ = constInfo.mBaseSize;        // 循环步进，保持 mBaseSize
+    mBasicBlockL0_ = constInfo.mBaseSize;      // 循环步进，保持 mBaseSize
+    uint64_t mAlign16 = constInfo.mBaseSizeAlign16;  // NZ 对齐后大小，用于 Buffer 分配
+    queryBufferOffset_ = mAlign16 * D_BASIC_BLOCK;
+    qscaleL1PingpongSize_ = mAlign16 * D_BASIC_BLOCK / 32;
+    l0abBufferOffset_ = mAlign16 * D_BASIC_BLOCK_L0;
+    l0cBufferOffset_ = mAlign16 * S2_BASIC_BLOCK_L0;
     s2BasicBlock_ = 128;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK;
 }
@@ -157,7 +158,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float));
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSizeAlign16, 2) * constInfo_.s2BaseSize * sizeof(float));
         // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * queryBufferOffset_ * sizeof(Q_T));

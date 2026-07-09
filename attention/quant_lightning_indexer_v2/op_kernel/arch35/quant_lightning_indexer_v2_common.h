@@ -137,6 +137,7 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
+    uint32_t mBaseSizeAlign16 = 1ULL;  // mBaseSize 按16向上对齐（NZ格式要求），用于Buffer分配
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
