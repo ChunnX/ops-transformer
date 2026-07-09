@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from enum import IntEnum
 from typing import Optional
 import torch
 import torch_npu
@@ -14,6 +15,9 @@ from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
+class CacheMode(IntEnum):
+    LINEAR_BUFFER = 1
+    RING_BUFFER = 2
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
@@ -42,7 +46,7 @@ class CompressorOpBuilder(OpBuilder):
                                 ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None,
                                 seqused=None, start_pos=None,
-                                coff=1, cache_mode=1):
+                                 coff=1, cache_mode=CacheMode.LINEAR_BUFFER):
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
@@ -76,7 +80,7 @@ def compressor(
             seqused: Optional[torch.Tensor] = None,
             start_pos: Optional[torch.Tensor] = None,
             coff: Optional[int] = 1,
-            cache_mode: Optional[int] = 1) -> torch.tensor:
+            cache_mode: CacheMode = CacheMode.LINEAR_BUFFER) -> torch.tensor:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
@@ -86,3 +90,5 @@ def compressor(
                                     state_block_table, cu_seqlens,
                                     seqused, start_pos,
                                     coff, cache_mode)
+
+compressor.CacheMode = CacheMode
