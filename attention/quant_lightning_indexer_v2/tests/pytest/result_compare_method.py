@@ -20,6 +20,7 @@ import sys
 import ast
 import numpy as np
 from time import time
+
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
@@ -146,13 +147,22 @@ def judge_value_by_isclose(real_data, data_compe):
     rtol = 0.005
     pct_thd = 0.005
     diff_thd = 0.005
+    is_bfloat16 = str(real_data.dtype) in ('bfloat16', 'torch.bfloat16')
+    if isinstance(real_data, torch.Tensor):
+        real_data = real_data.detach().cpu().float().numpy()
+    else:
+        real_data = np.asarray(real_data)
+    if isinstance(data_compe, torch.Tensor):
+        data_compe = data_compe.detach().cpu().float().numpy()
+    else:
+        data_compe = np.asarray(data_compe)
     start = 0
     end = real_data.size - 1
     if end < start:
         end = start
     split_count = int(end - start + 1) if end != start else 1
 
-    if str(real_data.dtype) == 'bfloat16':
+    if is_bfloat16:
         atol = 0.0001
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
                                  equal_nan=True)
@@ -259,7 +269,7 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value, _ = params
@@ -467,47 +477,75 @@ def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk
                                 err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
 
-def check_result_return_value(expect, result, params):
+def _to_flat_numpy(value, dtype=np.int64):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = ast.literal_eval(value)
+    if isinstance(value, torch.Tensor):
+        value = value.detach().cpu().numpy()
+    return np.asarray(value, dtype=dtype).reshape(-1)
+
+
+def _get_tnd_query_prefix(cu_seqlens_q, batch_size):
+    prefix = _to_flat_numpy(cu_seqlens_q)
+    if prefix is None:
+        raise ValueError("cu_seqlens_q is required")
+    if prefix.size == batch_size + 1 and prefix[0] == 0:
+        return prefix
+    if prefix.size == batch_size:
+        return np.concatenate((np.array([0], dtype=prefix.dtype), prefix))
+    raise ValueError(f'invalid TND cu_seqlens_q length: {prefix.size}')
+
+
+def _gather_return_values_by_index(topk_value, result_indices, params, output_idx_offset):
+    batch_size = params[0]
+    q_seq = params[1]
+    q_t_size = params[3]
+    k_head_num = params[6]
+    cu_seqlens_q = params[14]
+    layout_query = params[21]
+    sparse_count = params[23]
+
+    full_score = topk_value.detach().cpu().float().numpy()
+    npu_indices = result_indices.detach().cpu().numpy().reshape(-1, sparse_count)
+    expected = np.full(npu_indices.shape, -np.inf, dtype=np.float32)
+    invalid_index = np.zeros(npu_indices.shape, dtype=bool)
+    offsets = _to_flat_numpy(output_idx_offset)
+    query_prefix = _get_tnd_query_prefix(cu_seqlens_q, batch_size) if layout_query == "TND" else None
+
+    for row_idx in range(npu_indices.shape[0]):
+        if layout_query == "BSND":
+            b_idx, s1_idx, n2_idx = np.unravel_index(
+                row_idx, (batch_size, q_seq, k_head_num))
+            offset_pos = b_idx * q_seq + s1_idx
+        elif layout_query == "TND":
+            t_idx, n2_idx = np.unravel_index(row_idx, (q_t_size, k_head_num))
+            b_idx = int(np.searchsorted(query_prefix[1:], t_idx, side="right"))
+            s1_idx = int(t_idx - query_prefix[b_idx])
+            offset_pos = t_idx
+        else:
+            raise ValueError(f"unsupported query layout: {layout_query}")
+
+        row_indices = npu_indices[row_idx]
+        logical_indices = row_indices.astype(np.int64, copy=True)
+        if offsets is not None:
+            logical_indices[row_indices >= 0] -= int(offsets[offset_pos])
+        row_score = full_score[b_idx, n2_idx, s1_idx]
+        valid = (row_indices >= 0) & (logical_indices >= 0) & (logical_indices < row_score.shape[-1])
+        expected[row_idx, valid] = row_score[logical_indices[valid]]
+        invalid_index[row_idx] = (row_indices >= 0) & ~valid
+
+    return expected, invalid_index
+
+
+def check_result_return_value(expect, result, params, expect_indices=None, result_indices=None,
+                              topk_value=None, output_idx_offset=None):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
-    seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
-
-    if isinstance(cu_seqlens_q, int):
-        cu_seqlens_q = [cu_seqlens_q]
-    elif isinstance(cu_seqlens_q, list):
-        cu_seqlens_q = cu_seqlens_q
-    elif cu_seqlens_q is not None:
-        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
-    
-    if isinstance(cu_seqlens_k, int):
-        cu_seqlens_k = [cu_seqlens_k]
-    elif isinstance(cu_seqlens_k, list):
-        cu_seqlens_k = cu_seqlens_k
-    elif cu_seqlens_k is not None:
-        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
-
-    if isinstance(seqused_q, int):
-        seqused_q = [seqused_q]
-    elif isinstance(seqused_q, list):
-        seqused_q = seqused_q
-    elif seqused_q is not None:
-        seqused_q = ast.literal_eval(seqused_q)
-    
-    if isinstance(seqused_k, int):
-        seqused_k = [seqused_k]
-    elif isinstance(seqused_k, list):
-        seqused_k = seqused_k
-    elif seqused_k is not None:
-        seqused_k = ast.literal_eval(seqused_k)
-
-    if layout_query == 'TND':
-        if len(cu_seqlens_q) == batch_size + 1:
-            cu_seqlens_q = cu_seqlens_q[1:]
-    if layout_key == 'TND':
-        if len(cu_seqlens_k) == batch_size + 1:
-            cu_seqlens_k = cu_seqlens_k[1:]
+    k_scale_datarange, cmp_ratio, return_value, _ = params
 
     npu_pass = True
     max_error = 0
@@ -519,10 +557,15 @@ def check_result_return_value(expect, result, params):
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    cpu_output = expect.cpu().float().numpy()
     npu_output = result.cpu().float().numpy()
-    real_data = result.cpu().float().numpy()
-    data_compe = expect.cpu().float().numpy()
+    if topk_value is not None and result_indices is not None:
+        if output_idx_offset is None:
+            output_idx_offset = params[32]
+        cpu_output, invalid_index = _gather_return_values_by_index(
+            topk_value, result_indices, params, output_idx_offset)
+    else:
+        cpu_output = expect.cpu().float().numpy()
+        invalid_index = np.zeros(cpu_output.shape, dtype=bool)
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
 
@@ -538,25 +581,17 @@ def check_result_return_value(expect, result, params):
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
+    invalid_index_reshape = invalid_index.reshape([total_rows, sparse_count])
+
     start_time = time()
-    invalid_data = cpu_reshape != -1
-    valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
 
     for t_id in range(total_rows):
-        bsn = np.unravel_index(t_id, sp)
-        if layout_query == "TND":
-            if seqused_q is not None:
-                b_idx, s1_idx = find_batch_and_position(seqused_q, bsn[0])
-            else:
-                b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
-            bsn = (b_idx, s1_idx, bsn[-1])
         cur_cpu_output_value = cpu_reshape[t_id, :]
         cur_npu_output_value = npu_reshape[t_id, :]
-        npu_pass_t = True
-        max_re_t = 0
-        valid_len = valid_lens[t_id]
         npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
                                                     cur_cpu_output_value)
+        if np.any(invalid_index_reshape[t_id]):
+            npu_pass_t = False
         if not npu_pass_t:
             npu_pass = False
     end_time = time()

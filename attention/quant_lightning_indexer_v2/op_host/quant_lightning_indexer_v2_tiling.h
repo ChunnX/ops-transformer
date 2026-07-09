@@ -88,6 +88,14 @@ constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
+constexpr int32_t QUANT_MODE_FP8 = 1;
+constexpr int32_t QUANT_MODE_MXFP8 = 3;
+constexpr int32_t QUANT_MODE_HIFLOAT8 = 4;
+constexpr int32_t QUANT_MODE_MXFP4 = 5;
+constexpr uint32_t MX_SCALE_SHAPE_ALIGN = 64;
+constexpr uint32_t MX_E8M0_SCALE_PACK_NUM = 2;  // MX的E8M0 scale形状最后一维打包数为2
+constexpr uint32_t MXFP4_PACK_NUM = 2;  // 每个uint8承载2个FP4 E2M1逻辑元素
+constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;  // MX量化每32个D维元素对应1个E8M0 scale
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLIV2TilingData)
@@ -104,8 +112,8 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
-TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
-TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
+TILING_DATA_FIELD_DEF(uint64_t, keyStride0)
+TILING_DATA_FIELD_DEF(uint64_t, keyDequantScaleStride0)
 TILING_DATA_FIELD_DEF(uint32_t, quantMode)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
@@ -168,10 +176,10 @@ public:
     uint32_t sparseCount = 0;
     uint32_t cmpRatio = 1;
     bool returnValue = false;
-    uint32_t keyStride0 = 0;
-    uint32_t keyDequantScaleStride0 = 0;
-    std::vector<uint32_t> keyStridesVec;
-    std::vector<uint32_t> keyDequantScaleStridesVec;
+    uint64_t keyStride0 = 0;
+    uint64_t keyDequantScaleStride0 = 0;
+    std::vector<int64_t> keyStridesVec;
+    std::vector<int64_t> keyDequantScaleStridesVec;
     int32_t maxSeqlenQ = -1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -254,8 +262,8 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_BF16;
-    std::vector<uint32_t> keyStridesVec_;
-    std::vector<uint32_t> keyDequantScaleStridesVec_;
+    std::vector<int64_t> keyStridesVec_;
+    std::vector<int64_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------

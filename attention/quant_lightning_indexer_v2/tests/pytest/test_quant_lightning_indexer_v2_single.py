@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
+import os
 import torch
 import torch_npu
 from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMS
@@ -20,7 +21,7 @@ import pytest
 
 param_names = [
     "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim",
-    "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
+    "block_size", "block_num", "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
     "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
     "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
     "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value",
@@ -28,8 +29,18 @@ param_names = [
 ]
 
 param_combinations = []
+run_mode_override = os.environ.get("QLIV2_RUN_MODE", "").strip().lower()
+if run_mode_override and run_mode_override not in ("eager", "graph"):
+    raise ValueError(f"unsupported QLIV2_RUN_MODE: {run_mode_override}")
 for params in ENABLED_PARAMS:
-    param_values = [params.get(name, ["eager"]) for name in param_names]
+    param_values = []
+    for name in param_names:
+        if name == "run_mode" and run_mode_override:
+            param_values.append([run_mode_override])
+        elif name == "weight_dtype":
+            param_values.append(params.get(name, params["dequant_dtype"]))
+        else:
+            param_values.append(params.get(name, ["eager"]))
     for combo in itertools.product(*param_values):
         param_combinations.append(dict(zip(param_names, combo)))
 
@@ -48,6 +59,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     block_size = param_combinations['block_size']
     block_num = param_combinations['block_num']
     qk_dtype= param_combinations['qk_dtype']
+    weight_dtype = param_combinations['weight_dtype']
     dequant_dtype = param_combinations['dequant_dtype']
     actual_seq_dtype = param_combinations['actual_seq_dtype']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
@@ -72,7 +84,7 @@ def test_qliv2(param_combinations):   # Init params and tensors
     run_mode = param_combinations['run_mode']
     torch_npu.npu.set_device(0)
     test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+                block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
                 seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                 sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset
@@ -88,10 +100,17 @@ def test_qliv2(param_combinations):   # Init params and tensors
     # print("npu_result", npu_result)
     # print("cpu_result:", cpu_result)
     # Compare result accuracy
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, test_data, cpu_topk_value, npu_topk_value)
+    result, fulfill_percent = result_compare_method.check_result(
+        cpu_result, npu_result, topk_value, output_idx_offset, test_data, cpu_topk_value, npu_topk_value)
     print("result", result)
     print("result", fulfill_percent)
     if return_value:
-        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, test_data)
+        result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(
+            cpu_topk_value, npu_topk_value, test_data, cpu_result, npu_result,
+            topk_value, output_idx_offset)
         print(f"result_return_value: {result_return_value}")
         print(f"result_return_value: {fulfill_precent_return_value}")
+        assert result_return_value == "Pass", (
+            f"return value mismatch, fulfill_percent={fulfill_precent_return_value}"
+        )
+    assert result == "Pass", f"index result mismatch, fulfill_percent={fulfill_percent}"
