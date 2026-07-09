@@ -28,6 +28,7 @@ struct MoeV3Arch35VBSComputeTilingData {
     int64_t lastCorePerLoopElements{0};
     int64_t lastCoreLastLoopElements{0};
     int64_t oneLoopMaxElements{0};
+    
 };
 
 // 多核归并排序阶段
