@@ -21,6 +21,10 @@ import cann_ops_transformer
 import quant_lightning_indexer_v2_golden
 
 
+MXFP8_QK_DTYPES = ('FLOAT8_E4M3FN', torch.float8_e4m3fn)
+MXFP4_QK_DTYPES = ('FLOAT4_E2M1', 'FLOAT4_E2M1FN_X2', torch.float4_e2m1fn_x2)
+
+
 class QLIV2Network(nn.Module):
     def __init__(self):
         super(QLIV2Network, self).__init__()
@@ -49,34 +53,65 @@ class QLIV2Network(nn.Module):
                                                     return_value=return_value)
 
 
+def _prepare_qk_tensors(qk_dtype, quant_mode, tensor_dict):
+    query = tensor_dict["query"]
+    key = tensor_dict["key"]
+    block_fusion = tensor_dict.get("blockFusion")
+
+    if quant_mode == quant_lightning_indexer_v2_golden.QUANT_MODE_MXFP8:
+        if qk_dtype not in MXFP8_QK_DTYPES:
+            raise TypeError(f"MXFP8 graph test requires FLOAT8_E4M3FN q/k, but got {qk_dtype}")
+        # is_batch=True uses FP16 as the serializable carrier for FP8 q/k.
+        query = query.to(dtype=torch.float8_e4m3fn)
+        key = key.to(dtype=torch.float8_e4m3fn)
+    elif quant_mode == quant_lightning_indexer_v2_golden.QUANT_MODE_MXFP4:
+        if qk_dtype not in MXFP4_QK_DTYPES:
+            raise TypeError(f"MXFP4 graph test requires FLOAT4_E2M1FN_X2 q/k, but got {qk_dtype}")
+        if query.dtype != torch.float4_e2m1fn_x2 or key.dtype != torch.float4_e2m1fn_x2:
+            raise TypeError(
+                "MXFP4 graph test requires q/k tensors with torch.float4_e2m1fn_x2 shell dtype, "
+                f"but got query={query.dtype}, key={key.dtype}")
+    elif qk_dtype in MXFP8_QK_DTYPES:
+        query = query.to(dtype=torch.float8_e4m3fn)
+        key = key.to(dtype=torch.float8_e4m3fn)
+        if block_fusion is not None:
+            block_fusion = block_fusion.to(dtype=torch.float8_e4m3fn)
+
+    return query.npu(), key.npu(), block_fusion.npu() if block_fusion is not None else None
+
+
+def _validate_mx_scale_tensors(quant_mode, query_dequant_scale, key_dequant_scale):
+    if not quant_lightning_indexer_v2_golden.is_mx_quant_mode(quant_mode):
+        return
+    expected_dtype = torch.float8_e8m0fnu
+    if query_dequant_scale.dtype != expected_dtype or key_dequant_scale.dtype != expected_dtype:
+        raise TypeError(
+            "MXFP8/MXFP4 graph test requires E8M0 q/k scale tensors, "
+            f"but got query_scale={query_dequant_scale.dtype}, key_scale={key_dequant_scale.dtype}")
+
+
 def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
     """
     统一处理 tensor 准备和 metadata 构造（共用逻辑）。
     兼容两个来源：qliv2_output_single(is_batch=True) 返回值(已在NPU) 和 .pt文件加载(在CPU)。
     """
     qk_dtype = params[10]
-
-    if qk_dtype == 'FLOAT8_E4M3FN' or qk_dtype == torch.float8_e4m3fn:
-        query = tensor_dict["query"].to(dtype=torch.float8_e4m3fn).npu()
-        key = tensor_dict["key"].to(dtype=torch.float8_e4m3fn).npu()
-        if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
-            blockFusion = tensor_dict['blockFusion'].to(dtype=torch.float8_e4m3fn).npu()
-    else:
-        query = tensor_dict["query"].npu()
-        key = tensor_dict["key"].npu()
-        if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
-            blockFusion = tensor_dict['blockFusion'].npu()
+    quant_mode = int(tensor_dict["quant_mode"])
+    query, key, blockFusion = _prepare_qk_tensors(qk_dtype, quant_mode, tensor_dict)
 
     weights = tensor_dict["weights"].npu()
-    query_dequant_scale = tensor_dict["query_dequant_scale"].npu()
-    key_dequant_scale = tensor_dict["key_dequant_scale"].npu()
+    query_dequant_scale_cpu = tensor_dict["query_dequant_scale"]
+    key_dequant_scale_cpu = tensor_dict["key_dequant_scale"]
+    _validate_mx_scale_tensors(quant_mode, query_dequant_scale_cpu, key_dequant_scale_cpu)
+    query_dequant_scale = query_dequant_scale_cpu.npu()
+    key_dequant_scale = key_dequant_scale_cpu.npu()
 
     if 'blockFusion' in tensor_dict and tensor_dict['blockFusion'] is not None:
         block_num = int(params[9])
         block_size = int(params[8])
         head_dim = int(params[7])
         k_head_num = int(params[6])
-        dequant_dtype_str = params[11]
+        dequant_dtype_str = params[12]
         if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
         elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
@@ -94,7 +129,6 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
     block_table = tensor_dict["block_table"].npu() if tensor_dict["block_table"] is not None else None
     cmp_residual_k_for_npu = tensor_dict["cmp_residual_k_for_npu"].npu() if tensor_dict.get("cmp_residual_k_for_npu") is not None else None
 
-    quant_mode = tensor_dict["quant_mode"]
     layout_query = tensor_dict["layout_query"]
     layout_key = tensor_dict["layout_key"]
     sparse_count = tensor_dict["sparse_count"]
@@ -140,7 +174,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "seqused_k": seqused_k,
         "cmp_residual_k": cmp_residual_k_for_npu,
         "output_idx_offset": output_idx_offset,
-        "max_seqlen_q": params[18],
+        "max_seqlen_q": params[19],
         "block_table": block_table,
         "metadata": metadata,
         "quant_mode": quant_mode,
@@ -149,7 +183,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "sparse_count": sparse_count,
         "sparse_mode": sparse_mode,
         "cmp_ratio": cmp_ratio,
-        "return_value": params[30],
+        "return_value": params[31],
     }
     return run_args
 
@@ -162,10 +196,12 @@ def _qliv2_run_compiled_graph(run_args):
     config.mode = "reduce-overhead"
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
-    npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=False, backend=npu_backend, dynamic=False)
+    fullgraph = quant_lightning_indexer_v2_golden.is_mx_quant_mode(run_args["quant_mode"])
+    npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=fullgraph, backend=npu_backend, dynamic=False)
     npu_result, npu_topk_value = npu_mode(**run_args)
     torch.npu.synchronize()
-    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    npu_topk_value, npu_sort_order = npu_topk_value.sort(dim=-1, descending=True)
+    npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
     return npu_result, npu_topk_value
 
 
