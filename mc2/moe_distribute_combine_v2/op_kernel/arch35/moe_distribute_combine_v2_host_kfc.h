@@ -654,80 +654,88 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
         return;
     }
     
-    // 1. 定义测试参数
-    constexpr uint32_t TEST_DATA_SIZE = 256;  // 测试数据大小：256字节
-    constexpr uint32_t TEST_DATA_ALIGN = 32;  // 32字节对齐
+    // ====== 1. 定义测试参数 ======
+    constexpr uint32_t TEST_DATA_SIZE = 256;   // 测试数据大小：256字节
+    constexpr uint32_t HCOMM_WORKSPACE_SIZE = 1024;  // Hcomm workspace大小
     
-    // 2. 准备通信buffer - 使用window地址作为RDMA通信的缓冲区
-    // 注意：这里使用window地址，这些地址已经在host侧注册为RDMA可访问的内存
-    
-    // 3. 获取channel handle
-    // 假设channel已经通过Mc2Context获取并存储在某个地方
-    // 这里需要从context中获取
+    // ====== 2. 获取channel handle ======
+    // 从Mc2MoeContext中获取channel handle
     __gm__ Mc2MoeContext* context_{nullptr};
-    ChannelHandle channelHandle = context_->hcommHandle_[0];  // TODO: 从mc2Context中获取实际的channel handle
+    // TODO: 根据实际情况获取context指针
+    // context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(workspaceGM_ + CONTEXT_OFFSET);
+    ChannelHandle channelHandle = context_->hcommHandle_[0];
     
+    // ====== 3. 初始化Hcomm workspace ======
+    TBuf<> hcommWorkspaceBuf;
+    tpipe_->InitBuffer(hcommWorkspaceBuf, HCOMM_WORKSPACE_SIZE);
+    LocalTensor<uint8_t> hcommWorkspace = hcommWorkspaceBuf.Get<uint8_t>();
+    
+    Hcomm<COMM_PROTOCOL_ROCE> hcomm;
+    int32_t initRet = hcomm.Init(hcommWorkspace, HCOMM_WORKSPACE_SIZE);
+    if (initRet != 0) {
+        printf("[Rank %u] Hcomm Init failed: %d\n", epRankId_, initRet);
+        return;
+    }
+    printf("[Rank %u] Hcomm Init success\n", epRankId_);
+    
+    // ====== 4. 准备GM通信buffer ======
+    GM_ADDR localWindowAddr = GetWinAddrByRankId(epRankId_);
+    GM_ADDR peerWindowAddr = GetWinAddrByRankId(1 - epRankId_);
+    
+    // ====== 5. 根据rank执行不同操作 ======
     if (epRankId_ == 0) {
-        // ====== Rank 0: 发送测试 ======
-        printf("[Rank 0] send test\n");
-
-        // 准备UB buffer用于构造发送数据
+        // ==================== Rank 0: WriteNbi 发送测试 ====================
+        printf("[Rank 0] ===== WriteNbi Send Test Start =====\n");
+        
+        // 5.1 准备发送数据到UB
         TBuf<> sendBuf;
         tpipe_->InitBuffer(sendBuf, TEST_DATA_SIZE);
-        LocalTensor<uint32_t> sendDataUb = sendBuf.Get<uint32_t>();
+        LocalTensor<uint32_t> sendUb = sendBuf.Get<uint32_t>();
         
-        // 填充测试数据：递增的特征值
         uint32_t dataCount = TEST_DATA_SIZE / sizeof(uint32_t);
         for (uint32_t i = 0; i < dataCount; i++) {
-            sendDataUb.SetValue(i, 0xDEAD0000 + i);
+            sendUb.SetValue(i, 0xDEAD0000 + i);  // 填充特征数据
         }
         
-        // 将数据写入本地window地址（作为发送源）
-        GM_ADDR localWindowAddr = GetWinAddrByRankId(0);
-        GM_ADDR remoteWindowAddr = GetWinAddrByRankId(1);
-        
+        // 5.2 将数据拷贝到GM
         GlobalTensor<uint32_t> gmLocalBuf;
         gmLocalBuf.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localWindowAddr));
-        DataCopy(gmLocalBuf, sendDataUb, dataCount);
+        DataCopy(gmLocalBuf, sendUb, dataCount);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        printf("[Rank 0] Data prepared in local window: 0x%lx\n", localWindowAddr);
         
-        // 创建Hcomm对象
-        Hcomm<CommEngine::AIV, CommProtocol::ROCE> hcomm;
-        
-        // 使用Write接口发送数据
-        // Write<commit=false> 表示先不提交，手动控制提交时机
-        HcommHandle writeHandle = hcomm.Write<false>(channelHandle, 
-                                                      remoteWindowAddr,  // 目标地址：Rank 1的window
-                                                      localWindowAddr,   // 源地址：Rank 0的window
-                                                      TEST_DATA_SIZE);   // 数据大小
-        
-        if (writeHandle >= 0) {
-            printf("[Rank 0] Write task created, handle: %d\n", writeHandle);
-            
-            // 显式提交Write任务
-            int32_t commitRet = hcomm.Commit(writeHandle);
-            printf("[Rank 0] Commit result: %d\n", commitRet);
-            
-            // 等待Write任务完成
-            int32_t waitRet = hcomm.Wait(writeHandle);
-            printf("[Rank 0] Wait result: %d\n", waitRet);
-            
-            if (waitRet == 0) {
-                printf("[Rank 0] ROCE Write completed successfully!\n");
-            } else {
-                printf("[Rank 0] ROCE Write failed with error: %d\n", waitRet);
-            }
-        } else {
-            printf("[Rank 0] Failed to create Write task\n");
+        // 5.3 执行WriteNbi（不自动提交）
+        int32_t writeRet = hcomm.WriteNbi<false>(channelHandle,
+                                                  peerWindowAddr,   // 目标：Rank 1的window
+                                                  localWindowAddr,  // 源：Rank 0的window
+                                                  TEST_DATA_SIZE);
+        if (writeRet != 0) {
+            printf("[Rank 0] WriteNbi failed: %d\n", writeRet);
+            return;
         }
+        printf("[Rank 0] WriteNbi task submitted\n");
+        
+        // 5.4 提交任务
+        int32_t commitRet = hcomm.Commit(channelHandle);
+        if (commitRet != 0) {
+            printf("[Rank 0] Commit failed: %d\n", commitRet);
+            return;
+        }
+        printf("[Rank 0] Commit success\n");
+        
+        // 5.5 等待任务完成（Drain阻塞等待）
+        int32_t drainRet = hcomm.Drain(channelHandle);
+        if (drainRet != 0) {
+            printf("[Rank 0] Drain failed: %d\n", drainRet);
+            return;
+        }
+        printf("[Rank 0] Drain success, WriteNbi completed!\n");
         
     } else if (epRankId_ == 1) {
-        // ====== Rank 1: 接收测试 ======
+        // ==================== Rank 1: ReadNbi 接收测试 ====================
+        printf("[Rank 1] ===== ReadNbi Receive Test Start =====\n");
         
-        GM_ADDR localWindowAddr = GetWinAddrByRankId(1);
-        GM_ADDR remoteWindowAddr = GetWinAddrByRankId(0);
-        
-        // 先清零本地window
+        // 5.1 先清零本地window
         TBuf<> zeroBuf;
         tpipe_->InitBuffer(zeroBuf, TEST_DATA_SIZE);
         LocalTensor<uint32_t> zeroUb = zeroBuf.Get<uint32_t>();
@@ -737,68 +745,64 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
         gmZeroBuf.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localWindowAddr));
         DataCopy(gmZeroBuf, zeroUb, TEST_DATA_SIZE / sizeof(uint32_t));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        printf("[Rank 1] Local window cleared\n");
         
-        // 创建Hcomm对象
-        Hcomm<CommEngine::AIV, CommProtocol::ROCE> hcomm;
+        // 5.2 执行ReadNbi（不自动提交）
+        int32_t readRet = hcomm.ReadNbi<false>(channelHandle,
+                                                localWindowAddr,  // 目标：Rank 1的window
+                                                peerWindowAddr,   // 源：Rank 0的window
+                                                TEST_DATA_SIZE);
+        if (readRet != 0) {
+            printf("[Rank 1] ReadNbi failed: %d\n", readRet);
+            return;
+        }
+        printf("[Rank 1] ReadNbi task submitted\n");
         
-        // 使用Read接口从Rank 0读取数据
-        // Read<commit=false> 表示先不提交
-        HcommHandle readHandle = hcomm.Read<false>(channelHandle,
-                                                    localWindowAddr,    // 目标地址：Rank 1的window
-                                                    remoteWindowAddr,   // 源地址：Rank 0的window
-                                                    TEST_DATA_SIZE);    // 数据大小
+        // 5.3 提交任务
+        int32_t commitRet = hcomm.Commit(channelHandle);
+        if (commitRet != 0) {
+            printf("[Rank 1] Commit failed: %d\n", commitRet);
+            return;
+        }
+        printf("[Rank 1] Commit success\n");
         
-        if (readHandle >= 0) {
-            printf("[Rank 1] Read task created, handle: %d\n", readHandle);
-            
-            // 显式提交Read任务
-            int32_t commitRet = hcomm.Commit(readHandle);
-            printf("[Rank 1] Commit result: %d\n", commitRet);
-            
-            // 等待Read任务完成
-            int32_t waitRet = hcomm.Wait(readHandle);
-            printf("[Rank 1] Wait result: %d\n", waitRet);
-            
-            if (waitRet == 0) {
-                printf("[Rank 1] ROCE Read completed successfully!\n");
-                
-                // 验证读取到的数据
-                TBuf<> recvBuf;
-                tpipe_->InitBuffer(recvBuf, TEST_DATA_SIZE);
-                LocalTensor<uint32_t> recvUb = recvBuf.Get<uint32_t>();
-                
-                GlobalTensor<uint32_t> gmRecvBuf;
-                gmRecvBuf.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localWindowAddr));
-                DataCopy(recvUb, gmRecvBuf, TEST_DATA_SIZE / sizeof(uint32_t));
-                SyncFunc<AscendC::HardEvent::MTE2_S>();
-                
-                // 打印接收到的数据（前16个值）
-                printf("[Rank 1] Received data content:\n");
-                bool dataValid = true;
-                for (uint32_t i = 0; i < 16 && i < TEST_DATA_SIZE / sizeof(uint32_t); i++) {
-                    uint32_t value = recvUb.GetValue(i);
-                    uint32_t expected = 0xDEAD0000 + i;
-                    printf("  [%u] = 0x%08x (expected: 0x%08x) %s\n", 
-                           i, value, expected, (value == expected) ? "OK" : "MISMATCH");
-                    if (value != expected) {
-                        dataValid = false;
-                    }
-                }
-                
-                if (dataValid) {
-                    printf("[Rank 1] ROCE communication test PASSED!\n");
-                } else {
-                    printf("[Rank 1] ROCE communication test FAILED - data corruption detected\n");
-                }
-            } else {
-                printf("[Rank 1] ROCE Read failed with error: %d\n", waitRet);
+        // 5.4 等待任务完成
+        int32_t drainRet = hcomm.Drain(channelHandle);
+        if (drainRet != 0) {
+            printf("[Rank 1] Drain failed: %d\n", drainRet);
+            return;
+        }
+        printf("[Rank 1] Drain success, ReadNbi completed!\n");
+        
+        // 5.5 验证接收到的数据
+        TBuf<> recvBuf;
+        tpipe_->InitBuffer(recvBuf, TEST_DATA_SIZE);
+        LocalTensor<uint32_t> recvUb = recvBuf.Get<uint32_t>();
+        
+        GlobalTensor<uint32_t> gmRecvBuf;
+        gmRecvBuf.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localWindowAddr));
+        DataCopy(recvUb, gmRecvBuf, TEST_DATA_SIZE / sizeof(uint32_t));
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        
+        printf("[Rank 1] Received data verification:\n");
+        bool dataValid = true;
+        for (uint32_t i = 0; i < 16 && i < TEST_DATA_SIZE / sizeof(uint32_t); i++) {
+            uint32_t value = recvUb.GetValue(i);
+            uint32_t expected = 0xDEAD0000 + i;
+            printf("  [%u] = 0x%08x (expected: 0x%08x) %s\n",
+                   i, value, expected, (value == expected) ? "OK" : "MISMATCH");
+            if (value != expected) {
+                dataValid = false;
             }
+        }
+        
+        if (dataValid) {
+            printf("[Rank 1] ===== ROCE ReadNbi Test PASSED! =====\n");
         } else {
-            printf("[Rank 1] Failed to create Read task\n");
+            printf("[Rank 1] ===== ROCE ReadNbi Test FAILED! =====\n");
         }
     }
     
-    // 同步所有rank
     AscendC::SyncAll<true>();
 }
 
