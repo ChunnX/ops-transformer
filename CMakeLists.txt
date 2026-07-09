@@ -604,7 +604,7 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        foreach (_suffix a2 a3 a5 apt)
+        foreach (_suffix a2 a3 apt)
             if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py)
                 install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py
                     DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
