@@ -361,7 +361,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
         GetTndSeqLen(usedT1Index, bIndex);
         DLIKGradKRunInfo kRunInfos[MODE_NUM_3];
         if (currentS2Size <= 0) {
-            sTaskId++;
+            // sTaskId++;
             continue;
         }
         for (this->s2Offset = 0; this->s2Offset < currentS2Size; this->s2Offset += VEC_SY_BASESIZE) {
@@ -531,7 +531,6 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     runInfo.accumS1Idx = runInfo.t1Index;
     runInfo.accumS2Idx = runInfo.t2Index;
     runInfo.taskStep = TASK_INIT;
-
     runInfo.kBaseSize = 2048;
     runInfo.s2SparseLen = currentS2Size;
     runInfo.s2RealSize = currentS2Size;
