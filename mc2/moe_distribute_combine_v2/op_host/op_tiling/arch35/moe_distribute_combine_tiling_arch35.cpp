@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_tiling_a5.cc
+ * \file moe_distribute_combine_tiling_arch35.cpp
  * \brief
  */
 
