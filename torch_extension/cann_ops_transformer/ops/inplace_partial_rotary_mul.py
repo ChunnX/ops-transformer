@@ -15,25 +15,64 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
+class InplacePartialRotaryMulFn(torch.autograd.Function):
+    """Autograd wrapper: forward -> inplace_partial_rotary_mul,
+    backward -> inplace_partial_rotary_mul_backward.
+
+    Backward does NOT compute gradients for r1 (cos) and r2 (sin).
+    These tensors are treated as constants in RoPE usage.
+    """
+
+    @staticmethod
+    def forward(ctx, x, r1, r2, rotary_mode, partial_slice):
+        # backward 只需要 r1、r2 来计算 RoPE 的逆变换，不需要 x 本身
+        ctx.save_for_backward(r1, r2)
+        ctx.rotary_mode = rotary_mode
+        ctx.partial_slice = partial_slice
+        # 就地修改 x 的 partial_slice 部分
+        torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
+            x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice
+        )
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        r1, r2 = ctx.saved_tensors
+        # grad_output 就地变换：dy → dx（仅 partial_slice 部分）
+        # backward 不计算 dcos/dsin → r1、r2 梯度为 None
+        torch.ops.cann_ops_transformer.inplace_partial_rotary_mul_backward(
+            grad_output,
+            r1,
+            r2,
+            rotary_mode=ctx.rotary_mode,
+            partial_slice=ctx.partial_slice,
+        )
+        # 返回值对应 forward 的 5 个参数: x, r1, r2, rotary_mode, partial_slice
+        return grad_output, None, None, None, None
+
+
 class InplacePartialRotaryMulOpBuilder(OpBuilder):
     def __init__(self):
-        super(InplacePartialRotaryMulOpBuilder, self).__init__("inplace_partial_rotary_mul")
+        super(InplacePartialRotaryMulOpBuilder, self).__init__(
+            "inplace_partial_rotary_mul"
+        )
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/inplace_partial_rotary_mul.cpp']
+        return ["ops/csrc/inplace_partial_rotary_mul.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
         return (
             "inplace_partial_rotary_mul(Tensor(a!) x, Tensor r1, Tensor r2, *, "
-            "str rotary_mode=\"interleave\", int[2] partial_slice=[0, 0]) -> ()"
+            'str rotary_mode="interleave", int[2] partial_slice=[0, 0]) -> ()'
         )
 
     def register_meta(self):
         """
         Registers the Meta implementation.
         """
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def inplace_partial_rotary_mul_meta(
             x: torch.Tensor,
@@ -45,7 +84,9 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
         ) -> None:
             partial_slice = [0, 0] if partial_slice is None else partial_slice
             if x.dim() != 4:
-                raise ValueError(f"Input tensor x's dim num should be 4, actual {x.dim()}.")
+                raise ValueError(
+                    f"Input tensor x's dim num should be 4, actual {x.dim()}."
+                )
             if rotary_mode != "interleave":
                 raise ValueError("rotary_mode only supports 'interleave'.")
             if len(partial_slice) != 2:
@@ -86,6 +127,12 @@ def inplace_partial_rotary_mul(
     """
     Applies partial rotary position embedding to ``x`` in-place on NPU.
 
+    Supports automatic differentiation when ``x.requires_grad`` is True:
+    the backward pass will automatically call
+    :func:`inplace_partial_rotary_mul_backward` to compute the gradient of
+    ``x``.  Gradients for ``r1`` and ``r2`` are NOT computed (treated as
+    constants, which is the standard RoPE usage).
+
     Args:
         x (Tensor): Input tensor to be modified in-place.
         r1 (Tensor): Cosine component tensor.
@@ -96,5 +143,13 @@ def inplace_partial_rotary_mul(
             dimension. Defaults to ``[0, 0]``.
     """
     partial_slice = [0, 0] if partial_slice is None else partial_slice
-    return torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
-        x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice)
+
+    # r1/r2 在 RoPE 场景中通常不需要梯度，此处仅按 x.requires_grad 判断
+    if x.requires_grad:
+        InplacePartialRotaryMulFn.apply(x, r1, r2, rotary_mode, partial_slice)
+        return
+
+    # 非 autograd 路径：直接走 backend
+    torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
+        x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice
+    )
