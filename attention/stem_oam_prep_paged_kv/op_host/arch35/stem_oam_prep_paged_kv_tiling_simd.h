@@ -24,23 +24,6 @@ namespace optiling {
 
 constexpr uint64_t MAX_KV_PADDED = 262144;
 
-BEGIN_TILING_DATA_DEF(StemPrepKVTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, batchSize);
-TILING_DATA_FIELD_DEF(uint32_t, numKvHeads);
-TILING_DATA_FIELD_DEF(uint32_t, totalBh);
-TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
-TILING_DATA_FIELD_DEF(uint32_t, totalBlocks);
-TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize);
-TILING_DATA_FIELD_DEF(uint32_t, dimQk);
-TILING_DATA_FIELD_DEF(uint32_t, maxKvBlocks);
-TILING_DATA_FIELD_DEF(uint32_t, stemBlockSize);
-TILING_DATA_FIELD_DEF(uint32_t, stemStride);
-TILING_DATA_FIELD_DEF(float, lambdaMag);
-TILING_DATA_FIELD_DEF(uint32_t, kvLayout);
-TILING_DATA_FIELD_DEF(uint64_t, vFlatOutGM);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(StemOamPrepPagedKV, StemPrepKVTilingData)
-
 struct StemPrepKVCompileInfo {
     uint32_t coreNum = 0;
     uint64_t ubSize = 0;
