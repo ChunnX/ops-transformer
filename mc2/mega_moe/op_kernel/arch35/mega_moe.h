@@ -1148,9 +1148,13 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
+    // Tensor用处：Unpermute 函数用于存储 mte2 搬入 token；
+    // Tensor大小：3 * 单个 token 长度，2 块用于 mte2 搬运 doubleBuffer，1 块存储 Cast 输出结果用于搬出；
     uint32_t dataResAddr = 0;
     dataResTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, dataResAddr,
         dataResBufAlign / sizeof(bfloat16_t));
+    // Tensor用处：Unpermute 函数用于存储 token Cast 目的 Tensor；
+    // Tensor大小：dataResTensor_ 开设大小 × HALF_TO_FP32；
     uint32_t dataResFp32Addr = dataResAddr + dataResBufAlign;
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr,
         dataResFp32BufAlign / sizeof(float));
@@ -1161,6 +1165,8 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
     if (batchLen > coreLen) { batchLen = coreLen; }
 
     // ── weight buffer（在 scale 之前，与 master 顺序一致）──
+    // Tensor用处：用于存储 topKWeight；
+    // Tensor大小：batchLen × topK_ × sizeof(float) align 到 32 字节对齐；
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr,
@@ -1168,6 +1174,8 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
     tempAddr += topKWeightsBufAlign;
 
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+        // Tensor用处：Unpermute 中 bf16 weight 搬运中转 buffer；
+        // Tensor大小：batchLen × topK_ × sizeof(bfloat16_t) align 到 32 字节；
         uint32_t tempBufAlign = Ops::Base::CeilAlign(
             static_cast<uint32_t>(batchLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
         topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr,
@@ -1177,11 +1185,15 @@ __aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit(in
 
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         uint32_t scaleNum = Ops::Base::CeilDiv(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
+        // Tensor大小：scaleNum × sizeof(bfloat16_t) × DOUBLE_BUFFER × HALF_TO_FP32
         uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
             (scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
             TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
+        // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
+        // Tensor大小：scaleNum × sizeof(float) × DOUBLE_BUFFER × HALF_TO_FP32
         uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
             (scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
