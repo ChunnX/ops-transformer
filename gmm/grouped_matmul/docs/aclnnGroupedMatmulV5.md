@@ -293,9 +293,9 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - weight为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅 1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
 - groupListOptional：out中 TensorList长度为 1 时，groupList约束输出数据有效范围，未指定部分不参与更新。
-- groupListType=0：groupListOptional须为非负单调非递减数列（累积和）。
-- groupListType=1：须为非负数列（各组大小）。
-- groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
+- groupListType=0：groupListOptional须为非负单调非递减数列（累积和）。以 shape $M=789$、$K=4096$、$N=7168$、$E=9$（第 0 组 123 token，第 2/5 组各 333 token，其余为空）为例：`[123, 123, 456, 456, 456, 789, 789, 789, 789]`
+- groupListType=1：须为非负数列（各组大小）。举例：`[123, 0, 333, 0, 0, 333, 0, 0, 0]`
+- groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。举例：`[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置）
 
 ### Ascend 950PR/Ascend 950DT
 
@@ -679,16 +679,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 ### 配置示例
 
-#### groupListOptional 配置示例
-
-以 shape：$M=789$、$K=4096$、$N=7168$、$E=9$（其中第 0 组 123 token，第 2/5 组各 333 token，其余为空）为例：
-
-| groupListType | groupListOptional 值 |
-|:---:|:---|
-| 0（累积和） | `[123, 123, 456, 456, 456, 789, 789, 789, 789]` |
-| 1（各组大小） | `[123, 0, 333, 0, 0, 333, 0, 0, 0]` |
-| 2（索引+大小） | `[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置） |
-
 <a id="tuningconfigoptional-配置示例"></a>
 
 #### tuningConfigOptional 配置示例
@@ -714,9 +704,9 @@ tuningConfigOptional为 Host侧 aclIntArray，存储 INT64 元素。
 | 场景 | 产品型号 | 示例文件 | 说明 |
 |------|:---:|------|------|
 | 非量化 | ALL | [test_aclnn_grouped_matmul.cpp](../examples/test_aclnn_grouped_matmul.cpp) | 非量化基础示例（涵盖通用调用流程） |
-| 全量化-A8W8 / 静态量化 | ALL | [test_aclnn_grouped_matmul_a8w8.cpp](../examples/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, perTokenScale=nullptr, out=BF16 |
-| 伪量化-A16W8 | ALL | [test_aclnn_grouped_matmul_a16w8.cpp](../examples/test_aclnn_grouped_matmul_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16 |
-| 伪量化-A16W4 | ALL | [test_aclnn_grouped_matmul_a16w4.cpp](../examples/test_aclnn_grouped_matmul_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16 |
+| 伪量化-A16W8 | ALL | [test_aclnn_grouped_matmul_a16w8.cpp](../examples/test_aclnn_grouped_matmul_a16w8.cpp) | x=BF16, weight=INT8, antiquantScale=BF16, antiquantOffset=BF16 |
+| 伪量化-A16W4 | ALL | [test_aclnn_grouped_matmul_a16w4.cpp](../examples/test_aclnn_grouped_matmul_a16w4.cpp) | x=BF16, weight=INT4, antiquantScale=BF16, antiquantOffset=BF16 |
 | MX量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | Ascend 950 MX量化示例 |
 | 全量化（动态 K-C） | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
 | G-B量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
+| 全量化A8W8 | Atlas A3/A2 系列产品 | [test_aclnn_grouped_matmul_a8w8.cpp](../examples/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, out=BF16 |

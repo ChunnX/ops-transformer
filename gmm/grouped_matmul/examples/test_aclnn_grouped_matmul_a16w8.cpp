@@ -10,10 +10,10 @@
 
 /*!
  * \file test_aclnn_grouped_matmul_v5_a16w8.cpp
- * \brief 伪量化 A16W8 示例（Atlas A2/A3 设备）
+ * \brief 伪量化 A16W8 公共示例
  *        x=BF16, weight=INT8, antiquantScale=BF16, out=BF16
  *        groupType=0, splitItem=3, groupListType=0
- *        perchannel 模式，对称反量化（antiquantOffset 为空）
+ *        perchannel 模式，antiquantOffset不为空
  */
 
 #include <iostream>
@@ -118,12 +118,14 @@ int aclnnGroupedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::vector<std::vector<int64_t>> xShape = {{m, k}};
     std::vector<std::vector<int64_t>> weightShape = {{groupnum, k, n}};
     std::vector<std::vector<int64_t>> antiquantScaleShape = {{groupnum, n}};
+    std::vector<std::vector<int64_t>> antiquantOffsetShape = {{groupnum, n}};
     std::vector<std::vector<int64_t>> yShape = {{m, n}};
     std::vector<int64_t> groupListShape = {{groupnum}};
 
     void *xDeviceAddr = nullptr;
     void *weightDeviceAddr = nullptr;
     void *antiquantScaleDeviceAddr = nullptr;
+    void *antiquantOffsetDeviceAddr = nullptr;
     void *yDeviceAddr = nullptr;
     void *groupListDeviceAddr = nullptr;
 
@@ -152,6 +154,7 @@ int aclnnGroupedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::vector<int16_t> xHostData(m * k, 10);                          // BF16 以 uint16 存储
     std::vector<int8_t> weightHostData(groupnum * k * n, 10);           // INT8
     std::vector<int16_t> antiquantScaleHostData(groupnum * n, 10);      // BF16
+    std::vector<int16_t> antiquantOffsetHostData(groupnum * n, 0);      // BF16, 对称量化填 0
     std::vector<uint16_t> yHostData(m * n, 0);
     std::vector<int64_t> groupListData = {256L, 512L};
 
@@ -175,6 +178,14 @@ int aclnnGroupedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantScaleTensorPtr(
         antiquantScale, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> antiquantScaleDeviceAddrPtr(antiquantScaleDeviceAddr, aclrtFree);
+
+    // 创建 antiquantOffset aclTensorList (BF16, perchannel, 对称量化填 0)
+    ret = CreateAclTensorList(antiquantOffsetHostData, antiquantOffsetShape, &antiquantOffsetDeviceAddr,
+                              aclDataType::ACL_BF16, &antiquantOffset);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantOffsetTensorPtr(
+        antiquantOffset, aclDestroyTensorList);
+    std::unique_ptr<void, aclError (*)(void *)> antiquantOffsetDeviceAddrPtr(antiquantOffsetDeviceAddr, aclrtFree);
 
     // 创建 y aclTensorList (BF16)
     ret = CreateAclTensorList(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &out);
