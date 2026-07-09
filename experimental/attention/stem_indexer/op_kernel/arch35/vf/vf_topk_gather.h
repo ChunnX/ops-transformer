@@ -18,8 +18,9 @@
 
 namespace SITopkb32gather {
 template<typename T>
-__simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
-                                       uint16_t vfLoop, bool init)
+__simd_callee__ inline void HistogramsFirstProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                               uint16_t vfLoop, uint32_t offset,
+                                               uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
@@ -28,8 +29,6 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     // 计算直方图cout0 0-127 cout1 128-255
     MicroAPI::RegTensor<uint16_t> cout0;
     MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
 
     MicroAPI::RegTensor<uint32_t> cout0U32Even;
     MicroAPI::RegTensor<uint32_t> cout0U32Odd;
@@ -54,10 +53,15 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {MicroAPI::RegLayout::ONE,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
+    __ubuf__ uint32_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
+    MicroAPI::Duplicate(cout0, 0);
+    MicroAPI::Duplicate(cout1, 0);
     for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16,
+                                                                           roundInputBuf + i * 256);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16,
-                                                                           vreg2U16, inputBuf + (i * 256) + 128);
+                                                                           vreg2U16, roundInputBuf + (i * 256) + 128);
 
         MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t>&)vreg0U16,
                                              (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
@@ -72,23 +76,45 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf, cout0U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even,
                                                                         cout0U32Odd, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, cout1U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf + 128, cout1U32Even,
                                                                         cout1U32Odd, pregB32);
 }
 
-__simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* nkValueBuf,
-                                          __ubuf__ uint32_t* histogramsBuf, uint32_t bottomK)
+template<typename T>
+__simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                       uint16_t vfLoop, bool init, uint16_t loopM, uint32_t offset,
+                                       uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)init;
+    (void)loopM;
+    HistogramsFirstProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 0, rowIdx0);
+    HistogramsFirstProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 1, rowIdx1);
+    HistogramsFirstProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 2, rowIdx2);
+    HistogramsFirstProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 3, rowIdx3);
+}
+
+__simd_callee__ inline void FindFirstTargetBinProcessRow(__ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* nkValueBuf,
+                                                   __ubuf__ uint32_t* histogramsBuf, uint32_t topK,
+                                                   uint32_t validLen, uint32_t rowSlot)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    __ubuf__ uint32_t* roundIdx0Buf = idx0Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundNkValueBuf = nkValueBuf + rowSlot * 64;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
 
     MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
     MicroAPI::UnalignRegForStore alignIdx0;
 
+    MicroAPI::RegTensor<uint32_t> topKReg;
+    MicroAPI::Duplicate(topKReg, topK);
+    MicroAPI::RegTensor<uint32_t> validLenPlus1;
+    MicroAPI::Duplicate(validLenPlus1, validLen + 1);
     MicroAPI::RegTensor<uint32_t> btmK;
-    MicroAPI::Duplicate(btmK, bottomK);
+    MicroAPI::Sub(btmK, validLenPlus1, topKReg, pregB32);
 
     for (uint16_t i = 0; i < (uint16_t)(4); ++i) {
         MicroAPI::RegTensor<int32_t> idxC;
@@ -98,19 +124,19 @@ __simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t* idx0Buf, __ubuf__ u
         MicroAPI::MaskReg pregGE = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
         MicroAPI::Arange(idxC, i * 64);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, roundHistBuf + i * 64);
         MicroAPI::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, pregB32);
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdx0,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          pregGE);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(idx0Buf, sqzIdx0, alignIdx0);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundIdx0Buf, sqzIdx0, alignIdx0);
     }
-    MicroAPI::StoreUnAlignPost(idx0Buf, alignIdx0);
+    MicroAPI::StoreUnAlignPost(roundIdx0Buf, alignIdx0);
 
     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 
     MicroAPI::RegTensor<uint32_t> idx0;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, roundIdx0Buf);
 
     MicroAPI::RegTensor<uint8_t> idxAll1;
     MicroAPI::RegTensor<uint32_t> idxPrev0;
@@ -125,27 +151,38 @@ __simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t* idx0Buf, __ubuf__ u
     MicroAPI::Sub(idxPrev0, idx0, (MicroAPI::RegTensor<uint32_t>&)idxAll1, pregB32);
     MicroAPI::ShiftRights(idxPrev0, idxPrev0, (int16_t)24, pregB32);
 
-    MicroAPI::Gather(prevBinValue, histogramsBuf, idxPrev0, pregB32);
+    MicroAPI::Gather(prevBinValue, roundHistBuf, idxPrev0, pregB32);
     MicroAPI::Select(prevBinValue, zeroAll, prevBinValue, preg0);
 
     MicroAPI::RegTensor<uint32_t> nextK;
     MicroAPI::Sub(nextK, btmK, prevBinValue, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(nkValueBuf, nextK, pregB32);
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(roundNkValueBuf, nextK, pregB32);
+}
+
+__simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* nkValueBuf,
+                                          __ubuf__ uint32_t* histogramsBuf,
+                                          uint32_t validLen, uint16_t loopM,
+                                          uint32_t topkNum0, uint32_t topkNum1,
+                                          uint32_t topkNum2, uint32_t topkNum3)
+{
+    (void)loopM;
+    FindFirstTargetBinProcessRow(idx0Buf, nkValueBuf, histogramsBuf, topkNum0, validLen, 0);
+    FindFirstTargetBinProcessRow(idx0Buf, nkValueBuf, histogramsBuf, topkNum1, validLen, 1);
+    FindFirstTargetBinProcessRow(idx0Buf, nkValueBuf, histogramsBuf, topkNum2, validLen, 2);
+    FindFirstTargetBinProcessRow(idx0Buf, nkValueBuf, histogramsBuf, topkNum3, validLen, 3);
 }
 
 template<typename T>
-__simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
-                                        __ubuf__ uint32_t* idx0Buf, uint16_t vfLoop, bool init)
+__simd_callee__ inline void HistogramsSecondProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                                __ubuf__ uint32_t* idx0Buf, uint16_t vfLoop, uint32_t offset,
+                                                uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
 
-    // 计算直方图0-127 128-255
     MicroAPI::RegTensor<uint16_t> cout0;
     MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
 
     MicroAPI::RegTensor<uint32_t> cout0U32Even;
     MicroAPI::RegTensor<uint32_t> cout0U32Odd;
@@ -153,8 +190,6 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf
     MicroAPI::RegTensor<uint32_t> cout1U32Odd;
 
     MicroAPI::RegTensor<uint32_t> idx0;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
 
     MicroAPI::RegTensor<uint32_t> vreg0U16;
     MicroAPI::RegTensor<uint32_t> vreg1U16;
@@ -172,10 +207,17 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {MicroAPI::RegLayout::ONE,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
+    __ubuf__ uint32_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx0Buf = idx0Buf + rowSlot * 256;
+    MicroAPI::Duplicate(cout0, 0);
+    MicroAPI::Duplicate(cout1, 0);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, roundIdx0Buf);
     for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16,
+                                                                           roundInputBuf + i * 256);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
+                                                                           roundInputBuf + (i * 256) + 128);
 
         MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t>&)vreg0U16,
                                (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
@@ -188,30 +230,50 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf
         MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
                              MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg1, pregEQ);
     }
-
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout0U32Odd, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf, cout0U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even,
                                                                         cout0U32Odd, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, cout1U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf + 128, cout1U32Even,
                                                                         cout1U32Odd, pregB32);
 }
 
+template<typename T>
+__simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                        __ubuf__ uint32_t* idx0Buf, uint16_t vfLoop, bool init,
+                                        uint16_t loopM, uint32_t offset,
+                                        uint32_t rowIdx0, uint32_t rowIdx1,
+                                        uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)init;
+    (void)loopM;
+    HistogramsSecondProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, vfLoop, offset, 0, rowIdx0);
+    HistogramsSecondProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, vfLoop, offset, 1, rowIdx1);
+    HistogramsSecondProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, vfLoop, offset, 2, rowIdx2);
+    HistogramsSecondProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, vfLoop, offset, 3, rowIdx3);
+}
+
 // kValue新的bottomK
-__simd_vf__ void FindSecondTargetBinVFImpl(__ubuf__ uint32_t* idx1Buf, __ubuf__ uint32_t* nkValueBuf,
-                                           __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf)
+__simd_callee__ inline void FindSecondTargetBinProcessRow(__ubuf__ uint32_t* idx1Buf, __ubuf__ uint32_t* nkValueBuf,
+                                                   __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                                                   uint32_t rowSlot)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    __ubuf__ uint32_t* roundIdx1Buf = idx1Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundNkValueBuf = nkValueBuf + rowSlot * 64;
+    __ubuf__ uint32_t* roundKValue = kValue + rowSlot * 64;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
 
     MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
     MicroAPI::UnalignRegForStore alignIdx1;
 
     MicroAPI::RegTensor<uint32_t> btmK1;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK1, kValue);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK1, roundKValue);
 
     for (uint16_t i = 0; i < (uint16_t)(4); ++i) {
         MicroAPI::RegTensor<int32_t> idxC;
@@ -221,19 +283,19 @@ __simd_vf__ void FindSecondTargetBinVFImpl(__ubuf__ uint32_t* idx1Buf, __ubuf__ 
         MicroAPI::MaskReg pregGE = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
         MicroAPI::Arange(idxC, i * 64);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, roundHistBuf + i * 64);
         MicroAPI::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK1, pregB32);
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdx1,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          pregGE);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(idx1Buf, sqzIdx1, alignIdx1);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundIdx1Buf, sqzIdx1, alignIdx1);
     }
-    MicroAPI::StoreUnAlignPost(idx1Buf, alignIdx1);
+    MicroAPI::StoreUnAlignPost(roundIdx1Buf, alignIdx1);
 
     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 
     MicroAPI::RegTensor<uint32_t> idx1;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, roundIdx1Buf);
 
     MicroAPI::RegTensor<uint8_t> idxAll1;
     MicroAPI::RegTensor<uint32_t> idxPrev1;
@@ -248,28 +310,37 @@ __simd_vf__ void FindSecondTargetBinVFImpl(__ubuf__ uint32_t* idx1Buf, __ubuf__ 
     MicroAPI::Sub(idxPrev1, idx1, (MicroAPI::RegTensor<uint32_t>&)idxAll1, pregB32);
     MicroAPI::ShiftRights(idxPrev1, idxPrev1, (int16_t)24, pregB32);
 
-    MicroAPI::Gather(prevBinValue, histogramsBuf, idxPrev1, pregB32);
+    MicroAPI::Gather(prevBinValue, roundHistBuf, idxPrev1, pregB32);
     MicroAPI::Select(prevBinValue, zeroAll, prevBinValue, preg1);
 
     MicroAPI::RegTensor<uint32_t> nextK;
     MicroAPI::Sub(nextK, btmK1, prevBinValue, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(nkValueBuf, nextK, pregB32);
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(roundNkValueBuf, nextK, pregB32);
+}
+
+__simd_vf__ void FindSecondTargetBinVFImpl(__ubuf__ uint32_t* idx1Buf, __ubuf__ uint32_t* nkValueBuf,
+                                           __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                                           uint16_t loopM)
+{
+    (void)loopM;
+    FindSecondTargetBinProcessRow(idx1Buf, nkValueBuf, kValue, histogramsBuf, 0);
+    FindSecondTargetBinProcessRow(idx1Buf, nkValueBuf, kValue, histogramsBuf, 1);
+    FindSecondTargetBinProcessRow(idx1Buf, nkValueBuf, kValue, histogramsBuf, 2);
+    FindSecondTargetBinProcessRow(idx1Buf, nkValueBuf, kValue, histogramsBuf, 3);
 }
 
 template<typename T>
-__simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
-                                       __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
-                                       uint16_t vfLoop, bool init)
+__simd_callee__ inline void HistogramsThirdProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                               __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                                               uint16_t vfLoop, uint32_t offset,
+                                               uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
 
-    // 计算直方图0-127 128-255
     MicroAPI::RegTensor<uint16_t> cout0;
     MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
 
     MicroAPI::RegTensor<uint32_t> cout0U32Even;
     MicroAPI::RegTensor<uint32_t> cout0U32Odd;
@@ -278,9 +349,6 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
 
     MicroAPI::RegTensor<uint32_t> idx0;
     MicroAPI::RegTensor<uint32_t> idx1;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
 
     MicroAPI::RegTensor<uint32_t> vreg0U16;
     MicroAPI::RegTensor<uint32_t> vreg1U16;
@@ -298,10 +366,19 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {MicroAPI::RegLayout::ONE,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
+    __ubuf__ uint32_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx0Buf = idx0Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx1Buf = idx1Buf + rowSlot * 256;
+    MicroAPI::Duplicate(cout0, 0);
+    MicroAPI::Duplicate(cout1, 0);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, roundIdx0Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, roundIdx1Buf);
     for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16,
+                                                                           roundInputBuf + i * 256);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
+                                                                           roundInputBuf + (i * 256) + 128);
 
         MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t>&)vreg0U16,
                                (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
@@ -321,29 +398,49 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
         MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
                              MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg2, pregEQ);
     }
-
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout0U32Odd, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf, cout0U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even,
                                                                         cout0U32Odd, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, cout1U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf + 128, cout1U32Even,
                                                                         cout1U32Odd, pregB32);
 }
 
-__simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* nkValueBuf,
-                                          __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf)
+template<typename T>
+__simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                       __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                                       uint16_t vfLoop, bool init, uint16_t loopM, uint32_t offset,
+                                       uint32_t rowIdx0, uint32_t rowIdx1,
+                                       uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)init;
+    (void)loopM;
+    HistogramsThirdProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, vfLoop, offset, 0, rowIdx0);
+    HistogramsThirdProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, vfLoop, offset, 1, rowIdx1);
+    HistogramsThirdProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, vfLoop, offset, 2, rowIdx2);
+    HistogramsThirdProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, vfLoop, offset, 3, rowIdx3);
+}
+
+__simd_callee__ inline void FindThirdTargetBinProcessRow(__ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* nkValueBuf,
+                                                  __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                                                  uint32_t rowSlot)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    __ubuf__ uint32_t* roundIdx2Buf = idx2Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundNkValueBuf = nkValueBuf + rowSlot * 64;
+    __ubuf__ uint32_t* roundKValue = kValue + rowSlot * 64;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
 
     MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
     MicroAPI::UnalignRegForStore alignIdx2;
 
     MicroAPI::RegTensor<uint32_t> btmK2;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK2, kValue);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK2, roundKValue);
 
     for (uint16_t i = 0; i < (uint16_t)(4); ++i) {
         MicroAPI::RegTensor<int32_t> idxC;
@@ -353,19 +450,19 @@ __simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t* idx2Buf, __ubuf__ u
         MicroAPI::MaskReg pregGE = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
         MicroAPI::Arange(idxC, i * 64);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, roundHistBuf + i * 64);
         MicroAPI::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK2, pregB32);
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdx2,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          pregGE);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(idx2Buf, sqzIdx2, alignIdx2);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundIdx2Buf, sqzIdx2, alignIdx2);
     }
-    MicroAPI::StoreUnAlignPost(idx2Buf, alignIdx2);
+    MicroAPI::StoreUnAlignPost(roundIdx2Buf, alignIdx2);
 
     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 
     MicroAPI::RegTensor<uint32_t> idx2;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, idx2Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, roundIdx2Buf);
 
     MicroAPI::RegTensor<uint8_t> idxAll1;
     MicroAPI::RegTensor<uint32_t> idxPrev2;
@@ -380,28 +477,37 @@ __simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t* idx2Buf, __ubuf__ u
     MicroAPI::Sub(idxPrev2, idx2, (MicroAPI::RegTensor<uint32_t>&)idxAll1, pregB32);
     MicroAPI::ShiftRights(idxPrev2, idxPrev2, (int16_t)24, pregB32);
 
-    MicroAPI::Gather(prevBinValue, histogramsBuf, idxPrev2, pregB32);
+    MicroAPI::Gather(prevBinValue, roundHistBuf, idxPrev2, pregB32);
     MicroAPI::Select(prevBinValue, zeroAll, prevBinValue, preg2);
 
     MicroAPI::RegTensor<uint32_t> nextK;
     MicroAPI::Sub(nextK, btmK2, prevBinValue, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(nkValueBuf, nextK, pregB32);
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(roundNkValueBuf, nextK, pregB32);
+}
+
+__simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* nkValueBuf,
+                                          __ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                                          uint16_t loopM)
+{
+    (void)loopM;
+    FindThirdTargetBinProcessRow(idx2Buf, nkValueBuf, kValue, histogramsBuf, 0);
+    FindThirdTargetBinProcessRow(idx2Buf, nkValueBuf, kValue, histogramsBuf, 1);
+    FindThirdTargetBinProcessRow(idx2Buf, nkValueBuf, kValue, histogramsBuf, 2);
+    FindThirdTargetBinProcessRow(idx2Buf, nkValueBuf, kValue, histogramsBuf, 3);
 }
 
 template<typename T>
-__simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
-                                      __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
-                                      __ubuf__ uint32_t* idx2Buf, uint16_t vfLoop, bool init)
+__simd_callee__ inline void HistogramsLastProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                              __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                                              __ubuf__ uint32_t* idx2Buf, uint16_t vfLoop, uint32_t offset,
+                                              uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
 
-    // 计算直方图0-127 128-255
     MicroAPI::RegTensor<uint16_t> cout0;
     MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
 
     MicroAPI::RegTensor<uint32_t> cout0U32Even;
     MicroAPI::RegTensor<uint32_t> cout0U32Odd;
@@ -411,10 +517,6 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
     MicroAPI::RegTensor<uint32_t> idx0;
     MicroAPI::RegTensor<uint32_t> idx1;
     MicroAPI::RegTensor<uint32_t> idx2;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, idx2Buf);
 
     MicroAPI::RegTensor<uint32_t> vreg0U16;
     MicroAPI::RegTensor<uint32_t> vreg1U16;
@@ -432,10 +534,21 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
     static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {MicroAPI::RegLayout::ONE,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
+    __ubuf__ uint32_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx0Buf = idx0Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx1Buf = idx1Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx2Buf = idx2Buf + rowSlot * 256;
+    MicroAPI::Duplicate(cout0, 0);
+    MicroAPI::Duplicate(cout1, 0);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, roundIdx0Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, roundIdx1Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, roundIdx2Buf);
     for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16,
+                                                                           roundInputBuf + i * 256);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
+                                                                           roundInputBuf + (i * 256) + 128);
 
         MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t>&)vreg0U16,
                                (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
@@ -460,30 +573,52 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
         MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
                              MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg3, pregEQAll);
     }
-
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout0U32Odd, cout0, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf, cout0U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even,
                                                                         cout0U32Odd, pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, cout1U32Even,
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(roundHistBuf + 128, cout1U32Even,
                                                                         cout1U32Odd, pregB32);
 }
 
-__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
-                               __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
-                               __ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* idx3Buf)
+template<typename T>
+__simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf,
+                                      __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                                      __ubuf__ uint32_t* idx2Buf, uint16_t vfLoop, bool init,
+                                      uint16_t loopM, uint32_t offset,
+                                      uint32_t rowIdx0, uint32_t rowIdx1,
+                                      uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)init;
+    (void)loopM;
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 0, rowIdx0);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 1, rowIdx1);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 2, rowIdx2);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 3, rowIdx3);
+}
+
+__simd_callee__ inline void FindKthProcessRow(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                                       __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                                       __ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* idx3Buf, uint32_t rowSlot)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    __ubuf__ uint32_t* roundKValue = kValue + rowSlot * 64;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx0Buf = idx0Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx1Buf = idx1Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx2Buf = idx2Buf + rowSlot * 256;
+    __ubuf__ uint32_t* roundIdx3Buf = idx3Buf + rowSlot * 256;
 
     MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
     MicroAPI::UnalignRegForStore alignIdx3;
 
     MicroAPI::RegTensor<uint32_t> btmK3;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK3, kValue);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK3, roundKValue);
 
     for (uint16_t i = 0; i < (uint16_t)(4); ++i) {
         MicroAPI::RegTensor<int32_t> idxC;
@@ -493,14 +628,14 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* his
         MicroAPI::MaskReg pregGE = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
         MicroAPI::Arange(idxC, i * 64);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, histogramsBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(cout, roundHistBuf + i * 64);
         MicroAPI::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK3, pregB32);
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdx3,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          pregGE);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(idx3Buf, sqzIdx3, alignIdx3);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundIdx3Buf, sqzIdx3, alignIdx3);
     }
-    MicroAPI::StoreUnAlignPost(idx3Buf, alignIdx3);
+    MicroAPI::StoreUnAlignPost(roundIdx3Buf, alignIdx3);
 
     MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
 
@@ -508,42 +643,58 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* his
     MicroAPI::RegTensor<uint32_t> idx1;
     MicroAPI::RegTensor<uint32_t> idx2;
     MicroAPI::RegTensor<uint32_t> idx3;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx0, idx0Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx1, idx1Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx2, idx2Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx3, idx3Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx0, roundIdx0Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx1, roundIdx1Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx2, roundIdx2Buf);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B32>(idx3, roundIdx3Buf);
 
     MicroAPI::ShiftLefts(idx0, idx0, (int16_t)24, pregB32);
     MicroAPI::ShiftLefts(idx1, idx1, (int16_t)16, pregB32);
     MicroAPI::ShiftLefts(idx2, idx2, (int16_t)8, pregB32);
 
-    // ADD
     MicroAPI::Add(idx0, idx0, idx1, pregB32);
     MicroAPI::Add(idx0, idx0, idx2, pregB32);
     MicroAPI::Add(idx0, idx0, idx3, pregB32);
 
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(kValue, idx0, pregB32);
+    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(roundKValue, idx0, pregB32);
 }
 
-__simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* inputBuf,
-                                       uint32_t beginIdx, __ubuf__ uint32_t* kValue, uint16_t vfLoop)
+__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                               __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
+                               __ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* idx3Buf, uint16_t loopM)
+{
+    (void)loopM;
+    FindKthProcessRow(kValue, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf, 0);
+    FindKthProcessRow(kValue, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf, 1);
+    FindKthProcessRow(kValue, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf, 2);
+    FindKthProcessRow(kValue, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf, 3);
+}
+
+__simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* inputBuf,
+                                             __ubuf__ uint32_t* kValue, uint16_t vfLoop,
+                                             uint32_t offset, uint32_t tmpIdxOffset,
+                                             uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    __ubuf__ uint32_t* roundOutputIdxBuf = outputIdxBuf + rowSlot * tmpIdxOffset;
+    __ubuf__ uint32_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundKValue = kValue + rowSlot * 64;
 
     MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
 
     MicroAPI::UnalignRegForStore alignIdx;
 
     MicroAPI::RegTensor<uint32_t> kthValue;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, kValue);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, roundKValue);
 
     MicroAPI::RegTensor<uint32_t> vregInput;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::RegTensor<int32_t> idxC;
-        MicroAPI::Arange(idxC, beginIdx + i * 64);
+        MicroAPI::Arange(idxC, i * 64);
 
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, roundInputBuf + i * 64);
 
         MicroAPI::MaskReg poutGT = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
@@ -553,60 +704,81 @@ __simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          poutGT);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
-    MicroAPI::StoreUnAlignPost(outputIdxBuf, alignIdx);
-}
-
-__simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* inputBuf,
-                                       uint32_t beginIdx, __ubuf__ uint32_t* kValue, uint16_t vfLoop)
-{
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::MaskReg poutEQ;
-
-    MicroAPI::UnalignRegForStore alignIdx;
-
-    MicroAPI::RegTensor<uint32_t> kthValue;
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, kValue);
-
-    MicroAPI::RegTensor<uint32_t> vregInput;
-    MicroAPI::RegTensor<int32_t> idxC;
-    MicroAPI::RegTensor<uint32_t> sqzIdxOut;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::Arange(idxC, beginIdx + i * 64);
+        MicroAPI::RegTensor<int32_t> idxC;
+        MicroAPI::Arange(idxC, i * 64);
 
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, roundInputBuf + i * 64);
 
+        MicroAPI::MaskReg poutEQ;
+
+        MicroAPI::RegTensor<uint32_t> sqzIdxOut;
         MicroAPI::Compare<uint32_t, CMPMODE::EQ>(poutEQ, vregInput, kthValue, pregB32);
 
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          poutEQ);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
-    MicroAPI::StoreUnAlignPost(outputIdxBuf, alignIdx);
+    MicroAPI::StoreUnAlignPost(roundOutputIdxBuf, alignIdx);
+}
+
+__simd_vf__ void FindIdxOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* inputBuf,
+                                     __ubuf__ uint32_t* kValue, uint16_t vfLoop,
+                                     uint16_t loopM, uint32_t offset, uint32_t tmpIdxOffset,
+                                     uint32_t rowIdx0, uint32_t rowIdx1,
+                                     uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)loopM;
+    FindIdxOutputProcessRow(outputIdxBuf, inputBuf, kValue, vfLoop, offset, tmpIdxOffset, 0, rowIdx0);
+    FindIdxOutputProcessRow(outputIdxBuf, inputBuf, kValue, vfLoop, offset, tmpIdxOffset, 1, rowIdx1);
+    FindIdxOutputProcessRow(outputIdxBuf, inputBuf, kValue, vfLoop, offset, tmpIdxOffset, 2, rowIdx2);
+    FindIdxOutputProcessRow(outputIdxBuf, inputBuf, kValue, vfLoop, offset, tmpIdxOffset, 3, rowIdx3);
 }
 
 /**
     输出最终的Value
  */
-__simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
-                                       __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop)
+__simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
+                                               __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop,
+                                               uint32_t inputOffset, uint32_t tmpIdxOffset,
+                                               uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    uint32_t outputOffset = tmpIdxOffset;
+
+    __ubuf__ uint32_t* roundOutputValueBuf = outputValueBuf + rowSlot * outputOffset;
+    __ubuf__ uint32_t* roundInputValueBuf = inputValueBuf + realRowIdx * inputOffset;
+    __ubuf__ uint32_t* roundTmpIdxBuf = tmpIdxBuf + rowSlot * tmpIdxOffset;
 
     MicroAPI::RegTensor<uint32_t> tmpIdx;
     MicroAPI::RegTensor<uint32_t> outputValue;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, roundTmpIdxBuf + i * 64);
 
-        MicroAPI::Gather(outputValue, inputValueBuf, tmpIdx, pregB32);
+        MicroAPI::Gather(outputValue, roundInputValueBuf, tmpIdx, pregB32);
 
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputValueBuf + i * 64, outputValue, pregB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(roundOutputValueBuf + i * 64,
+                                                                       outputValue, pregB32);
     }
+}
+
+__simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
+                                       __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop,
+                                       uint16_t loopM, uint32_t inputOffset, uint32_t tmpIdxOffset,
+                                       uint32_t rowIdx0, uint32_t rowIdx1,
+                                       uint32_t rowIdx2, uint32_t rowIdx3)
+{
+    (void)loopM;
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 0, rowIdx0);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 1, rowIdx1);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 2, rowIdx2);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 3, rowIdx3);
 }
 
 /**
@@ -629,7 +801,7 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
 
         MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, tmpIdx, topK - 1, pregB32);
         MicroAPI::Xor(pregHis, pregNow, pregB32, pregB32);
-
+    
         MicroAPI::Gather(outputGatherIdx, hisIdxBuf, tmpIdx, pregHis);
         MicroAPI::Adds(outputAddsIdx, tmpIdx, loopIndex, pregNow);
 
@@ -654,18 +826,21 @@ __simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t o
 }
 
 /**
- * @brief SITopKVF 对一个validLen的输入进行topk算法，输出idx_tmp
- * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 8K作为最终输出 validLen * 4B
- * @param outputValueLocal 如果s2SeqLen > 8K并且是首轮输出Value topK * 4B
- * @param inputValueLocal 输入Value validLen * 4B
- * @param histogramsLocal 直方图 256 * 4B
- * @param idx0Local 目标桶第一个八位 256 * 4B
- * @param idx1Local 目标桶第二个八位 256 * 4B
- * @param idx2Local 目标桶第三个八位 256 * 4B
- * @param idx3Local 目标桶第四个八位 256 * 4B
- * @param nkValueLocal 存储next_k的值 64 * 4B
- * @param topK topK元素
- * @param validLen 有效元素个数:SICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
+ * @brief SITopKVF 对loopM行输入数据各自进行topk算法，输出idx_tmp
+ * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 8K作为最终输出 loopM * (Align(maxTopK,64) * 4B)
+ * @param outputValueLocal 如果s2SeqLen > 8K并且是首轮输出Value loopM * (topK * 4B)
+ * @param inputValueLocal 输入Value基地址，第m个compact行通过rowIdx映射到 inputValueLocal + rowIdx * offset
+ * @param histogramsLocal 直方图 loopM * (256 * 4B)，第m行在 histogramsLocal + m * 256
+ * @param idx0Local 目标桶第一个八位 loopM * (256 * 4B)
+ * @param idx1Local 目标桶第二个八位 loopM * (256 * 4B)
+ * @param idx2Local 目标桶第三个八位 loopM * (256 * 4B)
+ * @param idx3Local 目标桶第四个八位 loopM * (256 * 4B)
+ * @param nkValueLocal 存储next_k的值 loopM * (64 * 4B)
+ * @param topkNum0-topkNum3 compact行对应的topK元素个数
+ * @param validLen 每行有效元素个数:SICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
+ * @param loopM 循环轮数(行数)，多少行输入数据拼成1轮做一次topk算法
+ * @param offset 每行输入数据之间的偏移(元素个数)
+ * @param rowIdx0-rowIdx3 compact行对应的真实mInnerIdx
  */
 template<bool ISOUTVALUE>
 __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
@@ -677,8 +852,17 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
                                 const LocalTensor<uint32_t>& idx2Local,
                                 const LocalTensor<uint32_t>& idx3Local,
                                 const LocalTensor<uint32_t>& nkValueLocal,
-                                uint32_t topK,
-                                uint32_t validLen)
+                                 uint32_t validLen,
+                                 uint32_t loopM,
+                                 uint32_t offset,
+                                 uint32_t rowIdx0,
+                                 uint32_t rowIdx1,
+                                 uint32_t rowIdx2,
+                                 uint32_t rowIdx3,
+                                 uint32_t topkNum0,
+                                 uint32_t topkNum1,
+                                 uint32_t topkNum2,
+                                 uint32_t topkNum3)
 {
     __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t* outputValueBuf = (__ubuf__ uint32_t*)outputValueLocal.GetPhyAddr();
@@ -690,8 +874,6 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     __ubuf__ uint32_t* idx3Buf = (__ubuf__ uint32_t*)idx3Local.GetPhyAddr();
     __ubuf__ uint32_t* nkValueBuf = (__ubuf__ uint32_t*)nkValueLocal.GetPhyAddr();
 
-    uint32_t bottomK = validLen - topK + 1;
-    uint32_t beginIdx = 0;
     bool flag = true;
 
     const uint16_t repeatSize8 = 256;
@@ -699,27 +881,47 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
 
     uint16_t histogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
     uint16_t inputLoopNum = (validLen + repeatSize32 - 1) / repeatSize32;
-    uint16_t topkLoopNum = (topK + 64 - 1) / 64;
+
+    uint32_t maxTopK = topkNum0;
+    uint32_t curTopK = topkNum1;
+    if (curTopK > maxTopK) {
+        maxTopK = curTopK;
+    }
+    curTopK = topkNum2;
+    if (curTopK > maxTopK) {
+        maxTopK = curTopK;
+    }
+    curTopK = topkNum3;
+    if (curTopK > maxTopK) {
+        maxTopK = curTopK;
+    }
+    uint16_t topkLoopNum = (maxTopK + 64 - 1) / 64;
+    // tmpIdxOffset 对齐 256，与外部 indicesOutLocal/hisValueLocal 行步长一致
+    uint32_t tmpIdxOffset = ((maxTopK + 256U - 1U) / 256U) * 256U;
 
     // find kth-value
-    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag);
-    FindFirstTargetBinVFImpl(idx0Buf, nkValueBuf, histogramsBuf, bottomK);
-    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, histogramsLoopNum, flag);
-    FindSecondTargetBinVFImpl(idx1Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, histogramsLoopNum, flag);
-    FindThirdTargetBinVFImpl(idx2Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, flag);
-    FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
+    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag,
+                                    (uint16_t)loopM, offset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
+    FindFirstTargetBinVFImpl(idx0Buf, nkValueBuf, histogramsBuf, validLen, (uint16_t)loopM,
+                             topkNum0, topkNum1, topkNum2, topkNum3);
+    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, histogramsLoopNum, flag,
+                                     (uint16_t)loopM, offset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
+    FindSecondTargetBinVFImpl(idx1Buf, nkValueBuf, nkValueBuf, histogramsBuf, (uint16_t)loopM);
+    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, histogramsLoopNum, flag,
+                                    (uint16_t)loopM, offset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
+    FindThirdTargetBinVFImpl(idx2Buf, nkValueBuf, nkValueBuf, histogramsBuf, (uint16_t)loopM);
+    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, flag,
+                                   (uint16_t)loopM, offset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
+    FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf, (uint16_t)loopM);
 
     // filter
-    AscendC::Duplicate(tmpIdxLocal, (uint32_t)(0), SICommon::Align(topK, (uint32_t)64));
-    // 输出大于k-value的值idx
-    FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
-    // 输出等于k-value的值idx
-    FindIdxEQOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    AscendC::Duplicate(tmpIdxLocal, (uint32_t)(0), loopM * tmpIdxOffset);
+    FindIdxOutputVFImpl(tmpIdxBuf, inputValueBuf, nkValueBuf, inputLoopNum,
+                        (uint16_t)loopM, offset, tmpIdxOffset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
 
     if constexpr (ISOUTVALUE) {
-        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum);
+        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum,
+                              (uint16_t)loopM, offset, tmpIdxOffset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
     }
 }
 
