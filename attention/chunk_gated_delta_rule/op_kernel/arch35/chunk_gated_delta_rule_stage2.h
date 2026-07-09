@@ -312,11 +312,17 @@ public:
         sTP_->mm1->SetTensorB(kg, false);
         if constexpr (kIsFp32) {
             sTP_->mm1->IterateAll(state, 0);
+            sTP_->mm1->End();
+            sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);
+            sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_);
+            sTP_->mm1->SetTensorA(vInner, true);
+            sTP_->mm1->SetTensorB(kg, false);
             sTP_->mm1->IterateAll(stateAccum, 1);
+            sTP_->mm1->End();
         } else {
             sTP_->mm1->IterateAll(state, 1);
+            sTP_->mm1->End();
         }
-        sTP_->mm1->End();
     }
 
     template <typename inType>
