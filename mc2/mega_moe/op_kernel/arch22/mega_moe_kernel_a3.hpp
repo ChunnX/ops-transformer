@@ -1670,7 +1670,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) *
+                static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));
@@ -1689,7 +1690,10 @@ private:
                 offsetPeerPerTokenScale = 0;
                 offsetD = offsetA + offsetASize;
             }
-            offsetPeerTokenPerExpert = offsetD + DSize;
+            // 两个offset倒排并固定大小防止清零的位置与下一个case需要的不相同
+            // 这个flag在shmem中计算并使用
+            const int64_t offsetFlag = shmem.SegmentSize() - shmem.TailReservedSize();
+            offsetPeerTokenPerExpert = offsetFlag - tokenPerExpertSize;
         }
     };
 

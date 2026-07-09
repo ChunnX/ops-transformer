@@ -9,7 +9,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
 | <term>Atlas 200I/500 A2 推理产品</term> | × |
 | <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+| <term>Atlas 训练系列产品</term> | ×
 
 ## 功能说明
 
@@ -141,25 +141,26 @@ sparse_lightning_indexer_kl_loss_grad(
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
 
-| 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
-| :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | 必选属性 | `q` 的 head 数，即主接口 `q` 的 `N1`。 | `int` | - |
-| num_heads_k | 必选属性 | `k` 的 head 数，即主接口 `k` 的 `N2`。当前仅支持 1。 | `int` | - |
-| head_dim | 必选属性 | `q`、`k` 的最后一维 `D`。固定为 128。 | `int` | - |
-| cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。 | `int32` | `[B]`。 |
-| cmp_residual_k | 可选输入 | `mask_mode=3` 且 `cmp_ratio!=1` 时需要传入，用于还原压缩前 key 长度（`pre_compress_k_len = compressed_k_len * cmp_ratio + cmp_residual_k[b]`）。 | `int32` | `[B]`。 |
-| batch_size | 可选属性 | batch 大小。BSND 场景建议显式传入，TND 场景也可由 `cu_seqlens_q` 推导。 | `int` | - |
-| max_seqlen_q | 可选属性 | 单个 batch 中最大的 query 序列长度。 | `int` | - |
-| max_seqlen_k | 可选属性 | 单个 batch 中最大的压缩后 key 序列长度。 | `int` | - |
-| topk | 可选属性 | top-k 大小，即 `sparse_indices` 最后一维 `K`。 | `int` | - |
-| layout_q | 可选属性 | `q` 侧 layout。未传时默认按 `"BSND"` 处理。 | `str` | 支持 `"BSND"`、`"TND"`。 |
-| layout_k | 可选属性 | `k` 侧 layout。未传时默认按 `"BSND"` 处理。 | `str` | 支持 `"BSND"`、`"TND"`。 |
-| mask_mode | 可选属性 | sparse mask 模式。未传时默认值为 `0`。 | `int` | 当前支持 `0` 和 `3`。 |
-| cmp_ratio | 可选属性 | key 压缩比例。未传时默认值为 `1`。 | `int` | 取值范围 `[1, 128]`。 |
-| metadata | 输出 | 任务切分 metadata。 | `int32` | `[64]`。 |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| num_heads_q | int | 必选 | `q` 的 head 数，即主接口 `q` 的 `N1`，当前支持[1, 128]。 | int32 | - |
+| num_heads_k | int | 必选 | `k` 的 head 数，即主接口 `k` 的 `N2`。当前仅支持 1。 | int32 | - |
+| head_dim | int | 必选 | `q`、`k` 的最后一维 `D`，当前仅支持128。 | int32 | - |
+| cu_seqlens_q | Tensor | 可选 | TND 场景中 query 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| cu_seqlens_k | Tensor | 可选 | TND 场景中 key 的前缀和序列长度，首元素为 0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
+| seqused_q | Tensor | 可选 | 表示每个 batch 实际使用的 query 长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| seqused_k | Tensor | 可选 | 表示每个 batch 实际使用的 key 长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 压缩 key 场景下的残差长度。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| batch_size | int | 可选 | batch 大小。BSND 场景建议显式传入，TND 场景也可由 `cu_seqlens_q` 推导，默认值为0。 | int32 | - |
+| max_seqlen_q | int | 可选 | 单个 batch 中最大的 query 序列长度，默认值为0。 | int32 | - |
+| max_seqlen_k | int | 可选 | 单个 batch 中最大的压缩后 key 序列长度，默认值为0。 | int32 | - |
+| topk | int | 可选 | top-k 大小，即 `sparse_indices` 最后一维 `K`，当前支持[1, 2048]和4096、8192。 | int32 | - |
+| layout_q | str | 可选 | `q` 侧 layout，支持 `"BSND"`、`"TND"`，默认值为 `"BSND"` 。 | string | - |
+| layout_k | str | 可选 | `k` 侧 layout，支持 `"BSND"`、`"TND"`，默认值为 `"BSND"` 。 | string | - |
+| mask_mode | int | 可选 | sparse mask 模式。0表示No mask，3表示rightDownCausal模式，默认值为0。 | int32 | - |
+| cmp_ratio | int | 可选 | key 压缩比例，当前支持[1, 128]，默认值为 1。 | int32 | - |
+
+<ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqused_q、seqused_k、cmp_residual_k，num_heads_q仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
@@ -174,11 +175,14 @@ sparse_lightning_indexer_kl_loss_grad(
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
 
-- **metadata**：任务切分 metadata，shape 固定为 `[64]`，数据类型为 `int32`。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| metadata | Tensor | 必选 | 每个AIcore的Attention计算任务的Batch、Head、以及Q和K的分块的索引。数据格式为ND，不支持非连续的Tensor。 | int32 | shape为(64, )  |
 
 ## 约束说明
 
 - 该接口支持训练场景。
+- 该接口支持单算子模式和aclgraph模式。
 - `q`、`k` 的数据类型必须保持一致，支持 `float16` 和 `bfloat16`。
 - `w`、`attn_softmax_l1_norm`、`dw`、`softmax_out` 的数据类型应为 `float32`。
 - `sparse_indices`、`cu_seqlens_q`、`cu_seqlens_k`、`seqused_q`、`seqused_k`、`cmp_residual_k`、`metadata` 的数据类型应为 `int32`。
@@ -212,6 +216,10 @@ sparse_lightning_indexer_kl_loss_grad(
   - 参数K的支持情况:
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
+
+## 确定性计算
+
+- 默认支持确定性计算
 
 ## 调用示例
 
