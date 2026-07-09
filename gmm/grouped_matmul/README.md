@@ -15,16 +15,16 @@ GroupedMatmul是分组矩阵乘算子，支持按 M轴或K轴对输入张量进�
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
+|产品      | 是否支持 |
 |:----------------------------|:-----------:|
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | √ |
-| <term>Atlas 训练系列产品</term> | × |
-| <term>Kirin X90 处理器系列产品</term> | √ |
-| <term>Kirin 9030 处理器系列产品</term> | √ |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      √     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Kirin X90 处理器系列产品</term> | √ |
+|<term>Kirin 9030 处理器系列产品</term> | √ |
 
 ---
 
@@ -38,14 +38,14 @@ GroupedMatmul是分组矩阵乘算子，支持按 M轴或K轴对输入张量进�
 | perchannel | 每列独立缩放因子 |
 | pertensor | 一个 Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
-| pergroup | 按 K方向等分多组 |
-| perblock | 按 K/N方向固定大小分块 |
+| pergroup | 在 reduce 轴上对数据分组，每组使用独立的量化参数，group size 为 gs |
+| perblock | 在所有轴上（含 M 方向）对数据分块，每块使用独立的量化参数，block size 为 bs |
 | T-C | pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放 |
 | T-T | pertensor-pertensor：输入和权重均为统一缩放 |
 | K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
 | K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K分块缩放 |
-| MX | 特殊 pergroup 量化（block 粒度 M=1,N=1,K=32） |
+| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为 FLOAT8_E8M0，group size 为 32 的特例 |
 | ND | 常规连续排布 |
 | NZ | FRACTAL_NZ格式（亲核排布） |
 

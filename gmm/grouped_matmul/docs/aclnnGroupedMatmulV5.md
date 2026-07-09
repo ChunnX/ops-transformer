@@ -15,20 +15,16 @@ abbr {
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
+|产品      | 是否支持 |
 |:----------------------------|:-----------:|
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | √ |
-| <term>Atlas 训练系列产品</term> | × |
-| <term>Kirin X90 处理器系列产品</term> | √ |
-| <term>Kirin 9030 处理器系列产品</term> | √ |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      √     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ---
-
-<a id="2-专业术语"></a>
 
 ## 专业术语
 
@@ -42,14 +38,14 @@ abbr {
 | perchannel | 每列独立缩放因子 |
 | pertensor | 一个 Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
-| pergroup | 按 K 方向等分多组 |
-| perblock | 按 K/N 方向固定大小分块 |
+| pergroup | 在 reduce 轴上对数据分组，每组使用独立的量化参数，group size 为 gs |
+| perblock | 在所有轴上（含 M 方向）对数据分块，每块使用独立的量化参数，block size 为 bs |
 | T-C | pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放 |
 | T-T | pertensor-pertensor：输入和权重均为统一缩放 |
 | K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
 | K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K 分块缩放 |
-| MX | 特殊 pergroup量化（block 粒度 M=1,N=1,K=32） |
+| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为 FLOAT8_E8M0，group size 为 32 的特例 |
 | ND | 常规连续排布 |
 | NZ | FRACTAL_NZ格式（亲核排布） |
 
@@ -66,8 +62,6 @@ abbr {
 - **M轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
 - **K轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
 - **不分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=-1）**：各组 shape 完全独立。
-
-<a id="42-计算公式"></a>
 
 ### 计算公式
 
@@ -123,8 +117,6 @@ abbr {
 
 **确定性计算**：GroupedMatmul默认提供确定性实现。
 
----
-<a id="4-函数原型"></a>
 
 ## 函数原型
 
@@ -165,8 +157,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 ```
 
 ---
-
-<a id="5-aclnngroupedmatmulv5getworkspacesize"></a>
 
 ## aclnnGroupedMatmulV5GetWorkspaceSize
 
@@ -265,8 +255,6 @@ aclnnStatus aclnnGroupedMatmulV5(
     </tbody>
   </table>
 
-<a id="6-aclnngroupedmatmulv5"></a>
-
 ## aclnnGroupedMatmulV5
 
 - **参数说明：**
@@ -288,13 +276,9 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ## 约束说明
 
-<a id="81-确定性计算"></a>
-
 ### 确定性计算
 
 aclnnGroupedMatmulV5 默认确定性实现。
-
-<a id="71-公共约束"></a>
 
 ### 公共约束
 
@@ -313,8 +297,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - groupListType=1：须为非负数列（各组大小）。
 - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
 
-<a id="72-ascend-950prascend-950dt"></a>
-
 ### Ascend 950PR/Ascend 950DT
 
 #### 平台约束
@@ -325,8 +307,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下 x/weight=INT8 且 out=BFLOAT16/FLOAT16、静态 <abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr> 或动态 <abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
-
-<a id="721-场景速查表"></a>
 
 #### 场景速查表
 
@@ -508,8 +488,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias传空；仅 ND进ND出；仅非量化/量化 |
 | 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | x/weight/y 2维 `(M,N)`；weight最大 128 组；不支持 bias；仅 ND进ND出；仅非量化 |
 
-<a id="73-atlas-a3a2-训练系列产品"></a>
-
 ### Atlas A3/A2 系列产品
 
 #### 平台约束
@@ -519,8 +497,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - tuningConfigOptional：支持。具体配置见 [tuningConfigOptional 配置示例](#tuningconfigoptional-配置示例)。
 - actType：非量化/伪量化仅支持 0。全量化下 x/weight=INT8 时支持 0/1/2/4/5。
 - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
-
-<a id="731-场景速查表"></a>
 
 #### 场景速查表
 
@@ -688,8 +664,6 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 </details>
 
-<a id="a3a2-grouptype-支持场景"></a>
-
 #### groupType 支持场景
 
 > x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
@@ -698,8 +672,8 @@ aclnnGroupedMatmulV5 默认确定性实现。
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
 | -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x 2-6维（维度一致），weight 2维，y 同 x |
 | 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight 3维，x/y 2维 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等 |
-| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
+| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | x/weight 2维，y 3维；bias传空 |
 | 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | x/weight/y 2维；weight最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias传空 |
 
@@ -715,6 +689,8 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | 1（各组大小） | `[123, 0, 333, 0, 0, 333, 0, 0, 0]` |
 | 2（索引+大小） | `[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置） |
 
+<a id="tuningconfigoptional-配置示例"></a>
+
 #### tuningConfigOptional 配置示例
 
 仅 <term>Atlas A3/A2 系列产品</term> 支持，Ascend 950PR/950DT 不支持此参数。
@@ -727,8 +703,6 @@ tuningConfigOptional为 Host侧 aclIntArray，存储 INT64 元素。
 | [2] | 允许额外 workspace上限（-1=不限），用于定轴算法优化 | A8W8 |
 
 ---
-
-<a id="8-接口调用"></a>
 
 ## 调用示例
 <a id="83-示例代码索引"></a>
