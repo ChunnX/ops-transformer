@@ -26,6 +26,13 @@ struct Mc2MoeContext {
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
 };
+
+struct Mc2MoeEpContext {
+    uint32_t epRankId;
+    uint32_t rankSizePerServer;
+    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
+};
 }
 
 
