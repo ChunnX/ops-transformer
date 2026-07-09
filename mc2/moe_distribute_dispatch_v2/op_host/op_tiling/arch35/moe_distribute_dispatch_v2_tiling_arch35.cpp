@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_tiling_arch35.cpp
+ * \file moe_distribute_dispatch_v2_tiling_arch35.cpp
  * \brief
  */
 
