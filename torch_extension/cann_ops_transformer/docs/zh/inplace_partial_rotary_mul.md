@@ -135,7 +135,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     )
 
     # 继续前向计算
-    loss = x.sum()
+    loss = y.sum()
     loss.backward()  # 自动调用 inplace_partial_rotary_mul_backward
 
     print(y.grad.shape)
