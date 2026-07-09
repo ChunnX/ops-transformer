@@ -1549,10 +1549,6 @@ private:
         // and polled by RecvTokensV3. On A3 we don't push flags through
         // peer-mem at all, so this stays 0.
         int64_t offsetFlag{0};
-        // Allgather Flag 区（V2 allgather 用）：固定 1 MB
-        //   slotIdx = srcRank
-        //   每槽独占 64B cache line
-        int64_t offsetAllgatherFlag;
 
         // 每个 flag 槽占 16 个 int32（= 64B = 1 个 cache line），与 CrossRankSync 同款
         static constexpr int64_t kFlagSlotI32 = 16;
