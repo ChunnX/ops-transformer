@@ -35,6 +35,7 @@ def test_liv2_process(filepath, device_id=0):
 
     query = test_data['query'].npu()
     key = test_data['key'].npu()
+    batch_size = int(params[0])
     q_head_num = int(params[5])
     k_head_num = int(params[6])
     head_dim = int(params[7])
@@ -42,14 +43,10 @@ def test_liv2_process(filepath, device_id=0):
     block_num = int(params[9])
     if params[10] == 'FP16':
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
- 	        blockFusion = test_data['blockFusion'].to(dtype=torch.float16).npu()
-        else:
-            pass
+            blockFusion = test_data['blockFusion'].to(dtype=torch.float16).npu()
     elif params[10] == 'BF16':
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
- 	        blockFusion = test_data['blockFusion'].to(dtype=torch.bfloat16).npu()
-        else:
-            pass
+            blockFusion = test_data['blockFusion'].to(dtype=torch.bfloat16).npu()
     topk = params[19]
     mask_mode = params[20]
     return_value = params[25]
@@ -92,7 +89,7 @@ def test_liv2_process(filepath, device_id=0):
     else:
         cmp_residual_k = None
     max_seqlen_q_meta = test_data['max_seqlen_q_meta']
- 	max_seqlen_k_meta = test_data['max_seqlen_k_meta']
+    max_seqlen_k_meta = test_data['max_seqlen_k_meta']
 
     metadata = lightning_indexer_metadata(
                     num_heads_q = q_head_num,
