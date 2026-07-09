@@ -572,7 +572,6 @@ static aclnnStatus ShapeCheck(const aclTensor *query, const aclTensor *key, char
     return ACLNN_SUCCESS;
 }
 
-
 static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                  char *inputLayout, int64_t headNum, FaShapeInfo &shapeInfo,
                                  const aclIntArray *actualSeqQLenOptional = nullptr,
