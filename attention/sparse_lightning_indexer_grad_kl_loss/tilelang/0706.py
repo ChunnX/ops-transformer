@@ -683,28 +683,45 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.pipe_barrier("mte3")
                             T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
+                # 为 C3 预转置 reluGrad tile: (Nidx1, n_block) -> (n_block, Nidx1)
+                # 借用 C2 之后已空闲的 GatherKeyIndex_ws 前 Nidx1 列做中转，避免新 workspace
+                # 目的：C3 可用与 C2 相同的 (F,F) gemm，绕开 transpose_A + 手动同步的坑
+                rg_in_ub = T.alloc_ub((Nidx1, n_block), input_dtype)
+                rg_t_ub = T.alloc_ub((n_block, Nidx1), input_dtype)
+                for s1_row in T.serial(s1_start, s1_end):
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], rg_in_ub)
+                    T.set_flag("mte2", "v", 5)
+                    T.wait_flag("mte2", "v", 5)
+                    T.tile.transpose(rg_t_ub, rg_in_ub)
+                    T.set_flag("v", "mte3", 7)
+                    T.wait_flag("v", "mte3", 7)
+                    T.copy(rg_t_ub, GatherKeyIndex_ws[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1])
+                # 排空 MTE3 store，保证 C3（另一核）读到已落地的转置结果（WAR/RAW 跨核依赖）
+                T.set_flag("mte3", "v", 3)
+                T.wait_flag("mte3", "v", 3)
+
                 T.set_cross_flag("V", 13)  # signal C scope 3 (dKeyIndex matmul)
 
             # ============================================================
             # C scope 3: Matmul5 — dKeyIndex 部分积 reluGrad^T @ QueryIndex
-            #   per-core K-block: (n_block, DQueryIndex)，每 core 写不相交 K 行
-            #   transpose_A: A=reluGrad(Nidx1,n_block)=(K,M) → A^T@B=(n_block,DQI)
+            #   reluGrad 已在 V3 预转置为 (n_block, Nidx1) 存入 GatherKeyIndex_ws；
+            #   这里用与 C2 完全相同的 (F,F) gemm：(n_block,Nidx1)@(Nidx1,DQI)->(n_block,DQI)
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(13)
 
-                RG_L1_dk = T.alloc_L1((n_block, Nidx1), input_dtype)       # (M=n_block, K=Nidx1) — 隐式转置:copy 时切片对调
+                RG_L1_dk = T.alloc_L1((n_block, Nidx1), input_dtype)       # (M=n_block, K=Nidx1) 已转置
                 QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # (K=Nidx1, N=DQI)
                 DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # (M=n_block, N=DQI)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    # 切片对调 K 列 vs Nidx1 行 → GM→L1 阶段隐式转置，L1 里就是 (n_block, Nidx1)
-                    T.copy(reluGradRes[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1], RG_L1_dk)
+                    # 从 V3 写入的转置 reluGrad 中转区加载 (n_block, Nidx1)
+                    T.copy(GatherKeyIndex_ws[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:Nidx1], RG_L1_dk)
                     T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
                     # RAW: gemm 等 L1 载入
                     T.set_flag("mte2", "m", 6)
                     T.wait_flag("mte2", "m", 6)
-                    # 与 C2 完全相同的 (no-transpose) gemm — 绕开 transpose_A 的坑
+                    # 与 C2 完全相同的 (F,F) gemm — 绕开 transpose_A + 手动同步的坑
                     T.gemm_v0(RG_L1_dk, QI_L1_dk, DK_L0C, transpose_A=False, transpose_B=False, init=True)
                     # M→FIX: atomic_add 等 gemm 完成
                     T.set_flag("m", "fix", 7)
