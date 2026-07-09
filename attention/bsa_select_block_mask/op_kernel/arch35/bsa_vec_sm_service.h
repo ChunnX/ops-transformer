@@ -110,17 +110,21 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
+#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     globalMaxBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+#endif
 
     globalSum = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
+#if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
     globalSumBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+#endif
 
     tmpMax = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
