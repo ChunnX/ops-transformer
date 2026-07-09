@@ -16,7 +16,6 @@
 #include "aclnnInner_matmul_all_reduce.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "matmul_all_reduce_util.h"
-#include "mc2_comm_utils.h"
 #include "mc2_log_compat.h"
 
 using namespace op;
@@ -27,9 +26,6 @@ extern "C" {
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
@@ -311,20 +307,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
         yDtype, commQuantMode, const_cast<char*>(commMode), output, workspaceSize, executor);
-    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr && commMode != nullptr) {
-        // SetUserHandle to pass comm_mode to aclnnQuantMatmulAllReduceV5
-        uint8_t commModeEnum = 0;
-        if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            OP_LOGE_WITH_INVALID_ATTR("aclnnQuantMatmulAllReduceV5GetWorkspaceSize", "commMode",
-                commMode, "'ccu' or 'ai_cpu'");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
-        NnopbaseSetUserHandle(*executor, arg);
+    if (ret == ACLNN_SUCCESS) {
+        auto retCommMode = MatmulAllReduceSetCommMode(
+            executor, commMode, "aclnnQuantMatmulAllReduceV5GetWorkspaceSize");
+        CHECK_RET(retCommMode == ACLNN_SUCCESS, retCommMode);
     }
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -339,23 +325,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
         OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
         return ACLNN_ERR_INNER;
     }
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            void *arg = NnopbaseGetUserHandle(executor);
-            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-            uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else {
-                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            }
-        } else {
-            OP_LOGD("A2 aclnnQuantMatmulAllReduceV5: NnopbaseHcclServerType, use AICPU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
+    MatmulAllReduceSetHcclServerType(executor);
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV5 ret=%d.", ret);
 

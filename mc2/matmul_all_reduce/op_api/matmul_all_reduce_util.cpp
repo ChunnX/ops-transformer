@@ -613,6 +613,45 @@ bool IsCommModeValid(const char* commModePtr)
     return false;
 }
 
+aclnnStatus MatmulAllReduceSetCommMode(
+    aclOpExecutor** executor, const char* commMode, const char* funcName)
+{
+    if (executor == nullptr || *executor == nullptr || commMode == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    uint8_t commModeEnum = 0;
+    if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_CCU;
+    } else {
+        OP_LOGE_WITH_INVALID_ATTR(funcName, "commMode", commMode, "'ccu' or 'ai_cpu'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+    NnopbaseSetUserHandle(*executor, arg);
+    return ACLNN_SUCCESS;
+}
+
+void MatmulAllReduceSetHcclServerType(aclOpExecutor* executor)
+{
+    if (!NnopbaseSetHcclServerType) {
+        return;
+    }
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        void *arg = NnopbaseGetUserHandle(executor);
+        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+        uint8_t commMode = static_cast<uint8_t>(handleVal);
+        if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        } else {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        }
+    } else {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif

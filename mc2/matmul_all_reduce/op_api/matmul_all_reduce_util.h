@@ -127,6 +127,14 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     const aclTensor* dequant, const aclTensor* pertokenScaleOptional, const char* group, const char* reduceOp,
     int64_t commTurn, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor);
 bool IsCommModeValid(const char* commModePtr);
+
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+
+aclnnStatus MatmulAllReduceSetCommMode(
+    aclOpExecutor** executor, const char* commMode, const char* funcName);
+void MatmulAllReduceSetHcclServerType(aclOpExecutor* executor);
+
 #ifdef __cplusplus
 }
 #endif
