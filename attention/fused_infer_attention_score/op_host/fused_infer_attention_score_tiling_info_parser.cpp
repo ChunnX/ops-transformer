@@ -21,6 +21,7 @@
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 #include "fused_infer_attention_score_tiling_utils.h"
+#include "fia_tiling_timer.h"
 
 using std::map;
 using std::pair;
@@ -1558,29 +1559,48 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != GetKvCache() || ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_GetBasics");
+        if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
+            ge::GRAPH_SUCCESS != GetOpParaInfo() || ge::GRAPH_SUCCESS != GetKvCache() ||
+            ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    GetInOutDataType();
-    GetKvStorageMode();
-    GetQuantMode();
-    if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_GetTypeInfo");
+        GetInOutDataType();
+        GetKvStorageMode();
+        GetQuantMode();
+        if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_GetLayout");
+        if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_ParseAxisInfo");
+        if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_ParseFeatureInfo");
+        if (ge::GRAPH_SUCCESS != ParseFeatureInfo()) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    if (ge::GRAPH_SUCCESS != ParseFeatureInfo()) {
-        return ge::GRAPH_FAILED;
+    {
+        FIA_TIMING_SCOPE("Parse_GenerateInfo");
+        GenerateInfo(fiaInfo);
     }
-    GenerateInfo(fiaInfo);
     return ge::GRAPH_SUCCESS;
 }
 
