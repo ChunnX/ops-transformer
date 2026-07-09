@@ -1,0 +1,90 @@
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# python3 -m ttk e2e -i examples/case_store/e2e/torch_add.csv --backend npu -t add_f32_01
+2026-07-09 09:25:27,859 [INFO] [1857199 MP MT] [bridge.py:198]: Command: ttk framework-api -i examples/case_store/e2e/torch_add.csv 
+2026-07-09 09:25:32,328 [INFO] [1857199 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 09:25:32,883 [INFO] [1857199 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-09 09:25:32,883 [INFO] [1857199 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-09 09:25:32,883 [INFO] [1857199 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-09 09:25:32,884 [INFO] [1857199 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-09 09:25:34,030 [INFO] [1857199 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-09 09:25:34,036 [INFO] [1857199 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-09 09:25:34,036 [INFO] [1857199 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-09 09:25:35,172 [INFO] [1857199 MP MT] [instance.py:42]: Device count: 1 
+2026-07-09 09:25:35,172 [INFO] [1857199 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-09 09:25:35,172 [INFO] [1857199 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-09 09:25:35,173 [INFO] [1857199 MP MT] [instance_base.py:233]: Reading testcase file examples/case_store/e2e/torch_add.csv ... 
+2026-07-09 09:25:35,173 [INFO] [1857199 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-09 09:25:35,173 [INFO] [1857199 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+2026-07-09 09:25:35,187 [INFO] [1857199 MP MT] [instance_base.py:237]: Checking testcase name... 
+2026-07-09 09:25:35,187 [INFO] [1857199 MP MT] [instance_base.py:240]: Case number: 1 
+2026-07-09 09:25:35,187 [INFO] [1857199 MP MT] [instance_base.py:313]: Initialize output csv file... 
+2026-07-09 09:25:35,188 [INFO] [1857199 MP MT] [instance_base.py:321]: Output csv file is not specified. It will be set as examples/case_store/e2e/torch_add_result.csv 
+2026-07-09 09:25:35,296 [INFO] [1857199 MP MT] [instance_base.py:145]: Process per device: 1 
+2026-07-09 09:25:35,297 [INFO] [1857199 MP MT] [instance_base.py:147]: Preparing Task Executors... 
+2026-07-09 09:25:35,562 [INFO] [1857199 MP MT] [instance_base.py:211]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 2s Rev: 7f1d28b                       |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1857524 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-07-09 09:25:40,057 [INFO] [1857524 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 09:25:40,637 [INFO] [1857524 add_f32_01 OnProfilingPrint] [profiling.py:56]: 
+----------------------------------------------------------------------------------------------------
+API Name: torch.add
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((2, 3, 4), (2, 3, 4))
+Input Dtypes: ('float32', 'float32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+alpha: 1.0
+//////////// Test Config //////////
+Input Data Range: ((None, None), (None, None))
+Precision Tolerance: None
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 1857524
+Device: 0
+---------------------------------------------------------------------------------------------------- 
+2026-07-09 09:25:45,555 [INFO] [1857199 MP MT] [instance_base.py:211]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 12s Rev: 7f1d28b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1857524 add_f32_01       OnEagerProfiling     RUNNING  4s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-07-09 09:25:53,947 [INFO] [1857524 add_f32_01 OnEagerProfiling] [patch_getenv.py:15]: get env ASCEND_GLOBAL_LOG_LEVEL = 3 
+[2026-07-09 09:25:53] [INFO] [1858028] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_qpdm54xw/aa_1857524_20260709092553197_ascend_pt
+2026-07-09 09:25:53,994 [INFO] [1858028 ForkProcess-2:1 OnEagerProfiling] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-09 09:25:55,555 [INFO] [1857199 MP MT] [instance_base.py:211]: 
++--------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 22s Rev: 7f1d28b                       |
++--------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 1857524 add_f32_01       OnEagerProfiling     RUNNING  14s  |
++--------------------------------------------------------------------------------------------------------+ 
+[2026-07-09 09:25:56] [INFO] [1858045] profiler.py: CANN profiling data parsed in a total time of 0:00:02.078571
+[2026-07-09 09:25:56] [WARNING] [1858028] profiler.py: Failed to get api data from db.
+[2026-07-09 09:25:56] [WARNING] [1858028] profiler.py: Failed to get task data from db.
+[2026-07-09 09:25:57] [INFO] [1858028] profiler.py: All profiling data parsed in a total time of 0:00:03.440508
+2026-07-09 09:25:58,540 [INFO] [1857524 add_f32_01 OnEagerComparison] [profiling.py:176]: 
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name                    avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+aclnnAdd_AddAiCore_Add  1.374          1.990         0.998         3
+-------------------------------------------------------------------------------------------------------
+
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       100.0%
+  DEVICE: 1.374 us
+  CPU:    154.107 us
+STATUS: PASS
+Golden Shapes: ((2, 3, 4),)
+Golden Dtypes: ('float32',)
+####################################################################################################### 
+2026-07-09 09:25:58,541 [INFO] [1857199 MP MT] [instance_base.py:126]: ttk Profiling complete 
