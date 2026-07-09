@@ -565,13 +565,16 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
                                  const aclIntArray *actualSeqQLenOptional = nullptr,
                                  const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
-    size_t layoutLen = strlen(inputLayout);
 
-    if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore query or key Invalid layout");
-        return ACLNN_ERR_PARAM_INVALID;
+    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_2201) {
+        size_t layoutLen = strlen(inputLayout);
+        if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore query or key Invalid layout");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
-
+    
     if (headNum <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "FlashAttentionScore", "headNum", std::to_string(headNum), "The value of headNum must be greater than 0");
@@ -1246,7 +1249,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
 
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
-    CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
@@ -1444,6 +1446,10 @@ aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
+    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_2201) {
+        CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    }
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
