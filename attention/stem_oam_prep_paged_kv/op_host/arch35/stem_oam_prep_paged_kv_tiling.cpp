@@ -1,0 +1,49 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file mhc_pre_sinkhorn_backward_tiling.cpp
+ * \brief MhcPreSinkhornBackward tiling file
+ */
+
+#include "register/op_def_registry.h"
+#include "tiling/tiling_api.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "arch35/mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
+#include "arch22/mhc_pre_sinkhorn_backward_arch22_tiling.h"
+#include "mhc_pre_sinkhorn_backward_tiling.h"
+#include "log/log.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
+
+namespace optiling {
+
+static ge::graphStatus Tiling4StemOamPrepPagedKV(gert::TilingContext* context)
+{
+    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKV is running.");
+
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+        OP_LOGD(context->GetNodeName(), "Using arch35 tiling for RegbaseSocVersion");
+        return TilingRegistry::GetInstance().DoTilingImpl(context);
+    }
+
+    OP_LOGD(context->GetNodeName(), "StemOamPrepPagedKV Only Support RegbaseSocVersion.");
+    return GRAPH_FAILED;
+}
+
+static ge::graphStatus TilingPrepare4StemOamPrepPagedKV(gert::TilingParseContext* context)
+{
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_OPTILING(StemOamPrepPagedKV)
+    .Tiling(Tiling4StemOamPrepPagedKV)
+    .TilingParse<StemOamPrepPagedKVCompileInfo>(TilingPrepare4StemOamPrepPagedKV);
+} // namespace optiling
