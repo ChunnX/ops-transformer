@@ -98,9 +98,9 @@ class LITopk<uint16_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * QLIV2Common::Align(topK, (uint32_t)256): 两块hisIndexLocal;
+        // QLIV2Common::Align(topK, (uint32_t)256): 一块hisIndexLocal，另一块复用indicesOutLocal;
         // 3 * 256: histogramsLocal idxHighLocal idxLowLocal; 64: nkValueLocal
-        uint64_t bufferSize1 = (2 * QLIV2Common::Align(topK, (uint32_t)256) + 3 * 256 + 64)  * sizeof(uint32_t);
+        uint64_t bufferSize1 = (QLIV2Common::Align(topK, (uint32_t)256) + 3 * 256 + 64) * sizeof(uint32_t);
         // QLIV2Common::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
         uint64_t bufferSize2 = (QLIV2Common::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint16_t);
         return bufferSize1 + bufferSize2;
@@ -112,10 +112,11 @@ public:
         this->trunkLen =  trunkLen;
     }
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
+                                       LocalTensor<uint32_t>& indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[QLIV2Common::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
+        LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
         histogramsLocal = hisIndexLocal2[QLIV2Common::Align(topK, (uint32_t)256)];
@@ -161,8 +162,10 @@ public:
                                           loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK,
-                    (uint32_t)256));
+                if ((loopIdx + 1) % 2 != 0) {
+                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLIV2Common::Align(topK,
+                        (uint32_t)256));
+                }
             }
         }
 

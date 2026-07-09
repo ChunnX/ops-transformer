@@ -43,8 +43,8 @@ def test_qliv2_process(filepath, device_id=0):
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
             blockFusion = test_data['blockFusion'].npu()
 
-    max_seqlen_q = params[18]
-    return_value = params[30]
+    max_seqlen_q = params[19]
+    return_value = params[31]
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
@@ -57,7 +57,7 @@ def test_qliv2_process(filepath, device_id=0):
         head_dim = int(head_dim)
         block_size = int(block_size)
         block_num = int(block_num)
-        dequant_dtype_str = params[11]
+        dequant_dtype_str = params[12]
         if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
         elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
@@ -145,7 +145,8 @@ def test_qliv2_process(filepath, device_id=0):
                                                     return_value = return_value)
     
     torch.npu.synchronize()
-    npu_topk_value, _ = npu_value.sort(dim=-1, descending=True)
+    npu_topk_value, npu_sort_order = npu_value.sort(dim=-1, descending=True)
+    npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 
 
