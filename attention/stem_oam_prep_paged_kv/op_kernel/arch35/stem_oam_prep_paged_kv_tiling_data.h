@@ -17,36 +17,23 @@
 
 #include "kernel_operator.h"
 
-constexpr uint32_t DIM_QK = 128;
-constexpr uint32_t KV_INDICES_BATCH_SIZE = 64;
-constexpr uint32_t MAX_STEM_BLOCK_SIZE = 256;
-constexpr uint32_t MAX_STEM_STRIDE = 64;
-constexpr uint32_t MAX_R_VAL = MAX_STEM_BLOCK_SIZE / 16;
-constexpr uint32_t MAX_KFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
-constexpr uint32_t DENSE_ROW_ELEM = DIM_QK;
-constexpr uint32_t REDUCE_TMP_SIZE = 9216;
-
 struct StemPrepKVTilingData {
-    uint32_t batchSize = 0;
-    uint32_t numKvHeads = 0;
-    uint32_t dimQk = 0;
-    uint32_t dimV = 0;
-    uint32_t stemBlockSize = 0;
-    uint32_t stemStride = 0;
-    uint32_t rVal = 0;
-    uint32_t kFlatDim = 0;
-    uint32_t kvBlockSize = 0;
-    uint32_t kvLayout = 0;
-    uint32_t totalBlocks = 0;
-    uint32_t maxKPadded = 0;
-    uint32_t maxKb = 0;
-    uint32_t maxKvBlocks = 0;
-    uint32_t vBiasStride = 0;
+    int64_t batchSize = 0;
+    int64_t numKvHeads = 0;
+    int64_t dimQk = 0;
+    int64_t dimV = 0;
+    int64_t stemBlockSize = 0;
+    int64_t stemStride = 0;
+    int64_t rVal = 0;
+    int64_t kFlatDim = 0;
+    int64_t kvBlockSize = 0;
+    int64_t kvLayout = 0;
+    int64_t maxKb = 0;
+    int64_t maxKvBlocks = 0;
     float lambdaMag = 0;
-    float epsilon = 0;
-    uint32_t totalTasks = 0;
-    uint32_t kCacheStride[4] = {0};
-    uint32_t vCacheStride[4] = {0};
+    int64_t kCacheStride[4] = {0};
+    int64_t vCacheStride[4] = {0};
+    int64_t kScakarCacheStride[4] = {0};
 };
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
