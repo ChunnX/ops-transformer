@@ -18,21 +18,22 @@
 #include "kernel_operator.h"
 
 struct StemOamPrepPagedKVTilingData {
-    int64_t batchSize = 0;
-    int64_t numKvHeads = 0;
-    int64_t totalBh = 0;
-    int64_t usedCoreNum = 0;
-    int64_t totalBlocks = 0;
+    int64_t kvLayout = 0;
     int64_t kvBlockSize = 0;
-    int64_t dimQk = 0;
+    int64_t numKvHeads = 0;
     int64_t maxKvBlocks = 0;
+    int64_t dimQk = 0;
+    int64_t dimV = 0;
+    int64_t maxKb = 0;
+    int64_t kflatDim = 0;
+    int64_t batchSize = 0;
     int64_t stemBlockSize = 0;
     int64_t stemStride = 0;
     float lambdaMag = 0;
-    int64_t kvLayout = 0;
+    int64_t rVal = 0;
     int64_t kCacheStride[4] = {0};
     int64_t vCacheStride[4] = {0};
-    int64_t kScaleCacheStride[4] = {0};
+    int64_t kScakarCacheStride[4] = {0};
 };
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_DATA_H
