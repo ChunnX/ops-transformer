@@ -30,7 +30,6 @@ class ElasticBuffer:
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         num_experts: Optional[int] = None,
-        ccl_buffer_size: int = 0,
         expert_alignment: int = 1,
     )
 
@@ -95,7 +94,6 @@ class ElasticBuffer:
 - **hidden** (`int`)：可选参数，hidden size 隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取 topK 个专家。
 - **num_experts** (`int`)：可选参数，MoE 专家总数量。
-- **ccl_buffer_size** (`int`)：可选参数，CCL buffer size 初始值，默认值为 0。
 - **expert_alignment** (`int`)：可选参数，专家对齐数，默认值为 1。
 
 **输出**：无返回值，构造 ElasticBuffer 实例。
