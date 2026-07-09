@@ -37,11 +37,13 @@ namespace BaseApi {
  *   4. vector 侧负责 softmax、P 静态量化、输出 update 以及可选 LSE 写回。
  *
  * 当前 MX 特性仅支持 TND query/output、PA BNBD key/value、D=DV=128，
- * 单个 sparse KV block 为 512 token。512 宽 KV block 会拆成两个 256 宽
- * C1/V1 subLoop，随后一次 C2/V2 消费合并后的 128x512 P 矩阵。
+ * kernel 计算 tile 仍为 512 token。当前 sparse_kv_block_size 可以是 128 或 64，
+ * 因此一个 512 宽 logical S2 tile 会由多个 sparse KV block 拼接而成；
+ * 512 宽 tile 再拆成两个 256 宽 C1/V1 subLoop，随后一次 C2/V2 消费合并后的
+ * 128x512 P 矩阵。
  *
- * useDn 与 FP8 模板保持同一设计含义：控制 C1/V1 数据布局选择。当前 host
- * 只选择 useDn=true，MX kernel 内的非 DN 分支保留为后续扩展入口。
+ * useDn 与 FP8 模板保持同一设计含义：控制 C1/V1 数据布局选择。当前 kernel
+ * 入口固定实例化 useDn=true，MX kernel 内的非 DN 分支保留为后续扩展入口。
  */
 template <bool useDn = true>
 class QuantBlockSparseAttnMxKernel {
@@ -256,13 +258,26 @@ private:
         return loopEnd;
     }
 
+    __aicore__ inline uint32_t GetSparseBlocksPerTask() const
+    {
+        // MX C1/V1 的计算 tile 固定为 512 token；PA sparse block 可以是 128 或 64。
+        // 因此一个 task 需要从 sparseIndices 连续取 4 个或 8 个 block 拼成 512。
+        // host 当前只允许 128/64，这里仍保留数组容量上限，避免后续扩展时越界。
+        const uint32_t blockCount = S2_BASE / constInfo.kvSparseBlockSize;
+        if (blockCount == 0U) {
+            return 1U;
+        }
+        return blockCount > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
+            regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : blockCount;
+    }
+
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bn1Idx,
                                        uint32_t s1OuterIdx, uint32_t s2LoopIdx, uint32_t s2LoopEnd,
-                                       uint64_t sparseBase)
+                                       uint32_t sparseBlockCount, uint64_t sparseBase)
     {
-        // 一个 RunInfo 表示一个 (B, N1, S1-outer) tile 下的一个逻辑 sparse KV block task。
-        // sparseIndices 给出逻辑 KV block id；cube 后续再结合 block_table，
-        // 找到 PA BNBD 布局中的物理 page。
+        // 一个 RunInfo 表示一个 (B, N1, S1-outer) tile 下的一个 512-token logical S2 tile。
+        // sparse_kv_block_size 为 128/64 时，当前 tile 会由多个 sparseIndices entry 拼接而成；
+        // cube 后续逐块结合 block_table，找到 PA BNBD 布局中的物理 page。
         runInfo = {};
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
@@ -293,17 +308,30 @@ private:
             sparseSeqLenGm.GetValue((static_cast<uint64_t>(runInfo.bIdx) * constInfo.realN2Size + runInfo.n1Idx) *
                                         constInfo.maxQb +
                                     s1OuterIdx);
-        runInfo.sparseBlkIdx1 = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx);
-        runInfo.sparseS2TokenOffset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-        const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - runInfo.sparseS2TokenOffset;
-        runInfo.s2SparseBlk1RealSize =
-            remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
-                (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
-        runInfo.s2SparseBlk1RealAlignedSize = (runInfo.s2SparseBlk1RealSize + 63U) >> 6 << 6;
-        runInfo.actSingleLoopS2Size = runInfo.s2SparseBlk1RealSize;
+        runInfo.sparseBlockStartIdx = s2LoopIdx;
+        runInfo.sparseBlockCount = sparseBlockCount > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
+            regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : sparseBlockCount;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const int64_t sparseBlkIdx = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
+            const int64_t sparseTokenOffset = sparseBlkIdx * static_cast<int64_t>(constInfo.kvSparseBlockSize);
+            const int64_t remainS2 = static_cast<int64_t>(runInfo.actS2Size) - sparseTokenOffset;
+            const uint32_t sparseBlockRealSize =
+                remainS2 > static_cast<int64_t>(constInfo.kvSparseBlockSize) ? constInfo.kvSparseBlockSize :
+                    (remainS2 > 0 ? static_cast<uint32_t>(remainS2) : 0U);
+            runInfo.sparseBlockIdx[i] = sparseBlkIdx;
+            runInfo.sparseBlockTokenOffset[i] = sparseTokenOffset;
+            runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
+            runInfo.actSingleLoopS2Size += sparseBlockRealSize;
+        }
+        if (runInfo.sparseBlockCount != 0U) {
+            runInfo.sparseBlkIdx1 = runInfo.sparseBlockIdx[0];
+            runInfo.sparseS2TokenOffset = runInfo.sparseBlockTokenOffset[0];
+            runInfo.s2SparseBlk1RealSize = runInfo.sparseBlockRealSize[0];
+        }
+        runInfo.s2SparseBlk1RealAlignedSize = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.actSingleLoopS2SizeAlign = runInfo.s2SparseBlk1RealAlignedSize;
         runInfo.isFirstS2Loop = s2LoopIdx == 0U;
-        runInfo.isLastS2Loop = s2LoopIdx == s2LoopEnd;
+        runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         runInfo.queryOffset =
             (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
         runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
@@ -314,7 +342,7 @@ private:
         int64_t delta = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
         int64_t sparseBlkIdx = runInfo.sparseBlkIdx1;
         AttentionMaskFullProcessingOrRequired(runInfo.s1Idx, runInfo.sparseS2TokenOffset, delta,
-                                              runInfo.s2SparseBlk1RealSize, sparseBlkIdx,
+                                              runInfo.actSingleLoopS2Size, sparseBlkIdx,
                                               runInfo.sparseBlk1PartialMask);
     }
 
@@ -332,6 +360,7 @@ private:
     {
         // 当前 task 执行 C1/V1；PRELOAD_N 个 loop 之前的 task 执行 C2/V2。
         // 这对应“两轮 C1/V1 匹配一轮 C2/V2”的流水：
+        // 当前 task 可能由 4 个 128-token 或 8 个 64-token sparse block 拼成 512-token tile。
         // C1(sub0)->V1(sub0)、C1(sub1)->V1(sub1) 在 L1 中生成完整 128x512 P，
         // 延迟后的 C2 再读取该 P/PScale，并与 V/VScale 做矩阵乘。
         MxRunInfo &runInfoCur = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
@@ -380,8 +409,8 @@ private:
         //   attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h
         //   attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h
         // 当前 loop 的 task 先执行 C1/V1；PRELOAD_N 个 loop 之前的 task 再执行 C2/V2。
-        // PRELOAD_N=2 表示流水启动时先预热两组 task。由于每个 512-token sparse block
-        // 又拆成两个 256-token C1/V1 subLoop，所以实际开头会先看到多次 C1/V1，
+        // PRELOAD_N=2 表示流水启动时先预热两组 task。每个 task 仍是 512-token
+        // logical tile，并拆成两个 256-token C1/V1 subLoop，所以实际开头会先看到多次 C1/V1，
         // 再由延迟 task 消费已经完整写入 L1 的 P/PScale 做 C2/V2。
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
@@ -413,12 +442,17 @@ private:
                         constInfo.maxKb +
                     static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                 const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
-                for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; ++s2LoopIdx) {
+                const uint32_t sparseBlocksPerTask = GetSparseBlocksPerTask();
+                for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                     MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-                    // FillRunInfo 把当前 sparse block 的所有运行期地址一次性算好：
-                    // query/qScale 的 TND offset、sparseIndices 读出的逻辑 block id、
+                    const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
+                    const uint32_t sparseBlockCount =
+                        remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
+                    // FillRunInfo 把当前 S2 tile 的所有运行期地址一次性算好：
+                    // query/qScale 的 TND offset、当前 512 tile 内多个 sparseIndices 逻辑 block id、
                     // 实际 S2 tail 长度以及 causal partial-mask 标志。
-                    FillRunInfo(runInfo, loop, mLoop, bn1Idx, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBase);
+                    FillRunInfo(runInfo, loop, mLoop, bn1Idx, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount,
+                                sparseBase);
                     if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
                         ExecuteTask(loop, taskRunInfo);
                         ++loop;
