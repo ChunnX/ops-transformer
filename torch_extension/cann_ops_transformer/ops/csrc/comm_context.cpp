@@ -448,7 +448,7 @@ public:
 
         if (useCustomBuffer_) {
             GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
-            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_) * 2ULL * 1024ULL * 1024ULL;
+            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
             ASCEND_LOGI("Get custom HCCL CommResource success");
             return;
         }
@@ -480,10 +480,10 @@ public:
         TORCH_CHECK(customDeviceBuffer_ != nullptr && customMemHandle_ != nullptr,
                     "custom buffer owner pointers must not be null");
         TORCH_CHECK(customCclBufferSize_ > 0, "customCclBufferSize must be greater than 0");
-        TORCH_CHECK(customCclBufferSize_ <= std::numeric_limits<int64_t>::max() / 2 / 1024 / 1024,
+        TORCH_CHECK(customCclBufferSize_ <= std::numeric_limits<int64_t>::max(),
                     "customCclBufferSize is too large: ", customCclBufferSize_);
 
-        uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_) * 2ULL * 1024ULL * 1024ULL;
+        uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_);
         if (*customDeviceBuffer_ == nullptr) {
             aclError ar = aclrtMalloc(customDeviceBuffer_, bufferSizeBytes, ACL_MEM_MALLOC_HUGE_FIRST);
             TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, " B) failed, ret=", ar);
