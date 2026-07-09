@@ -259,17 +259,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
-    if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-        AscendC::PRINTF("[MegaMoeLayered][init] rank=%u world=%u rankPerServer=%u serverNum=%u serverId=%u "
-                             "ctx=%lu localWin=%lu topo=%ld\n",
-            rankId_, worldSize_, rankPerServer_, serverNum_, serverId_, context, winRankAddr_[rankId_],
-            tilingData->topoType);
-        for (uint32_t i = 0; i < worldSize_; ++i) {
-            AscendC::PRINTF("[MegaMoeLayered][ctx] rank=%u peer=%u win=%lu hcommIdx=%u hcomm=%lu\n",
-                rankId_, i, winRankAddr_[i], (i > rankId_) ? (i - 1) : i,
-                (i == rankId_) ? 0UL : GetUrmaCommHandle(mc2Context_, i, rankId_));
-        }
-    }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     params_.bGmAddr = GetTensorAddr(0, weight1);
@@ -588,12 +577,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-                    AscendC::PRINTF("[MegaMoeLayered][mask-write] rank=%u peer=%u hcomm=%lu local=%lu remote=%lu "
-                                         "bytes=%lu dstOffset=%lu\n",
-                        rankId_, curRankId, GetUrmaCommHandle(mc2Context_, curRankId, rankId_), localGmAddr,
-                        remoteDataAddr, maskSlotSize_, dstOffset);
-                }
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
                     localGmAddr, maskSlotSize_);
             }
@@ -787,12 +770,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
-    if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-        AscendC::PRINTF("[MegaMoeLayered][dispatch-write] rank=%u peer=%u hcomm=%lu local=%lu remote=%lu "
-                             "relayOffset=%lu bytes=%u\n",
-            rankId_, peerRank, GetUrmaCommHandle(mc2Context_, peerRank, rankId_), recordAddr, dstAddr, relayOffset,
-            mxQuantTokenScaleAlignBytes_);
-    }
     hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, peerRank, rankId_), dstAddr, recordAddr,
         mxQuantTokenScaleAlignBytes_);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, peerRank, rankId_));
@@ -914,11 +891,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     do {
-        if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-            AscendC::PRINTF("[MegaMoeLayered][dispatch-read-flag] rank=%u relay=%u hcomm=%lu local=%lu remote=%lu\n",
-                rankId_, relayRank, GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
-                remoteRecordAddr + flagOffset);
-        }
         hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr + flagOffset,
             remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
@@ -1543,21 +1515,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
     WriteGmByPassDCache(syncCount, count);
-    if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-        AscendC::PRINTF("[MegaMoeLayered][sync-begin] rank=%u syncBase=%lu syncCountAddr=%lu count=%d\n",
-            rankId_, params_.peermemInfo.rankSyncInWorldPtr, (GM_ADDR)syncCount, count);
-    }
     for (int rankIndex = aivCoreIdx_; rankIndex < worldSize_; rankIndex += blockAivNum_) {
         if (rankIndex == rankId_) {
             continue;
         }
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
-        if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-            AscendC::PRINTF("[MegaMoeLayered][sync-peer] rank=%u peer=%d hcomm=%lu remoteBase=%lu remoteSync=%lu "
-                                 "localCheck=%lu count=%d\n",
-                rankId_, rankIndex, GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), winRankAddr_[rankIndex],
-                (GM_ADDR)syncRemoteAddr, (GM_ADDR)(syncRank + rankIndex * 16), count);
-        }
         hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr,
             (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;

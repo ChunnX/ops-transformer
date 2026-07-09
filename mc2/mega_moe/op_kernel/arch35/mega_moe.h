@@ -221,15 +221,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
-    if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-        AscendC::PRINTF("[MegaMoe][init] rank=%u world=%u ctx=%lu localWin=%lu topo=%ld\n",
-            rankId_, worldSize_, context, winRankAddr_[rankId_], tilingData->topoType);
-        for (uint32_t i = 0; i < worldSize_; ++i) {
-            AscendC::PRINTF("[MegaMoe][ctx] rank=%u peer=%u win=%lu hcommIdx=%u hcomm=%lu\n",
-                rankId_, i, winRankAddr_[i], (i > rankId_) ? (i - 1) : i,
-                (i == rankId_) ? 0UL : GetUrmaCommHandle(mc2Context_, i, rankId_));
-        }
-    }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     params_.bGmAddr = GetTensorAddr(0, weight1);
@@ -1207,16 +1198,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
     __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
-    if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-        AscendC::PRINTF("[MegaMoe][sync-begin] rank=%u syncBase=%lu syncCountAddr=%lu count=%d\n",
-            rankId_, params_.peermemInfo.rankSyncInWorldPtr, (GM_ADDR)syncCount, count);
-    }
     for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
-        if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
-            AscendC::PRINTF("[MegaMoe][sync-peer] rank=%u peer=%d remoteBase=%lu remoteSync=%lu localCheck=%lu count=%d\n",
-                rankId_, i, winRankAddr_[i], (GM_ADDR)syncRemoteAddr, (GM_ADDR)(syncRank + i * 16), count);
-        }
         WriteGmByPassDCache(syncRemoteAddr, count);
         auto syncCheck = syncRank + i * 16;
         GmSignalWaitBarrier(syncCheck, count);
