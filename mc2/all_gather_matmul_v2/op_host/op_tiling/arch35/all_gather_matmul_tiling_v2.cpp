@@ -40,7 +40,6 @@ using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherMatmulTilingV2::IsCapable()
@@ -130,7 +129,12 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     CutResult result = tileFormulate.GetTiling();
 
-    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
+    if (isCcuMode) {
+        AdjustCutResultForCCU(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    } else {
+        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+    }
 
     return result;
 }
