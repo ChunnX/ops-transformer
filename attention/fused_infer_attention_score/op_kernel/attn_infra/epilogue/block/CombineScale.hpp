@@ -103,23 +103,30 @@ public:
             uint32_t sum = q_len * n_len;
             uint32_t sum_former = q_len == 1 ? sum / 2 : (q_len / 2) * n_len;
 
-            uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2] : splitInfo->lseTaskOffset[process/2] + sum_former;
-            uint32_t addrOOffset = vectorsubBlockID == 0 ? splitInfo->oTaskOffset[process/2] : splitInfo->oTaskOffset[process/2] + sum_former * headSizeV;
+            uint64_t addrLOffset = vectorsubBlockID == 0
+                ? static_cast<uint64_t>(splitInfo->lseTaskOffset[process/2])
+                : static_cast<uint64_t>(splitInfo->lseTaskOffset[process/2]) + sum_former;
+            uint64_t addrOOffset = vectorsubBlockID == 0
+                ? static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
+                : static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
+                  + static_cast<uint64_t>(sum_former) * headSizeV;
 
             uint32_t prevQSeqlenSum = 0;
             if (inputLayoutTND) {
                 prevQSeqlenSum = (batchIdx == 0) ?
                     0 : static_cast<uint32_t>(gActualQseqlen.GetValue(batchIdx - 1));
             }
-            uint32_t baseGmOffset = prevQSeqlenSum * qHeads * headSizeV + qStartIndx * qHeads * headSizeV + headStartIndx * headSizeV;
-            uint32_t gmOScalar = 0;
+            uint64_t baseGmOffset = static_cast<uint64_t>(prevQSeqlenSum) * qHeads * headSizeV
+                                   + static_cast<uint64_t>(qStartIndx) * qHeads * headSizeV
+                                   + static_cast<uint64_t>(headStartIndx) * headSizeV;
+            uint64_t gmOScalar = 0;
             if (q_len == 1) {
                 gmOScalar = vectorsubBlockID == 0 ? baseGmOffset
-                                                : baseGmOffset + sum_former * headSizeV;
+                                                : baseGmOffset + static_cast<uint64_t>(sum_former) * headSizeV;
             } else {
                 uint32_t q_half = q_len / 2;
                 gmOScalar = vectorsubBlockID == 0 ? baseGmOffset
-                                                : baseGmOffset + q_half * qHeads * headSizeV;
+                                                : baseGmOffset + static_cast<uint64_t>(q_half) * qHeads * headSizeV;
             }
 
             uint32_t splitNum = splitInfo->splitNum[process/2];
@@ -136,7 +143,7 @@ public:
             int32_t calcLen = splitNumAlign * lseBlockAlign;
             int32_t oCount = lseBlock * headSizeV;
             int32_t lseCount = lseBlockAlign * headSizeV;
-            int32_t oCount_vector = sum * headSizeV;
+            int64_t oCount_vector = static_cast<int64_t>(sum) * headSizeV;
 
             uint32_t headSizeVPad = (headSizeV + 15) / 16 * 16;
 
@@ -186,16 +193,17 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
 
             if (outputLse) {
-                uint32_t baseGmOffsetLse =
-                    prevQSeqlenSum * qHeads + qStartIndx * qHeads + headStartIndx;
-                uint32_t gmLseScalar = 0;
+                uint64_t baseGmOffsetLse =
+                    static_cast<uint64_t>(prevQSeqlenSum) * qHeads
+                    + static_cast<uint64_t>(qStartIndx) * qHeads + headStartIndx;
+                uint64_t gmLseScalar = 0;
                 if (q_len == 1) {
                     gmLseScalar = (vectorsubBlockID == 0) ? baseGmOffsetLse
                                                           : baseGmOffsetLse + sum_former;
                 } else {
                     uint32_t q_half = q_len / 2;
                     gmLseScalar = (vectorsubBlockID == 0) ? baseGmOffsetLse
-                                                          : baseGmOffsetLse + q_half * qHeads;
+                                                          : baseGmOffsetLse + static_cast<uint64_t>(q_half) * qHeads;
                 }
 
                 if (q_len == 1) {
@@ -267,7 +275,8 @@ public:
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
  
                     AscendC::DataCopyPad(loFloatUbTensor,
-                        oCoreTmpGmTensor[addrOOffset + tileStart * headSizeV + nIdx * oCount_vector],
+                        oCoreTmpGmTensor[addrOOffset + static_cast<uint64_t>(tileStart) * headSizeV
+                            + static_cast<uint64_t>(nIdx) * oCount_vector],
                         AscendC::DataCopyExtParams(curTile, headSizeV * sizeof(float), 0, dstStrideReadFloat, 0),
                         AscendC::DataCopyPadExtParams<float>(true, 0, rightPadFloat, 0));
 
@@ -306,14 +315,15 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
 
                 if (q_len == 1) {
-                    AscendC::DataCopyPad(oGmTensor[gmOScalar + tileStart * headSizeV], go16UbTensor,
+                    AscendC::DataCopyPad(
+                        oGmTensor[gmOScalar + static_cast<uint64_t>(tileStart) * headSizeV], go16UbTensor,
                         AscendC::DataCopyExtParams(curTile, blockLenWrite, srcStrideWrite, 0, 0));
                 } else if (tileStart % n_len == 0 && curTile % n_len == 0) {
                     uint32_t qTile = curTile / n_len;
-                    uint32_t gmTileOffset = (tileStart / n_len) * qHeads * headSizeV;
+                    uint64_t gmTileOffset = static_cast<uint64_t>(tileStart / n_len) * qHeads * headSizeV;
                     for (uint32_t qi = 0; qi < qTile; qi++) {
                         uint32_t ubQiOffset = qi * n_len * headSizeVPad;
-                        uint32_t gmQiOffset = gmOScalar + gmTileOffset + qi * qHeads * headSizeV;
+                        uint64_t gmQiOffset = gmOScalar + gmTileOffset + static_cast<uint64_t>(qi) * qHeads * headSizeV;
                         AscendC::DataCopyPad(oGmTensor[gmQiOffset], go16UbTensor[ubQiOffset],
                             AscendC::DataCopyExtParams(n_len, blockLenWrite, srcStrideWrite, 0, 0));
                     }
@@ -326,7 +336,8 @@ public:
                         uint32_t nStart = flatIdx % n_len;
                         uint32_t nCount = (n_len - nStart < remaining) ?
                                            (n_len - nStart) : remaining;
-                        uint32_t gmOff = qIdx * qHeads * headSizeV + nStart * headSizeV;
+                        uint64_t gmOff = static_cast<uint64_t>(qIdx) * qHeads * headSizeV
+                                       + static_cast<uint64_t>(nStart) * headSizeV;
                         uint32_t ubOffset = ubRow * headSizeVPad;
                         AscendC::DataCopyPad(oGmTensor[gmOScalar + gmOff],
                             go16UbTensor[ubOffset],
