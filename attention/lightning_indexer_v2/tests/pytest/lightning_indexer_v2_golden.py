@@ -23,6 +23,10 @@ import ast
 import cann_ops_transformer
 from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
+DISCONTINUOUS_KEYS = True      # key非连续
+DEFAULT_SPLIT_S1 = False       # golden切分S1Flag
+DEFAULT_S1SIZE = 4          # s1切分基本块大小
+
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                  head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, 
@@ -600,6 +604,35 @@ def liv2_output_single(params, is_batch = False):
     cmp_ratio, return_value, max_seqlen_q = params
 
     if is_batch:
+        if q_t_size is None:
+            q_t_size = 0
+        if k_t_size is None:
+            k_t_size = 0
+        if block_size is None:
+            block_size = 0
+        if block_num is None:
+            block_num = 0
+        batch_size = int(batch_size)
+        q_seq = int(q_seq)
+        k_seq = int(k_seq)
+        q_t_size = int(q_t_size)
+        k_t_size = int(k_t_size)
+        q_head_num = int(q_head_num)
+        k_head_num = int(k_head_num)
+        head_dim = int(head_dim)
+        block_size = int(block_size)
+        block_num = int(block_num)
+        if max_seqlen_q is None:
+            max_seqlen_q = -1
+        max_seqlen_q = int(max_seqlen_q)
+        topk = int(topk)
+        mask_mode = int(mask_mode)
+        return_value = int(return_value)
+
+        params = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
+                 qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
+                 layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
+                 cmp_ratio, return_value, max_seqlen_q
         if qk_dtype == 'FP16':
             qk_dtype = torch.float16
         else:
@@ -623,6 +656,7 @@ def liv2_output_single(params, is_batch = False):
             weights_datarange = ast.literal_eval(weights_datarange)
         if output_idx_offset is not None:
             output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = [int(x) for x in output_idx_offset]
             if layout_query == "TND":
                 output_idx_offset_size = q_t_size * 1
             else:
@@ -706,6 +740,7 @@ def liv2_output_single(params, is_batch = False):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
         properties = torch.npu.get_device_properties()
+        blockFusion = None
         if "Ascend950" in properties.name:
             key_stride = 10  # 0轴非连续增加stride
             bytes_per_token = head_dim + key_stride # 整个非连续的长度
@@ -770,7 +805,8 @@ def liv2_output_single(params, is_batch = False):
             "seqused_k": seqused_k,
             "cmp_residual_k": cmp_residual_k,
             "block_table": block_table,
-            "metadata": metadata,
+            "max_seqlen_q_meta": max_seqlen_q,
+ 	        "max_seqlen_k_meta": max_seqlen_k,
             "layout_query":layout_query,
             "layout_key":layout_key,
             "cmp_ratio":cmp_ratio,

@@ -290,6 +290,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
         GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_FLOAT);
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     }
 }
 
