@@ -50,7 +50,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
-                    f"ep_rank_id should not be 0, "
+                    f"ep_world_size should not be 0, "
                     f"{ops_error(ErrCode.VALUE)}."
                 ),
             )
@@ -63,6 +63,7 @@ class _MegaMoeOpBuilder(OpBuilder):
 
 
 _mega_moe_op_builder = _MegaMoeOpBuilder()
+_op_module = _mega_moe_op_builder.load()
 
 
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
@@ -74,7 +75,6 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
                   weight1_type=None, weight2_type=None):
-    _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
@@ -94,7 +94,7 @@ class SymmBuffer:
         intermediate_hidden: int,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_dtype: Optional[int] = None,
+        dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -122,49 +122,38 @@ class SymmBuffer:
         self.comm_alg = comm_alg
 
 
+_TORCH_DTYPE_TO_INT = {  # torch枚举
+    torch.float8_e5m2: 23,
+    torch.float8_e4m3fn: 24,
+    torch.int8: 1,
+}
+
+
+def _dtype_to_int(dtype):
+    if dtype is None:
+        return None
+    if isinstance(dtype, int):
+        return dtype
+    if isinstance(dtype, torch.dtype):
+        if dtype not in _TORCH_DTYPE_TO_INT:
+            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+        return _TORCH_DTYPE_TO_INT[dtype]
+    raise TypeError(f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}.")
+
+
 def get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
-    dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
+    max_recv_token_num: int = 0,
+    dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0, comm_alg: str = ""
 ) -> int:
-    def inline_align(val, align):
-        return (val + align - 1) // align * align
-    torch._check(((ep_world_size >= 2) and (ep_world_size <= 768)),
-                     lambda: (f"ep_world_size only support in [2, 768], but got {ep_world_size=}."))
-    torch._check(((hidden >= 1024) and (hidden <= 8192)),
-                    lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
-    torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
-                    lambda: (f"num_max_tokens_per_rank only support in [1, 512], "
-                            f"but got {num_max_tokens_per_rank=}."))
-    torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 1024)),
-                    lambda: (f"moe_expert_num only support in [1, 1024], but got {moe_expert_num=}."))
-    torch._check(((num_topk >= 1) and (num_topk <= 16)),
-                     lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
-    local_moe_expert_num = moe_expert_num // ep_world_size
-    align_32 = 32
-    align_256 = 256
-    align_512 = 512
-    y_out_dtype_size = 2
-    mb_conversion = 1024 * 1024
-    # 全卡软同步使用 60M
-    peermem_data_offset = 60 * 1024
-    # mask_recv_size 
-    compare_count = inline_align(num_max_tokens_per_rank * num_topk * 4, align_256) // 4 # 4 = sizeof(int32)
-    mask_align_size = inline_align(compare_count // 8, align_32) # 8 = align_32 / sizeof(int32)
-    mask_slot_size = mask_align_size + align_32 # 后32字节存count数
-    mask_recv_size = inline_align(local_moe_expert_num * ep_world_size * mask_slot_size, align_512)
-    # quant_token_scale_size
-    mx_scale_num = (hidden + align_32 - 1) // align_32
-    data_bytes = inline_align(hidden, align_256) # 单token 256字节对齐，当前量化为mxfp8
-    token_bytes = inline_align(data_bytes + mx_scale_num, align_32) # token拼接scale长度
-    quant_token_scale_size = inline_align(num_max_tokens_per_rank * token_bytes, align_512)
-    # combine_send_size
-    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, align_512)
-    # 所需总大小
-    ccl_buffer_size = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out
-    ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
-    return ccl_buffer_size
+    quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
+    return _op_module.get_mega_moe_ccl_buffer_size(
+        ep_world_size, moe_expert_num, num_max_tokens_per_rank,
+        num_topk, hidden, max_recv_token_num,
+        dispatch_quant_mode, quant_dtype_int,
+        combine_quant_mode, comm_alg)
 
 
 def get_symm_buffer_for_mega_moe(
@@ -177,9 +166,10 @@ def get_symm_buffer_for_mega_moe(
     *,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
-    dispatch_quant_out_dtype: Optional[int] = None,
+    dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = ""
+    comm_alg: str = "",
+    use_ccl_buffer: bool = True
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -215,7 +205,6 @@ def mega_moe(
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
-
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
