@@ -469,7 +469,7 @@ def convert_q_scale_tnd_to_n2gtd_layout(tensor_tnd, num_kv_heads):
 
 def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
                            is_vscale=False, is_scale=False, is_rope=False,
-                           kv_layout="BnNBsD", group_size=32):
+                           kv_layout="BnNBsD", group_size=32, sparse_indices=None, sparse_seq_len=None):
     """
     MXFP8 PA 预处理: BNSD → PagedAttention KV Cache
 
@@ -517,9 +517,11 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     block_num = [math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens]
     for b in range(B):
         bid_table = block_table[b]
+        #for n_q_idx in range(N_q):
         for blk_idx in range(block_num[b]):
             blockid = int(bid_table[blk_idx])
             block_offset = blk_idx * pack_block_size
+            #block_offset = sparse_indices[b,n_q_idx,blk_idx] * pack_block_size
             valid_len = min(pack_block_size, pack_seq_lens[b] - block_offset)
             if valid_len <= 0:
                 continue
@@ -1060,7 +1062,7 @@ def _build_causal_mask():
 
 
 def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
-                      npu_input_layout, block_table_torch, enable_pa):
+                      npu_input_layout, block_table_torch, enable_pa, group_size=32, sparse_indices=None, sparse_seq_len=None):
     """准备 rope 数据的 NPU tensor"""
     if not ENABLE_ROPE or qr_bf16 is None or kr_bf16 is None:
         if ENABLE_ROPE:
@@ -1072,7 +1074,7 @@ def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
     if enable_pa:
         k_rope_pa = mxfp8_pa_preprocessing(
             kr_bf16, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-            is_rope=True, kv_layout=KV_CACHE_LAYOUT)
+            is_rope=True, kv_layout=KV_CACHE_LAYOUT, group_size=32, sparse_indices, sparse_seq_len)
         k_rope_npu = k_rope_pa.npu()
         if not IS_CONTIGUOUS:
             # ---- 构造krope不连续 ----
@@ -1117,14 +1119,14 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     mask_arg = _build_causal_mask()
     q_rope_npu, k_rope_npu = _prepare_rope_npu(
         qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
-        npu_input_layout, block_table_torch, ENABLE_PA)
+        npu_input_layout, block_table_torch, ENABLE_PA, group_size=32, sparse_indices, sparse_seq_len)
 
     if ENABLE_PA:
         # PA 模式: K/V 走 mxfp8_pa_preprocessing 转换为 PagedAttention KV Cache 格式
         k_pa = mxfp8_pa_preprocessing(k_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-                                       is_scale=False, kv_layout=KV_CACHE_LAYOUT)
+                                       is_scale=False, kv_layout=KV_CACHE_LAYOUT, group_size=32, sparse_indices, sparse_seq_len)
         v_pa = mxfp8_pa_preprocessing(v_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-                                       is_scale=False, kv_layout=KV_CACHE_LAYOUT)
+                                       is_scale=False, kv_layout=KV_CACHE_LAYOUT, group_size=32, sparse_indices, sparse_seq_len)
         k_npu = k_pa.contiguous().view(FP8_DTYPE).npu()
         v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
         if not IS_CONTIGUOUS:
@@ -1136,9 +1138,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             logger.info(f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous()}")
 
         k_scale_pa = mxfp8_pa_preprocessing(dequant_scale_k, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-                                             is_scale=True, is_vscale=False, kv_layout=KV_CACHE_LAYOUT)
+                                             is_scale=True, is_vscale=False, kv_layout=KV_CACHE_LAYOUT, group_size=32, sparse_indices, sparse_seq_len)
         v_scale_pa = mxfp8_pa_preprocessing(dequant_scale_v, actual_seq_kv, BLOCK_SIZE, block_table_torch,
-                                             is_scale=True, is_vscale=True, kv_layout=KV_CACHE_LAYOUT)
+                                             is_scale=True, is_vscale=True, kv_layout=KV_CACHE_LAYOUT,group_size=32, sparse_indices, sparse_seq_len)
 
         k_scale_e8m0_pa = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA scale")
         v_scale_e8m0_pa = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA scale")
