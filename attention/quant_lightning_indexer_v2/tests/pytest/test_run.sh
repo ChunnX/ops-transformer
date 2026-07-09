@@ -26,8 +26,13 @@ TEST_QLIV2_SINGLE_SCRIPT="test_quant_lightning_indexer_v2_single.py"
 
 # 单用例算子调测
 run_single() {
-    echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_QLIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    local run_mode="$1"
+    echo "===== 执行单用例算子调测 (模式: ${run_mode:-paramset}) ====="
+    if [ -n "$run_mode" ]; then
+        QLIV2_RUN_MODE="$run_mode" python3 -m pytest -rA -s $TEST_QLIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    else
+        python3 -m pytest -rA -s $TEST_QLIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    fi
 }
 
 # 用例批量生成调试
@@ -116,6 +121,7 @@ show_help() {
     echo ""
     echo "命令说明："
     echo "  single              执行单算子用例调测"
+    echo "                        -M run_mode    eager|graph（默认使用 paramset 配置）"
     echo ""
     echo "  batch              从 Excel 生成 pt 文件并批量执行 NPU 测试"
     echo "                        -E excel_path  指定 Excel 文件路径（默认: ./excel/test_cases.xlsx）"
@@ -133,6 +139,7 @@ show_help() {
     echo ""
     echo "示例："
     echo "  $0 single"
+    echo "  $0 single -M graph   # graph 模式"
     echo "  $0 batch              # 从 excel 生成 pt 后批量执行（默认值）"
     echo "  $0 batch -E ./excel/test_cases.xlsx -S Sheet1 -P ./pt_path"
     echo "  $0 batch -M graph     # graph 模式"
@@ -155,7 +162,7 @@ shift
 EXCEL_PATH=""
 EXCEL_SHEET="Sheet1"
 PT_PATH="$DEFAULT_PT_PATH"
-RUN_MODE="eager"
+RUN_MODE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -176,8 +183,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            # 兼容旧用法：batch 后直接跟 run_mode
-            if [[ "$COMMAND" == "batch" ]]; then
+            # 兼容旧用法：single/batch 后直接跟 run_mode
+            if [[ "$COMMAND" == "batch" || "$COMMAND" == "single" ]]; then
                 RUN_MODE="$1"
             fi
             shift
@@ -188,9 +195,15 @@ done
 # 根据参数执行对应函数
 case "$COMMAND" in
     single)
-        run_single
+        if [[ -n "$RUN_MODE" && "$RUN_MODE" != "eager" && "$RUN_MODE" != "graph" ]]; then
+            echo "错误：single 模式仅支持 eager/graph，当前值: $RUN_MODE"
+            show_help
+            exit 1
+        fi
+        run_single "$RUN_MODE"
         ;;
     batch)
+        RUN_MODE="${RUN_MODE:-eager}"
         if [[ "$RUN_MODE" != "eager" && "$RUN_MODE" != "graph" ]]; then
             echo "错误：batch 模式仅支持 eager/graph，当前值: $RUN_MODE"
             show_help
@@ -202,6 +215,7 @@ case "$COMMAND" in
         run_batch "$EXCEL_PATH" "$EXCEL_SHEET" "$PT_PATH" "$RUN_MODE"
         ;;
     batch_exec)
+        RUN_MODE="${RUN_MODE:-eager}"
         if [ -z "$EXCEL_PATH" ]; then
             EXCEL_PATH="$DEFAULT_EXCEL"
         fi
