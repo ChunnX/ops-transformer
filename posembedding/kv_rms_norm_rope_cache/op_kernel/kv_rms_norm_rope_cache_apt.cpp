@@ -14,6 +14,7 @@
  */
 
 #include "arch35/kv_rms_norm_rope_cache_regbase_full_load.h"
+#include "arch35/kv_rms_norm_rope_cache_regbase_dk_split.h"
 #include "arch35/kv_rms_norm_rope_cache_regbase_recompute.h"
 
 using namespace KvRmsNormRopeCache;
@@ -35,6 +36,14 @@ extern "C" __global__ __aicore__ void kv_rms_norm_rope_cache(
         GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheRegbaseFullLoadTilingData, tiling_data_in, tiling);
         const KvRmsNormRopeCacheRegbaseFullLoadTilingData* __restrict tilingData = &tiling_data_in;
         KvRmsNormRopeCacheRegbaseFullLoad<DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
+        op.Init(
+            kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset,
+            k_rope, c_kv);
+        op.Process();
+    } else if (TILING_KEY_IS(30000)) {
+        GET_TILING_DATA_WITH_STRUCT(KvRmsNormRopeCacheRegbaseDkSplitTilingData, tiling_data_in, tiling);
+        const KvRmsNormRopeCacheRegbaseDkSplitTilingData* __restrict tilingData = &tiling_data_in;
+        KvRmsNormRopeCacheRegbaseDkSplit<DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
         op.Init(
             kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset,
             k_rope, c_kv);
