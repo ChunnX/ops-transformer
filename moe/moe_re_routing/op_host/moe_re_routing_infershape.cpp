@@ -25,12 +25,10 @@ namespace ops {
 constexpr size_t INPUT_IDX_TOKENS = 0;
 constexpr size_t INPUT_IDX_EXPERT_TOKEN_NUM_PER_RANK = 1;
 constexpr size_t INPUT_IDX_PER_TOKEN_SCALES = 2;
-constexpr size_t INPUT_IDX_EXPERT_TOPK_WEIGHT = 3;
 constexpr size_t OUTPUT_IDX_PERMUTE_TOKENS = 0;
 constexpr size_t OUTPUT_IDX_PERMUTE_PER_TOKEN_SCALES = 1;
 constexpr size_t OUTPUT_IDX_PERMUTE_TOKEN_IDX = 2;
 constexpr size_t OUTPUT_IDX_EXPERT_TOKEN_NUM = 3;
-constexpr size_t OUTPUT_IDX_PERMUTE_TOPK_WEIGHT = 4;
 constexpr size_t IDX_ZERO = 0;
 constexpr size_t IDX_ONE = 1;
 constexpr int64_t DIM_NUM = 2;
@@ -81,17 +79,6 @@ graphStatus InferShape4MoeReRouting(gert::InferShapeContext *context)
         expertTokenNumShape->SetDim(IDX_ZERO, expertTokenNumPerRankInputShapeDims);                          // [E,]
     }
 
-    const gert::Shape *topkWeightShape = context->GetOptionalInputShape(INPUT_IDX_EXPERT_TOPK_WEIGHT);
-    gert::Shape *permuteTopkWeightShape = context->GetOutputShape(OUTPUT_IDX_PERMUTE_TOPK_WEIGHT);
-    if (permuteTopkWeightShape != nullptr) {
-        if (topkWeightShape != nullptr) {
-            *permuteTopkWeightShape = *topkWeightShape;
-        } else {
-            permuteTopkWeightShape->SetDimNum(IDX_ONE);
-            permuteTopkWeightShape->SetDim(IDX_ZERO, 0);
-        }
-    }
-
     OP_LOGD(context, "End to do InferShape4MoeReRouting.");
     return GRAPH_SUCCESS;
 }
@@ -112,13 +99,6 @@ graphStatus InferDtype4MoeReRouting(gert::InferDataTypeContext *context)
     context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOKENS, tokens_input_dtype);
     context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOKEN_IDX, ge::DT_INT32);
     context->SetOutputDataType(OUTPUT_IDX_EXPERT_TOKEN_NUM, expt_token_num_per_rank_input_dtype);
-
-    ge::DataType topkWeightDataType = context->GetOptionalInputDataType(INPUT_IDX_EXPERT_TOPK_WEIGHT);
-    if (topkWeightDataType != ge::DT_UNDEFINED) {
-        context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOPK_WEIGHT, topkWeightDataType);
-    } else {
-        context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOPK_WEIGHT, ge::DT_FLOAT);
-    }
 
     OP_LOGD(context, "InferDtype4MoeReRouting end");
 
