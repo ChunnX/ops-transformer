@@ -517,12 +517,6 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
         ASCEND_LOGI("Create HCCL context success, ctx: %p", ctx);
 
-        FillAndCopyContext(commHandle, mc2ContextTag, engine, protocol, commContextStruct, hcclBuffSize);
-    }
-
-    void FillAndCopyContext(const HcclComm &commHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                            const CommProtocol &protocol, CommContext *commContextStruct, uint64_t &hcclBuffSize)
-    {
         uint64_t commContextSize = sizeof(CommContext);
         HcclResult hcclRet = HcclGetRankIdFunc(commHandle, &commContextStruct->epRankId);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
