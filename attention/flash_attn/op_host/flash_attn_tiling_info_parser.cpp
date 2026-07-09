@@ -332,25 +332,25 @@ ge::graphStatus FaInfoParser::GetS1Size()
 void FaInfoParser::GetKvIsContiguous()
 {
     // 老版本opbase不支持strides, 无法判NC, 放过
-    if (isTensorV1_ || keyStrides_ == nullptr || valueStrides_ == nullptr) {
+    if (isTensorV1_) {
         return;
     }
-    if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
-        // 非PA场景: kv连续性是checker负责校验, parser只负责识别
-        return;
-    }
-    // PA场景: 检测kv是否非连续, 是则标记NON_CONTIGUOUS并记dimIndex供checker复用
+
     int32_t keyDimIdx = 0;
     int32_t valDimIdx = 0;
-    const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
-    const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
-    bool keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
+    bool keyContig = false;
+    bool valContig = false;
+    if (keyStrides_ != nullptr) {
+        const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+        keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
                       ge::GRAPH_SUCCESS);
-    bool valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
-                      ge::GRAPH_SUCCESS);
-    if (!keyContig || !valContig) {
-        kvStorageMode_ = KvStorageMode::NON_CONTIGUOUS;
         keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
+    }
+
+    if (valueStrides_ != nullptr) {
+        const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
+        valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
+                        ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
 }
@@ -531,9 +531,8 @@ ge::graphStatus FaInfoParser::GetActualSeqInfo()
 
 void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
 {
-    // PagedAttention 参数组 (NON_CONTIGUOUS也是PA场景)
-    faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION ||
-                                kvStorageMode_ == KvStorageMode::NON_CONTIGUOUS);
+    // PagedAttention 参数组
+    faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 

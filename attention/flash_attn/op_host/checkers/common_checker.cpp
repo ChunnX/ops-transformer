@@ -425,14 +425,12 @@ ge::graphStatus CommonChecker::CheckNonPAKvContiguous(const FaTilingInfo &faInfo
     if (faInfo.pageAttentionFlag || faInfo.isTensorV1) {
         return ge::GRAPH_SUCCESS;
     }
-    const int32_t dimIndex = 0;
-    const gert::Shape &keyShape = faInfo.opParamInfo.key.shape->GetStorageShape();
-    const gert::Shape &valueShape = faInfo.opParamInfo.value.shape->GetStorageShape();
-    OP_CHECK_IF((CheckTensorContiguous(keyShape.GetDimNum(), keyShape, faInfo.keyStrides, dimIndex) !=
-                    ge::GRAPH_SUCCESS) ||
-                    (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, faInfo.valueStrides, dimIndex) !=
-                        ge::GRAPH_SUCCESS),
-                OP_LOGE(faInfo.opName, "In non-PA scenarios, key/value tensors must be contiguous."),
+    
+    OP_CHECK_IF(faInfo.keyNonContigDim != -1 ,
+                OP_LOGE(faInfo.opName, "In non-PA scenarios, key tensors must be contiguous."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.valueNonContigDim != -1 ,
+                OP_LOGE(faInfo.opName, "In non-PA scenarios, value tensors must be contiguous."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

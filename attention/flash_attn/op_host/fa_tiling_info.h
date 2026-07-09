@@ -150,8 +150,7 @@ enum class FaQuantMode : uint32_t {
 
 enum class KvStorageMode : uint32_t {
     BATCH_CONTINUOUS = 0,
-    PAGE_ATTENTION = 1,
-    NON_CONTIGUOUS = 2 /* PA场景下kv非连续 */
+    PAGE_ATTENTION = 1
 };
 
 enum class FaTilingInOutMode : uint32_t {
