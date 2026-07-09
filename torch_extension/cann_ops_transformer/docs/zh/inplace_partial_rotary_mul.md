@@ -40,7 +40,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="interleave", partial_slice=None) -> None
+cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="interleave", partial_slice=None) -> Tensor
 ```
 
 ## 参数说明
@@ -55,7 +55,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 
 ## 返回值说明
 
-该接口无返回值（`None`）。计算结果直接 inplace 写回输入张量 `x`。`x` 在计算后 shape 和数据类型保持不变，`partial_slice` 指定范围以外的数据保持原值。
+返回被 inplace 修改后的输入张量 `x`。`x` 在计算后 shape 和数据类型保持不变，`partial_slice` 指定范围以外的数据保持原值。**训练场景中必须使用返回值进行后续计算**，否则 autograd 链会断开。
 
 > **自动微分说明**：当 `x.requires_grad` 为 True 时，对 loss 执行 `.backward()` 即自动触发 `inplace_partial_rotary_mul_backward`，无需手动调用反向算子。`r1`（cos）、`r2`（sin）的梯度**不计算**，始终为 None。
 
@@ -100,7 +100,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
     r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
 
-    inplace_partial_rotary_mul(
+    x = inplace_partial_rotary_mul(
         x,
         r1,
         r2,
@@ -125,8 +125,8 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
     r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
 
-    # 正向：自动追踪计算图（无需接收返回值，x 已被 inplace 修改）
-    inplace_partial_rotary_mul(
+    # 正向：自动追踪计算图（必须使用返回值进行后续计算）
+    x = inplace_partial_rotary_mul(
         x, r1, r2,
         rotary_mode="interleave",
         partial_slice=[slice_start, slice_end],
@@ -159,7 +159,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 
     class InplacePartialRotaryMulModel(torch.nn.Module):
         def forward(self, x, r1, r2):
-            inplace_partial_rotary_mul(
+            x = inplace_partial_rotary_mul(
                 x,
                 r1,
                 r2,

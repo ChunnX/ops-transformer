@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 from typing import List, Optional
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -40,6 +39,7 @@ class InplacePartialRotaryMulFn(torch.autograd.Function):
         from cann_ops_transformer.ops.inplace_partial_rotary_mul_backward import (
             inplace_partial_rotary_mul_backward_op_builder,
         )
+
         op_module = inplace_partial_rotary_mul_backward_op_builder.load()
         op_module.inplace_partial_rotary_mul_backward(
             grad_output, r1, r2, ctx.rotary_mode, ctx.partial_slice
@@ -119,7 +119,7 @@ def inplace_partial_rotary_mul(
     *,
     rotary_mode: str = "interleave",
     partial_slice: Optional[List[int]] = None,
-) -> None:
+) -> torch.Tensor:
     """
     Applies partial rotary position embedding to ``x`` in-place on NPU.
 
@@ -137,15 +137,18 @@ def inplace_partial_rotary_mul(
             Defaults to ``"interleave"``.
         partial_slice (List[int]): Two-element slice range along the head
             dimension. Defaults to ``[0, 0]``.
+
+    Returns:
+        Tensor: The in-place modified tensor ``x``.
     """
     partial_slice = [0, 0] if partial_slice is None else partial_slice
 
     # r1/r2 在 RoPE 场景中通常不需要梯度，此处仅按 x.requires_grad 判断
     if x.requires_grad:
-        InplacePartialRotaryMulFn.apply(x, r1, r2, rotary_mode, partial_slice)
-        return
+        return InplacePartialRotaryMulFn.apply(x, r1, r2, rotary_mode, partial_slice)
 
     # 非 autograd 路径：直接走 backend
     torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
         x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice
     )
+    return x
