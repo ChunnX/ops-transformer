@@ -588,52 +588,19 @@ __aicore__ inline void GroupMatmulImplGeneric(
 }
 
 // =================================================================================================
-// GroupMatmulSharedExpert: 纯 AIC matmul，输出到 GM，无 flag 同步、无 AIV 交互
-// 用于共享专家 GMM1/GMM2，复用 Config/Layout 体系
+// SharedExpert helpers: 纯 matmul 输出到 GM, 无 flag/Notify/Combine
 // =================================================================================================
-template <typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB>
-__aicore__ inline void GroupMatmulSharedExpert(
-    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo)
+
+// A8W8: 纯 AIC matmul, 输出到 GM
+template <typename Policy, typename BlockMmad, typename Scheduler, typename TensorA, typename TensorB,
+    typename TensorScaleA, typename TensorScaleB, typename TensorBias, typename TensorC, typename Config>
+__aicore__ inline void AicComputeSharedExpert(
+    BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorB& gmB,
+    TensorScaleA& gmScaleA, TensorScaleB& gmScaleB, TensorBias& gmBias, TensorC& gmC, const Config& config)
 {
-    if constexpr (g_coreType != AscendC::AIC) { return; }
-
-    using Config = Detail::Config<false, Detail::Gmm2Policy, MXFP8_E4M3_COMM_QUANT,
-        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
-    auto config = Config::BuildProblemConfig(problemShape);
-
-    BlockScheduler scheduler(
-        {config.m, config.outputN, config.k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t tileNum = scheduler.GetTileNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
     uint32_t blockNum = GetBlockNum();
-
-    auto layouts = Config::BuildLayouts(config);
-
-    using BlockMmad = typename Config::BlockMmad;
-    BlockMmad blockMmad;
-    bool enableL0CPingPong = false;
-    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
-
-    auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
-    auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
-    auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layouts.scaleA);
-    auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layouts.scaleB);
-    auto gmBias = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ typename Config::BiasType*>(0UL)), layouts.bias);
-    auto gmC = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layouts.c);
-
+    uint32_t tileNum = scheduler.GetTileNum();
     for (uint32_t loopIdx = blockIdx; loopIdx < tileNum; loopIdx += blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -653,11 +620,161 @@ __aicore__ inline void GroupMatmulSharedExpert(
             Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
         auto gmBlockC = gmC.Slice(
             Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-
         typename BlockMmad::BlockShape singleShape{
             Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
     }
+}
+
+// A8W4: AIC matmul (W4→W8 via prologue) + AIV sub0 prologue, 无 Notify/Combine
+template <typename Policy, typename BlockMmad, typename BlockPrologue, typename Scheduler, typename TensorA,
+    typename TensorScaleA, typename TensorScaleB, typename TensorB, typename TensorC, typename Config>
+__aicore__ inline void GroupMatmulExecSharedExpertA8W4(
+    BlockMmad& blockMmad, BlockPrologue& blockPrologue, Scheduler& scheduler,
+    TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB, TensorB& gmB, TensorC& l0cOutGm,
+    const Config& config)
+{
+    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t blockNum = GetBlockNum();
+    uint32_t tileNum = scheduler.GetTileNum();
+
+    if constexpr (g_coreType == AscendC::AIC) {
+        for (uint32_t loopIdx = blockIdx; loopIdx < tileNum; loopIdx += blockNum) {
+            auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+            auto actualShape = scheduler.GetBlockShape(blockCoord);
+            uint32_t mLoc = Get<M_VALUE>(blockCoord);
+            uint32_t nLoc = Get<N_VALUE>(blockCoord);
+            auto gmBlockA = gmA.Slice(
+                Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
+            auto gmBlockScaleA = gmScaleA.Slice(
+                Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
+            if constexpr (Policy::IS_GMM1) {
+                for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
+                    auto nOffset = nLoc + weightBlock * config.outputN;
+                    auto gmBlockScaleB = gmScaleB.Slice(
+                        Te::MakeCoord(0, nOffset), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+                    auto tensorBlockGm = l0cOutGm.Slice(
+                        Te::MakeCoord(mLoc, nOffset),
+                        Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+                }
+            } else {
+                auto gmBlockScaleB = gmScaleB.Slice(
+                    Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+                auto tensorBlockGm = l0cOutGm.Slice(
+                    Te::MakeCoord(mLoc, nLoc),
+                    Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            }
+        }
+    } else {
+        if (GetSubBlockIdx() != 0) { return; }
+        for (uint32_t loopIdx = blockIdx; loopIdx < tileNum; loopIdx += blockNum) {
+            auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+            auto actualShape = scheduler.GetBlockShape(blockCoord);
+            uint32_t nLoc = Get<N_VALUE>(blockCoord);
+            auto mL1Size = Get<M_VALUE>(actualShape);
+            auto nL1Size = Get<N_VALUE>(actualShape);
+            if constexpr (Policy::IS_GMM1) {
+                for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
+                    auto nOffset = nLoc + weightBlock * config.outputN;
+                    blockPrologue(gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.l1Params.kL1);
+                }
+            } else {
+                blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.l1Params.kL1);
+            }
+        }
+    }
+}
+
+// =================================================================================================
+// GroupMatmulSharedExpert: A8W8 纯 AIC matmul, 输出到 GM
+// =================================================================================================
+template <typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmulSharedExpert(
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo)
+{
+    if constexpr (g_coreType != AscendC::AIC) { return; }
+
+    using Config = Detail::Config<false, Detail::Gmm2Policy, MXFP8_E4M3_COMM_QUANT,
+        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
+    auto config = Config::BuildProblemConfig(problemShape);
+    auto layouts = Config::BuildLayouts(config);
+
+    using BlockMmad = typename Config::BlockMmad;
+    BlockMmad blockMmad;
+    bool enableL0CPingPong = false;
+    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
+    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ typename Config::BiasType*>(0UL)), layouts.bias);
+    auto gmC = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layouts.c);
+
+    AicComputeSharedExpert<Detail::Gmm2Policy, BlockMmad>(
+        blockMmad, scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, config);
+}
+
+// =================================================================================================
+// GroupMatmulSharedExpertA8W4: A8W4 matmul + prologue, 输出到 GM
+// =================================================================================================
+template <bool IsGmm1, typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmulSharedExpertA8W4(
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo)
+{
+    using Policy = std::conditional_t<IsGmm1, Detail::Gmm1Policy, Detail::Gmm2Policy>;
+    using Config = Detail::Config<true, Policy, MXFP8_E4M3_COMM_QUANT,
+        ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
+    auto config = Config::BuildProblemConfig(problemShape);
+    auto layouts = Config::BuildLayouts(config);
+
+    using BlockMmad = typename Config::BlockMmad;
+    using BlockPrologue = typename Config::BlockPrologue;
+    BlockMmad blockMmad{};
+    BlockPrologue blockPrologue;
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+    blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
+
+    auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+        reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layouts.c);
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+
+    GroupMatmulExecSharedExpertA8W4<Policy, BlockMmad, BlockPrologue>(
+        blockMmad, blockPrologue, scheduler, gmA, gmScaleA, gmScaleB, gmB, l0cOutGm, config);
 }
 } // namespace Detail
 // =================================================================================================

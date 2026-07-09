@@ -127,7 +127,6 @@ struct WorkspaceInfo {
     GM_ADDR quantDoneFlagPtr;
     GM_ADDR sharedExpertGmm2DoneFlagPtr;
     GM_ADDR sharedExpertGmm1DoneFlagPtr;
-    GM_ADDR sharedExpertSwigluDoneFlagPtr;
 
     GM_ADDR maskSlotPtr; // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr; // dispatch L1 communication workspace
@@ -322,10 +321,6 @@ struct WorkspaceInfo {
                 static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
             // sharedExpertGmm1DoneFlag: AIC AtomicAdd after GMM1, AIV polls
             sharedExpertGmm1DoneFlagPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
-            // sharedExpertSwigluDoneFlag: AIV AtomicAdd after SwiGLU, AIC polls
-            sharedExpertSwigluDoneFlagPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->aicNum) * SIZE_INT_32, ALIGN_32);
         }
