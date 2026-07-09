@@ -51,7 +51,7 @@ struct Position{
 // 场景：key、value GM to L1
 // GM按ND格式存储
 // L1按NZ格式存储
-// GM的行、列、列的stride（D or ND）BNSD 和 BSH的区别
+// GM 的行、列、列 stride 由输入布局决定，可为 D 或 N*D
 template<typename L1Type>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
                                         uint32_t rowAct, 
