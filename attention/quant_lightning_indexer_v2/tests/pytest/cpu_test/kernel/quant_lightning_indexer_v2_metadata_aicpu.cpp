@@ -194,6 +194,13 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
+    // topk > 2048 时使用更小的 s1BaseSize 以匹配 kernel 侧（mBaseSize=192, s1BaseSize=3）
+    constexpr uint32_t TOPK_THRESHOLD = 2048;
+    if (topk_ > static_cast<int32_t>(TOPK_THRESHOLD)) {
+        s1BaseSize_ = 3;
+    } else {
+        s1BaseSize_ = 4;
+    }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910B) {
         mBaseSize_ = s1BaseSize_ * groupSize_;

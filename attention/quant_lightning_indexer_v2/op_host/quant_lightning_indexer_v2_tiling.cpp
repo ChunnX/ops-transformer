@@ -1025,32 +1025,33 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     constexpr uint32_t V1_DECODE_PARAM_ELEM_SIZE = 8;  // 8: int64
     constexpr uint32_t V1_DECODE_PARAM_NUM = 16;       // Decode参数个数
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;         // Decode每个核需要存储头和尾部两块数据
-    constexpr uint32_t S1_BASE_SIZE = 4;               // S1轴基本块的大小
-    constexpr uint32_t TOPK_MAX_SIZE = 2048;           // TopK选取个数
+    constexpr uint32_t S1_BASE_SIZE_DEFAULT = 4;         // topk<=2048 时 S1轴基本块的大小
+    constexpr uint32_t S1_BASE_SIZE_LARGE_TOPK = 3;     // topk>2048 时 S1轴基本块的大小
+    uint32_t s1BaseSize = (tilingInfo->sparseCount > TOPK_THRESHOLD) ? S1_BASE_SIZE_LARGE_TOPK : S1_BASE_SIZE_DEFAULT;
+    uint32_t topkMaxSize = tilingInfo->sparseCount;     // TopK选取个数（运行时）
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t S1_BASE_SIZE_950 = 4;
         constexpr uint32_t S2_BASE_SIZE_950 = 128;
         workspaceSize +=
-        S1_BASE_SIZE_950 * ((tilingInfo->s2Size + S2_BASE_SIZE_950 - 1) / S2_BASE_SIZE_950) * S2_BASE_SIZE_950
+        s1BaseSize * ((tilingInfo->s2Size + S2_BASE_SIZE_950 - 1) / S2_BASE_SIZE_950) * S2_BASE_SIZE_950
             * sizeof(uint16_t) * aicNum;
-        // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
+        // 临时存储Decode中间结果大小: 2(头/尾)*s1Base*2(idx/value)*topkMax*sizeof(int32)*aicNum
         workspaceSize +=
-        V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-        // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
+        V1_DECODE_DATA_NUM * s1BaseSize * V1_RES_ELEM_TYPE * topkMaxSize * V1_RES_ELEM_SIZE * aicNum;
+        // 临时存储Decode中间参数信息大小: 2(头/尾)*s1Base*16(paramNum)*sizeof(int64_t)*aicNum
         workspaceSize +=
-        V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
+        V1_DECODE_DATA_NUM * s1BaseSize * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     } else {
         uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
         workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
         // Decode流程(LD)需要Workspace大小
-        // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
+        // 临时存储Decode中间结果大小: 2(头/尾)*s1Base*2(idx/value)*topkMax*sizeof(int32)*aicNum
         workspaceSize +=
-        V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-        // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
+        V1_DECODE_DATA_NUM * s1BaseSize * V1_RES_ELEM_TYPE * topkMaxSize * V1_RES_ELEM_SIZE * aicNum;
+        // 临时存储Decode中间参数信息大小: 2(头/尾)*s1Base*16(paramNum)*sizeof(int64_t)*aicNum
         workspaceSize +=
-        V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
+        V1_DECODE_DATA_NUM * s1BaseSize * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;

@@ -496,7 +496,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
+    auto qkVLstride = (uint64_t)info.actMBaseSize
         * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {

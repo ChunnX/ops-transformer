@@ -90,7 +90,8 @@ public:
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_C1_FLAG = 5;
 
-    static constexpr uint32_t M_BASE_SIZE = 256;
+    static constexpr uint32_t M_BASE_SIZE_DEFAULT = 256;     // topk <= 2048
+    static constexpr uint32_t M_BASE_SIZE_LARGE_TOPK = 192;  // topk > 2048
     static constexpr uint32_t S2_BASE_SIZE = 128;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
@@ -212,7 +213,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    constInfo.mBaseSize = M_BASE_SIZE;
+    constInfo.mBaseSize = (constInfo.sparseCount > TOPK_THRESHOLD) ? M_BASE_SIZE_LARGE_TOPK
+                                                                   : M_BASE_SIZE_DEFAULT;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.s1BaseSize = (constInfo.mBaseSize + constInfo.gSize - 1) / constInfo.gSize;
     constInfo.returnValue = tilingData->returnValue;
