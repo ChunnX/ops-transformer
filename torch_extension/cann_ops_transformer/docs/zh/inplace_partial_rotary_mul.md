@@ -55,7 +55,9 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
 
 ## 返回值说明
 
-该接口无返回值。计算结果直接写回输入张量`x`，`x`在计算后shape和数据类型保持不变，`partial_slice`指定范围以外的数据保持原值。
+该接口无返回值（`None`）。计算结果直接 inplace 写回输入张量 `x`，`x` 在计算后 shape 和数据类型保持不变，`partial_slice` 指定范围以外的数据保持原值。
+
+> **自动微分说明**：当 `x.requires_grad` 为 True 时，对 loss 执行 `.backward()` 即自动触发 `inplace_partial_rotary_mul_backward`，无需手动调用反向算子。`r1`（cos）、`r2`（sin）的梯度**不计算**，始终为 None。
 
 ## 约束说明
 
@@ -70,6 +72,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     - <term>Ascend 950PR/Ascend 950DT</term>：`r1`、`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`r1`、`r2`的shape当前只支持BS1D、B11D排布。
 - `x`的各维度值必须大于0；当`partial_slice`不是空切片时，`r1`、`r2`参与计算的维度值必须大于0。
+- **自动微分约束**：仅计算 `x` 的梯度；`r1`、`r2` 的梯度不计算，始终为 None。因算子为 inplace 操作，`x` 不能是 `requires_grad=True` 的叶子张量。
 
 ## 确定性计算
 
@@ -104,6 +107,40 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
         rotary_mode="interleave",
         partial_slice=[slice_start, slice_end],
     )
+    ```
+
+- 训练模式调用（自动微分）
+
+    ```python
+    import torch
+    import torch_npu
+    from cann_ops_transformer.ops import inplace_partial_rotary_mul
+
+    torch_npu.npu.set_device(0)
+
+    B, S, N, D = 2, 32, 8, 128
+    slice_start, slice_end = 0, 64
+
+    x = torch.randn(B, S, N, D, device="npu", dtype=torch.float16, requires_grad=True)
+    r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
+    r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
+    y = x * 1.0
+    y.retain_grad()
+
+    # 正向：自动追踪计算图（y 被 inplace 修改，无需接收返回值）
+    inplace_partial_rotary_mul(
+        y, r1, r2,
+        rotary_mode="interleave",
+        partial_slice=[slice_start, slice_end],
+    )
+
+    # 继续前向计算
+    loss = y.sum()
+    loss.backward()  # 自动调用 inplace_partial_rotary_mul_backward
+
+    print(y.grad.shape)
+    print(x.grad.shape)
+    # r1.grad, r2.grad 始终为 None（cos/sin 不计算梯度）
     ```
 
 - 图模式调用
