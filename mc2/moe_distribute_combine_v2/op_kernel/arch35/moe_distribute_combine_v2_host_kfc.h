@@ -25,6 +25,7 @@
 #include "../moe_distribute_combine_v2_tiling.h"
 #include "../moe_distribute_combine_v2_quant.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "hcomm_common.h"
 // #include "combine_log.h"
 #if __has_include("../../moe_distribute_dispatch_v2/check_winsize.h")
 #include "../../common/op_kernel/moe_distribute_base.h"
@@ -664,7 +665,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
     // 假设channel已经通过Mc2Context获取并存储在某个地方
     // 这里需要从context中获取
     __gm__ Mc2MoeContext* context_{nullptr};
-    ChannelHandle channelHandle = context_->hcommHandle[0];  // TODO: 从mc2Context中获取实际的channel handle
+    ChannelHandle channelHandle = context_->hcommHandle_[0];  // TODO: 从mc2Context中获取实际的channel handle
     
     if (epRankId_ == 0) {
         // ====== Rank 0: 发送测试 ======
@@ -695,7 +696,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
         
         // 使用Write接口发送数据
         // Write<commit=false> 表示先不提交，手动控制提交时机
-        HcommHandle writeHandle = hcomm.Write<false>(channelHandle, 
+        HcommHandle writeHandle = hcomm.Write<false>(channelHandle_, 
                                                       remoteWindowAddr,  // 目标地址：Rank 1的window
                                                       localWindowAddr,   // 源地址：Rank 0的window
                                                       TEST_DATA_SIZE);   // 数据大小
