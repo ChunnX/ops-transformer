@@ -81,6 +81,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['block_size'],
                 row['block_num'],
                 row['qk_dtype'],
+                row['weight_dtype'] if 'weight_dtype' in row and row['weight_dtype'] is not None else row['dequant_dtype'],
                 row['dequant_dtype'],
                 row['actual_seq_dtype'],
                 row['cu_seqlens_q'],
