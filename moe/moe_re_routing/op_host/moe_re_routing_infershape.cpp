@@ -78,7 +78,6 @@ graphStatus InferShape4MoeReRouting(gert::InferShapeContext *context)
         const auto &expertTokenNumPerRankInputShapeDims = expertTokenNumPerRankInputShape->GetDim(IDX_ONE);  // 取E
         expertTokenNumShape->SetDim(IDX_ZERO, expertTokenNumPerRankInputShapeDims);                          // [E,]
     }
-
     OP_LOGD(context, "End to do InferShape4MoeReRouting.");
     return GRAPH_SUCCESS;
 }
@@ -99,7 +98,6 @@ graphStatus InferDtype4MoeReRouting(gert::InferDataTypeContext *context)
     context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOKENS, tokens_input_dtype);
     context->SetOutputDataType(OUTPUT_IDX_PERMUTE_TOKEN_IDX, ge::DT_INT32);
     context->SetOutputDataType(OUTPUT_IDX_EXPERT_TOKEN_NUM, expt_token_num_per_rank_input_dtype);
-
     OP_LOGD(context, "InferDtype4MoeReRouting end");
 
     return GRAPH_SUCCESS;
