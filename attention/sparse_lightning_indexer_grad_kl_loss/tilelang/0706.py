@@ -698,7 +698,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # (M=n_block, N=DQI)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, k_start:k_end], RG_L1_dk)
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1_dk)
                     T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
                     # RAW: gemm 等 L1 载入
                     T.set_flag("mte2", "m", 6)
@@ -708,8 +708,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("m", "fix", 7)
                     T.wait_flag("m", "fix", 7)
                     # 每 core 写自己不相交的 64 个 K 行；用 atomic_add_l0c_to_gm 导出
-                    # （对齐已验证的 C2 dQueryIndex 导出；需 host 预先清零 dk_matmul_partial）
-                    T.tile.atomic_add(dk_matmul_partial[bz, s1_row, k_start:k_end, 0:DQueryIndex], DK_L0C)
+                    # （对齐已验证的 C2 dQueryIndex 导出；纯 affine 切片，需 host 预先清零 dk_matmul_partial）
+                    T.tile.atomic_add(dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex], DK_L0C)
 
                 T.set_cross_flag("FIX", 14)  # signal V scope 4 (scatter)
 
