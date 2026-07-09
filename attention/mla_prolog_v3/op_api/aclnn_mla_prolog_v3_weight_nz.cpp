@@ -24,10 +24,12 @@
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
 #include "opdev/format_utils.h"
+#include <sys/types.h>
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
 // 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
-#define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
+// #define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90100000
 
 using namespace op;
 
@@ -208,7 +210,8 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         int32_t runtimeVersionNum = 0;
         // int32_t metadefVersionNum = 0;
 
-        if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        if (aclsysGetVersionNum("cann", &runtimeVersionNum) != ACL_SUCCESS) {
+            aclsysGetVersionNum("runtime", &runtimeVersionNum);
             OP_LOGW("MlaPrologV3", "Get runtime version failed when register exception func.");
             return;
         }
