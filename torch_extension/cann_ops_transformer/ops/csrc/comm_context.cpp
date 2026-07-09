@@ -206,7 +206,6 @@ public:
         customCclBufferSize_ = customCclBufferSize;
         customDeviceBuffer_ = customDeviceBuffer;
         customMemHandle_ = customMemHandle;
-        useCustomBuffer_ = customCclBufferSize_ > 0;
 
         HcclComm hcclHandle;
         AcquireHcclHandle(group, hcclHandle);
@@ -413,10 +412,8 @@ public:
             channelDesc[channelId].notifyNum = channelNum;
             channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
             channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
-            if (useCustomBuffer_) {
-                channelDesc[channelId].memHandles = customMemHandle_;
-                channelDesc[channelId].memHandleNum = 1;
-            }
+            channelDesc[channelId].memHandles = customMemHandle_;
+            channelDesc[channelId].memHandleNum = 1;
         }
     }
 
@@ -446,37 +443,14 @@ public:
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, commContextStruct);
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %u", rankSize - 1);
 
-        if (useCustomBuffer_) {
-            GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
-            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
-            ASCEND_LOGI("Get custom HCCL CommResource success");
-            return;
-        }
+        GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
+        hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
 
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            void *tempBuffer = nullptr;
-            uint64_t bufSize = 0;
-            HcclResult hcclRet;
-
-            if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
-            } else {
-                uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer,
-                                                       &bufSize);
-            }
-
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
-                        ", ret: ", hcclRet);
-
-            commContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
-        }
         ASCEND_LOGI("Get HCCL CommResource success");
     }
 
     void AllocateAndRegisterDeviceBuffer(const HcclComm &commHandle, const std::string &memBufferTag)
     {
-        TORCH_CHECK(useCustomBuffer_, "custom buffer is not enabled");
         TORCH_CHECK(customDeviceBuffer_ != nullptr && customMemHandle_ != nullptr,
                     "custom buffer owner pointers must not be null");
         TORCH_CHECK(customCclBufferSize_ > 0, "customCclBufferSize must be greater than 0");
@@ -560,9 +534,7 @@ public:
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
-        if (useCustomBuffer_) {
-            AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
-        }
+        AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize, memBufferTag);
 
@@ -580,8 +552,6 @@ public:
         auto hcclRet = HcclEngineCtxGetFunc(commHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
         if (hcclRet != HCCL_SUCCESS) {
             CreateContext(commHandle, mc2ContextTag, engine, protocol, ctx, &commContextStruct, hcclBuffSize);
-        } else if (useCustomBuffer_) {
-            FillAndCopyContext(commHandle, mc2ContextTag, engine, protocol, &commContextStruct, hcclBuffSize);
         } else {
             GetHcclBufferSize(commHandle, hcclBuffSize);
         }
@@ -650,7 +620,6 @@ public:
     uint32_t rankNumPerUbDomain_ = 0;
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
     int64_t rankNumPerServer_ = 2;
-    bool useCustomBuffer_ = false;
     int64_t customCclBufferSize_ = 0;
     void **customDeviceBuffer_ = nullptr;
     HcclMemHandle *customMemHandle_ = nullptr;
