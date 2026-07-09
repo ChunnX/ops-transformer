@@ -47,6 +47,7 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistence()
 {
     if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() || ge::GRAPH_SUCCESS != CheckSWAExistence() ||
         ge::GRAPH_SUCCESS != CheckHCAExistence() || ge::GRAPH_SUCCESS != CheckCSAExistence() ||
+        ge::GRAPH_SUCCESS != CheckORISparseExistence() || ge::GRAPH_SUCCESS != CheckORICmpSparseExistence() ||
         ge::GRAPH_SUCCESS != CheckCmpRatioExistence() || ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence() ||
         ge::GRAPH_SUCCESS != CheckParaExistenceAntiquant()) {
         return ge::GRAPH_FAILED;
@@ -56,9 +57,6 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckUnrequiredParaExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
-                OP_LOGE(opName_, "oriSparseIndices is not supported now, it must be nullptr."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -96,9 +94,6 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr &&
             kvLayout_ == QSMLALayout::PA_BBND,
@@ -183,9 +178,10 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
     OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr, OP_LOGE(opName_, "cmpRatio is required, but got nullptr."),
                 return ge::GRAPH_FAILED);
 
-    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
-                    OP_LOGE(opName_, "When SWA mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
+                    OP_LOGE(opName_, "When SWA or ORI_SPARSE mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpRatio < 1 || *opParamInfo_.cmpRatio > 128,
@@ -194,6 +190,40 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
                     return ge::GRAPH_FAILED);
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckORISparseExistence()
+{
+    if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,
+                OP_LOGE(opName_, "oriSparseIndices must not be empty in ORI_SPARSE mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr,
+                OP_LOGE(opName_, "oriKv must not be empty in ORI_SPARSE mode."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckORICmpSparseExistence()
+{
+    if (perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,
+                OP_LOGE(opName_, "oriSparseIndices must not be empty in ORI_CMP_SPARSE mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr,
+                OP_LOGE(opName_, "cmpSparseIndices must not be empty in ORI_CMP_SPARSE mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr,
+                OP_LOGE(opName_, "oriKv must not be empty in ORI_CMP_SPARSE mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr,
+                OP_LOGE(opName_, "cmpKv must not be empty in ORI_CMP_SPARSE mode."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

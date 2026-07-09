@@ -46,6 +46,7 @@ for params in ENABLED_PARAMS:
         "N1": params.get("N1"),
         "N2": params.get("N2"),
         "D": params.get("D"),
+        "K1": params.get("K1", [None]),
         "K": params.get("K", [None]),
         "block_num1": params.get("block_num1", [None]),
         "block_num2": params.get("block_num2", [None]),
@@ -70,6 +71,10 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        'ori_kv_topk_mode': params.get('ori_kv_topk_mode', 'no'),
+        'cmp_kv_topk_mode': params.get('cmp_kv_topk_mode', 'no'),
+        'ori_sparse_indices_mode': params.get('ori_sparse_indices_mode', 'full'),
+        'cmp_sparse_indices_mode': params.get('cmp_sparse_indices_mode', 'full'),
     }
 
     param_names = list(param_values.keys())
@@ -78,7 +83,7 @@ for params in ENABLED_PARAMS:
     for combo in itertools.product(*values_lists):
         combination = dict(zip(param_names, combo))
         param_combinations.append(combination)
-
+    print(len(param_combinations))
 case_id = 0
 def qsmla(param_combinations):
     global case_id
@@ -108,9 +113,10 @@ def qsmla(param_combinations):
     # 获得cpu结果(真值)和算子结果（测试值）
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
-            test_data, device_id=device_id)
-        result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        for i in range(1):
+            npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+                test_data, device_id=device_id)
+            result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)

@@ -354,7 +354,9 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutQKvConsistency() const
 
 ge::graphStatus QSMLATilingCheck::CheckSparseIndicesShapeMatchQ() const
 {
-    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -477,21 +479,21 @@ ge::graphStatus QSMLATilingCheck::CheckN2Consistency() const
             return ge::GRAPH_FAILED);
     }
 
-    if (opParamInfo_.oriTopkLength.tensor != nullptr) {
-        const auto &oriTopkShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
-        int64_t oriTopkN2 = (qLayout_ == QSMLALayout::BSND) ? oriTopkShape.GetDim(DIM_2) : oriTopkShape.GetDim(DIM_1);
-        OP_CHECK_IF(static_cast<uint32_t>(oriTopkN2) != n2Size_,
-                    OP_LOGE(opName_, "oriTopkLength's N2(%ld) should be equal to oriKv's N2(%u).", oriTopkN2, n2Size_),
-                    return ge::GRAPH_FAILED);
-    }
+    // if (opParamInfo_.oriTopkLength.tensor != nullptr) {
+    //     const auto &oriTopkShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
+    //     int64_t oriTopkN2 = (qLayout_ == QSMLALayout::BSND) ? oriTopkShape.GetDim(DIM_2) : oriTopkShape.GetDim(DIM_1);
+    //     OP_CHECK_IF(static_cast<uint32_t>(oriTopkN2) != n2Size_,
+    //                 OP_LOGE(opName_, "oriTopkLength's N2(%ld) should be equal to oriKv's N2(%u).", oriTopkN2, n2Size_),
+    //                 return ge::GRAPH_FAILED);
+    // }
 
-    if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
-        const auto &cmpTopkShape = opParamInfo_.cmpTopkLength.tensor->GetStorageShape();
-        int64_t cmpTopkN2 = (qLayout_ == QSMLALayout::BSND) ? cmpTopkShape.GetDim(DIM_2) : cmpTopkShape.GetDim(DIM_1);
-        OP_CHECK_IF(static_cast<uint32_t>(cmpTopkN2) != n2Size_,
-                    OP_LOGE(opName_, "cmpTopkLength's N2(%ld) should be equal to oriKv's N2(%u).", cmpTopkN2, n2Size_),
-                    return ge::GRAPH_FAILED);
-    }
+    // if (opParamInfo_.cmpTopkLength.tensor != nullptr) {
+    //     const auto &cmpTopkShape = opParamInfo_.cmpTopkLength.tensor->GetStorageShape();
+    //     int64_t cmpTopkN2 = (qLayout_ == QSMLALayout::BSND) ? cmpTopkShape.GetDim(DIM_2) : cmpTopkShape.GetDim(DIM_1);
+    //     OP_CHECK_IF(static_cast<uint32_t>(cmpTopkN2) != n2Size_,
+    //                 OP_LOGE(opName_, "cmpTopkLength's N2(%ld) should be equal to oriKv's N2(%u).", cmpTopkN2, n2Size_),
+    //                 return ge::GRAPH_FAILED);
+    // }
 
     return ge::GRAPH_SUCCESS;
 }

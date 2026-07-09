@@ -290,8 +290,8 @@ def fill_none_params(params_dict):
         if slot_len < seqused_ori_kv[i]:
             raise ValueError(f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})")
 
-    # 3. 填充cmp参数 (SWA场景为None, 非SWA场景自动生成)
-    if template_run_mode == "SWA":
+    # 3. 填充cmp参数 (SWA/ORI_SPARSE场景为None, 其他场景自动生成)
+    if template_run_mode in ("SWA", "ORI_SPARSE"):
         seqused_cmp_kv = None
         cu_seqlens_cmp_kv = None
         cmp_residual_kv = None
@@ -318,7 +318,7 @@ def fill_none_params(params_dict):
         )
         block_num1 = ori_block_num
     if block_num2 is None:
-        if template_run_mode == "SWA":
+        if template_run_mode in ("SWA", "ORI_SPARSE"):
             block_num2 = 0
         else:
             _, cmp_block_num = calc_block_num(
@@ -344,6 +344,7 @@ def fill_none_params(params_dict):
         'N1': params_dict['N1'],
         'N2': params_dict['N2'],
         'D': params_dict['D'],
+        'K1': params_dict.get('K1'),
         'K': K,
         'block_num1': block_num1,
         'block_num2': block_num2,
@@ -370,6 +371,10 @@ def fill_none_params(params_dict):
         'S1EQS2': S1EQS2,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
+        'ori_kv_topk_mode': params_dict.get('ori_kv_topk_mode', 'no'),
+        'cmp_kv_topk_mode': params_dict.get('cmp_kv_topk_mode', 'no'),
+        'ori_sparse_indices_mode': params_dict.get('ori_sparse_indices_mode', 'full'),
+        'cmp_sparse_indices_mode': params_dict.get('cmp_sparse_indices_mode', 'full'),
     }
 
     return filled_params

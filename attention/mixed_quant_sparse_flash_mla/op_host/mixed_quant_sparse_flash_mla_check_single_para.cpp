@@ -282,9 +282,10 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseMode() const
     OP_CHECK_IF(oriMaskMode_ != 0 && oriMaskMode_ != 3 && oriMaskMode_ != 4,
                 OP_LOGE(opName_, "oriMaskMode only support 0, 3 and 4, but got %u.", oriMaskMode_),
                 return ge::GRAPH_FAILED);
-    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_MODE) {
         OP_CHECK_IF(cmpMaskMode_ != 0,
-                    OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA mode, but got %u.", cmpMaskMode_),
+                    OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA and ORI_SPARSE mode, but got %u.", cmpMaskMode_),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cmpMaskMode_ != 0 && cmpMaskMode_ != 3,
@@ -304,8 +305,9 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
-                OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
+        OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetShapeSize() == 0,
@@ -572,19 +574,19 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaOriTopkLength() const
             return ge::GRAPH_FAILED;
         }
 
-        if (qLayout_ == QSMLALayout::TND) {
-            const std::vector<size_t> expectDimNumList = {DIM_NUM_TWO};
-            if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriTopkLength.tensor->GetShape(),
-                                                        expectDimNumList, ORI_TOPK_LENGTH_NAME)) {
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            const std::vector<size_t> expectDimNumList = {DIM_NUM_THREE};
-            if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriTopkLength.tensor->GetShape(),
-                                                        expectDimNumList, ORI_TOPK_LENGTH_NAME)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
+        // if (qLayout_ == QSMLALayout::TND) {
+        //     const std::vector<size_t> expectDimNumList = {DIM_NUM_TWO};
+        //     if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriTopkLength.tensor->GetShape(),
+        //                                                 expectDimNumList, ORI_TOPK_LENGTH_NAME)) {
+        //         return ge::GRAPH_FAILED;
+        //     }
+        // } else {
+        //     const std::vector<size_t> expectDimNumList = {DIM_NUM_THREE};
+        //     if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriTopkLength.tensor->GetShape(),
+        //                                                 expectDimNumList, ORI_TOPK_LENGTH_NAME)) {
+        //         return ge::GRAPH_FAILED;
+        //     }
+        // }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -595,32 +597,33 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpTopkLength() const
         OP_CHECK_IF(opParamInfo_.cmpTopkLength.tensor->GetShapeSize() == 0,
                     OP_LOGE(opName_, "Any dim of input cmpTopkLength cannot be 0 "), return ge::GRAPH_FAILED);
 
-        if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpTopkLength.desc, CMP_TOPK_LENGTH_NAME)) {
-            return ge::GRAPH_FAILED;
-        }
+        // if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpTopkLength.desc, CMP_TOPK_LENGTH_NAME)) {
+        //     return ge::GRAPH_FAILED;
+        // }
 
-        if (qLayout_ == QSMLALayout::TND) {
-            const std::vector<size_t> expectDimNumList = {DIM_NUM_TWO};
-            if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpTopkLength.tensor->GetShape(),
-                                                        expectDimNumList, CMP_TOPK_LENGTH_NAME)) {
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            const std::vector<size_t> expectDimNumList = {DIM_NUM_THREE};
-            if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpTopkLength.tensor->GetShape(),
-                                                        expectDimNumList, CMP_TOPK_LENGTH_NAME)) {
-                return ge::GRAPH_FAILED;
-            }
-        }
+        // if (qLayout_ == QSMLALayout::TND) {
+        //     const std::vector<size_t> expectDimNumList = {DIM_NUM_TWO};
+        //     if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpTopkLength.tensor->GetShape(),
+        //                                                 expectDimNumList, CMP_TOPK_LENGTH_NAME)) {
+        //         return ge::GRAPH_FAILED;
+        //     }
+        // } else {
+        //     const std::vector<size_t> expectDimNumList = {DIM_NUM_THREE};
+        //     if (ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpTopkLength.tensor->GetShape(),
+        //                                                 expectDimNumList, CMP_TOPK_LENGTH_NAME)) {
+        //         return ge::GRAPH_FAILED;
+        //     }
+        // }
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaTopkValueMode() const
 {
-    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_MODE) {
         OP_CHECK_IF(topkValueMode_ != 1,
-                    OP_LOGE(opName_, "topkValueMode must be 1 in SWA mode, but got %ld.", topkValueMode_),
+                    OP_LOGE(opName_, "topkValueMode must be 1 in SWA and ORI_SPARSE mode, but got %ld.", topkValueMode_),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(topkValueMode_ != 1 && topkValueMode_ != 2,
