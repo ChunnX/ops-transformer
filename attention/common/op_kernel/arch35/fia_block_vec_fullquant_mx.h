@@ -330,7 +330,7 @@ public:
         }
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            if (!isSkipMask) {
+            if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
@@ -346,7 +346,7 @@ public:
                     0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         } else {
-            if (!isSkipMask) {
+            if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
@@ -381,7 +381,7 @@ public:
             for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
-        } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             for (uint16_t i = 0; i < 2; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 256], pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
@@ -1104,7 +1104,7 @@ public:
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
 
-        if (!IsSkipMask) {
+        if (unlikely(!IsSkipMask)) {
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
@@ -1143,7 +1143,7 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);
-        if (!isSkipMask) {
+        if (unlikely(!isSkipMask)) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         }
     }
