@@ -1,179 +1,111 @@
-PYTHONPATH=/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-09 13:58:14,385 [INFO] [2103980 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv 
-2026-07-09 13:58:18,831 [INFO] [2103980 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 13:58:19,393 [INFO] [2103980 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-09 13:58:19,393 [INFO] [2103980 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-09 13:58:19,393 [INFO] [2103980 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-09 13:58:19,393 [INFO] [2103980 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-09 13:58:20,534 [INFO] [2103980 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-09 13:58:20,541 [INFO] [2103980 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-09 13:58:20,541 [INFO] [2103980 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-09 13:58:21,679 [INFO] [2103980 MP MT] [instance.py:42]: Device count: 1 
-2026-07-09 13:58:21,679 [INFO] [2103980 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-09 13:58:21,679 [INFO] [2103980 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-09 13:58:21,680 [INFO] [2103980 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8.csv ... 
-2026-07-09 13:58:21,680 [INFO] [2103980 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-09 13:58:21,681 [INFO] [2103980 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
-Checking testcase name...
-Case number: 1
-Initialize output csv file...
-Output csv file is not specified. It will be set as /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_result.csv
-Process per device: 1
-Preparing Task Executors...
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "TND_B1_QS3_KVS640" -s
+================================================================================== test session starts ===================================================================================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+configfile: pytest.ini
+collected 151 items / 149 deselected / 2 selected                                                                                                                                        
 
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2104278 D0P0             UNKNOWN              IDLE     0s  |
-+-------------------------------------------------------------------------------------------------------+
-2026-07-09 13:58:27,399 [INFO] [2104278 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-
-----------------------------------------------------------------------------------------------------
-API Name: fia_mxfp8_wrapper.npu_fia_mxfp8
-Golden API: 
-Backend: npu
-////////////// Tensors //////////////
-Input View Shapes: ((1, 1, 3, 64), (1, 1, 640, 64), (1, 1, 640, 64), (1, 1, 3, 2), (1, 1, 640, 2), (1, 1, 20, 64), (1,), (0,))
-Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
-Input Storage Shapes: ()
-Input Formats: ()
-Input View Offsets: ()
-Input View Strides: ()
-//////////// Output Info //////////
-Output Tensor Indexes: ()
-//////////// Attributes //////////
-B: 1
-N_q: 1
-N_kv: 1
-D: 64
-actual_seq_q: [3]
-actual_seq_kv: [640]
-enable_pa: False
-kv_cache_layout: TND
-block_size: 512
-sparse_mode: 0
-q_scale_layout: N2TGD
-p_scale_value: 15.0
-data_range_q: 1.0
-data_range_k: 1.0
-data_range_v: 1.0
-enable_lse: False
-enable_rope: False
-D_rope: 64
-graph_path: 0
-input_layout: TND
-is_contiguous: True
-device_id: 0
-//////////// Test Config //////////
-Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
-Precision Tolerance: None
-Absolute Precision: (1e-08,)
-Mode: ASCEND_ONBOARD
-PID: 2104278
-Device: 0
-----------------------------------------------------------------------------------------------------
-
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2104278 Nq1_Nkv1_D64_SP0 OnEagerProfiling     RUNNING  4s  |
-+-------------------------------------------------------------------------------------------------------+
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] [INFO] max_sq=3, max_skv=640
+[INFO] q_fp16=torch.Size([1, 1, 3, 64]), k_fp16=torch.Size([1, 1, 640, 64]), v_fp16=torch.Size([1, 1, 640, 64])
+[INFO] V scale Sg=20, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_input.pt
+[CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
+[CPU Golden] output=torch.Size([1, 1, 3, 64])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_cpu_output.pt
 [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[NPU TND] q=torch.Size([3, 1, 128])
+[NPU TND] q=torch.Size([3, 1, 64])
 [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[NPU TND] k=torch.Size([640, 1, 128]), v=torch.Size([640, 1, 128])
+[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
 [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
 [NPU] 调用 TND 模式...
 [NPU] 调用单算子模式...
-[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-13:58:42 (PID:2104278, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2104278] 2026-07-09-13:58:42.513.203 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py", line 86, in npu_fia_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1075, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(
-                         ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1094, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 882, in _call_npu_fa_op
-    atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_ops.py", line 1269, in __call__
-    return self._op(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-13:58:42 (PID:2104278, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2104278] 2026-07-09-13:58:42.513.203 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+[NPU] output=torch.Size([3, 1, 64])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_npu_output.pt
+split_count:192.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         -0.0035308      -0.0035305      0.0000003       0.0000868
+00000002         0.0639072       0.0639038       0.0000034       0.0000529
+00000003         -0.0105253      -0.0105286      0.0000032       0.0003083
+00000004         0.0035484       0.0035477       0.0000007       0.0002012
+00000005         -0.0153092      -0.0153122      0.0000029       0.0001924
+00000006         0.0081054       0.0081024       0.0000030       0.0003683
+00000007         0.0031772       0.0031776       0.0000004       0.0001343
+00000008         0.0015975       0.0015974       0.0000001       0.0000847
+00000009         -0.0123626      -0.0123596      0.0000030       0.0002420
+00000010         -0.0058682      -0.0058670      0.0000012       0.0001987
+...        ...             ...             ...             ...
+00000183         -0.0064783      -0.0064774      0.0000010       0.0001523
+00000184         0.0148516       0.0148544       0.0000029       0.0001931
+00000185         0.0225168       0.0225220       0.0000052       0.0002296
+00000186         -0.0204586      -0.0204620      0.0000035       0.0001693
+00000187         -0.0433599      -0.0433655      0.0000056       0.0001289
+00000188         -0.0021951      -0.0021954      0.0000003       0.0001166
+00000189         -0.0202645      -0.0202637      0.0000009       0.0000433
+00000190         0.0054249       0.0054245       0.0000004       0.0000723
+00000191         0.0034768       0.0034771       0.0000003       0.0000941
+00000192         -0.0086648      -0.0086670      0.0000022       0.0002556
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000025        99.50%          100.000000%     Pass
+PASSED
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[TND_B1_QS3_KVS640_Nq40_Nkv2_D128_SP3] [INFO] max_sq=3, max_skv=640
+[INFO] q_fp16=torch.Size([1, 40, 3, 128]), k_fp16=torch.Size([1, 2, 640, 128]), v_fp16=torch.Size([1, 2, 640, 128])
+[INFO] V scale Sg=20, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq40_Nkv2_D128_SP3_input.pt
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
+[CPU Golden] output=torch.Size([1, 40, 3, 128])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq40_Nkv2_D128_SP3_cpu_output.pt
+[NPU] Q layout auto: G=20, S1=3, G*S1=60, q_layout=TND
+[NPU TND] q=torch.Size([3, 40, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([3, 40, 2, 2])
+[NPU] q_rope=torch.Size([3, 40, 64]), k_rope=torch.Size([640, 2, 64])
+[NPU TND] k=torch.Size([640, 2, 128]), v=torch.Size([640, 2, 128])
+[NPU TND] K scale shape=torch.Size([640, 2, 2, 2]), V scale shape=torch.Size([10, 2, 128, 2])
+[NPU] 调用 TND 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([3, 40, 128])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq40_Nkv2_D128_SP3_npu_output.pt
+split_count:15360.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         0.0717323       0.0717773       0.0000451       0.0006285
+00000002         0.0008692       0.0008698       0.0000006       0.0006896
+00000003         0.0348601       0.0349121       0.0000520       0.0014913
+00000004         -0.0174658      -0.0174561      0.0000098       0.0005594
+00000005         0.0076094       0.0075989       0.0000106       0.0013871
+00000006         -0.0056960      -0.0057068      0.0000108       0.0018945
+00000007         -0.0091953      -0.0092163      0.0000210       0.0022849
+00000008         0.0141111       0.0140991       0.0000120       0.0008480
+00000009         -0.0003243      -0.0003242      0.0000000       0.0001367
+00000010         0.0082381       0.0082397       0.0000017       0.0002022
+...        ...             ...             ...             ...
+00015351         0.0052610       0.0052490       0.0000120       0.0022727
+00015352         -0.0280831      -0.0280762      0.0000069       0.0002469
+00015353         -0.0206802      -0.0206299      0.0000503       0.0024308
+00015354         0.0327786       0.0327148       0.0000637       0.0019448
+00015355         -0.0018307      -0.0018311      0.0000004       0.0002063
+00015356         -0.0011395      -0.0011368      0.0000027       0.0024016
+00015357         0.0022540       0.0022583       0.0000043       0.0019030
+00015358         0.0228654       0.0228271       0.0000382       0.0016726
+00015359         0.0470109       0.0471191       0.0001082       0.0023022
+00015360         -0.0081145      -0.0081177      0.0000032       0.0003947
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0078           0.000100        99.50%          100.000000%     Pass
+PASSED
 
-Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2104278, fail reason:
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_mxfp8_wrapper.py", line 86, in npu_fia_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1075, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(
-                         ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1094, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 882, in _call_npu_fa_op
-    atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_ops.py", line 1269, in __call__
-    return self._op(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: npu_fused_infer_attention_score_v2_symint:../third_party/op-plugin/op_plugin/ops/opapi/FusedInferAttentionScoreV2KernelNpuOpApi.cpp:465 NPU function error: device error type 0, error code is 561002
-[ERROR] 2026-07-09-13:58:42 (PID:2104278, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-[PID: 2104278] 2026-07-09-13:58:42.513.203 Invalid_Argument_Tensor_Shape(EZ0009): Parameter dequant_scale_query of FusedInferAttentionScore has incorrect shape [1, 3, 1, 1, 2]. Reason: In MXFP8 fullquant scenario, when layout of query is TND, the shape of dequantScaleQuery should be [N2, T, G, D//64, 2].
-        Solution: Check whether the shape of input/output tensor is correct.
-TraceBack (most recent call last):
-        Failed to execute operator FusedInferAttentionScore_84. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+==================================================================================== warnings summary ====================================================================================
+../../../../../../../../../../root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
 
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
-    function_return = func(*func_args, **func_kwargs)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
-    return_struct.precision = str(e)
-    ^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
-
-ttk Profiling complete
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+===================================================================== 2 passed, 149 deselected, 14 warnings in 8.69s =====================================================================
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# 
