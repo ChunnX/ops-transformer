@@ -165,6 +165,7 @@ private:
     uint32_t totalRounds_ = 0;        // 分轮次：总轮数 = CeilDiv(sendTotalNum, roundSendTotalNum)
     uint32_t dispatchRoundSendTotalNum_ = 0; // dispatch分轮次：每轮处理的 token*topK 数量（256 对齐）
     uint32_t dispatchTotalRounds_ = 0;       // dispatch分轮次：总轮数
+    uint32_t dispatchRoundMaskAlignSize_ = 0; // dispatch分轮次：每轮mask的字节大小（32B对齐）
     uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
@@ -334,31 +335,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
 
     LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
     hcomm_.Init(hcommTensor_, ALIGN_512 / sizeof(uint8_t));
-    // Tensor用处：SendCntCal 函数中记录本卡各专家收到的token总数；
-    // Tensor大小：仅记录count值，且各专家之间复用，申请大小为32字节；
     uint32_t expertTokenCntTensorAddr = ALIGN_512;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     expertTokenCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr,
         expertTokenCntTensorSize / sizeof(int32_t));
-    // Tensor用处：SendCntCal 函数中记录本卡专家收到token count的cumsum累加值；
-    // Tensor大小：worldSize_ * expertPerRank_ * sizeof(int32_t) align至32字节对齐；
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
         cumsumInfoTensorSize / sizeof(int32_t));
-    // Tensor用处：SendCntCal 函数中用来存储本卡上专家收到的mask+count位的buffer；
-    // Tensor大小：maskSlotSize_ * worldSize_，每个maskSlotSize_中包含mask与count；
-    uint32_t gatherMaskTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t gatherMaskTensorSize = maskSlotSize_ * worldSize_;
-    gatherMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
-        gatherMaskTensorSize / sizeof(uint8_t));
-    gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
-        gatherMaskTensorSize / sizeof(uint32_t));
-    // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ 从 sendTotalNum_ 缩减为 roundSize
-    // UB 预算：需容纳 2*roundSize*4 (topkIndex + validTopkIndex) + tokenScaleSize*6 + 8KB + 2KB + ...
-    // 求解最大 roundSize：令 x = roundSize (256对齐)，约束 8x + tokenScaleSize*6 + 8K + 2K + ... <= 248K
-    // 简化：从 gatherMaskTensorAddr 之后可用空间反推
+    // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ + gatherMaskTensor_ 均为 round-sized
+    // SendCntCal 改为直接从 GM 读 count，不再加载完整 mask slot 到 UB
+    // round 张量: validTopkIndex(R*4) + topkIndex(R*4) + gatherMask(R/8) = 8R + R/8 = 65R/8
+    // 预留 tripleTensor_: DISPATCH_WAVE_TILE_M * ALIGN_32
     uint32_t dispatchFixedCost = 0;
     {
         uint32_t tokenScaleSize = Ops::Base::CeilAlign(
@@ -368,11 +357,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES
             + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32)
             + Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t)
-            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32))
+            + static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * static_cast<uint32_t>(ALIGN_32);
     }
-    uint32_t dispatchAvailUb = SEND_MASK_UB_LIMIT - gatherMaskTensorAddr - gatherMaskTensorSize - dispatchFixedCost;
-    // 2 个 round-sized tensor: topkIndex(R*4) + validTopkIndex(R*4) = 8R bytes
-    uint32_t maxDispatchRoundSize = dispatchAvailUb / 8U;
+    uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t dispatchAvailUb = SEND_MASK_UB_LIMIT - fixedBefore - dispatchFixedCost;
+    uint32_t maxDispatchRoundSize = dispatchAvailUb * 8U / 65U;
     maxDispatchRoundSize = (maxDispatchRoundSize / 256U) * 256U;
     if (maxDispatchRoundSize == 0) { maxDispatchRoundSize = 256U; }
     if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxDispatchRoundSize)) {
@@ -390,28 +380,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     if (dispatchRoundSendTotalNum_ == 0) { dispatchRoundSendTotalNum_ = 256U; }
     dispatchTotalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
         static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(dispatchRoundSendTotalNum_)));
+    dispatchRoundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(dispatchRoundSendTotalNum_) / 8, static_cast<int64_t>(ALIGN_32)));
 
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的dst Tensor（分轮次分配）；
-    // Tensor大小：dispatchRoundSendTotalNum_ * sizeof(int32_t) align至32字节对齐；
-    uint32_t validTopkIndexTensorAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
+    uint32_t validTopkIndexTensorAddr = fixedBefore;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的src Tensor（分轮次分配）；
-    // Tensor大小：dispatchRoundSendTotalNum_ * sizeof(int32_t) align至32字节对齐；
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    // gatherMaskTensor_ 改为分轮次：仅容纳单轮 mask 位，SendCntCal 直接从 GM 读 count
+    uint32_t gatherMaskTensorAddr = topkIndexTensorAddr + topkIndexTensorSize;
+    uint32_t gatherMaskTensorSize = dispatchRoundMaskAlignSize_;
+    gatherMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+        gatherMaskTensorSize / sizeof(uint8_t));
+    gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+        gatherMaskTensorSize / sizeof(uint32_t));
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
         static_cast<int64_t>(ALIGN_32));
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
-    uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
+    uint32_t copyTmpBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
             copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
@@ -1036,23 +1029,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFrom
 // ==================================================================================================
 // SendCntCal：目标专家卡读 count 计数，得到当前专家Id收到的token总数
 // --------------------------------------------------------------------------------------------------
-//   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 gatherMaskTensor_;
-//   Phase 2: 逐卡读取 count → 累加 sendCnt/cumsumRevCntInRank_, 写 cumsumInfoTensor_;
-//   Phase 3: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC;
+//   Phase 1: 逐 rank 从本卡 win 加载单个 [mask|count] 槽位，提取 count 并累加 cumsum；
+//   Phase 2: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC;
 // ==================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t localExpertId,
     uint64_t& sendCnt)
 {
     sendCnt = 0;
-    uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize_) / sizeof(uint32_t);
-    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize_) / sizeof(uint32_t);
-
-    // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
-    GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
-        static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
-    DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 
     if constexpr (ENABLE_A8W4) {
         if (localExpertId != 0) {
@@ -1063,18 +1047,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
         }
     }
 
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();   // mask 供 Triple 的 GatherMask(V)就绪
-
-    // Phase 2: 逐源卡直接读取槽内 count + cumsum
+    // Phase 1: 逐 rank 直接从 GM 读 count，累计 cumsum（不再加载完整 mask slot 到 UB）
     for (int32_t calRankId = 0; calRankId < static_cast<int32_t>(worldSize_); ++calRankId) {
-        int32_t perRankCnt = gatherMaskInt32Tensor_.GetValue(calRankId * slotWordStride + countWordIdx);
+        __gm__ int32_t* rankCountPtr = reinterpret_cast<__gm__ int32_t*>(
+            params_.peermemInfo.maskRecvPtr +
+            static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+            static_cast<uint64_t>(calRankId) * maskSlotSize_ +
+            maskAlignSize_);
+        int32_t perRankCnt = ReadGmByPassDCache(rankCountPtr);
         sendCnt += static_cast<uint64_t>(perRankCnt);
         cumsumRevCntInRank_ += static_cast<uint64_t>(perRankCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));
     }
     
-    // Phase 3: 写到 gm 上，并通知 AIC
+    // Phase 2: 写到 gm 上，并通知 AIC
     expertTokenCntTensor_.SetValue(0, sendCnt);
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
@@ -1193,8 +1179,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
 // ====================================================================================================
 // TripleInfoCalAndDispatch：专家接收token的三元组信息计算搬出 & token dispatch & 写Flag位
 // ----------------------------------------------------------------------------------------------------
-//   Phase 1: 按照blockNumPerRank_对aiv进行分组，一个rank归一个组aiv处理，组内根据该卡要发的token数量进行分核；
-//   Phase 2: dispatch->gmm1 flag位AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位读写Flag；
+//   逐 rank 从 win 加载单个 [mask|count] 槽位到 gatherMaskTensor_，
+//   再按 dispatchTotalRounds_ 分轮次做 GatherMask → CopyGMToGMPerToken；
+//   Phase 2: dispatch->gmm1 flag 位 AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位；
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(
@@ -1217,10 +1204,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 continue;
             }
 
+            __gm__ uint8_t* rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t*>(
+                params_.peermemInfo.maskRecvPtr +
+                static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+                static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
+
             uint64_t totalSendToCurExp = 0;
             int32_t accumulatedRowSrcOffset = 0;
-            LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[
-                dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))];
 
             for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
                 uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
@@ -1232,11 +1222,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     static_cast<int64_t>(roundLen * sizeof(int32_t)),
                     static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
 
+                // 逐轮加载本轮 mask 位（从完整 mask 的 roundStart/8 偏移处读取）
+                uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
+                    dispatchRoundMaskAlignSize_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(roundLen) / 8, static_cast<int64_t>(ALIGN_32)));
+                uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
+                GlobalTensor<uint8_t> roundMaskSrc;
+                roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+                DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+
                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
                     topkIndexTensorElemCount);
                 AscendC::PipeBarrier<PIPE_V>();
 
                 uint64_t roundTokenCnt = 0;
+                LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                     rankMaskSlice, true, roundLen, {1, 1, 0, 0}, roundTokenCnt);
                 totalSendToCurExp += roundTokenCnt;
