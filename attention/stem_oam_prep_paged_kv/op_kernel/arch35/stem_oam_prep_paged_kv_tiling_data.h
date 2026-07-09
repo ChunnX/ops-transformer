@@ -33,7 +33,7 @@ struct StemOamPrepPagedKVTilingData {
     int64_t rVal = 0;
     int64_t kCacheStride[4] = {0};
     int64_t vCacheStride[4] = {0};
-    int64_t kScakarCacheStride[4] = {0};
+    int64_t kScaleCacheStride[4] = {0};
 };
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_DATA_H

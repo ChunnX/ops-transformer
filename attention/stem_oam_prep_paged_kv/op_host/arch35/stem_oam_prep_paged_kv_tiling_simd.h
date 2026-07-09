@@ -55,9 +55,11 @@ private:
     uint32_t stemBlockSize_ = 128;
     uint32_t stemStride_ = 16;
     float lambdaMag_ = 0.3f;
-    uint32_t totalBlocks_ = 0;
     uint32_t maxKvBlockSize_ = 0;
     uint32_t dimQk_ = 128;
+    uint32_t maxKb_ = 0;
+    uint32_t kflatDim_ = 0;
+    uint32_t rVal_ = 0;
 
     gert::Stride kCacheStride_;
     gert::Stride vCacheStride_;

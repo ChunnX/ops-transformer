@@ -81,6 +81,8 @@ ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
     stemBlockSize_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemBlockSize"));
     stemStride_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemStride"));
 
+    rVal_ = stemBlockSize_ / stemStride_;
+
     const gert::StorageShape *kvSeqLensShape = context_->GetInputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
     batchSize_ = kvSeqLensShape->GetStorageShape().GetDim(0);
@@ -100,6 +102,9 @@ ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
     maxKvBlockSize_ = kvIndicesShape->GetStorageShape().GetDim(1);
     const gert::StorageShape *kScaleCacheShape = context_->GetInputShape(4);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kScaleCacheShape);
+    const gert::StorageShape *kFlatOutShape = context_->GetOutputShape(0);
+    maxKb_ = kFlatOutShape->GetStorageShape().GetDim(0);
+    kflatDim_ = kFlatOutShape->GetStorageShape().GetDim(3);
 
     GetInputStrides(kcacheShape, kCacheStride_, 0);
     GetInputStrides(kcacheShape, vCacheStride_, 1);
@@ -129,6 +134,8 @@ uint64_t StemPrepKVTiling::GetTilingKey() const
 
 ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
 {
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     uint64_t maxKvPadded = MAX_KV_PADDED;
     uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) *
                          static_cast<uint64_t>(numKvHeads_) *
@@ -138,7 +145,7 @@ ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
 
     auto workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    workspaces[0] = workspaceSize_;
+    workspaces[0] = workspaceSize_ + sysWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -157,15 +164,15 @@ ge::graphStatus StemPrepKVTiling::PostTiling()
     tilingData_->numKvHeads = numKvHeads_;
     tilingData_->totalBh = totalBh;
     tilingData_->usedCoreNum = usedCoreNum;
-    tilingData_->totalBlocks = totalBlocks_;
     tilingData_->kvBlockSize = kvBlockSize_;
     tilingData_->dimQk = dimQk_;
+    tilingData_->dimV = dimQk_;
     tilingData_->maxKvBlocks = maxKvBlockSize_;
     tilingData_->stemBlockSize = stemBlockSize_;
     tilingData_->stemStride = stemStride_;
     tilingData_->lambdaMag = lambdaMag_;
     tilingData_->kvLayout = kvLayout_;
-    tilingData_->vFlatOutGM = workspaceSize_;
+    tilingData_->rVal = rVal_;
 
     context_->SetBlockDim(usedCoreNum);
     return ge::GRAPH_SUCCESS;
