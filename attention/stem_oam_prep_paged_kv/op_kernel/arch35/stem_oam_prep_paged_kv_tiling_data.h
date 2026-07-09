@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -17,30 +17,19 @@
 
 #include "kernel_operator.h"
 
-constexpr uint32_t DIM_QK = 128;
-constexpr uint32_t MAX_KV_PADDED = 262144;
-constexpr uint32_t KV_INDICES_BATCH_SIZE = 64;
-constexpr uint32_t MAX_STEM_BLOCK_SIZE = 256;
-constexpr uint32_t MAX_STEM_STRIDE = 64;
-constexpr uint32_t MAX_R_VAL = MAX_STEM_BLOCK_SIZE / 16;
-constexpr uint32_t MAX_KFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
-constexpr uint32_t DENSE_ROW_ELEM = DIM_QK;
-constexpr uint32_t REDUCE_TMP_SIZE = 9216;
-
-struct StemPrepKVTilingData {
-    uint32_t batchSize = 0;
-    uint32_t numKvHeads = 0;
-    uint32_t totalBh = 0;
-    uint32_t usedCoreNum = 0;
-    uint32_t totalBlocks = 0;
-    uint32_t kvBlockSize = 64;
-    uint32_t dimQk = DIM_QK;
-    uint32_t maxKvBlocks = 0;
-    uint32_t stemBlockSize = 128;
-    uint32_t stemStride = 16;
-    float lambdaMag = 0.3f;
-    uint32_t kvLayout = 0;
-    uint64_t vFlatOutGM = 0;
+struct StemOamPrepPagedKVTilingData {
+    int64_t batchSize = 0;
+    int64_t numKvHeads = 0;
+    int64_t totalBh = 0;
+    int64_t usedCoreNum = 0;
+    int64_t totalBlocks = 0;
+    int64_t kvBlockSize = 0;
+    int64_t dimQk = 0;
+    int64_t maxKvBlocks = 0;
+    int64_t stemBlockSize = 0;
+    int64_t stemStride = 0;
+    float lambdaMag = 0;
+    int64_t kvLayout = 0;
     int64_t kCacheStride[4] = {0};
     int64_t vCacheStride[4] = {0};
     int64_t kScaleCacheStride[4] = {0};
