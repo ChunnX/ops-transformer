@@ -104,7 +104,7 @@ class SymmBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ep_world_size = torch.distributed.get_world_size(group)
-        self.ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
             self.ep_world_size,
             num_experts,
             num_max_tokens_per_rank,
@@ -121,9 +121,10 @@ class SymmBuffer:
             backend="channel",
             commAlg="urma",
             opName="mega_moe",
-            customCclBufferSize=self.ccl_buffer_size,
+            customCclBufferSize=required_ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts
         self.max_recv_token_num = max_recv_token_num
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
