@@ -520,7 +520,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>每张卡上的token数量。当每个rank的BS不同时，为最大的BS大小。取值范围[1, (8 * (256 * 1024 - 48 * 1024)) / (num_topk * (64 + world_size))]。</td>
+        <td>每张卡上的token数量。当每个rank的BS不同时，为最大的BS大小，当前仅支持各卡BS一致。取值范围[1, (8 * (256 * 1024 - 48 * 1024)) / (num_topk * (64 + world_size))]。</td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -618,7 +618,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>每张卡上的token数量，当每个rank的BS不同时，为最大的BS大小。</td>
+        <td>每张卡上的token数量，当每个rank的BS不同时，为最大的BS大小，当前仅支持各卡BS一致。</td>
         <td>int</td>
         <td>-</td>
     </tr>
@@ -1129,7 +1129,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
-    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`参数取值需保持一致。
+    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`参数取值需保持一致。
     - 各卡的通信域缓存区大小（`HCCL_BUFFSIZE`）应当一致。
     - 通信域各节点的驱动版本应当相同。
     - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
