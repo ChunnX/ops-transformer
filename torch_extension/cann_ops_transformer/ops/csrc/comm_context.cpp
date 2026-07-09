@@ -517,7 +517,6 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
         ASCEND_LOGI("Create HCCL context success, ctx: %p", ctx);
 
-        uint64_t commContextSize = sizeof(CommContext);
         HcclResult hcclRet = HcclGetRankIdFunc(commHandle, &commContextStruct->epRankId);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank ID success, rankId is: %u", commContextStruct->epRankId);
