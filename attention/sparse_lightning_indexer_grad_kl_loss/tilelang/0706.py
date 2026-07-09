@@ -449,7 +449,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(weight_2d_ub[k, :], p_reduced_tmp_ub, weight_all_ub[k])
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
-                    T.tile.fill(rsy_max_ub, -1e30)
+                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     for n_rsy in T.serial(n_num):
                         # WAR: bmm2_ub 复用，MTE2 覆盖前等上轮 V 读完
                         T.set_flag("v", "mte2", 2)
@@ -521,6 +521,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
+                    cmp_row_ub = T.alloc_ub(n_block, calc_dtype)
+                    zero_row_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
@@ -528,6 +530,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
+                    T.tile.fill(zero_row_ub, 0.0)
 
                     # dWeight, reluGrad for MY K block
                     # RAW: SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成
@@ -558,12 +561,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
                             T.pipe_barrier("v")
-                            # mask_i = 1 - exp(bmm2_row * (-10000))
-                            T.tile.mul(rsy_tmp_ub[i, :], dw_chunk_ub[i, :], -10000.0)
+                            # mask_i = (bmm2_row > 0) ? 1.0 : 0.0  (ReLU grad, exact step, replaces mul→exp→sub)
+                            T.tile.compare(cmp_row_ub, dw_chunk_ub[i, :], 0.0, "GT")
                             T.pipe_barrier("v")
-                            T.tile.exp(rsy_tmp_ub[i, :], rsy_tmp_ub[i, :])
-                            T.pipe_barrier("v")
-                            T.tile.sub(rsy_tmp_ub[i, :], ones_2d_ub[i, :], rsy_tmp_ub[i, :])
+                            T.tile.select(rsy_tmp_ub[i, :], cmp_row_ub, ones_2d_ub[i, :], zero_row_ub, "VSEL_CMPMASK_SPR")
                             # rg_i = weight_2d_row * diff * mask_i  (read weight_2d_ub directly)
                             T.tile.mul(rg_chunk_ub[i, :], weight_2d_ub[idx, :], diff_ub)
                             T.pipe_barrier("v")
@@ -939,14 +940,14 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # Block size: fit within NPU core count, K 整除 n_block, n_block 整除 GATHER_CHUNK_SIZE
-        # 优先找 ≤ core_count 的最大可用核数（避免超核导致多波串行）
+        # Block size: 优先 fit within NPU core count。
+        # 约束：n_block/8 * N1/8 ≤ 255（AscendC sub_mask/div_mask repeat 参数 uint8_t）
+        # K=2048,N1=128 → n_block≤127。整除+16对齐 → 最大可用 n_block=64,n_num=32。
+        # n_num=32>24 核会 2 波串行，后续通过 V1/V4 flag 消减和 chunk 批量找性能。
         core_count = _get_aicore_count()
         n_num_ws = core_count
-        while n_num_ws > 0:
-            if K % n_num_ws == 0 and (K // n_num_ws) % GATHER_CHUNK_SIZE == 0:
-                break
-            n_num_ws -= 1
+        while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
+            n_num_ws += 1
         block_n = K // n_num_ws
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
