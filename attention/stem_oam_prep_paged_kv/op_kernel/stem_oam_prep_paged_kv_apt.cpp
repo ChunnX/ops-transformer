@@ -15,7 +15,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "arch35/stem_oam_prep_paged_kv_tiling_key.h"
-#include "arch35/stem_oam_prep_paged_kv.h"
+#include "arch35/stem_oam_prep_paged_kv_simd.h"
 
 template <bool TILINGKEY>
 __global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
