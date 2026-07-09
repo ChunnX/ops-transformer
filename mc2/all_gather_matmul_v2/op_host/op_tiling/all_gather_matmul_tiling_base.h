@@ -97,6 +97,7 @@ protected:
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
     uint32_t AllGatherSplitM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt);
     uint64_t GetStorageA(Mc2Tiling::RCSTiling& rcsCfg);
+    uint64_t CalcGatherLen(uint32_t dimA, uint32_t dimB, uint64_t alignAddrLen);
     bool CheckInputParaEmptyPointer();
     bool CheckInputScale();
     bool CheckGroupSize();
