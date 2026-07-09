@@ -383,21 +383,18 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
 void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
-    // 当前 FP8 与 MXFP8 kernel 都走 DN 路径。这里仍把 use_dn 写入 tiling key，
-    // 让后续需要接入非 DN 路径时，可以只扩展 tiling 选择和 kernel 分支，而不改变 key 结构。
-    constexpr uint32_t useDn = BSA_USE_DN_TRUE;
     if (info.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         // MX 使用独立 tiling key 和 S2=512 config，使 kernel dispatch 能选择
         // QuantBlockSparseAttnMxKernel，并读取 QuantBlockSparseAttnMxTilingData。
         tilingKey_ = GET_TPL_TILING_KEY(
             BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
             info.returnSoftmaxLseVal ? 1U : 0U, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-            useDn, MXFullQuantMode);
+            MXFullQuantMode);
     } else {
         tilingKey_ = GET_TPL_TILING_KEY(
             BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
             info.returnSoftmaxLseVal ? 1U : 0U, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
-            useDn, FP8QuantMode);
+            FP8QuantMode);
     }
 }
 

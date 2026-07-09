@@ -88,7 +88,8 @@ public:
             //   Q: [M, D] + QScale [M, D/64, 2]
             //      Q 与 sparse S2 无关，同一个 S1 tile 的多个 sparse block 可以复用；
             //   K: [S2/2, D] + KScale [S2/2, D/64, 2]
-            //      K 每个 512 block 拆成两个 256 subLoop，因此单次只分配 S2_SPLIT；
+            //      K 每个 512 logical tile 拆成两个 256 subLoop；当 sparse block 为
+            //      128/64 时，多个 sparse block 会先拼接到同一个 K L1 tile；
             //   V: 对于 256-token sub tile，为 [S2/2, DV] + VScale [S2/128, DV, 2]
             //      VScale 按 64 token 分组，所以 256-token sub tile 只需要 4 行 scale。
             constexpr uint32_t qSize = M_BASE * D_BASE * sizeof(INPUT_T);
@@ -126,6 +127,8 @@ public:
     {
         // BMM1 计算一块 fp32 attention-score：
         //   K[subLoop: 256, D] x Q^T[D, 128] -> C1[256, 128]。
+        // 当 sparse block size 为 128/64 时，当前 256 宽 K tile 会由 2/4 个
+        // sparse block 按 sparseIndices 顺序拼接得到。
         // Q/K 为 fp8_e4m3fn；qScale/kScale 为 fp8_e8m0，由 LoadDataToL0*Mx 消费，
         // 因此反量化发生在 L1->L0 搬运过程中，而不是在 L1 或 UB 中显式展开 Q/K。
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
@@ -138,8 +141,8 @@ public:
         Buffer<BufferType::L1> qBuf;
         const uint32_t qScaleOffset = AlignUp32(runInfo.actMSize) * constInfo.dSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
-            // Q 与 sparse S2 block 无关，因此同一个 S1 tile 的第一个 S2 loop 拷贝一次，
-            // 后续 sparse KV block 复用前一次 L1 Q buffer。
+            // Q 与 logical S2 tile 无关，因此同一个 S1 tile 的第一个 S2 loop 拷贝一次，
+            // 后续 tile 复用前一次 L1 Q buffer。
             // Query GM 为 TND：数据用 ND2NZ；Q scale 用 DN2NZ，以匹配 MX matmul
             // 右操作数转置后的读取布局。
             qBuf = l1QBuffers_.Get();
@@ -161,8 +164,9 @@ public:
         Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
         kBuf.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
-        // K 依赖 sparse/PA。sparseIndices 给出逻辑 512-token block；
-        // block_table 将该逻辑 block 映射到物理 BNBD page。每个 BMM1 subLoop 拷贝 256 行。
+        // K 依赖 sparse/PA。sparseIndices 给出逻辑 KV block；
+        // block_table 将每个逻辑 block 映射到物理 BNBD page。每个 BMM1 subLoop
+        // 拷贝并拼接 256 行。
         CopyKeyToL1(kTensor, runInfo, constInfo, s2CalcSize, subLoop);
 
         const uint32_t kScaleOffset = AlignUp32(s2CalcSize) * constInfo.dSize;
@@ -207,13 +211,14 @@ public:
         // BMM2 消费两个 V1 subLoop 生成的完整 P tile：
         //   P[128, 512] x V[512, DV] -> O[128, DV]。
         // P 已由 V1 量化为 fp8_e4m3fn，PScale(e8m0) 紧跟在同一个 L1 buffer 后半段。
-        // V/VScale 按 256-token 分块从 PA BNBD page 中搬入。
+        // V/VScale 按 256-token 分块从 PA BNBD page 中搬入；当 sparse block 为
+        // 128/64 时，同样按 sparseIndices 顺序拼接多个 block。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
 
         constexpr uint32_t pScaleOffset = M_BASE * S2_BASE;
         if (runInfo.actSingleLoopS2Size > S2_SPLIT) {
-            // sparse block 为完整 512 token 时，V1 通过两个 vector sub-block 写入 PScale。
+            // logical S2 tile 超过 256 token 时，V1 会通过两个 subLoop 写入 PScale。
             // C2 读取前先把后半部分 padding 初始化为 e8m0(1.0)，避免 tail/padding lane
             // 改变 MX 反量化 scale。
             constexpr uint32_t int16Bytes = 2U;
@@ -292,107 +297,205 @@ private:
         return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
     }
 
+    __aicore__ inline uint32_t GetBlockOverlapStart(uint32_t tileStart, uint32_t blockStart) const
+    {
+        return tileStart > blockStart ? tileStart : blockStart;
+    }
+
+    __aicore__ inline uint32_t GetBlockOverlapEnd(uint32_t tileEnd, uint32_t blockEnd) const
+    {
+        return tileEnd < blockEnd ? tileEnd : blockEnd;
+    }
+
     __aicore__ inline void CopyKeyToL1(LocalTensor<INPUT_T> &dstTensor, const MxRunInfo &runInfo,
                                       const MxConstInfo &constInfo, uint32_t s2CalcSize, uint32_t subLoop)
     {
         // Key GM layout 为 PA BNBD：[physicalBlock, kvHead, blockSize, D]。
-        // startPos.s2Offset 仍是逻辑 token 偏移；GmCopyInToL1PA 会通过 block_table
-        // 将其转换成物理 PA block id。
-        Position startPos;
-        startPos.bIdx = runInfo.bIdx;
-        startPos.n2Idx = runInfo.n2Idx;
-        startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlkIdx1) * constInfo.kvSparseBlockSize +
-                             subLoop * S2_SPLIT;
-        startPos.dIdx = 0U;
+        // 当前 256-token subLoop 可能跨多个 sparse block。这里参考 BSA FP8 的拼接方式：
+        // 每拷完一个 sparse block 片段，就按 L1 NZ-like 行偏移把下一个片段接在后面。
+        const uint32_t tileStart = subLoop * S2_SPLIT;
+        const uint32_t tileEnd = tileStart + s2CalcSize;
+        constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+        uint32_t sparseTileOffset = 0U;
+        uint32_t copiedRowCount = 0U;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
+            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockEnd = blockStart + blockRealSize;
+            sparseTileOffset = blockEnd;
+            if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
+                continue;
+            }
 
-        PAShape shape;
-        shape.blockSize = constInfo.kvSparseBlockSize;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.dSize;
-        shape.actHeadDim = constInfo.dSize;
-        shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-        shape.copyRowNum = s2CalcSize;
-        shape.copyRowNumAlign = AlignUp32(s2CalcSize);
-        shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSize;
-        GmCopyInToL1PA<INPUT_T>(dstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
+            const uint32_t overlapStart = GetBlockOverlapStart(tileStart, blockStart);
+            const uint32_t overlapEnd = GetBlockOverlapEnd(tileEnd, blockEnd);
+            const uint32_t copyStartInBlock = overlapStart - blockStart;
+            const uint32_t copyRowNum = overlapEnd - overlapStart;
+
+            Position startPos;
+            startPos.bIdx = runInfo.bIdx;
+            startPos.n2Idx = runInfo.n2Idx;
+            startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
+            startPos.dIdx = 0U;
+
+            PAShape shape;
+            shape.blockSize = constInfo.kvSparseBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.dSize;
+            shape.actHeadDim = constInfo.dSize;
+            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+            shape.copyRowNum = copyRowNum;
+            shape.copyRowNumAlign = AlignUp32(s2CalcSize);
+            shape.pageStride = constInfo.paBlockStride;
+            shape.rowStride = constInfo.dSize;
+            LocalTensor<INPUT_T> keyDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            GmCopyInToL1PA<INPUT_T>(keyDstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
+            copiedRowCount += copyRowNum;
+        }
     }
 
     __aicore__ inline void CopyKeyScaleToL1(LocalTensor<SCALE_T> &dstTensor, const MxRunInfo &runInfo,
                                            const MxConstInfo &constInfo, uint32_t s2CalcSize, uint32_t subLoop)
     {
-        // Key scale 在 PA 拷贝前按 token 展平：
-        // [paBlockNumSum * blockSize, kvHead, D/64, 2]。
-        // 因此 pageStride/rowStride 以 scale 元素计数表示，而不是 fp8 数据元素计数。
-        Position startPos;
-        startPos.bIdx = runInfo.bIdx;
-        startPos.n2Idx = runInfo.n2Idx;
-        startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlkIdx1) * constInfo.kvSparseBlockSize +
-                             subLoop * S2_SPLIT;
-        startPos.dIdx = 0U;
+        // Key scale 与 Key 数据使用相同的 sparse block 拼接顺序。
+        // GM 逻辑 shape 为 [paBlockNumSum * blockSize, kvHead, D/64, 2]。
+        const uint32_t tileStart = subLoop * S2_SPLIT;
+        const uint32_t tileEnd = tileStart + s2CalcSize;
+        constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
+        uint32_t sparseTileOffset = 0U;
+        uint32_t copiedRowCount = 0U;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
+            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockEnd = blockStart + blockRealSize;
+            sparseTileOffset = blockEnd;
+            if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
+                continue;
+            }
 
-        PAShape shape;
-        shape.blockSize = constInfo.kvSparseBlockSize;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
-        shape.actHeadDim = shape.headDim;
-        shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-        shape.copyRowNum = s2CalcSize;
-        shape.copyRowNumAlign = AlignUp32(s2CalcSize);
-        shape.pageStride = constInfo.kvSparseBlockSize * constInfo.kScaleN2D;
-        shape.rowStride = constInfo.kScaleN2D;
-        GmFlatScaleCopyInToL1PAForDN<SCALE_T>(dstTensor, kScaleGm_, blockTableGm_, shape, startPos);
+            const uint32_t overlapStart = GetBlockOverlapStart(tileStart, blockStart);
+            const uint32_t overlapEnd = GetBlockOverlapEnd(tileEnd, blockEnd);
+            const uint32_t copyStartInBlock = overlapStart - blockStart;
+            const uint32_t copyRowNum = overlapEnd - overlapStart;
+
+            Position startPos;
+            startPos.bIdx = runInfo.bIdx;
+            startPos.n2Idx = runInfo.n2Idx;
+            startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
+            startPos.dIdx = 0U;
+
+            PAShape shape;
+            shape.blockSize = constInfo.kvSparseBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
+            shape.actHeadDim = shape.headDim;
+            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+            shape.copyRowNum = copyRowNum;
+            shape.copyRowNumAlign = AlignUp32(s2CalcSize);
+            shape.pageStride = constInfo.kvSparseBlockSize * constInfo.kScaleN2D;
+            shape.rowStride = constInfo.kScaleN2D;
+            LocalTensor<SCALE_T> keyScaleDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            GmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleDstTensor, kScaleGm_, blockTableGm_, shape, startPos);
+            copiedRowCount += copyRowNum;
+        }
     }
 
     __aicore__ inline void CopyValueToL1(LocalTensor<INPUT_T> &dstTensor, const MxRunInfo &runInfo,
                                         const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
     {
         // Value 数据与 Key 数据使用相同的 PA BNBD 寻址方式，但最后一维可以是 dSizeV。
-        // kIdx 选择逻辑 512-token sparse block 的前/后 256-token 部分。
-        Position startPos;
-        startPos.bIdx = runInfo.bIdx;
-        startPos.n2Idx = runInfo.n2Idx;
-        startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlkIdx1) * constInfo.kvSparseBlockSize +
-                             kIdx * S2_SPLIT;
-        startPos.dIdx = 0U;
+        // kIdx 选择当前 512-token logical tile 的前/后 256-token 部分。
+        const uint32_t tileStart = kIdx * S2_SPLIT;
+        const uint32_t tileEnd = tileStart + realK;
+        constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+        uint32_t sparseTileOffset = 0U;
+        uint32_t copiedRowCount = 0U;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
+            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockEnd = blockStart + blockRealSize;
+            sparseTileOffset = blockEnd;
+            if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
+                continue;
+            }
 
-        PAShape shape;
-        shape.blockSize = constInfo.kvSparseBlockSize;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.dSizeV;
-        shape.actHeadDim = constInfo.dSizeV;
-        shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-        shape.copyRowNum = realK;
-        shape.copyRowNumAlign = AlignUp64(realK);
-        shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSizeV;
-        GmCopyInToL1PA<INPUT_T>(dstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
+            const uint32_t overlapStart = GetBlockOverlapStart(tileStart, blockStart);
+            const uint32_t overlapEnd = GetBlockOverlapEnd(tileEnd, blockEnd);
+            const uint32_t copyStartInBlock = overlapStart - blockStart;
+            const uint32_t copyRowNum = overlapEnd - overlapStart;
+
+            Position startPos;
+            startPos.bIdx = runInfo.bIdx;
+            startPos.n2Idx = runInfo.n2Idx;
+            startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
+            startPos.dIdx = 0U;
+
+            PAShape shape;
+            shape.blockSize = constInfo.kvSparseBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.dSizeV;
+            shape.actHeadDim = constInfo.dSizeV;
+            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+            shape.copyRowNum = copyRowNum;
+            shape.copyRowNumAlign = AlignUp64(realK);
+            shape.pageStride = constInfo.paBlockStride;
+            shape.rowStride = constInfo.dSizeV;
+            LocalTensor<INPUT_T> valueDstTensor = dstTensor[copiedRowCount * blockElementCnt];
+            GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
+            copiedRowCount += copyRowNum;
+        }
     }
 
     __aicore__ inline void CopyValueScaleToL1(LocalTensor<SCALE_T> &dstTensor, const MxRunInfo &runInfo,
                                              const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
     {
         // Value scale 按 token 分组，因此一个逻辑 PA scale “行”对应 64 个 value token。
-        // host 侧校验的 GM shape 为 [ceil(totalKvTokens/64), kvHead, DV, 2]。
-        Position startPos;
-        startPos.bIdx = runInfo.bIdx;
-        startPos.n2Idx = runInfo.n2Idx;
-        startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlkIdx1) *
-                                 (constInfo.kvSparseBlockSize / MX_TOKEN_GROUP) +
-                             kIdx * (S2_SPLIT / MX_TOKEN_GROUP);
-        startPos.dIdx = 0U;
+        // 多个 sparse block 拼接时，scale 也按相同 token 区间拼接，只是 offset 单位从
+        // token 变成 token group。
+        const uint32_t tileStart = kIdx * S2_SPLIT;
+        const uint32_t tileEnd = tileStart + realK;
+        const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
+        constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
+        uint32_t sparseTileOffset = 0U;
+        uint32_t copiedGroupCount = 0U;
+        for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
+            const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
+            const uint32_t blockStart = sparseTileOffset;
+            const uint32_t blockEnd = blockStart + blockRealSize;
+            sparseTileOffset = blockEnd;
+            if (blockRealSize == 0U || blockEnd <= tileStart || blockStart >= tileEnd) {
+                continue;
+            }
 
-        PAShape shape;
-        shape.blockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.valueScaleDSize;
-        shape.actHeadDim = constInfo.valueScaleDSize;
-        shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-        shape.copyRowNum = (realK + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
-        shape.copyRowNumAlign = shape.copyRowNum;
-        shape.pageStride = (constInfo.kvSparseBlockSize / MX_TOKEN_GROUP) * constInfo.valueScaleN2D;
-        shape.rowStride = constInfo.valueScaleN2D;
-        GmFlatScaleCopyInToL1PAForND<SCALE_T>(dstTensor, vScaleGm_, blockTableGm_, shape, startPos);
+            const uint32_t overlapStart = GetBlockOverlapStart(tileStart, blockStart);
+            const uint32_t overlapEnd = GetBlockOverlapEnd(tileEnd, blockEnd);
+            const uint32_t copyStartInBlock = overlapStart - blockStart;
+            const uint32_t copyRowNum = overlapEnd - overlapStart;
+            const uint32_t groupStartInBlock = copyStartInBlock / MX_TOKEN_GROUP;
+            const uint32_t groupEndInBlock = (copyStartInBlock + copyRowNum + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
+            const uint32_t copyGroupNum = groupEndInBlock - groupStartInBlock;
+
+            Position startPos;
+            startPos.bIdx = runInfo.bIdx;
+            startPos.n2Idx = runInfo.n2Idx;
+            startPos.s2Offset =
+                static_cast<uint32_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
+            startPos.dIdx = 0U;
+
+            PAShape shape;
+            shape.blockSize = scaleBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.valueScaleDSize;
+            shape.actHeadDim = constInfo.valueScaleDSize;
+            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+            shape.copyRowNum = copyGroupNum;
+            shape.copyRowNumAlign = copyGroupNum;
+            shape.pageStride = scaleBlockSize * constInfo.valueScaleN2D;
+            shape.rowStride = constInfo.valueScaleN2D;
+            LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
+            GmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, shape, startPos);
+            copiedGroupCount += copyGroupNum;
+        }
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
@@ -415,7 +518,7 @@ private:
     __aicore__ inline void FixpipeMm2(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
                                       const MxRunInfo &, const MxConstInfo &constInfo)
     {
-        // C2 输出以 fp32 写入 UB。后续 V2 会更新累计 O；只有当前 sparse S2 block
+        // C2 输出以 fp32 写入 UB。后续 V2 会更新累计 O；只有当前 logical S2 tile
         // 是该 S1 tile 的最后一块时，才会 cast 并写回 GM。
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (constInfo.dSizeV + 7U) >> 3 << 3;

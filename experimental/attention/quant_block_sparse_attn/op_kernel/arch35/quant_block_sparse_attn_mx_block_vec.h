@@ -36,9 +36,10 @@ namespace BaseApi {
  *   V2：消费 fp32 C2 tile，在多个 sparse S2 loop 间更新累计 attention output，
  *       最后 cast 为 bf16，并按需写回 softmax_lse。
  *
- * 当前 kernel 只打开 MX S2=512 场景。一个逻辑 512 宽 sparse block 会拆成两个
- * 256 列的 V1 subLoop。V1 将两个 subLoop 都写入同一个 L1 P buffer，
- * 因此 C2 看到的是完整的 [128, 512] 左矩阵。
+ * 当前 kernel 只打开 MX S2=512 计算 tile。一个 512 宽 logical S2 tile
+ * 由多个 128/64-token sparse block 拼接而成，并拆成两个 256 列的 V1 subLoop。
+ * V1 将两个 subLoop 都写入同一个 L1 P buffer，因此 C2 看到的是完整的
+ * [128, 512] 左矩阵。
  */
 template <bool useDn = true>
 class QuantBlockSparseAttnMxBlockVec {
@@ -114,8 +115,8 @@ public:
             tPipe_->InitBuffer(softmaxExpBuf_[1], 256U);
             tPipe_->InitBuffer(softmaxExpBuf_[2], 256U);
             // preLoop/firstLoop buffer 用于 online softmax update。
-            // 后续 sparse S2 block 到来时，需要用上一轮 max/sum 修正旧输出；
-            // firstLoopSumBuf_ 处理首轮/尾轮路径差异，避免单 sparse block 场景丢失归一化信息。
+            // 后续 logical S2 tile 到来时，需要用上一轮 max/sum 修正旧输出；
+            // firstLoopSumBuf_ 处理首轮/尾轮路径差异，避免单 S2 tile 场景丢失归一化信息。
             tPipe_->InitBuffer(preLoopMaxBuf_, 256U);
             tPipe_->InitBuffer(preLoopSumBuf_, 256U);
             tPipe_->InitBuffer(firstLoopSumBuf_, 256U);
@@ -232,7 +233,7 @@ public:
      *   - bmm2ResBuf：由完整 P[128,512] 生成的 fp32 C2 结果 [128, DV]。
      *
      * V2 输出：
-     *   - 累计后的 attention result。中间 sparse S2 block 保持 fp32 留在 UB；
+     *   - 累计后的 attention result。中间 logical S2 tile 保持 fp32 留在 UB；
      *     最后一块会除以 softmax sum，cast 为 bf16，再按 TND layout 写回 GM。
      */
     __aicore__ inline void ProcessVec2(MxBmm2Buf &bmm2ResBuf, MxRunInfo &runInfo, const MxConstInfo &constInfo)
@@ -249,17 +250,17 @@ public:
         LocalTensor<MM_T> mmRes = bmm2ResBuf.template GetTensor<MM_T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
-            // 第一个 sparse block 没有历史输出需要 update，因此 C2 结果直接作为累计值。
+            // 第一个 S2 tile 没有历史输出需要 update，因此 C2 结果直接作为累计值。
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
             LocalTensor<MM_T> expUb = softmaxExpBuf_[runInfo.loop % (PRELOAD_N + 1U)].template Get<MM_T>();
             if (!runInfo.isLastS2Loop) {
-                // 中间 sparse block：应用 online-softmax 修正因子 expUb，
-                // 并将结果以 fp32 保留给下一个 sparse block。
+                // 中间 S2 tile：应用 online-softmax 修正因子 expUb，
+                // 并将结果以 fp32 保留给下一个 S2 tile。
                 FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
-                // 最后一个 sparse block：完成 update，并除以最终 softmax 分母。
+                // 最后一个 S2 tile：完成 update，并除以最终 softmax 分母。
                 LocalTensor<float> sumUb = softmaxSumBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
                 FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
@@ -268,7 +269,7 @@ public:
         bmm2ResBuf.SetCrossCore();
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
-                // 只有一个 sparse block 的退化场景不会进入 FlashUpdateLastNew，
+                // 只有一个 S2 tile 的退化场景不会进入 FlashUpdateLastNew，
                 // 因此在这里对第一块 C2 结果做归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
                 LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
@@ -307,8 +308,8 @@ private:
     {
         // VF 以紧凑 subLoop layout 输出 C2 用 P 反量化 scale。C2 期望该 scale 放在
         // 完整 [128,512] P tile 后方，并与 P 的 MX group 对齐。两种拷贝模式不同：
-        //   完整 512 block：等 subLoop 1 时一起整理两个 256 半块的 scale；
-        //   tail <=256 block：直接拷贝 subLoop 0 的 scale，并释放 P buffer。
+        //   512-token logical tile：等 subLoop 1 时一起整理两个 256 半块的 scale；
+        //   tail <=256 logical tile：直接拷贝 subLoop 0 的 scale，并释放 P buffer。
         constexpr uint64_t pScaleL1Offset = M_BASE * S2_BASE;
         LocalTensor<SCALE_T> pScaleL1Tensor = outputBuf.GetTensor<SCALE_T>(pScaleL1Offset);
         pScaleSubLoop0Que_.template EnQue(pScaleSubLoopTensor);
