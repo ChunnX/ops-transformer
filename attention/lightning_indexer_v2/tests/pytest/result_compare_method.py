@@ -492,7 +492,7 @@ def check_result_return_value(expect, result, params):
         if not npu_pass_t:
             err_cnt += 1
     pct_thd_percent = (1 - pct_thd) * 100.0
-    fulfill_percent = float(total_line - err_cnt) / float(total_rows) * 100.0
+    fulfill_percent = float(total_rows - err_cnt) / float(total_rows) * 100.0
     npu_pass = True if (fulfill_percent >= pct_thd_percent) else False
     
     end_time = time()
