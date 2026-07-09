@@ -183,8 +183,8 @@ void SubBroadcast(
         }
         AscendC::Sub(
             ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
-        AscendC::PipeBarrier<PIPE_V>();
     }
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 __aicore__ inline
@@ -215,8 +215,8 @@ void DivBroadcast(
         }
         AscendC::Div(
             ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
-        AscendC::PipeBarrier<PIPE_V>();
     }
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 /**
