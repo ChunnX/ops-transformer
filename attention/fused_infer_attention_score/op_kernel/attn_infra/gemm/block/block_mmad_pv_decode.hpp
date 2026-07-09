@@ -129,20 +129,20 @@ public:
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1U) {
-            nSplitSize = kvSeqlen - nowNIdx * blockSize;
+            nSplitSize = static_cast<uint32_t>(kvSeqlen - static_cast<uint64_t>(nowNIdx) * blockSize);
         }
         actualShape[COORD_DIM2] = nSplitSize;
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t &nowNIdx,
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t &nowNIdx,
         uint32_t &strideKV, uint32_t &blockSize)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            kOffset = blockTableId * blockSize * strideKV;
+            kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV;
         } else {
-            kOffset = nowNIdx * blockSize * strideKV;
+            kOffset = static_cast<uint64_t>(nowNIdx) * blockSize * strideKV;
         }
     }
 
@@ -160,7 +160,7 @@ public:
         uint32_t embed = actualOriShape[COORD_DIM1];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM2];
         GemmCoord actualShape{rowNum, embed, 0};
-        uint32_t gBOffset = 0;
+        uint64_t gBOffset = 0;
 
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(stackSeqTile, embed);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
