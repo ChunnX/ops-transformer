@@ -90,13 +90,22 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
 
-    // 只包含了ori_mask_mode=4的部分
-    if (constInfo.oriWinLeft == -1) {
+    if (constInfo.oriMaskMode == 3) {
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
         runParam.preTokensPerBatchOri = runParam.actualS1Size;
     } else {
-        runParam.preTokensPerBatchOri = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
+        // 只包含了ori_mask_mode=4的部分
+        if (constInfo.oriWinRight != -1) {
+            runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size + constInfo.oriWinRight;
+        }
+
+        if (constInfo.oriWinLeft == -1) {
+            runParam.preTokensPerBatchOri = runParam.actualS1Size;
+        } else {
+            runParam.preTokensPerBatchOri = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
+        }
+        runParam.preTokensPerBatchOri = Min(runParam.preTokensPerBatchOri, runParam.actualS1Size);
     }
-    runParam.preTokensPerBatchOri = Min(runParam.preTokensPerBatchOri, runParam.actualS1Size);
 }
 
 TEMPLATE_INTF
