@@ -639,10 +639,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
     if constexpr (std::is_same_v<QK_T, float>) {
-        // s1gL0RealSize：2*gSize(128)对齐, 最大256
+        // s1gL0RealSize：L0C NZ格式按16行tile存储，mSize需16对齐
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
-        uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
+        uint32_t mSize = ((s1gL0RealSize + 15) / 16) * 16; // CeilAlign到16
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // 固定参数
         fixpipeParams.mSize = mSize;
@@ -674,10 +674,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 8个元素（32B)对齐
-        // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数
-        uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
+        // L0C NZ格式按16行tile存储，mSize需16对齐
+        uint32_t mSize = ((s1gL0RealSize + 15) / 16) * 16; // CeilAlign到16
         // L0C上matmul结果相邻连续数据片断间隔, 单位为16 * sizeof(T)
-        uint32_t srcStride = ((mSize + 15) / 16) * 16;
+        uint32_t srcStride = mSize; // 已16对齐
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
         fixpipeParams.nSize = nSize; // N方向全部输出
         fixpipeParams.mSize = mSize / 2; // M方向每个AIV一半

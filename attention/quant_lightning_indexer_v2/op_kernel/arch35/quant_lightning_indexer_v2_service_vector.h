@@ -496,7 +496,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = (uint64_t)info.actMBaseSize
+    // Fixpipe mSize 按16对齐写入UB，qkVLstride需匹配16对齐后的行数
+    auto qkVLstride = (uint64_t)QLIV2Common::CeilAlign(info.actMBaseSize, (uint32_t)16)
         * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
