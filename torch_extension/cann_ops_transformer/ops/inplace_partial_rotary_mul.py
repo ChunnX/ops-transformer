@@ -35,6 +35,9 @@ class InplacePartialRotaryMulFn(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         r1, r2 = ctx.saved_tensors
+        # CANN backward kernel 要求连续内存；新分配 contiguous buffer
+        # 供 CANN inplace 修改，不污染 autograd 传入的原始 grad_output
+        grad_input = grad_output.contiguous()
         # 对齐 mhc_pre_sinkhorn：用 op_module 直调 C++，不走 dispatcher
         from cann_ops_transformer.ops.inplace_partial_rotary_mul_backward import (
             inplace_partial_rotary_mul_backward_op_builder,
@@ -42,9 +45,9 @@ class InplacePartialRotaryMulFn(torch.autograd.Function):
 
         op_module = inplace_partial_rotary_mul_backward_op_builder.load()
         op_module.inplace_partial_rotary_mul_backward(
-            grad_output, r1, r2, ctx.rotary_mode, ctx.partial_slice
+            grad_input, r1, r2, ctx.rotary_mode, ctx.partial_slice
         )
-        return grad_output, None, None, None, None
+        return grad_input, None, None, None, None
 
 
 class InplacePartialRotaryMulOpBuilder(OpBuilder):
