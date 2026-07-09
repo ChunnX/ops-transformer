@@ -121,15 +121,15 @@ sparse_lightning_indexer_kl_loss_grad(
 
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
-| q | 必选输入 | Lightning Indexer 分支的 query 输入。N1 支持 1~128。D：固定为 128。B>0。S1>0。 | `float16`、`bfloat16` | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]`。 |
-| k | 必选输入 | Lightning Indexer 分支的 key 输入。N2 仅支持 1。D：固定为 128。B>0。S2>0。 | 与 `q` 一致 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]`。 |
+| q | 必选输入 | Lightning Indexer 分支的 query 输入。D：固定为 128。 | `float16`、`bfloat16` | `layout_q="BSND"` 时为 `[B, S1, N1, D]`；`layout_q="TND"` 时为 `[T1, N1, D]`。 |
+| k | 必选输入 | Lightning Indexer 分支的 key 输入。N2 仅支持 1。D：固定为 128。 | 与 `q` 一致 | `layout_k="BSND"` 时为 `[B, S2, N2, D]`；`layout_k="TND"` 时为 `[T2, N2, D]`。 |
 | w | 必选输入 | Indexer logits 的 head 权重。 | `float32` | `layout_q="BSND"` 时为 `[B, S1, N1]`；`layout_q="TND"` 时为 `[T1, N1]`。 |
-| sparse_indices | 必选输入 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。K 支持 1~2048。 | `int32` | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]`。 |
+| sparse_indices | 必选输入 | 每个 query 对应的 top-k key 下标。有效位置填 key 下标，无效位置填 `-1`。 | `int32` | `layout_q="BSND"` 时为 `[B, S1, N2, K]`；`layout_q="TND"` 时为 `[T1, N2, K]`。 |
 | attn_softmax_l1_norm | 必选输入 | 主 Attention 分支预先计算得到的目标分布 `p`，无效 top-k 位置建议置 0。 | `float32` | 与 `sparse_indices` 一致。 |
 | cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
+| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。 | `int32` | `[B]`。 |
+| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。 | `int32` | `[B]`。 |
 | cmp_residual_k | 可选输入 | 压缩 key 场景下的残差长度。`mask_mode=3` 且 `cmp_ratio!=1` 时，用于还原压缩前 key 长度。 | `int32` | `[B]`。 |
 | metadata | 可选输入 | `sparse_lightning_indexer_kl_loss_grad_metadata` 生成的任务切分结果，建议传入。 | `int32` | `[64]`。 |
 | layout_q | 可选属性 | `q` 侧 layout。 | `str` | 支持 `"BSND"`、`"TND"`，默认 `"TND"`。 |
@@ -137,47 +137,30 @@ sparse_lightning_indexer_kl_loss_grad(
 | mask_mode | 可选属性 | sparse mask 模式。 | `int` | 当前支持 `0` 和 `3`，默认 `3`。 |
 | cmp_ratio | 可选属性 | key 压缩比例。 | `int` | 取值范围 `[1, 128]`，默认 `1`。 |
 
-- 参数N1的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
-    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
-- 参数B的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
-    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
-- 参数S1、S2的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
-    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
-- 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
-    - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
 
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | 必选属性 | `q` 的 head 数，即主接口 `q` 的 `N1`。N1 支持 1~128。 | `int` | - |
+| num_heads_q | 必选属性 | `q` 的 head 数，即主接口 `q` 的 `N1`。 | `int` | - |
 | num_heads_k | 必选属性 | `k` 的 head 数，即主接口 `k` 的 `N2`。当前仅支持 1。 | `int` | - |
 | head_dim | 必选属性 | `q`、`k` 的最后一维 `D`。固定为 128。 | `int` | - |
 | cu_seqlens_q | 可选输入 | TND 场景中 query 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_k | 可选输入 | TND 场景中 key 的前缀和序列长度，首元素为 0。 | `int32` | `[B + 1]`。 |
-| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
-| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。Atlas A2/A3 暂不支持该字段。 | `int32` | `[B]`。 |
+| seqused_q | 可选输入 | 表示每个 batch 实际使用的 query 长度。 | `int32` | `[B]`。 |
+| seqused_k | 可选输入 | 表示每个 batch 实际使用的 key 长度。 | `int32` | `[B]`。 |
 | cmp_residual_k | 可选输入 | `mask_mode=3` 且 `cmp_ratio!=1` 时需要传入，用于还原压缩前 key 长度（`pre_compress_k_len = compressed_k_len * cmp_ratio + cmp_residual_k[b]`）。 | `int32` | `[B]`。 |
 | batch_size | 可选属性 | batch 大小。BSND 场景建议显式传入，TND 场景也可由 `cu_seqlens_q` 推导。 | `int` | - |
 | max_seqlen_q | 可选属性 | 单个 batch 中最大的 query 序列长度。 | `int` | - |
 | max_seqlen_k | 可选属性 | 单个 batch 中最大的压缩后 key 序列长度。 | `int` | - |
-| topk | 可选属性 | top-k 大小，即 `sparse_indices` 最后一维 `K`。K 支持 1~2048。 | `int` | - |
+| topk | 可选属性 | top-k 大小，即 `sparse_indices` 最后一维 `K`。 | `int` | - |
 | layout_q | 可选属性 | `q` 侧 layout。未传时默认按 `"BSND"` 处理。 | `str` | 支持 `"BSND"`、`"TND"`。 |
 | layout_k | 可选属性 | `k` 侧 layout。未传时默认按 `"BSND"` 处理。 | `str` | 支持 `"BSND"`、`"TND"`。 |
 | mask_mode | 可选属性 | sparse mask 模式。未传时默认值为 `0`。 | `int` | 当前支持 `0` 和 `3`。 |
 | cmp_ratio | 可选属性 | key 压缩比例。未传时默认值为 `1`。 | `int` | 取值范围 `[1, 128]`。 |
 | metadata | 输出 | 任务切分 metadata。 | `int32` | `[64]`。 |
 
-- 参数N1的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
-    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
-- 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
-    - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
 ## 返回值说明
@@ -208,19 +191,27 @@ sparse_lightning_indexer_kl_loss_grad(
 - `cmp_ratio` 取值范围为 `[1, 128]`。
 - 压缩 key 且 `mask_mode=3` 时，压缩前 key 长度通过 `compressed_k_len * cmp_ratio + cmp_residual_k[b]` 计算。CP 切分场景中，每个 CP shard 单独调用时，`q` 传入当前 shard 的 query 长度，`k` 传入该 shard 对应的压缩后 key 前缀长度，并按该公式传入对应的 `cmp_residual_k`。
 - **确定性计算**：Ascend 950PR/Ascend 950DT 默认非确定性计算，支持通过 `aclrtCtxSetSysParamOpt` 开启确定性计算；Atlas A2/A3 不支持开启确定性计算。
-- **分平台规格约束**：
+- **规格约束**：
 
-    | 参数 | Atlas A2/A3 | Ascend 950PR/Ascend 950DT |
+    | 规格项 | 规格 | 规格说明 |
     | :--- | :--- | :--- |
-    | B | 1~256 | B>0 |
-    | S1 | 1~8192 | S1>0 |
-    | S2 | 1~524288 | S2>0 |
-    | N1 | 8、16、32、64 | 1~128 |
-    | N2 | 1 | 1 |
-    | D | 128 | 128 |
-    | K（topk） | 512、1024、2048、4096、8192 | 1~2048 |
-    | cmp_ratio | 1~128 | 1~128 |
-    | mask_mode | 0、3 | 0、3 |
+    | N2 | 1 | 当前仅支持N2=1。 |
+    | D | 128 | q和k最后一维需保持一致。 |
+    | cmp_ratio | 1~128 | - |
+    | mask_mode | 0、3 | - |
+
+  - 参数B的支持情况:
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
+    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
+  - 参数S1、S2的支持情况:
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
+    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
+  - 参数N1的支持情况:
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
+  - 参数K的支持情况:
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
 
 ## 调用示例
 
