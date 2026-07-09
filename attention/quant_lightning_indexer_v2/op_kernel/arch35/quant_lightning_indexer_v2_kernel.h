@@ -217,7 +217,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
                                                                    : S1_BASE_SIZE_DEFAULT;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
-    constInfo.mBaseSizeAlign16 = QLIV2Common::CeilAlign(constInfo.mBaseSize, (uint32_t)16);
+    constInfo.mBaseSizeAlign16 = CeilAlign(constInfo.mBaseSize, (uint32_t)16);
     constInfo.returnValue = tilingData->returnValue;
 }
 
