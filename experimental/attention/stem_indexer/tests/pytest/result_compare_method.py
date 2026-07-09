@@ -117,27 +117,33 @@ def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_p
         return None
 
     scores = get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx)
-    boundary_score = min(float(scores[idx]) for idx in expected_dynamic)
+    topk_score_type = stem_indexer_golden.get_golden_topk_score_type(case)
+    sort_scores = stem_indexer_golden.get_topk_sort_scores(scores, topk_score_type)
+    boundary_score = min(float(sort_scores[idx]) for idx in expected_dynamic)
     tolerance = max(abs(boundary_score) * TOPK_SCORE_RTOL, TOPK_SCORE_ATOL)
     bad_actual_indices = [
         {
             "idx": idx,
             "score": float(scores[idx]),
+            "sort_score": float(sort_scores[idx]),
             "boundary_score": boundary_score,
+            "golden_topk_score_type": topk_score_type,
             "tolerance": tolerance,
         }
         for idx in only_in_actual
-        if float(scores[idx]) + tolerance < boundary_score
+        if float(sort_scores[idx]) + tolerance < boundary_score
     ]
     bad_expected_indices = [
         {
             "idx": idx,
             "score": float(scores[idx]),
+            "sort_score": float(sort_scores[idx]),
             "boundary_score": boundary_score,
+            "golden_topk_score_type": topk_score_type,
             "tolerance": tolerance,
         }
         for idx in only_in_expected
-        if float(scores[idx]) > boundary_score + tolerance
+        if float(sort_scores[idx]) > boundary_score + tolerance
     ]
     if bad_actual_indices or bad_expected_indices:
         return {
