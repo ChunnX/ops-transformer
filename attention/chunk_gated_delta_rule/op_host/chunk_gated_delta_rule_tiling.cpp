@@ -134,7 +134,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                         // highState (FP32, reused as stateBf16Wk_ + stateDeltaWk_)
+        tilingData_.interWorkspaceSz += sizeHigh * nv * dv * dk;                         // highState (FP32, arch35: reused as stateBf16Wk_ + stateDeltaWk_)
+    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk;         // highState_ (arch22: kernel unconditionally advances offset)
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
