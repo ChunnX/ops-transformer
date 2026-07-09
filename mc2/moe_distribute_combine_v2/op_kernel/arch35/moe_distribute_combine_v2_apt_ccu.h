@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_a5.h
+ * \file moe_distribute_combine_apt.h
  * \brief
  */
 #ifndef MOE_DISTRIBUTE_COMBINE_A5_H

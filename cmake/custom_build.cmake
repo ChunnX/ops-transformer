@@ -989,10 +989,6 @@ if (NOT ENABLE_AICPU_KERNEL)
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
         )
-        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a5.py
-                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-                OPTIONAL
-        )
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
             DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
             OPTIONAL
@@ -1109,7 +1105,6 @@ endforeach(    )
                 list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
             endif()
         endforeach ()
-        foreach (op_depend_dir ${${_op_name}_a5_depends})
             get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
             get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")

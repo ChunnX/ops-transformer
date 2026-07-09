@@ -96,7 +96,7 @@ def grouped(gen_path, soc, group_size):
     special_task_barrier = ""
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if op_name.endswith(('_a2', '_a3', '_a5', '_apt')):
+        if op_name.endswith(('_a2', '_a3', '_apt')):
             op_name_real = op_name.rsplit('_', 1)[0]
         if op_name_real in black_list:
             continue
@@ -155,7 +155,7 @@ def grouped_back(gen_path, soc, group_size):
 
     for op_name, count in op_counts.items():
         op_name_real = op_name
-        if op_name.endswith(('_a2', '_a3', '_a5', '_apt')):
+        if op_name.endswith(('_a2', '_a3', '_apt')):
             op_name_real = op_name.rsplit('_', 1)[0]
 
         if op_name_real in black_list:

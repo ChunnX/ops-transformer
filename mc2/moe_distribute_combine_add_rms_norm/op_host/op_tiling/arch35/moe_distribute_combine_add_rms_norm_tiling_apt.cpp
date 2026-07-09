@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_distribute_combine_v3_tiling_a5.cpp
+ * \file moe_distribute_combine_add_rms_norm_tiling_apt.cpp
  * \brief
  */
 
-#include "moe_distribute_combine_v3_tiling_a5.h"
+#include "moe_distribute_combine_add_rms_norm_tiling_a5.h"
 #include "../../../../moe_distribute_combine_v2/op_host/op_tiling/arch35/moe_distribute_combine_tiling_arch35.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
@@ -24,28 +24,29 @@
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_exception_dump.h"
+
 namespace optiling {
-ge::graphStatus MoeDistributeCombineV3TilingFuncA5::MoeDistributeCombineV2TilingFuncNew(
-    gert::TilingContext* context, const CombineV2Config& config)
+ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncA5::MoeDistributeCombineV2TilingFunc(
+    gert::TilingContext* context)
 {
     MoeDistributeCombineV2TilingFuncA5 funcA5;
-    return funcA5.MoeDistributeCombineV2TilingFuncNew(context, config);
+    return funcA5.MoeDistributeCombineV2TilingFunc(context);
 }
 
-struct MoeDistributeCombineV3CompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeCombineV3(gert::TilingParseContext *context)
+ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncImplA5(gert::TilingContext* context)
+{
+    MoeDistributeCombineAddRmsNormTilingFuncA5 impl;
+    return impl.MoeDistributeCombineAddRmsNormTilingFunc(context);
+}
+
+struct MoeDistributeCombineAddRmsNormCompileInfo {};
+ge::graphStatus TilingParseForMoeDistributeCombineAddRmsNorm(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineV3TilingFuncImplA5(gert::TilingContext* context)
-{
-    MoeDistributeCombineV3TilingFuncA5 impl;
-    return impl.MoeDistributeCombineV3TilingFunc(context);
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineV3)
-    .Tiling(MoeDistributeCombineV3TilingFuncImplA5)
-    .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
-}
+IMPL_OP_OPTILING(MoeDistributeCombineAddRmsNorm)
+    .Tiling(MoeDistributeCombineAddRmsNormTilingFuncImplA5)
+    .TilingParse<MoeDistributeCombineAddRmsNormCompileInfo>(TilingParseForMoeDistributeCombineAddRmsNorm);
+} // namespace optiling
