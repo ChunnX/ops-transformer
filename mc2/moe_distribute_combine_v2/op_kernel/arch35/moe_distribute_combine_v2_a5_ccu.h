@@ -180,7 +180,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5Type
 }
 
 template <TemplateMoeDistributeCombineA5TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CalculateRecvBufAndRecvOffset(const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CalculateRecvBufAndRecvOffset(
+    const MoeDistributeCombineV2TilingData *tilingData)
 {
     GlobalTensor<int32_t> statusGT;
     __gm__ HcclCombineOpParam *context = (__gm__ HcclCombineOpParam *)(GetHcclContext<0>());

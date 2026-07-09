@@ -44,20 +44,20 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         MoeDistributeCombineV2<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false> op;
         op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr,
-                scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, 
+                scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,
                 constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     } else if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_HIERARCHY)) {
         if constexpr (QuantMode == TILINGKEY_NO_QUANT) {
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
             MoeDistributeCombineV2Layered<DTYPE_EXPAND_X, int32_t, DTYPE_EXPAND_X> op;
-            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask, 
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask,
                     XOut, workspaceGM, &pipe, &tilingData, contextGM0);
             op.Process();
         } else if constexpr (QuantMode == TILINGKEY_INT8_QUANT) {
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
             MoeDistributeCombineV2Layered<DTYPE_EXPAND_X, int32_t, int8_t> op;
-            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask, 
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, expandScales, xActiveMask,
                     XOut, workspaceGM, &pipe, &tilingData, contextGM0);
             op.Process();
         }
