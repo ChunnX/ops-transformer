@@ -10,28 +10,25 @@
 
 /*!
  * \file stem_oam_prep_paged_kv_tiling_simd.cpp
- * \brief StemOamPrepPagedKV arch35 Tiling implementation (split_mode=2)
+ * \brief StemOamPrepPagedKV simd Tiling implementation
  */
 #include "stem_oam_prep_paged_kv_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
-constexpr uint64_t SYS_WORKSPACE_SIZE = static_cast<uint64_t>(16 * 1024 * 1024);
-
-bool StemOamPrepPagedKVSimd::IsCapable()
+bool StemPrepKVTiling::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus StemOamPrepPagedKVSimd::GetPlatformInfo()
+ge::graphStatus StemPrepKVTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const StemPrepKVCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         totalCoreNum_ = compileInfoPtr->coreNum;
-        ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
@@ -39,95 +36,103 @@ ge::graphStatus StemOamPrepPagedKVSimd::GetPlatformInfo()
             OP_LOGE(context_->GetNodeName(), "coreNum is 0");
             return ge::GRAPH_FAILED;
         }
-        uint64_t ubSize = 0;
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-        if (ubSize == static_cast<uint64_t>(0)) {
-            OP_LOGE(context_->GetNodeName(), "ubSize is 0");
-            return ge::GRAPH_FAILED;
-        }
-        ubSize_ = static_cast<uint64_t>(ubSize);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemOamPrepPagedKVSimd::GetShapeAttrsInfo()
+ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("StemOamPrepPagedKV", "context is null"), return ge::GRAPH_FAILED);
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    lambda_mag_ = attrs->GetAttrValue<float>("lambdaMag");
-    kv_layout_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("cacheLayout"));
-    kv_block_size_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("kvBlockSize"));
-    stem_block_size_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemBlockSize"));
-    stem_stride_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemStride"));
+    lambdaMag_ = attrs->GetAttrValue<float>("lambdaMag");
+    kvLayout_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("cacheLayout"));
+    kvBlockSize_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("kvBlockSize"));
+    stemBlockSize_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemBlockSize"));
+    stemStride_ = static_cast<uint32_t>(attrs->GetAttrValue<int64_t>("stemStride"));
 
     const gert::StorageShape *kvSeqLensShape = context_->GetInputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
-    batch_size_ = kvSeqLensShape->GetStorageShape().GetDim(0);
+    batchSize_ = kvSeqLensShape->GetStorageShape().GetDim(0);
 
     const gert::StorageShape *kcacheShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheShape);
-    if (kv_layout_ == 0) {
-        num_kv_heads_ = kcacheShape->GetStorageShape().GetDim(2);
+    if (kvLayout_ == 0) {
+        numKvHeads_ = kcacheShape->GetStorageShape().GetDim(2);
     } else {
-        num_kv_heads_ = kcacheShape->GetStorageShape().GetDim(1);
+        numKvHeads_ = kcacheShape->GetStorageShape().GetDim(1);
     }
-    total_blocks_ = kcacheShape->GetStorageShape().GetDim(0);
+    totalBlocks_ = kcacheShape->GetStorageShape().GetDim(0);
+    dimQk_ = kcacheShape->GetStorageShape().GetDim(kcacheShape->GetStorageShape().GetDimNum() - 1);
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
-    max_kv_block_size_ = kvIndicesShape->GetStorageShape().GetDim(1);
+    maxKvBlockSize_ = kvIndicesShape->GetStorageShape().GetDim(1);
 
-    const gert::Tensor *kvSeqLensTensor = context_->GetInputTensor(3);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensTensor);
-    const int32_t *kvSeqLensData = kvSeqLensTensor->GetData<int32_t>();
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensData);
+    return ge::GRAPH_SUCCESS;
+}
 
-    max_kv_len_ = 0;
-    for (uint32_t b = 0; b < batch_size_; b++) {
-        uint32_t kvLen = static_cast<uint32_t>(kvSeqLensData[b]);
-        if (kvLen > max_kv_len_) {
-            max_kv_len_ = kvLen;
-        }
+ge::graphStatus StemPrepKVTiling::DoOpTiling()
+{
+    if (batchSize_ == 0 || numKvHeads_ == 0) {
+        OP_LOGE(context_->GetNodeName(), "batchSize or numKvHeads is 0!");
+        return ge::GRAPH_FAILED;
     }
-
-    max_k_padded_ = ((max_kv_len_ + stem_block_size_ - 1) / stem_block_size_) * stem_block_size_;
-    max_Kb_ = max_k_padded_ / stem_block_size_;
-    vbias_stride_ = (max_Kb_ < 8) ? 8 : max_Kb_;
-
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemOamPrepPagedKVSimd::DoOpTiling()
-{
-
-
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus StemOamPrepPagedKVSimd::DoLibApiTiling()
+ge::graphStatus StemPrepKVTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t StemOamPrepPagedKVSimd::GetTilingKey() const
+uint64_t StemPrepKVTiling::GetTilingKey() const
 {
     return 0;
 }
 
-ge::graphStatus StemOamPrepPagedKVSimd::GetWorkspaceSize()
+ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
 {
-    workspaceSize_ = SYS_WORKSPACE_SIZE;
+    uint64_t maxKvPadded = MAX_KV_PADDED;
+    uint64_t vFlatSize = static_cast<uint64_t>(batchSize_) *
+                         static_cast<uint64_t>(numKvHeads_) *
+                         (maxKvPadded / static_cast<uint64_t>(stemStride_)) *
+                         sizeof(float);
+    workspaceSize_ = vFlatSize;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemOamPrepPagedKVSimd::PostTiling()
+ge::graphStatus StemPrepKVTiling::PostTiling()
 {
+    auto workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
+    workspaces[0] = workspaceSize_;
 
+    uint32_t usedCoreNum = static_cast<uint32_t>(totalCoreNum_);
+    uint32_t totalBh = batchSize_ * numKvHeads_;
+
+    tilingData_.set_batchSize(batchSize_);
+    tilingData_.set_numKvHeads(numKvHeads_);
+    tilingData_.set_totalBh(totalBh);
+    tilingData_.set_usedCoreNum(usedCoreNum);
+    tilingData_.set_totalBlocks(totalBlocks_);
+    tilingData_.set_kvBlockSize(kvBlockSize_);
+    tilingData_.set_dimQk(dimQk_);
+    tilingData_.set_maxKvBlocks(maxKvBlockSize_);
+    tilingData_.set_stemBlockSize(stemBlockSize_);
+    tilingData_.set_stemStride(stemStride_);
+    tilingData_.set_lambdaMag(lambdaMag_);
+    tilingData_.set_kvLayout(kvLayout_);
+    tilingData_.set_vFlatOutGM(0);
+
+    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+
+    context_->SetBlockDim(usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemOamPrepPagedKVSimd, 0);
+REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemPrepKVTiling, 0);
 
 } // namespace optiling
