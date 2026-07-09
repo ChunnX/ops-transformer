@@ -282,11 +282,12 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     if (aivId_ >= aivNum_) {
         return;
     }
-    epRankId_ = tilingData->moeDistributeDispatchSetupInfo.epRankId;
+    //epRankId_ = tilingData->moeDistributeDispatchSetupInfo.epRankId;
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
+    epRankId_ = mc2Context_->epRankId;
 
     GlobalTensor<int32_t> selfDataStatusTensor;
-    statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
+    statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer(
         (__gm__ int32_t*)(statusDataSpaceGM_ + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     axisBS_ = tilingData->moeDistributeDispatchSetupInfo.bs;
@@ -1041,8 +1042,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             }
 
             if (hasWrite) {
-                hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-                //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);  // 等待接收cq
+                hcomm_.Commit(channelId);
+                //hcomm_.Drain(channelId);  // 等待接收cq
             }
         }
     }
