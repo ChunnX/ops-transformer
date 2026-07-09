@@ -31,6 +31,7 @@ constexpr uint32_t READ_COMMIT_FIRST_THRESHOLD = 8U;
 constexpr uint32_t READ_COMMIT_THRESHOLD = 32U;
 constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t ALIGNED_LEN_256 = 256U;
+constexpr uint32_t RELAY_BUFFER_NUM = 2U;
 
 struct EngramCommContext {
     uint32_t rankId;

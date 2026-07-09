@@ -76,7 +76,8 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
             if (channelIdx == rankId_) {
                 continue;
             }
-            hcomm_.Drain(ctxPtr_->hcommHandle[channelIdx]);
+            int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[channelIdx]);
+            ascendc_assert(ret == 0, "Urma drain failed, ret=%d, channelIdx=%u", ret, channelIdx);
         }
     }
 }
