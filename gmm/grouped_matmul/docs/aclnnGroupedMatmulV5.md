@@ -292,10 +292,11 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - x/weight转置时对应 Tensor必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
 - weight为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅 1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
-- groupListOptional：out中 TensorList长度为 1 时，groupList约束输出数据有效范围，未指定部分不参与更新。
-- groupListType=0：groupListOptional须为非负单调非递减数列（累积和）。以 shape $M=789$、$K=4096$、$N=7168$、$E=9$（第 0 组 123 token，第 2/5 组各 333 token，其余为空）为例：`[123, 123, 456, 456, 456, 789, 789, 789, 789]`
-- groupListType=1：须为非负数列（各组大小）。举例：`[123, 0, 333, 0, 0, 333, 0, 0, 0]`
-- groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。举例：`[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置）
+- groupListOptional：out中TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
+- groupListType：
+  - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：须为非负数列（各组大小）。以M=256、E=4为例：`[64, 0, 128, 64]`
+  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。以M=256、E=4为例：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 
 ### Ascend 950PR/Ascend 950DT
 
