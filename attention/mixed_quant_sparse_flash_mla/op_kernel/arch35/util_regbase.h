@@ -242,6 +242,8 @@ struct FdRunInfo {
     float softmaxScale; \
     uint32_t oriKvStride; \
     uint32_t cmpKvStride; \
+    uint32_t oriMaskMode; \
+    uint32_t cmpMaskMode
 
 struct ConstInfo{
     COMMON_CONST_INFO;

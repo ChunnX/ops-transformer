@@ -371,8 +371,8 @@ def fill_none_params(params_dict):
         'S1EQS2': S1EQS2,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
-        'ori_kv_topk_mode': params_dict.get('ori_kv_topk_mode', 'no'),
-        'cmp_kv_topk_mode': params_dict.get('cmp_kv_topk_mode', 'no'),
+        'ori_kv_topk_mode': params_dict.get('ori_kv_topk_mode', 'fullK'),
+        'cmp_kv_topk_mode': params_dict.get('cmp_kv_topk_mode', 'fullK'),
         'ori_sparse_indices_mode': params_dict.get('ori_sparse_indices_mode', 'full'),
         'cmp_sparse_indices_mode': params_dict.get('cmp_sparse_indices_mode', 'full'),
     }

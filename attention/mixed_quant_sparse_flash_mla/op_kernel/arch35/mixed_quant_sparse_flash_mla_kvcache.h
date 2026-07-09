@@ -81,13 +81,21 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio +
             runParam.cmpResidual - runParam.actualS1Size;
     }
-    runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
-    if (constInfo.oriWinLeft == -1) {
+    if (constInfo.oriMaskMode == 0) {
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize;
+        runParam.preTokensPerBatch = runParam.actualS1Size;
+    } else if (constInfo.oriMaskMode == 3) {
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
         runParam.preTokensPerBatch = runParam.actualS1Size;
     } else {
-        runParam.preTokensPerBatch = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
+        if (constInfo.oriWinLeft == -1) {
+            runParam.preTokensPerBatch = runParam.actualS1Size;
+        } else {
+            runParam.preTokensPerBatch = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
+        }
+        runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
     }
-    runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
 }
 
 TEMPLATE_INTF
@@ -258,7 +266,9 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index,
         runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2OriSize);
     runParam.s2LineOriEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
         runParam.cubeSOuterOffset + runParam.nextTokensPerBatchOri + runParam.s1RealSize, 0, runParam.actualS2OriSize);
-
+    // PRINTF("========ComputeS2LoopInfo s2LineStartIdx:%d, s2LineOriEndIdx:%d, cubeSOuterOffset:%d, preTokensPerBatch:%d, nextTokensPerBatchOri:%d, s1RealSize:%d\n",
+        // runParam.s2LineStartIdx, runParam.s2LineOriEndIdx, runParam.cubeSOuterOffset,
+        // runParam.preTokensPerBatch, runParam.nextTokensPerBatchOri, runParam.s1RealSize);
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runParam.boIdx);
         runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),

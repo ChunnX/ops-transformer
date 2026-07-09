@@ -221,6 +221,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
         constInfo.cmpRatio = mixedQuantSparseFlashMlaBaseParams.cmpRatio;
     }
+    constInfo.oriMaskMode = mixedQuantSparseFlashMlaBaseParams.oriMaskMode;
+    constInfo.cmpMaskMode = mixedQuantSparseFlashMlaBaseParams.cmpMaskMode;
     constInfo.oriWinLeft = mixedQuantSparseFlashMlaBaseParams.oriWinLeft;
     constInfo.oriWinRight = mixedQuantSparseFlashMlaBaseParams.oriWinRight;
     constInfo.tileSize = mixedQuantSparseFlashMlaBaseParams.tileSize;

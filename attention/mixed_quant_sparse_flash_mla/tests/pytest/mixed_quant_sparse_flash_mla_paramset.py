@@ -93,18 +93,18 @@ TEST_PARAMS = {
 
     "ori_sparse_decode": {
         "Testcase_Name": [None],
-        "layout_q": ["BSND"],
+        "layout_q": ["BSND", "TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
-        "B": [1],
-        "S1": [1],
-        "S2": [129],
+        "B": [10],
+        "S1": [15],
+        "S2": [8192],
         "N1": [128],
         "N2": [1],
         "D": [512],
-        "K1": [128],
+        "K1": [124],
         "K": [128],
         "block_num1": [None],
         "block_num2": [None],
@@ -123,24 +123,24 @@ TEST_PARAMS = {
         "cmp_mask_mode": [0],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "quant_mode": [1],
+        "quant_mode": [1, 2],
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["ORI_SPARSE"],
         "actlen_mode": ["full"],
         "S1EQS2": [False],
-        "ori_kv_topk_mode": ["full"],
-        "ori_sparse_indices_mode": ["full"],
+        "ori_kv_topk_mode": ["random"], # fullK random
+        "ori_sparse_indices_mode": ["full"], # full random
     },
 
     "ori_cmp_sparse_decode": {
         "Testcase_Name": [None],
-        "layout_q": ["TND"],
+        "layout_q": ["BSND", "TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
-        "B": [16],
+        "B": [1],
         "S1": [1],
         "S2": [8192],
         "N1": [128],
@@ -165,18 +165,21 @@ TEST_PARAMS = {
         "cmp_mask_mode": [0],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        "quant_mode": [2],
+        "quant_mode": [1, 2],
         "tile_size": [64],
         "rope_head_dim": [64],
         "template_run_mode": ["ORI_CMP_SPARSE"],
         "actlen_mode": ["full"],
         "S1EQS2": [False],
-        "ori_kv_topk_mode": ["no"],
-        "cmp_kv_topk_mode": ["no"],
-        "ori_sparse_indices_mode": ["full"],
+        "ori_kv_topk_mode": ["fullK"],     # fullK random
+        "cmp_kv_topk_mode": ["fullK"],     
+        "ori_sparse_indices_mode": ["full"],    # full random
         "cmp_sparse_indices_mode": ["full"],
     },
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["ori_sparse_decode"]]
+ENABLED_PARAMS = [
+TEST_PARAMS["ori_sparse_decode"],
+TEST_PARAMS["ori_cmp_sparse_decode"]
+]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
