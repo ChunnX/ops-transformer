@@ -100,12 +100,12 @@ ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
                 "In non-PA scenarios, keyRope does not support non-contiguous tensors"),
         return ge::GRAPH_FAILED);
     
-    if (isMxfp8){
+    if (isMxfp8) {
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1) && fiaInfo.pageAttentionFlag),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                    "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of keyRope can be non-contiguous, the "
-                    + std::to_string(dimIndex) + "th axis of keyRope must be contiguous"),
+                "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of keyRope can be non-contiguous, the "
+                + std::to_string(dimIndex) + "th axis of keyRope must be contiguous"),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
