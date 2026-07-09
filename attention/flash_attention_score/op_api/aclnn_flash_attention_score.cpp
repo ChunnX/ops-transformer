@@ -396,6 +396,18 @@ static bool isSupportMLA(const FaShapeInfo &shapeInfo, const aclTensor *query)
     return false;
 }
 
+static aclnnStatus InputOutputDtypeCheck(const aclTensor *query, const aclTensor *attentionOut)
+{
+    auto qDtype = query->GetDataType();
+    auto outDtype = attentionOut->GetDataType();
+
+    if (qDtype != outDtype) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("Input query tensor's dtype should be same with attentionOut tensor's dtype");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                    const aclTensor *attentionOut, const aclTensor *realShiftOptional,
                                    int64_t pseType, const aclTensor *sinkOptional)
@@ -553,6 +565,13 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
                                  const aclIntArray *actualSeqQLenOptional = nullptr,
                                  const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
+    size_t layoutLen = strlen(inputLayout);
+
+    if (query->GetViewShape().GetDimNum() != layoutLen || key->GetViewShape().GetDimNum() != layoutLen) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore query or key Invalid layout");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     if (headNum <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "FlashAttentionScore", "headNum", std::to_string(headNum), "The value of headNum must be greater than 0");
@@ -1227,6 +1246,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
 
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
+    CHECK_RET(InputOutputDtypeCheck(query, attentionOutOut));
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
