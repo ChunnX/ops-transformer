@@ -9,13 +9,13 @@
  */
 
 /* !
- * \file moe_distribute_combine_a5_tiling_key.h
+ * \file moe_distribute_combine_apt_tiling_key.h
  * \brief A5 (arch35) tiling key selections. Shared macros/DECL live in the outer
  *        moe_distribute_combine_tiling_key_decl.h.
  */
 
-#ifndef MOE_DISTRIBUTE_COMBINE_A5_TILING_KEY_H
-#define MOE_DISTRIBUTE_COMBINE_A5_TILING_KEY_H
+#ifndef MOE_DISTRIBUTE_COMBINE_APT_TILING_KEY_H
+#define MOE_DISTRIBUTE_COMBINE_APT_TILING_KEY_H
 #include "../moe_distribute_combine_tiling_key_decl.h"
 
 namespace Mc2Tiling {

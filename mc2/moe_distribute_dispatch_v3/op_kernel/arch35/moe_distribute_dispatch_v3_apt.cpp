@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  **/
 /*!
- * \file moe_distribute_dispatch_v3_a5.cpp
+ * \file moe_distribute_dispatch_v3_apt.cpp
  * \brief A5 (arch35) kernel entry for MoeDistributeDispatchV3.
  */
 #if ASC_DEVKIT_MAJOR >= 9
@@ -19,11 +19,11 @@
 #if __has_include("../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h")
 #include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
 #include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
-#include "../../moe_distribute_dispatch_v2/arch35/moe_distribute_dispatch_v2_a5_tiling_key.h"
+#include "../../moe_distribute_dispatch_v2/arch35/moe_distribute_dispatch_v2_apt_tiling_key.h"
 #else
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_full_mesh.h"
-#include "../../../moe_distribute_dispatch_v2/op_kernel/arch35/moe_distribute_dispatch_v2_a5_tiling_key.h"
+#include "../../../moe_distribute_dispatch_v2/op_kernel/arch35/moe_distribute_dispatch_v2_apt_tiling_key.h"
 #endif
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;

@@ -61,8 +61,8 @@ def parse_txt_content(content):
 
 
 def remove_apt_suffix(op_name):
-    """If op_name ends with generation suffix (_a2/_a3/_a5/_apt) remove it"""
-    for suffix in ('_a2', '_a3', '_a5', '_apt'):
+    """If op_name ends with generation suffix (_a2/_a3/_apt) remove it"""
+    for suffix in ('_a2', '_a3', '_apt'):
         if op_name.endswith(suffix):
             return op_name[:-len(suffix)]
     return op_name
