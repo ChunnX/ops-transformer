@@ -1153,6 +1153,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeLayout()
     auto &valueShape = context_->GetInputShape(2)->GetStorageShape();
 
     size_t layoutLen = strlen(inputLayout);
+    OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen,
+                OP_LOGE(opName, "Invalid layout[%s].", inputLayout), return false);
     OP_LOGD(context_, "Get input_layout [%s].", inputLayout);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, queryRopeShape, keyShape, valueShape, layoutLen) ||
                 !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen),
