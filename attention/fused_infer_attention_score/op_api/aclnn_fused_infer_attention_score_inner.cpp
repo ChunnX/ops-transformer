@@ -16,6 +16,7 @@
 #include "opdev/fast_vector.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
+#include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
 #include <vector>
