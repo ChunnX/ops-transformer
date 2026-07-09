@@ -250,7 +250,6 @@ protected:
     bool IsMxfp4() const;
     bool IsMultiTensorWeight() const;
     bool IsWeightNzMultiTensorLayout() const;
-    bool IsWeightNzMultiTensorCase() const;
     uint16_t GetTensorListSize(uint32_t index) const;
     bool CheckWeightTensorListForWeightNz() const;
     uint64_t GetWeightLogicalNSize(const gert::Shape &wShape) const;
@@ -262,8 +261,8 @@ protected:
     virtual void PrintQuantParams();
     bool IsMicroScaling() const;
     bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
-                                    uint64_t expectedNSize = 0) const;
-    bool CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t expectedNSize = 0) const;
+                                    uint64_t expectedNSize = 0UL) const;
+    bool CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t expectedNSize = 0UL) const;
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetDepthA1B1(uint64_t leftSize, uint64_t perDepthSize, uint64_t depthInit);
@@ -303,10 +302,11 @@ private:
     bool CheckBiasDtype() const;
     bool CheckBiasShape(const gert::StorageShape *biasStorageShape) const;
     bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape,
-                                        uint64_t expectedNSize = 0) const;
+                                        uint64_t expectedNSize = 0UL) const;
     bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape,
-                          uint64_t expectedNSize = 0) const;
-    bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape, uint64_t expectedNSize = 0) const;
+                          uint64_t expectedNSize = 0UL) const;
+    bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape,
+                                               uint64_t expectedNSize = 0UL) const;
     bool SetMKNList();
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
@@ -317,6 +317,10 @@ private:
     bool CheckWeightNzTransposedDims(const gert::Shape &wShape, uint64_t wShapeDimThird,
                                      uint64_t wShapeDimSecond, uint32_t weightNzLastDim,
                                      uint64_t logicalNSize) const;
+    bool CheckWeightNzDimNum(const gert::Shape &wShape) const;
+    bool CheckWeightNzLastDim(const gert::Shape &wShape, size_t nzDimOffset,
+                              uint32_t expectedValue, bool isWeight4Bit) const;
+    bool CheckWeightNzSecondLastDim(const gert::Shape &wShape, size_t nzDimOffset) const;
     bool ValidateAAndWDtype(const std::vector<ge::DataType> &legalInputDtypes) const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
