@@ -634,7 +634,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Buf
     tpipe_->InitBuffer(indexCountsBuf_, sendCntNum_ * EXPAND_IDX_INFO * sizeof(int32_t));
 
     // 网卡测试代码 START
-    TestRoceCommunication()
+    TestRoceCommunication();
     // 网卡测试代码 END
     
     // A5 Server内/间通信 Buffer初始化
@@ -1516,13 +1516,13 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Pro
     if ASCEND_IS_AIV { // 全aiv处理
         BuffInit();
         // 1、Server内
-        AlltoAllDispatch();
-        AlltoAllBuffInitAndMaskCal();
-        SumToWindow();
+        // AlltoAllDispatch();
+        // AlltoAllBuffInitAndMaskCal();
+        // SumToWindow();
         // 2、Server间
-        AlltoAllServerDispatch();
-        WaitWinInCount();
-        AlltoAllCombine();
+        // AlltoAllServerDispatch();
+        // WaitWinInCount();
+        // AlltoAllCombine();
     }
 }
 
