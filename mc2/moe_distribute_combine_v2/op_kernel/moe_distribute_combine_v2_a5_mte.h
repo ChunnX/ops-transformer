@@ -52,6 +52,7 @@ constexpr uint32_t SPLIT_BLOCK_SIZE = 512U;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_FLAG_SIZE = 32U;
 constexpr uint32_t SPLIT_BLOCK_FLAG_COUNT = SPLIT_BLOCK_FLAG_SIZE / sizeof(float);
+constexpr uint32_t RANKS_PER_SERVER = 8;
 
 using namespace AscendC;
 template <A5MteCombineTypeClass>
@@ -108,6 +109,8 @@ private:
     __aicore__ inline bool CheckPackedFlagRangeArrive(
         GM_ADDR flagBaseAddr, uint16_t blockCount, uint32_t flagFloatNum, uint32_t srcStrideBytes);
     __aicore__ inline bool CheckPackedTokenArrive(GM_ADDR rankGM);
+    __aicore__ inline bool ShouldSendToRankInRound(int32_t logicalRankId, uint32_t roundId) const;
+
     __aicore__ inline void AddRmsNormAddCompute(uint32_t tokenIndex, uint32_t tokenOffset, uint32_t numCol,
                                                 LocalTensor<float>& x1TmpFloatLocal,
                                                 LocalTensor<float>& x2TmpFloatLocal,
@@ -240,6 +243,8 @@ private:
     uint32_t tokenNumPerCoreAlign_{0};
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
+    int32_t localSendGroupStart_{0};
+    int32_t localSendGroupNum_{0};
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
@@ -839,56 +844,101 @@ template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SetWaitTpStatusAndDisPatch()
 {
     PipeBarrier<PIPE_ALL>();
-    if (coreIdx_ >= selfSendCnt_) {
-        return;
-    }
     ExpertAlltoAllDispatchCopyAdd();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <A5MteCombineTypeClass>
+__aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ShouldSendToRankInRound(
+    int32_t logicalRankId, uint32_t roundId) const
+{
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    bool inLocalGroup = (logicalRankId >= localSendGroupStart_) &&
+                        (logicalRankId < localSendGroupStart_ + localSendGroupNum_);
+    return (roundId == 0U) ? inLocalGroup : (!inLocalGroup);
+#else
+    (void)logicalRankId;
+    (void)roundId;
+    return true;
+#endif
+}
+
+template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ExpertAlltoAllDispatchCopyAdd()
 {
-    if (sendCntNum_ == 0U) { // 空闲核，直接返回
-        return;
-    }
+    uint32_t serverNum = epWorldSize_ / RANKS_PER_SERVER;
+    uint32_t localServerId = epRankId_ / RANKS_PER_SERVER;
 
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
-    const DataCopyExtParams bskParams{
-        1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
-        0U, 0U, 0U};
-    const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
-
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    // 置换步长，与 sendCntNum_ 互质，用于打乱 token 访问顺序以分散访存压力
-    uint32_t permStride;
-    if (unlikely(sendCntNum_ <= 2U)) {
-        permStride = 1U;
+    localSendGroupNum_ = epWorldSize_ / 2;
+    if (epRankId_ < epWorldSize_ / 2) {
+        localSendGroupStart_ = 0;
     } else {
-        permStride = sendCntNum_ / 2U + 1U;
-        if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
-            permStride++;
-        }
+        localSendGroupStart_ = epWorldSize_ / 2;
     }
-    uint32_t rankOffset = (epRankId_ * sendCntNum_) / epWorldSize_;
-    uint32_t permIdx = rankOffset % sendCntNum_;
-    for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
-        uint32_t tkIndex = startTokenId_ + permIdx;
-        uint32_t baseOffset = permIdx * EXPAND_IDX_INFO;
-        uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
-        uint32_t toRankId = rankIdExpandIdx;
-        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
-        uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));
-        if (isScalingDownFlag_) {
-            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
-                epWorldSizeOriginal_ + rankIdExpandIdx);
+    uint32_t roundNum;
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    roundNum = (serverNum > 5 && epWorldSize_ % RANKS_PER_SERVER == 0) ? 2U : 1U;
+#else
+    roundNum = 1U;
+#endif
+
+    bool needRoundSync = (roundNum == 2U) && (axisBS_ > 32) &&
+        !(serverNum % 2 != 0 && localServerId == (serverNum - 1) / 2);
+    if (sendCntNum_ != 0U) {
+        LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+        const DataCopyExtParams bskParams{
+            1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
+            0U, 0U, 0U};
+        const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
+        DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
+
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        // 置换步长，与 sendCntNum_ 互质，用于打乱 token 访问顺序以分散访存压力
+        uint32_t permStride;
+        if (unlikely(sendCntNum_ <= 2U)) {
+            permStride = 1U;
+        } else {
+            permStride = sendCntNum_ / 2U + 1U;
+            if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
+                permStride++;
+            }
         }
-        ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
-        permIdx += permStride;
-        if (permIdx >= sendCntNum_) {
-            permIdx -= sendCntNum_;
+        uint32_t rankOffset = (epRankId_ * sendCntNum_) / epWorldSize_;
+        for (uint32_t roundId = 0; roundId < roundNum; ++roundId) {
+            uint32_t permIdx = rankOffset % sendCntNum_;
+            for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
+                uint32_t tkIndex = startTokenId_ + permIdx;
+                uint32_t baseOffset = permIdx * EXPAND_IDX_INFO;
+                uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
+                uint32_t toRankId = rankIdExpandIdx;
+                if (roundNum == 2U && !ShouldSendToRankInRound(toRankId, roundId)) {
+                    permIdx += permStride;
+                    if (permIdx >= sendCntNum_) {
+                        permIdx -= sendCntNum_;
+                    }
+                    continue;
+                }
+                uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
+                uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));
+                if (isScalingDownFlag_) {
+                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
+                        epWorldSizeOriginal_ + rankIdExpandIdx);
+                }
+                ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+                permIdx += permStride;
+                if (permIdx >= sendCntNum_) {
+                    permIdx -= sendCntNum_;
+                }
+            }
+            if (needRoundSync && roundId == 0U) {
+                PipeBarrier<PIPE_ALL>();
+                AscendC::SyncAll<true>();
+            }
         }
+    } else if (needRoundSync) {
+        PipeBarrier<PIPE_ALL>();
+        AscendC::SyncAll<true>();
     }
 }
 
