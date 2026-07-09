@@ -103,8 +103,9 @@ public:
             uint32_t sum = q_len * n_len;
             uint32_t sum_former = q_len == 1 ? sum / 2 : (q_len / 2) * n_len;
 
-            uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2]
-                                                           : splitInfo->lseTaskOffset[process/2] + sum_former;
+            uint64_t addrLOffset = vectorsubBlockID == 0
+                ? static_cast<uint64_t>(splitInfo->lseTaskOffset[process/2])
+                : static_cast<uint64_t>(splitInfo->lseTaskOffset[process/2]) + sum_former;
             uint64_t addrOOffset = vectorsubBlockID == 0
                 ? static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
                 : static_cast<uint64_t>(splitInfo->oTaskOffset[process/2])
