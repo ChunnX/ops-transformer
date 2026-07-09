@@ -73,7 +73,7 @@ private:
     int64_t numTokens_{0};
     int64_t hiddenBytes_{0};
 
-    AscendC::TQueBind<AscendC::TPosition::VECIN, AscendC::TPosition::VECOUT, 2> relayQue_;
+    AscendC::TQueBind<AscendC::TPosition::VECIN, AscendC::TPosition::VECOUT, RELAY_BUFFER_NUM> relayQue_;
     AscendC::TBuf<> indicesBuf_;
     AscendC::TBuf<> hcommBuf_;
     AscendC::TBuf<> rankCountsBuf_;
@@ -112,7 +112,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     AscendC::LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(relayQue_, 2, TILE_BYTES);
+    tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM, TILE_BYTES);
 
     uint32_t countsBufSize = AscendC::Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankCountsBuf_, countsBufSize);
@@ -126,7 +126,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     constexpr uint64_t ubReserved = 8U * 1024U;
     // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
     uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
-    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize + offsetsBufSize
+    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + countsBufSize + offsetsBufSize
                     + commBufferBufSize + hcommHandleBufSize;
     uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
     uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
@@ -318,17 +318,20 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
                                 + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-        hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
+        int32_t ret = hcomm_.ReadNbi<false>(hcommHandleLocal(ownerRank), dst, remoteSrcAddr, hiddenBytes);
+        ascendc_assert(ret == 0, "ReadNbi failed, ret=%d, ownerRank=%u", ret, ownerRank);
         pendingReadCount++;
         if (pendingReadCount >= threshold) {
-            hcomm_.Commit(hcommHandleLocal(ownerRank));
+            ret = hcomm_.Commit(hcommHandleLocal(ownerRank));
+            ascendc_assert(ret == 0, "Commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
             pendingReadCount = 0;
             threshold = READ_COMMIT_THRESHOLD;
         }
     }
 
     if (pendingReadCount > 0) {
-        hcomm_.Commit(hcommHandleLocal(ownerRank));
+        int32_t ret = hcomm_.Commit(hcommHandleLocal(ownerRank));
+        ascendc_assert(ret == 0, "Commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
     }
 }
 
