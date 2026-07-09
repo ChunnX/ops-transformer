@@ -18,10 +18,10 @@
 #if CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
 #include <algorithm>
 #include <cstdint>
-#include <set>
 #include <string>
 #include <vector>
 
+#include "ge/fusion/pass/pattern_fusion_pass.h"
 #include "acl/acl_rt.h"
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
@@ -41,9 +41,8 @@ constexpr char kOpTypeBitcast[] = "Bitcast";
 constexpr char kOpTypeConst[] = "Const";
 constexpr char kTransposeXAttr[] = "transpose_x";
 constexpr char kTransposeWeightAttr[] = "transpose_weight";
-constexpr char kNpuArchKey[] = "NpuArch";
-constexpr char kSocVersionKey[] = "version";
 constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
+constexpr char kDav3510SocVersion[] = "Ascend950";
 
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
@@ -52,8 +51,6 @@ constexpr int32_t kAntiquantScaleIndex = 5;
 constexpr int32_t kPertokenScaleIndex = 8;
 constexpr int32_t kPermInputIndex = 1;
 constexpr int32_t kMiniShapeLen = 2;
-constexpr uint32_t kRtSocSpecLen = 32;
-
 const std::vector<int64_t> kPermWeight = {0, 2, 1};
 const std::vector<int64_t> kPermWeightReshapePattern = {1, 0};
 const std::vector<int64_t> kPermScaleReshapePattern = {1, 0, 2};
@@ -64,8 +61,6 @@ const std::vector<int64_t> kPermPertoken = {1, 0, 2};
 const std::vector<int64_t> kPermAntiquantScale = {0, 2, 1};
 const std::vector<int64_t> kPermAntiquantScaleMx = {0, 2, 1, 3};
 const std::vector<int64_t> kPermScale = {0, 2, 1, 3};
-const std::set<std::string> kDav3510SupportedSocVersion = {"3510"};
-
 struct GmmReshapePatternMatchInfo {
     bool isReshapePattern = false;
     bool isBitcastReshapePattern = false;
@@ -146,13 +141,13 @@ bool IsUnknownShape(const Shape& shape)
 
 bool CheckPlatformIsDav3510ForGmm()
 {
-    char npuArch[kRtSocSpecLen] = {};
-    auto ret = rtGetSocSpec(kSocVersionKey, kNpuArchKey, npuArch, kRtSocSpecLen);
-    if (ret != RT_ERROR_NONE) {
-        OP_LOGW(kPassName, "rtGetSocSpec failed.");
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optionalInfo;
+    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) != SUCCESS) {
+        OP_LOGW(kPassName, "Get platform information failed.");
         return false;
     }
-    return kDav3510SupportedSocVersion.count(std::string(npuArch)) > 0;
+    return optionalInfo.soc_version == kDav3510SocVersion;
 }
 
 bool CheckPlatformSupportReshapePattern()
@@ -533,7 +528,6 @@ bool UpdateBitcastDesc(GNode& bitcastNode, TensorDesc& sourceOutputDesc)
     }
 
     sourceOutputDesc.SetDataType(bitcastOutputDesc.GetDataType());
-    sourceOutputDesc.SetOriginDataType(bitcastOutputDesc.GetDataType());
     if (bitcastNode.UpdateOutputDesc(0, sourceOutputDesc) != GRAPH_SUCCESS) {
         OP_LOGW(kPassName, "Failed to update bitcast output desc.");
         return false;
