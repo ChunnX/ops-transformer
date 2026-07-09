@@ -15,6 +15,20 @@
 #ifndef STEM_OAM_PREP_PAGED_KV_TILING_KEY_H
 #define STEM_OAM_PREP_PAGED_KV_TILING_KEY_H
 
-constexpr uint64_t STEM_PREP_KV_FP8_TILING_KEY = 0;
+#include "ascendc/host_api/tiling/template_argument.h"
+#include "kernel_tiling/kernel_tiling.h"
+#include "stem_oam_prep_paged_kv_tiling_data.h"
+
+ASCENDC_TPL_ARGS_DECL(StemOamPrepPagedKV,
+    ASCENDC_TPL_BOOL_DECL(TILINGKEY, 0),
+);
+
+ASCENDC_TPL_SEL(
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIV_ONLY),
+        ASCENDC_TPL_BOOL_SEL(TILINGKEY, 0),
+        ASCENDC_TPL_TILING_STRUCT_SEL(MhcPreSinkhornBackwardArch35TilingData)
+    )
+)
 
 #endif // STEM_OAM_PREP_PAGED_KV_TILING_KEY_H

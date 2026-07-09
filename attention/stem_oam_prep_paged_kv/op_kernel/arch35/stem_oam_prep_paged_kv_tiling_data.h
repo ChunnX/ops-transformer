@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-struct StemPrepKVTilingData {
+struct StemOamPrepPagedKVTilingData {
     int64_t batchSize = 0;
     int64_t numKvHeads = 0;
     int64_t dimQk = 0;

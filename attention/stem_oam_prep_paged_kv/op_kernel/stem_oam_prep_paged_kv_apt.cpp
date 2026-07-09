@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file stem_oam_prep_paged_kv_arch35.cpp
+ * \file stem_oam_prep_paged_kv_apt.cpp
  * \brief StemOamPrepPagedKV arch35 kernel entry point
  */
 #include "kernel_operator.h"
@@ -17,20 +17,25 @@
 #include "arch35/stem_oam_prep_paged_kv_tiling_key.h"
 #include "arch35/stem_oam_prep_paged_kv.h"
 
-extern "C" __global__ __aicore__ void stem_oam_prep_paged_kv_apt(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices,
-                                                                 GM_ADDR kvSeqLens, GM_ADDR kScaleCache, GM_ADDR vScale,
-                                                                 GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR workspace,
-                                                                 GM_ADDR tiling)
+template <bool TILINGKEY>
+__global__ __aicore__ void stem_oam_prep_paged_kv(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
+                                                  GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias,
+                                                  GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_TILING_DEFAULT(StemPrepKVTilingData);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
+    if (workspace == nullptr) {
+        return;
+    }
+    GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
+    if (usrWorkspace == nullptr) {
+        return;
+    }
+
+    REGISTER_TILING_DEFAULT(StemOamPrepPagedKVTilingData);
+    KERNEL_TASK_TYPE_DEFAULT(ASCENDC_TPL_AIV_ONLY);
     GET_TILING_DATA_WITH_STRUCT(StemPrepKVTilingData, tilingData, tiling);
 
-    if (TILING_KEY_IS(0)) {
-        using namespace StemOamPrepPagedKV;
-        TPipe pipe;
-        KernelStemPrepKV op(&pipe, &tilingData);
-        op.Init(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias, workspace);
-        op.Process();
-    }
+    TPipe pipe;
+    StemOamPrepPagedKv op;
+    op.Init(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, kFlat, vBias, workspace, &tilingData, &pipe);
+    op.Process();
 }
