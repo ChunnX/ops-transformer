@@ -1,33 +1,34 @@
-python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-09 09:24:28,586 [INFO] [1855984 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv 
-2026-07-09 09:24:32,974 [INFO] [1855984 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 09:24:33,525 [INFO] [1855984 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-09 09:24:33,525 [INFO] [1855984 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-09 09:24:33,525 [INFO] [1855984 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-09 09:24:33,525 [INFO] [1855984 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-09 09:24:34,698 [INFO] [1855984 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-09 09:24:34,704 [INFO] [1855984 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-09 09:24:34,704 [INFO] [1855984 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-09 09:24:35,840 [INFO] [1855984 MP MT] [instance.py:42]: Device count: 1 
-2026-07-09 09:24:35,841 [INFO] [1855984 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-09 09:24:35,841 [INFO] [1855984 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-09 09:24:35,841 [INFO] [1855984 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv ... 
-2026-07-09 09:24:35,842 [INFO] [1855984 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-09 09:24:35,842 [INFO] [1855984 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
-2026-07-09 09:24:35,925 [INFO] [1855984 MP MT] [instance_base.py:237]: Checking testcase name... 
-2026-07-09 09:24:35,925 [INFO] [1855984 MP MT] [instance_base.py:240]: Case number: 1 
-2026-07-09 09:24:35,926 [INFO] [1855984 MP MT] [instance_base.py:313]: Initialize output csv file... 
-2026-07-09 09:24:35,926 [INFO] [1855984 MP MT] [instance_base.py:321]: Output csv file is not specified. It will be set as /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8_result.csv 
-2026-07-09 09:24:36,021 [INFO] [1855984 MP MT] [instance_base.py:145]: Process per device: 1 
-2026-07-09 09:24:36,021 [INFO] [1855984 MP MT] [instance_base.py:147]: Preparing Task Executors... 
-2026-07-09 09:24:36,274 [INFO] [1855984 MP MT] [instance_base.py:211]: 
+python3 -m ttk e2e -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv --plugin /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/assets --backend npu -t TND_B1_
+QS3_KVS640_Nq1_Nkv1_D64_SP0
+2026-07-09 09:59:44,288 [INFO] [1890979 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv 
+2026-07-09 09:59:48,680 [INFO] [1890979 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 09:59:49,242 [INFO] [1890979 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-09 09:59:49,242 [INFO] [1890979 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-09 09:59:49,242 [INFO] [1890979 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-09 09:59:49,242 [INFO] [1890979 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-09 09:59:50,395 [INFO] [1890979 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-09 09:59:50,402 [INFO] [1890979 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-09 09:59:50,402 [INFO] [1890979 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-09 09:59:51,542 [INFO] [1890979 MP MT] [instance.py:42]: Device count: 1 
+2026-07-09 09:59:51,543 [INFO] [1890979 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-09 09:59:51,543 [INFO] [1890979 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-09 09:59:51,543 [INFO] [1890979 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8.csv ... 
+2026-07-09 09:59:51,544 [INFO] [1890979 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-09 09:59:51,544 [INFO] [1890979 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+2026-07-09 09:59:51,626 [INFO] [1890979 MP MT] [instance_base.py:237]: Checking testcase name... 
+2026-07-09 09:59:51,626 [INFO] [1890979 MP MT] [instance_base.py:240]: Case number: 1 
+2026-07-09 09:59:51,626 [INFO] [1890979 MP MT] [instance_base.py:313]: Initialize output csv file... 
+2026-07-09 09:59:51,626 [INFO] [1890979 MP MT] [instance_base.py:321]: Output csv file is not specified. It will be set as /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_mxfp8_result.csv 
+2026-07-09 09:59:51,721 [INFO] [1890979 MP MT] [instance_base.py:145]: Process per device: 1 
+2026-07-09 09:59:51,721 [INFO] [1890979 MP MT] [instance_base.py:147]: Preparing Task Executors... 
+2026-07-09 09:59:51,975 [INFO] [1890979 MP MT] [instance_base.py:211]: 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 2s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 1856307 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 1891320 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+ 
-2026-07-09 09:24:40,891 [INFO] [1856307 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-09 09:24:41,464 [INFO] [1856307 TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 MainThread] [profiling.py:176]: 
+2026-07-09 09:59:56,390 [INFO] [1891320 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-09 09:59:56,974 [INFO] [1891320 TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 MainThread] [profiling.py:176]: 
  ####################################### Eager Result Summary  ######################################## 
 EAGER:       API_PARSE_FAIL
   DEVICE: None us
@@ -36,3 +37,4 @@ STATUS: FAIL
 Golden Shapes: ()
 Golden Dtypes: ()
 ####################################################################################################### 
+2026-07-09 09:59:56,975 [INFO] [1890979 MP MT] [instance_base.py:126]: ttk Profiling complete 
