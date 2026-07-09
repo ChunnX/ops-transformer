@@ -59,10 +59,10 @@ assert len(set(sha_list_a)) == 1  # variant A 必须 deterministic
 
 ### Phase 3：Cross-rank BI 检查（每次 trial 同步执行）
 
-每次 op 调用后，各 rank 计算 full-y SHA256，通过 `dist.all_gather_object` 汇总到所有 rank 比较：
-- 所有 rank SHA 一致 → 该 trial cross-rank agree
+每次 op 调用后，通过 `dist.all_gather` 收集所有 rank 的 full-y tensor，逐字节比较：
+- 所有 rank 输出 byte-exact 一致 → 该 trial cross-rank agree
 - 多次 trial 均 agree → `X_PASS`
-- 多次 trial 均 disagree 且 SHA 模式稳定 → `X_FAIL`（真 cross-rank BI 违例）
+- 多次 trial 均 disagree 且 byte diff 模式稳定 → `X_FAIL`（真 cross-rank BI 违例）
 - trial 间 cross-rank 结果不稳定 → `X_NON_DET`
 
 ### Row-BI 状态输出
@@ -79,8 +79,8 @@ assert len(set(sha_list_a)) == 1  # variant A 必须 deterministic
 | 状态 | 含义 | 含义解读 |
 |---|---|---|
 | `X_PASS` | 所有 trial 所有 rank SHA 一致 | 跨 rank 输出一致 ✓ |
-| `X_FAIL` | trial 稳定但跨 rank SHA 不一致 | **真 cross-rank BI 违例**（issue #2872 类型） |
-| `X_NON_DET` | cross-rank 结果在 trial 间不稳定 | 测试系统问题，需排查 |
+| `X_FAIL` | trial 稳定但跨 rank byte diff > 0 | **真 cross-rank BI 违例**（issue #2872 类型） |
+| `X_NON_DET` | cross-rank byte diff 在 trial 间不稳定 | 测试系统问题，需排查 |
 
 **关键教训**：把 `BI_FAIL` 与 `NON_DETERMINISTIC` 混淆会产生大量假阳性，淹没真 bug。
 
@@ -130,6 +130,7 @@ bash run_bi_test.sh
 - `BI_FAIL > 0`：row-BI 违例，需修复算子
 - `X_FAIL > 0`：cross-rank BI 违例（issue #2872 类型），需修复算子
 - `NON_DET / X_NON_DET > 0`：需排查测试系统（HCCL state / 共享 NPU / 硬件）
+- `X_FAIL` 输出中 `byte_diffs` 显示各 rank 与本 rank 的字节差异数，便于定位 divergence 范围
 - `ERROR`：通常是 op-plugin shape rejection
 
 ## 6. 与 ATK 框架的集成（待讨论）

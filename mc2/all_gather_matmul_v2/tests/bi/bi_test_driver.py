@@ -21,7 +21,7 @@ Two independent BI dimensions:
       0. **HCCL warm-up**：稳定 HCCL state
       1. **Multi-trial determinism baseline**：同 input N_TRIALS 次，所有 SHA 必须一致
       2. **A vs B row-BI check**：只有 baseline 过了，才比较 variant A 和 B 的 SHA
-      3. **Cross-rank BI check**：all_gather 各 rank 的 full-y SHA，比较是否一致
+      3. **Cross-rank BI check**：all_gather 各 rank 的 full-y tensor，逐字节比较
 """
 import os
 import sys
@@ -109,33 +109,29 @@ def make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed, x1_scale_va
 
 
 def cross_rank_check(y):
-    """各 rank 计算 full-y SHA，all_gather 后比较。返回 (all_agree, all_shas)。"""
-    local_sha = sha_full(y)
+    """Gather y from all ranks via all_gather, compare byte-exact. Returns (all_agree, diff_counts)."""
     ws = dist.get_world_size()
-    sha_bytes = bytes(local_sha, 'ascii')
-    local_ints = [int.from_bytes(sha_bytes[i:i+4], 'big') for i in range(0, 16, 4)]
-    local_t = torch.tensor(local_ints, dtype=torch.int32, device=y.device)
-    all_t = [torch.zeros(4, dtype=torch.int32, device=y.device) for _ in range(ws)]
-    dist.all_gather(all_t, local_t)
-    torch_npu.npu.synchronize()
-    all_shas = []
-    for t in all_t:
-        b = b''.join(int(v).to_bytes(4, 'big') for v in t.cpu().tolist())
-        all_shas.append(b.decode('ascii'))
-    all_agree = len(set(all_shas)) == 1
-    return all_agree, all_shas
+    all_y = [torch.empty_like(y) for _ in range(ws)]
+    dist.all_gather(all_y, y)
+    local_bytes = y.cpu().contiguous().view(torch.uint8)
+    total = local_bytes.numel()
+    diff_counts = []
+    for r in range(ws):
+        d = (all_y[r].cpu().contiguous().view(torch.uint8) != local_bytes).sum().item()
+        diff_counts.append(d)
+    return all(d == 0 for d in diff_counts), diff_counts
 
 
-def _xrank_status(trial_agrees, trial_shas):
+def _xrank_status(trial_agrees, trial_diffs):
     """从多次 trial 的 cross-rank 结果判定 xrank 状态。
 
-    trial_agrees: [bool] — 每次 trial 是否所有 rank SHA 一致
-    trial_shas:   [[sha_r0, sha_r1, ...], ...] — 每次 trial 各 rank 的 SHA
+    trial_agrees: [bool] — 每次 trial 是否所有 rank byte-exact 一致
+    trial_diffs:  [[diff_r0, diff_r1, ...], ...] — 每次 trial 各 rank 的 byte diff count
     """
     if all(trial_agrees):
         return "X_PASS"
     if not any(trial_agrees):
-        frozen = [tuple(s) for s in trial_shas]
+        frozen = [tuple(d) for d in trial_diffs]
         if len(set(frozen)) == 1:
             return "X_FAIL"
         return "X_NON_DET"
@@ -154,23 +150,23 @@ def rigorous_bi_cell(dev, hcom, ws, M_per_rank, K, N, target_row, seed_a, seed_b
     shas_b = []
     xrank_agree_a = []
     xrank_agree_b = []
-    xrank_shas_a = []
-    xrank_shas_b = []
+    xrank_diffs_a = []
+    xrank_diffs_b = []
     try:
         for _ in range(N_TRIALS):
             y = make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed_a, x1_scale_varying)
             if target_row >= y.shape[0]:
                 return ("SKIP", "X_SKIP", None, None, shas_a, shas_b, None)
             shas_a.append(sha_row(y, target_row))
-            agree, all_shas = cross_rank_check(y)
+            agree, diffs = cross_rank_check(y)
             xrank_agree_a.append(agree)
-            xrank_shas_a.append(all_shas)
+            xrank_diffs_a.append(diffs)
         for _ in range(N_TRIALS):
             y = make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed_b, x1_scale_varying)
             shas_b.append(sha_row(y, target_row))
-            agree, all_shas = cross_rank_check(y)
+            agree, diffs = cross_rank_check(y)
             xrank_agree_b.append(agree)
-            xrank_shas_b.append(all_shas)
+            xrank_diffs_b.append(diffs)
     except Exception:
         return ("ERROR", "X_ERROR", None, None, shas_a, shas_b, None)
 
@@ -181,8 +177,8 @@ def rigorous_bi_cell(dev, hcom, ws, M_per_rank, K, N, target_row, seed_a, seed_b
     else:
         bi_status = "BI_PASS" if shas_a[0] == shas_b[0] else "BI_FAIL"
 
-    xr_a = _xrank_status(xrank_agree_a, xrank_shas_a)
-    xr_b = _xrank_status(xrank_agree_b, xrank_shas_b)
+    xr_a = _xrank_status(xrank_agree_a, xrank_diffs_a)
+    xr_b = _xrank_status(xrank_agree_b, xrank_diffs_b)
     if xr_a == "X_FAIL" or xr_b == "X_FAIL":
         xrank_status = "X_FAIL"
     elif xr_a == "X_NON_DET" or xr_b == "X_NON_DET":
@@ -190,7 +186,7 @@ def rigorous_bi_cell(dev, hcom, ws, M_per_rank, K, N, target_row, seed_a, seed_b
     else:
         xrank_status = "X_PASS"
 
-    xrank_info = {"a": xrank_shas_a, "b": xrank_shas_b}
+    xrank_info = {"a": xrank_diffs_a, "b": xrank_diffs_b}
     sha_a = shas_a[0] if shas_a else None
     sha_b = shas_b[0] if shas_b else None
     return (bi_status, xrank_status, sha_a, sha_b, shas_a, shas_b, xrank_info)
@@ -272,8 +268,8 @@ def main():
             for ex in xrank_fail_examples[:5]:
                 info = ex[3]
                 print(f"    M_total={ex[0]} K={ex[1]} N={ex[2]}", flush=True)
-                print(f"      variant A rank_shas={info['a'][0]}", flush=True)
-                print(f"      variant B rank_shas={info['b'][0]}", flush=True)
+                print(f"      variant A byte_diffs={info['a'][0]}", flush=True)
+                print(f"      variant B byte_diffs={info['b'][0]}", flush=True)
         if nondet_examples:
             print(f"  NON_DET (同 input 跨 trial 不一致 — 无法判别 BI):", flush=True)
             for ex in nondet_examples[:5]:
