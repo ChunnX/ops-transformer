@@ -120,27 +120,27 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitExceedsLimitEarlyReturn)
     EXPECT_EQ(cut.longTileLen, 4096U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLFullPath)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUFullPath)
 {
     auto cut = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cut, 5000, 8192, 2, 8, "ut");
+    AdjustCutResultForCCU(cut, 5000, 8192, 2, 8, "ut");
     EXPECT_EQ(cut.longTileLen, 2048U);
     EXPECT_EQ(cut.shortTileLen, 904U);
     EXPECT_EQ(cut.numShortTile, 1U);
 }
 
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLNoOp)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUNoOp)
 {
     auto cut = MakeCutResult(128);
-    AdjustCutResultForHCCL(cut, 512, 8192, 2, 8, "ut");
+    AdjustCutResultForCCU(cut, 512, 8192, 2, 8, "ut");
     EXPECT_EQ(cut.longTileLen, 128U);
 }
 
 // mxfp4 走 UINT8 通信（每字节 2 个 fp4），tiling 侧 GetTilingResult 对 FP4 调用
-// AdjustCutResultForHCCL(result, m, kValue/2, 1, rank, opName)。本用例验证：
+// AdjustCutResultForCCU(result, m, kValue/2, 1, rank, opName)。本用例验证：
 // 传 (K/2, dtypeSize=1) 与字节量等价的 (K/4, dtypeSize=2) 产生完全相同的切分结果。
 // 使用 K=32768 使两条路径均触发实际切分调整（非 NoOp），保证断言有意义。
-TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLMxfp4Equivalence)
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForCCUMxfp4Equivalence)
 {
     const uint64_t mValue = 5000U;
     const uint64_t kValue = 32768U;
@@ -148,11 +148,11 @@ TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLMxfp4Equivalence)
 
     // FP4 路径：每行字节量 = (K/2) * 1 = K/2
     auto cutFp4 = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cutFp4, mValue, kValue / 2, 1, rankDim, "ut_fp4");
+    AdjustCutResultForCCU(cutFp4, mValue, kValue / 2, 1, rankDim, "ut_fp4");
 
     // 等价对照路径：每行字节量 = (K/4) * 2 = K/2（与 FP4 路径相同）
     auto cutRef = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cutRef, mValue, kValue / 4, 2, rankDim, "ut_ref");
+    AdjustCutResultForCCU(cutRef, mValue, kValue / 4, 2, rankDim, "ut_ref");
 
     EXPECT_EQ(cutFp4.longTileLen, cutRef.longTileLen);
     EXPECT_EQ(cutFp4.numLongTile, cutRef.numLongTile);
@@ -180,4 +180,58 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitMxfp4Equivalence)
     EXPECT_EQ(cutFp4.numLongTile, cutRef.numLongTile);
     EXPECT_EQ(cutFp4.shortTileLen, cutRef.shortTileLen);
     EXPECT_EQ(cutFp4.numShortTile, cutRef.numShortTile);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUReducesTileCount)
+{
+    CutResult cut{};
+    cut.longTileLen = 2048;
+    cut.numLongTile = 16;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 16;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 32768, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 5632U);
+    EXPECT_EQ(cut.numLongTile, 5U);
+    EXPECT_EQ(cut.shortTileLen, 4608U);
+    EXPECT_EQ(cut.numShortTile, 1U);
+    EXPECT_EQ(cut.totalTileCnt, 6U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUNoOpWhenTileCountSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 1024;
+    cut.numLongTile = 4;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 4;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 4096, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 1024U);
+    EXPECT_EQ(cut.numLongTile, 4U);
+    EXPECT_EQ(cut.totalTileCnt, 4U);
+}
+
+TEST(AllGatherHcclUtilsTest, AdjustCutResultForAICPUSingleBlockWhenMSmall)
+{
+    CutResult cut{};
+    cut.longTileLen = 256;
+    cut.numLongTile = 7;
+    cut.shortTileLen = 0;
+    cut.numShortTile = 0;
+    cut.totalTileCnt = 7;
+    cut.shortTileAtBack = true;
+
+    AdjustCutResultForAICPU(cut, 100, 256, "ut");
+
+    EXPECT_EQ(cut.longTileLen, 100U);
+    EXPECT_EQ(cut.numLongTile, 1U);
+    EXPECT_EQ(cut.shortTileLen, 0U);
+    EXPECT_EQ(cut.totalTileCnt, 1U);
 }
