@@ -23,7 +23,7 @@ using namespace Mc2Tiling;
 using namespace AscendC;
 
 template<uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
-__global__ __aicore__ void moe_distribute_dispatch( 
+__global__ __aicore__ void moe_distribute_dispatch(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR expandXOut,
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
     GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -34,7 +34,7 @@ __global__ __aicore__ void moe_distribute_dispatch(
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         MoeDistributeDispatch<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
-        op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, 
+        op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut,
                 epSendCountsOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
@@ -42,12 +42,12 @@ __global__ __aicore__ void moe_distribute_dispatch(
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (QuantMode == TILINGKEY_STATIC_QUANT) {
             MoeDistributeDispatch<DTYPE_X, DTYPE_EXPAND_X, true, false, false> op;
-            op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, 
+            op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut,
                     expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
             op.Process();
         } else if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
             MoeDistributeDispatch<DTYPE_X, DTYPE_EXPAND_X, false, true, ScaleMode> op;
-            op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, 
+            op.Init(x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut,
                     epSendCountsOut, workspaceGM, &pipe, &tilingData);
             op.Process();
         }
