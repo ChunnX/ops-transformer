@@ -43,8 +43,8 @@ def test_qliv2_process(filepath, device_id=0):
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
             blockFusion = test_data['blockFusion'].npu()
 
-    max_seqlen_q = params[18]
-    return_value = params[30]
+    max_seqlen_q = params[19]
+    return_value = params[31]
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
@@ -57,7 +57,7 @@ def test_qliv2_process(filepath, device_id=0):
         head_dim = int(head_dim)
         block_size = int(block_size)
         block_num = int(block_num)
-        dequant_dtype_str = params[11]
+        dequant_dtype_str = params[12]
         if dequant_dtype_str == 'FP16':
             dequant_dtype = torch.float16
         elif dequant_dtype_str == 'FP32':
