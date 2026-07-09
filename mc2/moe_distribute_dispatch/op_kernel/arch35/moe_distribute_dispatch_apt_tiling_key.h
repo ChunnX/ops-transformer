@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file moe_distribute_dispatch_apt_tiling_key.h
  * \brief A5 (arch35) tiling key selections.
  */
