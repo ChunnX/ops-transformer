@@ -168,8 +168,8 @@ def check_param_valid(
 # V scope 3: cast dQueryIndex FP32→FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2, -1],
-    workspace_idx=[11, 12, 13, 14, 15, 16, 17, 18],
+    out_idx=[-5, -4, -3, -2, -1],
+    workspace_idx=[11, 12, 13, 14, 15, 16, 17, 18, 19],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -215,11 +215,14 @@ def tilelang_grad_kl_loss_single_kernel(
         PReduced: T.Tensor((B, S1, K), calc_dtype),                     # 16
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 17
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 18
-        # === OUTPUTS (19-22) ===
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 19
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 20
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 22
+        # === WORKSPACE (19) — dKeyIndex 融合中间结果 reluGrad^T @ QueryIndex ===
+        dk_matmul_partial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype), # 19
+        # === OUTPUTS (20-24) ===
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 20
+        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 21
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 22
+        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 23
+        dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 24 (fp32 累加器)
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -680,6 +683,58 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.pipe_barrier("mte3")
                             T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
+                T.set_cross_flag("V", 13)  # signal C scope 3 (dKeyIndex matmul)
+
+            # ============================================================
+            # C scope 3: Matmul5 — dKeyIndex 部分积 reluGrad^T @ QueryIndex
+            #   per-core K-block: (n_block, DQueryIndex)，每 core 写不相交 K 行
+            #   transpose_A: A=reluGrad(Nidx1,n_block)=(K,M) → A^T@B=(n_block,DQI)
+            # ============================================================
+            with T.Scope("C"):
+                T.wait_cross_flag(13)
+
+                RG_L1_dk = T.alloc_L1((Nidx1, n_block), input_dtype)       # (K=Nidx1, M=n_block)
+                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)   # (K=Nidx1, N=DQI)
+                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)   # (M=n_block, N=DQI)
+
+                for s1_row in T.serial(s1_start, s1_end):
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, k_start:k_end], RG_L1_dk)
+                    T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
+                    # RAW: gemm 等 L1 载入
+                    T.set_flag("mte2", "m", 6)
+                    T.wait_flag("mte2", "m", 6)
+                    T.gemm_v0(RG_L1_dk, QI_L1_dk, DK_L0C, transpose_A=True, transpose_B=False, init=True)
+                    # M→FIX: copy_l0c 等 gemm 完成
+                    T.set_flag("m", "fix", 7)
+                    T.wait_flag("m", "fix", 7)
+                    # 每 core 写自己的 64 个 K 行（不相交），普通 copy（非 atomic）
+                    T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, k_start:k_end, 0:DQueryIndex])
+
+                T.set_cross_flag("FIX", 14)  # signal V scope 4 (scatter)
+
+            # ============================================================
+            # V scope 4: Scatter dk_matmul_partial → dKeyIndex（按 sparse idx）
+            #   基指针 atomic_add：dst 全点索引无切片，extent 从 src (1,DQI) 推导
+            # ============================================================
+            with T.Scope("V"):
+                T.wait_cross_flag(14)
+
+                dk_chunk_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)  # (1,128) fp32
+
+                for s1_row in T.serial(s1_start, s1_end):
+                    for k_id in T.serial(k_start, k_end):
+                        idx = SparseIndices[bz, s1_row, 0, k_id]
+                        if idx >= 0:
+                            # 2D src (1,DQI) → 2D dk_chunk_ub，严格对齐 unsorted_segment_sum 可跑模式
+                            T.copy(dk_matmul_partial[bz, s1_row, k_id:k_id + 1, 0:DQueryIndex], dk_chunk_ub)
+                            # RAW: atomic write 等 GM→UB 载入完成
+                            T.set_flag("mte2", "mte3", 0)
+                            T.wait_flag("mte2", "mte3", 0)
+                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_ub)
+                            # WAR: 下轮 mte2 覆盖前等本轮 atomic 写完
+                            T.set_flag("mte3", "mte2", 1)
+                            T.wait_flag("mte3", "mte2", 1)
+
     return main
 
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
@@ -916,7 +971,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             ws = _workspace_cache[ws_key]
             d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
-                d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out = ws
+                dk_matmul_partial, \
+                d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -927,16 +983,21 @@ def sparse_lightning_indexer_grad_kl_loss(
             reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
+            # dKeyIndex 融合：matmul 中间结果(workspace) + fp32 累加器输出
+            dk_matmul_partial = torch.zeros(B, S1, K, DQueryIndex, dtype=torch.float32, device=query.device)
+            d_key_index_out = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=torch.float32, device=query.device)
             d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
             loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                                         bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-                                        d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
+                                        dk_matmul_partial,
+                                        d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out)
 
         # Zero workspaces before each call (gather_ws filled by V0 scope)
         d_query_index_accum.zero_()
+        d_key_index_out.zero_()  # atomic_add 目标必须归零（dk_matmul_partial 每行被 C3 全覆盖，无需清零）
 
         if _PROFILE:
             _t_prep_end.record()
@@ -950,7 +1011,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 11-13
             bmm1_res_ws, bmm2_res_ws,                  # 14-15
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 16-18
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 19-22
+            dk_matmul_partial,                         # 19 (workspace: dKeyIndex matmul 中间结果)
+            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 20-23
+            d_key_index_out,                           # 24 (output: dKeyIndex fp32 累加器)
         )
         if _PROFILE:
             _t_kernel_end.record()
@@ -989,11 +1052,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_scatter_start = torch.npu.Event(enable_timing=True)
             _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_scatter_start.record()
-        d_key_index = _compute_d_key_index(
-            relu_grad, query_index, sparse_indices,
-            B, S1, S2, Nidx1, Nidx2, K, DQueryIndex,
-            query.device, input_dtype,
-        )
+        # dKeyIndex 已在 kernel 内融合计算（C3 matmul + V4 scatter）：
+        # results[4] = fp32 累加器 (B, S2_pad, Nidx2, DQueryIndex)，取真实 S2 并 cast
+        d_key_index = results[4][:, :S2].to(input_dtype)
         if _PROFILE:
             _t_scatter_end.record()
 
