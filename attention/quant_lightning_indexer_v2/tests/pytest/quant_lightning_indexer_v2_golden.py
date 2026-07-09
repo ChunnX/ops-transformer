@@ -823,21 +823,6 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
     k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
     if is_batch:
-        if qk_dtype == 'INT8':
-            qk_dtype = torch.int8
-        elif qk_dtype == 'FLOAT8_E4M3FN':
-            qk_dtype = torch.float8_e4m3fn
-        elif qk_dtype == 'HIFLOAT8':
-            qk_dtype = torch.uint8
-
-        if dequant_dtype == 'FP16':
-            dequant_dtype = torch.float16
-        elif dequant_dtype == 'FP32':
-            dequant_dtype = torch.float32
-
-        if actual_seq_dtype == 'INT32':
-            actual_seq_dtype = torch.int32
-
         if q_t_size is None:
             q_t_size = 0
         if k_t_size is None:
@@ -858,15 +843,38 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         block_size = int(block_size)
         block_num = int(block_num)
         if max_seqlen_q is None:
-            max_seqlen_q = 0
+            max_seqlen_q = -1
         max_seqlen_q = int(max_seqlen_q)
         if quant_mode is None:
-            quant_mode = 0
+            quant_mode = 1
         quant_mode = int(quant_mode)
         sparse_count = int(sparse_count)
         sparse_mode = int(sparse_mode)
-        return_value = bool(return_value)
+        return_value = int(return_value)
 
+        params = (batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
+                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype,
+                  cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+                  max_seqlen_q, quant_mode, layout_query, layout_key,
+                  sparse_count, sparse_mode,
+                  query_datarange, key_datarange, weights_datarange, q_scale_datarange, k_scale_datarange,
+                  cmp_ratio, return_value, output_idx_offset)
+
+        if qk_dtype == 'INT8':
+            qk_dtype = torch.int8
+        elif qk_dtype == 'FLOAT8_E4M3FN':
+            qk_dtype = torch.float8_e4m3fn
+        elif qk_dtype == 'HIFLOAT8':
+            qk_dtype = torch.uint8
+
+        if dequant_dtype == 'FP16':
+            dequant_dtype = torch.float16
+        elif dequant_dtype == 'FP32':
+            dequant_dtype = torch.float32
+
+        if actual_seq_dtype == 'INT32':
+            actual_seq_dtype = torch.int32
+        
         if cu_seqlens_q is not None:
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None:
@@ -895,6 +903,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             q_scale_datarange = ast.literal_eval(q_scale_datarange)
         if isinstance(k_scale_datarange, str):
             k_scale_datarange = ast.literal_eval(k_scale_datarange)
+
 
 
     if qk_dtype == torch.uint8:

@@ -71,17 +71,9 @@ def test_qliv2_process(filepath, device_id=0):
     else:
         seqused_q = None
     if test_data['seqused_k'] is not None:
-        actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    else:
-        actual_seq_lengths_key = None
-    if test_data['seqused_k'] is not None:
         seqused_k = test_data['seqused_k'].npu()
     else:
         seqused_k = None
-    if test_data['actual_seq_lengths_key'] is not None:
-        actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    else:
-        actual_seq_lengths_key = None
     if test_data['output_idx_offset'] is not None:
         output_idx_offset = test_data['output_idx_offset'].npu()
     else:
@@ -114,8 +106,8 @@ def test_qliv2_process(filepath, device_id=0):
     metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
-                                    seqused_q = actual_seq_lengths_query,
-                                    seqused_k = actual_seq_lengths_key,
+                                    seqused_q = seqused_q,
+                                    seqused_k = seqused_k,
                                     cmp_residual_k = cmp_residual_k_for_npu,
                                     batch_size = params[0],
                                     max_seqlen_q = max_seqlen_q_meta,
