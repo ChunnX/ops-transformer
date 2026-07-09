@@ -124,6 +124,8 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     x = torch.randn(B, S, N, D, device="npu", dtype=torch.float16, requires_grad=True)
     r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
     r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
+    y = x * 1.0
+    y.retain_grad()
 
     # 正向：自动追踪计算图（x 被 inplace 修改，无需接收返回值）
     inplace_partial_rotary_mul(
@@ -136,7 +138,8 @@ cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="inter
     loss = x.sum()
     loss.backward()  # 自动调用 inplace_partial_rotary_mul_backward
 
-    print(x.grad.shape)  # dx 已自动填充，与 x shape 相同
+    print(y.grad.shape)
+    print(x.grad.shape)
     # r1.grad, r2.grad 始终为 None（cos/sin 不计算梯度）
     ```
 
