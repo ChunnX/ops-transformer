@@ -116,8 +116,9 @@ bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 {
-    uint16_t count = 0;
-    while (count < GroupedMatmul::MAX_TENSOR_CONT && context_->GetDynamicInputShape(index, count) != nullptr) {
+    uint16_t count = 0U;
+    while (count < GroupedMatmul::MAX_TENSOR_CONT &&
+           context_->GetDynamicInputShape(index, count) != nullptr) {
         ++count;
     }
     return count;
@@ -126,8 +127,8 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
     OP_CHECK_IF(IsWeightNzMultiTensorLayout() && inputParams_.hasBias,
-                OP_LOGE(inputParams_.opName,
-                        "In weightNz single-multi-single case, bias is not supported."),
+                OP_LOGE(inputParams_.opName, "In WeightNz single-multi-single mode, current hasBias is true; "
+                                             "expected hasBias to be false."),
                 return false);
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
@@ -140,12 +141,12 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight, groupList",
                     std::to_string(weightTensorNum) + ", " + std::to_string(inputParams_.groupNum),
-                    "in weightNz single-multi-single case, the tensor num of weight must equal group num"),
+                    "in WeightNz single-multi-single mode, expected weight tensor count to equal group count"),
                 return false);
     OP_CHECK_IF(scaleTensorNum != weightTensorNum,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "scale, weight",
                     std::to_string(scaleTensorNum) + ", " + std::to_string(weightTensorNum),
-                    "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
+                    "in WeightNz single-multi-single mode, expected scale tensor count to equal weight tensor count"),
                 return false);
     return true;
 }
@@ -646,15 +647,18 @@ bool GroupedQmmTiling::CheckQuantParams(const gert::StorageShape *xScaleStorageS
 
 bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t expectedNSize) const
 {
-    OP_CHECK_IF(!CheckWeightNzDimNum(wShape), return false);
+    OP_CHECK_IF(!CheckWeightNzDimNum(wShape),
+                OP_LOGE(inputParams_.opName, "CheckWeightNzDimNum failed."), return false);
     const size_t wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0UL ? inputParams_.nSize : expectedNSize;
     const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                               inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
     const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
     const size_t nzDimOffset = wDimNum - (WEIGHTNZ_DIM_NUM - 1);
-    OP_CHECK_IF(!CheckWeightNzLastDim(wShape, nzDimOffset, weightNzLastDim, isWeight4Bit), return false);
-    OP_CHECK_IF(!CheckWeightNzSecondLastDim(wShape, nzDimOffset), return false);
+    OP_CHECK_IF(!CheckWeightNzLastDim(wShape, nzDimOffset, weightNzLastDim, isWeight4Bit),
+                OP_LOGE(inputParams_.opName, "CheckWeightNzLastDim failed."), return false);
+    OP_CHECK_IF(!CheckWeightNzSecondLastDim(wShape, nzDimOffset),
+                OP_LOGE(inputParams_.opName, "CheckWeightNzSecondLastDim failed."), return false);
     auto wShapeDimThird = static_cast<uint64_t>(wShape[nzDimOffset + WEIGHTNZ_SECOND_DIM]);
     auto wShapeDimSecond = static_cast<uint64_t>(wShape[nzDimOffset]);
     OP_CHECK_IF(!CheckWeightNzTransposedDims(wShape, wShapeDimThird, wShapeDimSecond, weightNzLastDim, logicalNSize),
@@ -755,20 +759,30 @@ bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScale
     }
 
     const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
-    const uint64_t firstNSize =
-        GetWeightLogicalNSize(context_->GetDynamicInputShape(WEIGHT_INDEX, 0)->GetOriginShape());
-    for (uint16_t i = 1; i < weightTensorNum; ++i) {
+    const auto *firstWeightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, FIRST_TENSOR_INDEX);
+    OP_CHECK_IF(firstWeightShape == nullptr,
+                OP_LOGE(context_->GetNodeName(), "In WeightNz single-multi-single mode, current weight[0] is "
+                                                 "nullptr; expected weight[0] to be non-null."),
+                return false);
+    const uint64_t firstNSize = GetWeightLogicalNSize(firstWeightShape->GetOriginShape());
+    for (uint16_t i = SECOND_TENSOR_INDEX; i < weightTensorNum; ++i) {
         auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
         auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
         OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
-                    OP_LOGE(context_->GetNodeName(), "weight or scale shape is nullptr for index %u.", i),
+                    OP_LOGE(context_->GetNodeName(),
+                            "In WeightNz single-multi-single mode at index %u, current weight is %s and scale is %s; "
+                            "expected both tensors to be non-null.",
+                            i, curWStorageShape == nullptr ? "nullptr" : "non-null",
+                            curScaleStorageShape == nullptr ? "nullptr" : "non-null"),
                     return false);
         const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
         const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
         const uint64_t curNSize = GetWeightLogicalNSize(curWShape);
         OP_CHECK_IF(curNSize != firstNSize,
                     OP_LOGE(inputParams_.opName,
-                            "In weightNz single-multi-single case, all weight tensors must share the same logical N."),
+                            "In WeightNz single-multi-single mode, current weight[%u] logical N is %lu; "
+                            "expected logical N %lu from weight[0].",
+                            i, curNSize, firstNSize),
                     return false);
         OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, curScaleShape, curNSize),
                     OP_LOGE(inputParams_.opName, "CheckQuantParams failed for weight index %u.", i), return false);
@@ -1118,7 +1132,11 @@ bool GroupedQmmTiling::SetMKNList()
             uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
             for (uint16_t i = 0; i < weightTensorNum; ++i) {
                 auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
-                OP_CHECK_IF(weightShape == nullptr, OP_LOGE(context_->GetNodeName(), "weightShape is nullptr."),
+                OP_CHECK_IF(weightShape == nullptr,
+                            OP_LOGE(context_->GetNodeName(),
+                                    "In WeightNz single-multi-single mode, current weight[%u] is nullptr; "
+                                    "expected a non-null weight tensor.",
+                                    i),
                             return false);
                 const gert::Shape &wShape = weightShape->GetOriginShape();
                 kList_[i] = static_cast<int32_t>(inputParams_.kSize);
