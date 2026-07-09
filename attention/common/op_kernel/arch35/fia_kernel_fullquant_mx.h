@@ -599,10 +599,8 @@ public:
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParamsBasicIndices(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
-        info.loop = loop;
-        info.mloop = mloop;
         info.bIdx = bN2Cur / (constInfo.realN2Size);
         info.n2Idx = (bN2Cur / (constInfo.realN2Size / constInfo.n2Size)) % constInfo.n2Size;
         info.realN2Idx = bN2Cur % constInfo.realN2Size;
@@ -618,7 +616,10 @@ public:
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
+    }
 
+    __aicore__ inline void CalcParamsSizesAndBatch(uint64_t loop, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    {
         info.actMSize = mBaseSize;
         uint64_t gS1Size = info.actS1Size * constInfo.realGSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
@@ -641,18 +642,10 @@ public:
                 info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
+    }
 
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
+    __aicore__ inline void CalcParamsMSizeAndVecM(RunInfoX &info)
+    {
         if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
@@ -665,7 +658,10 @@ public:
             info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
+    }
 
+    __aicore__ inline void CalcParamsS2SplitCore(uint32_t bN2Cur, uint32_t gS1Cur, RunInfoX &info)
+    {
         if ((constInfo.bN2Start == constInfo.bN2End && constInfo.gS1OStart == constInfo.gS1OEnd)) {
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
@@ -679,6 +675,29 @@ public:
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
         }
+    }
+
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    {
+        info.loop = loop;
+        info.mloop = mloop;
+
+        CalcParamsBasicIndices(bN2Cur, gS1Cur, s2Cur, info);
+        CalcParamsSizesAndBatch(loop, gS1Cur, s2Cur, info);
+
+        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+
+        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
+        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
+        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
+        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
+        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        info.isS2SplitCore = false;
+        info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
+        info.isLastS2Loop = (s2Cur + 1 == curS2End);
+
+        CalcParamsMSizeAndVecM(info);
+        CalcParamsS2SplitCore(bN2Cur, gS1Cur, info);
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
