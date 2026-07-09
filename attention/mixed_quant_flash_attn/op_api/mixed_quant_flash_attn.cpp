@@ -41,14 +41,13 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutAttnOut,
-    int64_t paBlockSize,
     bool returnSoftmaxLse,
     aclOpExecutor *executor)
 {
     L0_DFX(MixedQuantFlashAttn, q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional, quantMode,
            softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutAttnOut,
-           paBlockSize, returnSoftmaxLse);
+           returnSoftmaxLse);
     
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -80,7 +79,7 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutKv, layoutAttnOut, paBlockSize, returnSoftmaxLse));
+                                   layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantFlashAttn InferShape failed.");
         return {nullptr, nullptr};
@@ -92,7 +91,7 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutKv, layoutAttnOut, paBlockSize, returnSoftmaxLse));
+                layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantFlashAttn launch kernel failed.");
         return {nullptr, nullptr};

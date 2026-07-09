@@ -22,13 +22,13 @@ const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 std::tuple<at::Tensor, at::Tensor>
-npu_mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &k_descale, const at::Tensor &v_descale,
+mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &k_descale, const at::Tensor &v_descale,
                const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
                const c10::optional<at::Tensor> &seqused_q,
                const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
                const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
                int64_t quant_mode, double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
-               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_attn_out, int pa_block_size, bool return_softmax_lse)
+               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_attn_out, bool return_softmax_lse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -99,13 +99,13 @@ npu_mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::T
 
     ACLNN_CMD(aclnnMixedQuantFlashAttn, q, wrapperK, wrapperV, k_descale, v_descale, block_table, cu_seqlens_q, seqused_q, seqused_kv, sinks, attn_mask,
               metadata, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
-              layout_kv_ptr, layout_attn_out_ptr, pa_block_size, return_softmax_lse, attentionOutput, softmaxLse);
+              layout_kv_ptr, layout_attn_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_mixed_quant_flash_attn", &npu_mixed_quant_flash_attn, "mixed_quant_flash_attn");
+    m.def("mixed_quant_flash_attn", &mixed_quant_flash_attn, "mixed_quant_flash_attn");
 }
 } // namespace op_api

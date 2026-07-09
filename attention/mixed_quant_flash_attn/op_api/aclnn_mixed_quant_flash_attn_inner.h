@@ -24,7 +24,7 @@ extern aclnnStatus aclnnInnerMixedQuantFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
-    int64_t paBlockSize, bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
+    bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

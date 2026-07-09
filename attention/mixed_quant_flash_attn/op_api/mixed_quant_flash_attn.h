@@ -68,7 +68,6 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutAttnOut,
-    int64_t paBlockSize,
     bool returnSoftmaxLse,
     aclOpExecutor *executor);
 

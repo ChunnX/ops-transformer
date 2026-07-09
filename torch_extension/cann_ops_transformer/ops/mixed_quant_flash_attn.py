@@ -7,24 +7,25 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional
 import torch
 import torch_npu
-from enum import Enum
+from enum import IntEnum
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
-class _MaskMode(Enum):
+class _MaskMode(IntEnum):
     ALL = 0
     CAUSAL = 3
     WINDOW = 4
 
-class _QuantMode(Enum):
+class _QuantMode(IntEnum):
     A16C4_MXFP4 = 1
 
 class MixedQuantFlashAttenOpBuilder(OpBuilder):
     def __init__(self):
-        super(MixedQuantFlashAttenOpBuilder, self).__init__("npu_mixed_quant_flash_attn")
+        super(MixedQuantFlashAttenOpBuilder, self).__init__("mixed_quant_flash_attn")
 
     def sources(self):
         """Path to C++ source code."""
@@ -32,13 +33,13 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_mixed_quant_flash_attn(Tensor q, Tensor k, Tensor v, Tensor k_descale, Tensor v_descale," \
+        return "mixed_quant_flash_attn(Tensor q, Tensor k, Tensor v, Tensor k_descale, Tensor v_descale," \
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None," \
             "Tensor?seqused_q=None," \
             "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None," \
             "int quant_mode=1, float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1," \
             "int max_seqlen_q=-1, int max_seqlen_kv=-1," \
-            "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", str layout_attn_out=\"BSND\", int pa_block_size=128," \
+            "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", str layout_attn_out=\"BSND\", " \
             "bool return_softmax_lse=False)->(Tensor, Tensor)"
 
     def register_meta(self):
@@ -47,13 +48,21 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_mixed_quant_flash_attn_meta(q, k, v, k_descale, v_descale, block_table=None, cu_seqlens_q=None,
-                                seqused_q=None,
-                                seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
-                                quant_mode=1, softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
-                                max_seqlen_q=-1, max_seqlen_kv=-1,
-                                layout_q="BSND", layout_kv="PA_BBND", layout_attn_out="BSND", pa_block_size=128,
-                                return_softmax_lse=False):
+        def mixed_quant_flash_attn_meta(
+            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor, 
+            block_table: Optional[torch.Tensor] = None, 
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, 
+            sinks: Optional[torch.Tensor] = None, 
+            attn_mask: Optional[torch.Tensor] = None, 
+            metadata: Optional[torch.Tensor] = None,
+            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4, 
+            softmax_scale: Optional[float] = 1.0, 
+            mask_mode: Optional[_MaskMode] = _MaskMode.ALL, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
+            max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
+            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND", 
+            return_softmax_lse: Optional[bool] = False
+        ):
             if layout_q == "TND":
                 tSize = q.size(0)
                 nSize = q.size(1)
@@ -104,29 +113,37 @@ op_module = mixed_quant_flash_attn_op_builder.load()  # Compiles/loads the .so f
 
 
 @impl(AS_LIBRARY, mixed_quant_flash_attn_op_builder.name, "PrivateUse1")
-def npu_mixed_quant_flash_attn(q, k, v, k_descale, v_descale, block_table=None, cu_seqlens_q=None,
-                                seqused_q=None,
-                                seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
-                                quant_mode=1, softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
-                                max_seqlen_q=-1, max_seqlen_kv=-1,
-                                layout_q="BSND", layout_kv="PA_BBND", layout_attn_out="BSND", pa_block_size=128, 
-                                return_softmax_lse=False):
+def mixed_quant_flash_attn(
+            q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor, 
+            block_table: Optional[torch.Tensor] = None, 
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, 
+            sinks: Optional[torch.Tensor] = None, 
+            attn_mask: Optional[torch.Tensor] = None, 
+            metadata: Optional[torch.Tensor] = None,
+            quant_mode: _QuantMode = _QuantMode.A16C4_MXFP4, 
+            softmax_scale: Optional[float] = 1.0, 
+            mask_mode: Optional[_MaskMode] = _MaskMode.ALL, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
+            max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
+            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "PA_BBND", layout_attn_out: Optional[str] = "BSND", 
+            return_softmax_lse: Optional[bool] = False
+):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    quant_mode = quant_mode.value if isinstance(quant_mode, Enum) else quant_mode
-    mask_mode = mask_mode.value if isinstance(mask_mode, Enum) else mask_mode
+    quant_mode = quant_mode.value if isinstance(quant_mode, IntEnum) else quant_mode
+    mask_mode = mask_mode.value if isinstance(mask_mode, IntEnum) else mask_mode
     print(f"   - Quant Mode: {quant_mode}")
     print(f"   - Mask Mode:  {mask_mode}")
 
-    return op_module.npu_mixed_quant_flash_attn(q, k, v, k_descale, v_descale, block_table, cu_seqlens_q,
+    return op_module.mixed_quant_flash_attn(q, k, v, k_descale, v_descale, block_table, cu_seqlens_q,
                                     seqused_q,
                                     seqused_kv, sinks, attn_mask, metadata,
                                     quant_mode, softmax_scale, mask_mode, win_left, win_right,
                                     max_seqlen_q, max_seqlen_kv,
-                                    layout_q, layout_kv, layout_attn_out, pa_block_size,
+                                    layout_q, layout_kv, layout_attn_out,
                                     return_softmax_lse)
 
-npu_mixed_quant_flash_attn.MaskMode = _MaskMode
-npu_mixed_quant_flash_attn.QuantMode = _QuantMode
+mixed_quant_flash_attn.MaskMode = _MaskMode
+mixed_quant_flash_attn.QuantMode = _QuantMode
