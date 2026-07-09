@@ -663,7 +663,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Tes
     // 3. 获取channel handle
     // 假设channel已经通过Mc2Context获取并存储在某个地方
     // 这里需要从context中获取
-    __gm__ Mc2MoeContext* context_{nullptr}
+    __gm__ Mc2MoeContext* context_{nullptr};
     ChannelHandle channelHandle = context_->hcommHandle[0];  // TODO: 从mc2Context中获取实际的channel handle
     
     if (epRankId_ == 0) {
