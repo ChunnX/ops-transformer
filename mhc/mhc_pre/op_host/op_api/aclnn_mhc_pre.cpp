@@ -589,7 +589,8 @@ static aclnnStatus CheckParams(const MhcParamsBase &params)
 
 static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *executor)
 {
-    // 将输入tensor转换为连续格�?    params.xContiguous = l0op::Contiguous(params.x, executor);
+    // Convert input tensors to contiguous tensors.
+    params.xContiguous = l0op::Contiguous(params.x, executor);
     CHECK_RET(params.xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     params.phiContiguous = l0op::Contiguous(params.phi, executor);
