@@ -140,9 +140,9 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cmp_ratio**（`int`）：可选参数，代表压缩率，数据类型支持`int`，取值范围：1~128，默认值：1。
 
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
+- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A2/A3 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
 
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
+- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A2/A3 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
 
 - **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，当前仅支持取值127。
 
@@ -192,9 +192,9 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **cmp_ratio**（`int`）：可选参数，代表压缩率，数据类型支持`int`，取值范围：1~128，默认值：1。
 
-- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
+- **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，数据类型支持`int`。Atlas A2/A3 仅支持模式 4（band 模式的 mask，滑窗范围由 ori_win_left、ori_win_right 控制，起点为右下角）；Ascend 950PR/Ascend 950DT 支持模式 0、3、4。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal；模式 4 为 band（滑窗，起点右下角）。
 
-- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A3/A2 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
+- **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，数据类型支持`int`。Atlas A2/A3 仅支持模式 3（rightDownCausal 模式的 mask，对应以右顶点为划分的下三角场景）；Ascend 950PR/Ascend 950DT 支持模式 0、3。模式 0 为不做 mask 操作；模式 3 为 rightDownCausal。
 
 - **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，当前仅支持取值127。
 
@@ -228,7 +228,7 @@ sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
 
 - **metadata**（`Tensor`）：暂不支持，输出固定为None。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
 
 ## 约束说明
 

@@ -138,16 +138,16 @@ sparse_lightning_indexer_kl_loss_grad(
 | cmp_ratio | 可选属性 | key 压缩比例。 | `int` | 取值范围 `[1, 128]`，默认 `1`。 |
 
 - 参数N1的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
 - 参数B的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：B支持1~256。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
     - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
 - 参数S1、S2的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8192，S2支持1~524288。
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
 - 参数K的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
 
 ### sparse_lightning_indexer_kl_loss_grad_metadata
@@ -173,12 +173,12 @@ sparse_lightning_indexer_kl_loss_grad(
 | metadata | 输出 | 任务切分 metadata。 | `int32` | `[64]`。 |
 
 - 参数N1的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
 - 参数K的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
 
 ## 返回值说明
 
