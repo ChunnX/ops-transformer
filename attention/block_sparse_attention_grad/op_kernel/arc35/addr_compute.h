@@ -315,10 +315,10 @@ private:
         last_q_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualQseqlen_) : 0;
         last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
     }
-
+    
     __aicore__ inline bool InitStartIdx()
     {
-        // 遍历顺序 s2->s1->n1->batch
+        // 遍历顺序 s1->s2->n1->batch
         int32_t recoderS1 = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
         int32_t recoderS2 = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
 
@@ -326,15 +326,15 @@ private:
             first_loop_ = 1;
             return false;
         }
-
-        if (s2Idx_ < cur_kv_seq_len_ - recoderS2) {
-            s2Idx_ += recoderS2;
+        
+        if (s1Idx_ < cur_q_seq_len_ - recoderS1) {
+            s1Idx_ += recoderS1;
             return false;
         }
 
-        if (s1Idx_ < cur_q_seq_len_ - recoderS1) {
-            s1Idx_ += recoderS1;
-            s2Idx_ = 0;
+        if (s2Idx_ < cur_kv_seq_len_ - recoderS2) {
+            s1Idx_ = 0;
+            s2Idx_ += recoderS2;
             return false;
         }
 
