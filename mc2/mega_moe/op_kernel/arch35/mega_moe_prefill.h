@@ -249,6 +249,10 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::Init(
         params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
+    // compareCount_ = CeilAlign(sendTotalNum_, 64)         — 按 64 个 int32(256B) 对齐，供 CompareScalar
+    // maskAlignSize_ = CeilAlign(sendTotalNum_ / 8, 32)    — mask 区字节数，按 32B burst 对齐
+    // batch (sendRouteBatchLen_/recvRouteBatchLen_) 强制 256 对齐，保证:
+    //   每 batch mask slice = batchLen/8 = 32B 的整数倍 = 刚好对齐 maskAlignSize_ 的 32B burst 边界
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
     maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32));
@@ -315,42 +319,57 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::SendAndQu
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendRouteBatchLen_)));
 
     // ── 按既定顺序落地址 ──
+    // Tensor用处：SendMaskCal 函数中搬运本卡当前 batch 的 topkIds；
+    // Tensor大小：sendRouteBatchLen_ * sizeof(int32_t) align 到 256 字节对齐；
     uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(sendRouteBatchLen_) * static_cast<int64_t>(sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
+    // Tensor用处：ResetFlagList 中对于 workSpace 上的 Flag 位置区域进行清理；
+    // Tensor大小：大小为清理区域大小均分到所有的 blockAivNum_，封顶到 DISPATCH_RESET_BATCH；
     uint32_t resetAddrActual = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetAddrActual, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
 
+    // Tensor用处：QuantProcessInRank 函数中用于量化计算中间区域；
+    // Tensor大小：当前申请 2K；
     uint32_t mxTempTensorAddr = resetAddrActual + resetTensorSize;
     mxTempTensor_ = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
+    // Tensor用处：QuantProcessInRank 函数中用于存储量化输出结果；
+    // Tensor大小：token 长度 Align256 字节对齐 + scale 存储长度，xOutTensor1_ 与 xOutTensor2_ 为双 buffer；
     uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
     xOutTensor1_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1,
         xOutTensorSize / sizeof(ActivationType));
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
     xOutTensor2_ = LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2,
         xOutTensorSize / sizeof(ActivationType));
+    // Tensor用处：QuantProcessInRank 函数中用于存储输入 token；
+    // Tensor大小：k_ Align128 字节对齐，xInTensor1_ 与 xInTensor2_ 为双 buffer；
     uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize;
     xInTensor1_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize / sizeof(bfloat16_t));
     uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
     xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
 
-    // sendMaskTensor_ 双 buffer: 各 batch/8 mask 切片 + 32B(末块折叠 count)
+    // Tensor用处：SendMaskCal 函数中用于存储 mask 位；
+    // Tensor大小：各 batch/8 mask 切片 + 32B（末块折叠 count），DOUBLE_BUFFER 为 2，开启双 buffer；
     uint32_t maskBufBytes = static_cast<uint32_t>(sendRouteBatchLen_ / 8) + static_cast<uint32_t>(ALIGN_32);
     uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
             sendMaskAddr + static_cast<uint32_t>(index) * maskBufBytes, maskBufBytes);
     }
+    // Tensor用处：SendMaskCal 函数中用于 GatherMask 的 dst Tensor；
+    // Tensor大小：sendRouteBatchLen_ * sizeof(int32_t) align 到 256 字节对齐；
     uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskBufBytes;
     uint32_t sendGatherOutSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(sendRouteBatchLen_) * static_cast<int64_t>(sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256));
     sendGatherOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr,
         sendGatherOutSize / sizeof(int32_t));
+    // Tensor用处：SendMaskCal 函数中 per-owned-expert 跨 batch count 累加器；
+    // Tensor大小：expertPerCoreMax * sizeof(int32_t) align 到 32 字节对齐；
     uint32_t sendCntAccAddr = sendGatherOutAddr + sendGatherOutSize;
     sendCntAccTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr,
         sendCntAccSize / sizeof(int32_t));
@@ -656,38 +675,55 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::DispatchB
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvRouteBatchLen_)));
 
     // ── 按既定顺序落地址 ──
+    // Tensor用处：SendCntCal 函数中记录本卡各专家收到的 token 总数；
+    // Tensor大小：仅记录 count 值且各专家之间复用，申请大小为 32 字节；
     uint32_t expertTokenCntTensorAddr = 0;
     expertTokenCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr,
         expertTokenCntTensorSize / sizeof(int32_t));
+    // Tensor用处：SendCntCal 函数中记录本卡专家收到 token count 的 cumsum 累加值；
+    // Tensor大小：worldSize_ * expertPerRank_ * sizeof(int32_t) align 至 32 字节对齐；
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
         cumsumInfoTensorSize / sizeof(int32_t));
+    // Tensor用处：SendCntCal 函数中 stride 只读 count 跳过 mask 区时，暂存各 src rank 的 count；
+    // Tensor大小：每 src rank 一个 burst(32B)，共 ws*32B；
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr,
         sendCntTensorSize / sizeof(int32_t));
+    // Tensor用处：TripleInfoCalAndDispatch 函数中接收当前 batch 的 mask 切片；
+    // Tensor大小：recvRouteBatchLen_ / 8 字节，每 bit 对应一个 route item；
     uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
     uint32_t maskBatchSize = static_cast<uint32_t>(recvRouteBatchLen_ / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     maskBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint8_t));
     maskBatchU32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint32_t));
+    // Tensor用处：TripleInfoCalAndDispatch 函数中 GatherMask 的 dst Tensor；
+    // Tensor大小：recvRouteBatchLen_ * sizeof(int32_t) align 至 32 字节对齐；
     uint32_t validTopkIndexTensorAddr = maskBatchAddr + maskBatchSize;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(recvRouteBatchLen_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
+    // Tensor用处：TripleInfoCalAndDispatch 函数中 GatherMask 的 src Tensor（本 batch 的全局 index）；
+    // Tensor大小：与 validTopkIndexTensor_ 一致，recvRouteBatchLen_ * sizeof(int32_t) align 至 32 字节对齐；
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
+    // Tensor用处：TripleInfoCalAndDispatch 函数中的 6 个 dispatch buffer，配合 EVENT_ID0..EVENT_ID5 做软流水；
+    // Tensor大小：每块容纳 token+scale，动态计算以节省 UB 空间；
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
             copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
+    // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的 tokenCnt 数；
+    // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至 32 字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + copyTmpTotalSize;
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
         expertTokenNumsOutTensorSize / sizeof(int32_t));
-    // triple ring buffer 常驻分配：DISPATCH_BUFFER_NUM 条，CopyGMToGMPerToken 逐 token 复用
+    // Tensor用处：CopyGMToGMPerToken 函数中的 triple ring buffer，逐 token 即时写 GM；
+    // Tensor大小：DISPATCH_BUFFER_NUM 条 * 32B；
     uint32_t tripleTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
         tripleReserveSize / sizeof(int32_t));
@@ -1264,23 +1300,31 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::Unpermute
     TilingByCore(m_, coreLen, coreOffset, 1);
 
     // ── 固定 buffer：dataRes + dataResFp32 (+ scales) ──
+    // Tensor用处：Unpermute 函数用于存储 mte2 搬入 token；
+    // Tensor大小：UNPERMUTE_LIST_NUM * 单个 token 长度，2 块是 mte2 搬运的 doubleBuffer，1 块存储累加计算 Cast 完的输出结果用于搬出；
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
     uint32_t dataResAddr = 0;
     dataResTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, dataResAddr,
         dataResBufAlign / sizeof(bfloat16_t));
+    // Tensor用处：Unpermute 函数用于存储 token Cast 目的 Tensor；
+    // Tensor大小：dataResTensor_ 开设大小乘以 HALF_TO_FP32；
     uint32_t dataResFp32Addr = dataResAddr + dataResBufAlign;
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr,
         dataResFp32BufAlign / sizeof(float));
     uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）；
+        // Tensor大小：scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展；
         uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
             (scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
             TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
+        // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）；
+        // Tensor大小：scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展；
         uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
             (scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
@@ -1293,6 +1337,8 @@ __aicore__ inline void MegaMoePrefill<TemplateMegaMoePrefillTypeFunc>::Unpermute
     int32_t batchNum = Ops::Base::CeilDiv(coreLen, batchLen);
 
     // ── weight buffer（at tempAddr，每批复用）──
+    // Tensor用处：用于存储 topKWeight；
+    // Tensor大小：batchLen * topK_ * sizeof(float) align 到 32 字节对齐；
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(batchLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr,
