@@ -120,7 +120,8 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int5, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
-    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                 \
+    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float4_e2m1fn_x2, ACL_FLOAT4_E2M1)                                                              \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
@@ -176,6 +177,18 @@ typedef struct {
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
     return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+}
+
+inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclDataType acl_data_type)
+{
+    int64_t storageOffset = at_tensor.storage_offset();
+    if (Is4BitDtype(acl_data_type)) {
+        // ACL 4-bit descriptors express offsets in logical nibble elements.
+        TORCH_CHECK(storageOffset <= INT64_MAX / FP4_IN_INT8,
+            "4-bit tensor storage offset is too large to convert to logical elements: ", storageOffset);
+        storageOffset *= FP4_IN_INT8;
+    }
+    return storageOffset;
 }
 
 static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL{
@@ -478,7 +491,8 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
     }
 
     auto acl_tensor = aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type,
-                                      wrapperStride.data(), at_tensor.storage_offset(), format, storageDims.data(),
+                                      wrapperStride.data(), ConvertToAclStorageOffset(at_tensor, acl_data_type), format,
+                                      storageDims.data(),
                                       storageDims.size(), const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }
@@ -712,7 +726,8 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
     }
 
     auto acl_tensor = aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type,
-                                      wrapperStride.data(), at_tensor.storage_offset(), format, storageDims.data(),
+                                      wrapperStride.data(), ConvertToAclStorageOffset(at_tensor, acl_data_type), format,
+                                      storageDims.data(),
                                       storageDims.size(), const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }

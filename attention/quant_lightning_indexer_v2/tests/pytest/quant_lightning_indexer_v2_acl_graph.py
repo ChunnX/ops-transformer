@@ -76,7 +76,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         block_size = int(params[8])
         head_dim = int(params[7])
         k_head_num = int(params[6])
-        dequant_dtype_str = params[11]
+        dequant_dtype_str = params[12]
         if dequant_dtype_str == 'FP16' or dequant_dtype_str == torch.float16:
             dequant_dtype = torch.float16
         elif dequant_dtype_str == 'FP32' or dequant_dtype_str == torch.float32:
@@ -140,7 +140,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "seqused_k": seqused_k,
         "cmp_residual_k": cmp_residual_k_for_npu,
         "output_idx_offset": output_idx_offset,
-        "max_seqlen_q": params[18],
+        "max_seqlen_q": params[19],
         "block_table": block_table,
         "metadata": metadata,
         "quant_mode": quant_mode,
@@ -149,7 +149,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         "sparse_count": sparse_count,
         "sparse_mode": sparse_mode,
         "cmp_ratio": cmp_ratio,
-        "return_value": params[30],
+        "return_value": params[31],
     }
     return run_args
 
@@ -165,7 +165,8 @@ def _qliv2_run_compiled_graph(run_args):
     npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=False, backend=npu_backend, dynamic=False)
     npu_result, npu_topk_value = npu_mode(**run_args)
     torch.npu.synchronize()
-    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    npu_topk_value, npu_sort_order = npu_topk_value.sort(dim=-1, descending=True)
+    npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
     return npu_result, npu_topk_value
 
 
