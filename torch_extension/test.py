@@ -52,7 +52,7 @@ metadata = cann_ops_transformer.ops.mixed_quant_flash_attn_metadata(
 
                                                                                                                                                                                     
 # 调用算子
-result = cann_ops_transformer.ops.npu_mixed_quant_flash_attn(
+result = cann_ops_transformer.ops.mixed_quant_flash_attn(
     q = q,
     k = k,
     v = v,

@@ -227,7 +227,6 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
-    opParamInfo_.blockSize = attrs->GetAttrPointer<int64_t>(ATTR_PA_BLOCK_SIZE_INDEX);
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_LSE_INDEX);
 
     return ge::GRAPH_SUCCESS;
@@ -348,8 +347,11 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 
 ge::graphStatus FaInfoParser::GetBlockSize()
 {
-    blockSize_ = (opParamInfo_.blockSize == nullptr) ? 128 : *opParamInfo_.blockSize;
-    return ge::GRAPH_SUCCESS;
+    if (keyShape_->CheckHasShapeBlockSize(__func__) != ge::GRAPH_SUCCESS) {	 
+         return ge::GRAPH_FAILED; 
+     } 
+     blockSize_ = keyShape_->GetShapeBlockSize(); 
+     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FaInfoParser::GetBlockNum()

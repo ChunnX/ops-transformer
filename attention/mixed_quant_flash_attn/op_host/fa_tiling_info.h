@@ -83,8 +83,7 @@ constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 9;
-constexpr uint32_t ATTR_PA_BLOCK_SIZE_INDEX = 10;
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 10;
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
