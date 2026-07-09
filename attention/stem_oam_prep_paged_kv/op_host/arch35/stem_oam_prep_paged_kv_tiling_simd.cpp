@@ -19,12 +19,12 @@ namespace optiling {
 
 constexpr uint64_t SYS_WORKSPACE_SIZE = static_cast<uint64_t>(16 * 1024 * 1024);
 
-bool StemPrepKVTiling::IsCapable()
+bool StemOamPrepPagedKVSimd::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus StemPrepKVTiling::GetPlatformInfo()
+ge::graphStatus StemOamPrepPagedKVSimd::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -50,7 +50,7 @@ ge::graphStatus StemPrepKVTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
+ge::graphStatus StemOamPrepPagedKVSimd::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("StemOamPrepPagedKV", "context is null"), return ge::GRAPH_FAILED);
     auto attrs = context_->GetAttrs();
@@ -99,35 +99,35 @@ ge::graphStatus StemPrepKVTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::DoOpTiling()
+ge::graphStatus StemOamPrepPagedKVSimd::DoOpTiling()
 {
 
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::DoLibApiTiling()
+ge::graphStatus StemOamPrepPagedKVSimd::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t StemPrepKVTiling::GetTilingKey() const
+uint64_t StemOamPrepPagedKVSimd::GetTilingKey() const
 {
     return 0;
 }
 
-ge::graphStatus StemPrepKVTiling::GetWorkspaceSize()
+ge::graphStatus StemOamPrepPagedKVSimd::GetWorkspaceSize()
 {
     workspaceSize_ = SYS_WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemPrepKVTiling::PostTiling()
+ge::graphStatus StemOamPrepPagedKVSimd::PostTiling()
 {
 
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemPrepKVTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(StemOamPrepPagedKV, StemOamPrepPagedKVSimd, 0);
 
 } // namespace optiling

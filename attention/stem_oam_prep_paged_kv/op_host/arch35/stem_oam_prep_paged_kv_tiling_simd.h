@@ -24,9 +24,9 @@
 
 namespace optiling {
 
-class StemPrepKVTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class StemOamPrepPagedKVSimd : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit StemPrepKVTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit StemOamPrepPagedKVSimd(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
 
