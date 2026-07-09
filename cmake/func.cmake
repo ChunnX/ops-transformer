@@ -526,7 +526,6 @@ function(add_bin_compile_target)
         set(${_op_name}_dir ${_op_info})
         set(${_op_name}_a2_dir ${_op_info})
         set(${_op_name}_a3_dir ${_op_info})
-        set(${_op_name}_a5_dir ${_op_info})
         set(${_op_name}_apt_dir ${_op_info})
     endforeach()
 
