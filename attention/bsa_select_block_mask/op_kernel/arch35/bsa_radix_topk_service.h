@@ -1224,7 +1224,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
 
     VToMTE3Sync();
     DataCopyPad(maskOutTileGm[0], maskU8, DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-    MTE3ToSSync();
     MTE3ToMTE2Sync();
 
     VToSSync();
