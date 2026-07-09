@@ -266,7 +266,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.s2BaseSize = s2BaseSize_;
     param.costFunc = CalcCost;
     param.mode = load_balance::BalanceMode::BN1_S1;
-    param.l2Byte = 96U * 1024U * 1024U;     // Set sectionNum to 1
+    param.l2Byte = 0;     // Set sectionNum to 1
     param.fdTolerance = 10;                 // 300: least block
     param.fdLeastBlock = 3;
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
