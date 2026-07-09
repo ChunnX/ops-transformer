@@ -707,8 +707,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     # M→FIX: copy_l0c 等 gemm 完成
                     T.set_flag("m", "fix", 7)
                     T.wait_flag("m", "fix", 7)
-                    # 每 core 写自己的 64 个 K 行（不相交），普通 copy（非 atomic）
-                    T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, k_start:k_end, 0:DQueryIndex])
+                    # 每 core 写自己不相交的 64 个 K 行；用 atomic_add_l0c_to_gm 导出
+                    # （对齐已验证的 C2 dQueryIndex 导出；需 host 预先清零 dk_matmul_partial）
+                    T.tile.atomic_add(dk_matmul_partial[bz, s1_row, k_start:k_end, 0:DQueryIndex], DK_L0C)
 
                 T.set_cross_flag("FIX", 14)  # signal V scope 4 (scatter)
 
@@ -997,7 +998,8 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         # Zero workspaces before each call (gather_ws filled by V0 scope)
         d_query_index_accum.zero_()
-        d_key_index_out.zero_()  # atomic_add 目标必须归零（dk_matmul_partial 每行被 C3 全覆盖，无需清零）
+        d_key_index_out.zero_()  # atomic_add 目标必须归零
+        dk_matmul_partial.zero_()  # C3 现用 atomic_add_l0c_to_gm 导出，也需预先归零
 
         if _PROFILE:
             _t_prep_end.record()
