@@ -31,7 +31,7 @@ import torch_npu
 import torch.distributed as dist
 
 
-BLOCK_SIZE = 32
+BLOCK_SIZE = 0
 N_WARMUP = 2
 N_TRIALS = 3
 
@@ -64,7 +64,7 @@ def build_x1_scale_varying(M_total, n_pack):
 
 def make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed, x1_scale_varying=False):
     M_total = M_per_rank * ws
-    n_pack = (K + BLOCK_SIZE * 2 - 1) // (BLOCK_SIZE * 2)
+    n_pack = (K + 32 * 2 - 1) // (32 * 2)
 
     g_t = torch.Generator(); g_t.manual_seed(12345)
     target_row_bytes = torch.randint(0x10, 0x50, (K,), dtype=torch.uint8, generator=g_t)
@@ -112,8 +112,16 @@ def cross_rank_check(y):
     """各 rank 计算 full-y SHA，all_gather 后比较。返回 (all_agree, all_shas)。"""
     local_sha = sha_full(y)
     ws = dist.get_world_size()
-    all_shas = [None] * ws
-    dist.all_gather_object(all_shas, local_sha)
+    sha_bytes = bytes(local_sha, 'ascii')
+    local_ints = [int.from_bytes(sha_bytes[i:i+4], 'big') for i in range(0, 16, 4)]
+    local_t = torch.tensor(local_ints, dtype=torch.int32, device=y.device)
+    all_t = [torch.zeros(4, dtype=torch.int32, device=y.device) for _ in range(ws)]
+    dist.all_gather(all_t, local_t)
+    torch_npu.npu.synchronize()
+    all_shas = []
+    for t in all_t:
+        b = b''.join(int(v).to_bytes(4, 'big') for v in t.cpu().tolist())
+        all_shas.append(b.decode('ascii'))
     all_agree = len(set(all_shas)) == 1
     return all_agree, all_shas
 
