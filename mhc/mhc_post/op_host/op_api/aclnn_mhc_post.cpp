@@ -267,6 +267,8 @@ aclnnStatus aclnnMhcPostGetWorkspaceSize(const aclTensor *x, const aclTensor *hR
                                          const aclTensor *hPost, aclTensor *out, uint64_t *workspaceSize,
                                          aclOpExecutor **executor)
 {
+    L2_DFX_PHASE_1(aclnnMhcPost, DFX_IN(x, hRes, hOut, hPost), DFX_OUT(out));
+
     CHECK_COND(CheckNotNull(x, hRes, hOut, hPost, out) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
                "one of required inputs for aclnnMhcPostGetWorkspaceSize is nullptr.");
     CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize must not be nullptr.");
@@ -287,8 +289,6 @@ aclnnStatus aclnnMhcPostGetWorkspaceSize(const aclTensor *x, const aclTensor *hR
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
-
-    L2_DFX_PHASE_1(aclnnMhcPost, DFX_IN(params.x, params.hRes, params.hOut, params.hPost), DFX_OUT(params.out));
 
     // Convert input tensors to contiguous
     auto reformatedX = l0op::Contiguous(x, uniqueExecutor.get());
