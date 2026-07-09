@@ -238,15 +238,28 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 {
-    // MX 路径将一个 sparse KV block 映射为 S2=512，随后拆成两个 256-token
-    // C1/V1 subLoop。Q block size 仍保持原有 128。
-    const uint32_t expectedKVBlockSize =
-        (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) ? BSA_MXFP8_PA_BLOCK_SIZE : BSA_BLOCK_SIZE;
-    if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo_.kvBlockSizeVal != expectedKVBlockSize) {
+    // MX 路径的计算 tile 仍为 S2=512，但 PA/sparse KV block 粒度改为 128 或 64。
+    // kernel 会把 4 个 128-token block 或 8 个 64-token block 拼成一个 512-token tile。
+    if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "q_block_size/kv_block_size",
-            std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
-            "must be " + std::to_string(BSA_BLOCK_SIZE) + "/" + std::to_string(expectedKVBlockSize));
+            kOpName, "q_block_size", std::to_string(tilingInfo_.qBlockSizeVal),
+            "must be " + std::to_string(BSA_BLOCK_SIZE));
+        return ge::GRAPH_FAILED;
+    }
+    if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+        if (tilingInfo_.kvBlockSizeVal != BSA_MXFP8_KV_BLOCK_SIZE_128 &&
+            tilingInfo_.kvBlockSizeVal != BSA_MXFP8_KV_BLOCK_SIZE_64) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "kv_block_size", std::to_string(tilingInfo_.kvBlockSizeVal),
+                "must be " + std::to_string(BSA_MXFP8_KV_BLOCK_SIZE_128) + " or " +
+                    std::to_string(BSA_MXFP8_KV_BLOCK_SIZE_64) +
+                    " in quant_mode=2 MXFP8 full-quant scenario");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (tilingInfo_.kvBlockSizeVal != BSA_BLOCK_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "kv_block_size", std::to_string(tilingInfo_.kvBlockSizeVal),
+            "must be " + std::to_string(BSA_BLOCK_SIZE));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
