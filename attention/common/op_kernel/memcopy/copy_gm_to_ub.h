@@ -213,20 +213,20 @@ private:
     __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
                                           AntiqGmCoord &antiqGmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCal = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
 
         uint64_t dstOffset = 0;
         uint32_t copyFinishElmeCnt = 0;
         uint32_t curS2Idx = antiqGmCoord.s2Idx;
 
         while (copyFinishElmeCnt < antiqGmCoord.s2DealSize) {
-            uint32_t copyElemCnt = offsetCal.GetDimBlockSize() -
-                                   curS2Idx % offsetCal.GetDimBlockSize(); // 一次只能处理一个block
+            uint32_t copyElemCnt = offsetCalculator.GetDimBlockSize() -
+                                   curS2Idx % offsetCalculator.GetDimBlockSize(); // 一次只能处理一个block
             if (copyFinishElmeCnt + copyElemCnt > antiqGmCoord.s2DealSize) {
                 copyElemCnt = antiqGmCoord.s2DealSize - copyFinishElmeCnt; // 一个block未拷满
             }
 
-            uint64_t srcOffset = offsetCal.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
+            uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
             CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], 1, copyElemCnt,
                                copyElemCnt, copyElemCnt);
 
@@ -236,10 +236,11 @@ private:
         }
     }
     __aicore__ inline void CopyKeyScaleNDToND(LocalTensor<T> ubTensor, const GlobalTensor<T> gmTensor,
-        uint32_t dealRowCount, uint32_t actDataLen, uint64_t srcRowStride, uint64_t dstRowStride)
+                                              uint32_t dealRowCount, uint32_t actDataLen, uint64_t srcRowStride,
+                                              uint64_t dstRowStride)
     {
-        constexpr uint64_t UINT32_MAX_VALUE = 4294967295u;
         constexpr uint64_t UINT16_MAX_VALUE = 65535u;
+        constexpr uint64_t UINT32_MAX_VALUE = 4294967295u;
         uint32_t blockElemNum = 32UL / sizeof(T);
         if constexpr (IsSameType<T, int4b_t>::value) {
             constexpr uint32_t HALF_SIZE_DIVISOR = 2;
@@ -252,22 +253,22 @@ private:
         uint64_t srcStrideOfDataCopy = (srcRowStride - actDataLen) / blockElemNum;
         // 在有pad或srcStrideOfDataCopy不符合datacopy范围时，使用datacopypad拷贝完成
         if (unlikely(isPad || (srcStrideOfDataCopy > UINT16_MAX_VALUE))) {
-            DataCopyExtParams ubCopyParams;
-            ubCopyParams.blockCount = static_cast<uint16_t>(dealRowCount); // 外部传入
-            ubCopyParams.blockLen = actDataLen * sizeof(T);
-            ubCopyParams.srcStride = (srcRowStride - actDataLen) * sizeof(T);
-            ubCopyParams.dstStride = (dstRowStride - actDataLen) / blockElemNum; // 外部传入
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = static_cast<uint16_t>(dealRowCount); // 外部传入
+            dataCopyParams.blockLen = actDataLen * sizeof(T);
+            dataCopyParams.srcStride = (srcRowStride - actDataLen) * sizeof(T);
+            dataCopyParams.dstStride = (dstRowStride - actDataLen) / blockElemNum; // 外部传入
 
             DataCopyPadExtParams<T> dataCopyPadParams;
             dataCopyPadParams.isPad = true;
             dataCopyPadParams.leftPadding = 0;
             dataCopyPadParams.rightPadding = (blockElemNum - (actDataLen % blockElemNum)) % blockElemNum;
             dataCopyPadParams.paddingValue = 1;
-            DataCopyPad(ubTensor, gmTensor, ubCopyParams, dataCopyPadParams);
+            DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
         } else { // 其他情况使用datacopy拷贝完成
             DataCopyParams repeatParams;
-            repeatParams.blockLen = actDataLen / blockElemNum;
             repeatParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            repeatParams.blockLen = actDataLen / blockElemNum;
             repeatParams.srcStride = (srcRowStride - actDataLen) / blockElemNum;
             repeatParams.dstStride = (dstRowStride - actDataLen) / blockElemNum;
             DataCopy(ubTensor, gmTensor, repeatParams);
@@ -284,8 +285,6 @@ public:
     {
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
-        } else if constexpr (GM_FORMAT == GmFormat::NGTD) {
-            ProcessGS1(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
@@ -293,6 +292,8 @@ public:
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
             }
+        } else if constexpr (GM_FORMAT == GmFormat::NGTD) {
+            ProcessGS1(dstTensor, srcTensor, gmCoord);
         }
     }
 
@@ -304,16 +305,16 @@ private:
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         } else {
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() == 0) {
-                s1Size = offsetCalculator.GetDimS1();
-            } else {
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
+            } else {
+                s1Size = offsetCalculator.GetDimS1();
             }
         }
-        uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
-        uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
+        uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
+        uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
 
         uint64_t queryGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0, gmCoord.dIdx);
