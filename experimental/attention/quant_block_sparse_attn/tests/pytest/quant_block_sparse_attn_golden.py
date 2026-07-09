@@ -194,16 +194,13 @@ def _query_index(cu_seqlens_q, batch_idx, q_idx):
     return int(cu_seqlens_q[batch_idx].item()) + q_idx
 
 
-def _set_output(output, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
+def _set_output(output, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
     output[_query_index(cu_seqlens_q, batch_idx, q_idx), head_idx] = value
 
 
-def _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
+def _set_lse(softmax_lse, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
     token_idx = _query_index(cu_seqlens_q, batch_idx, q_idx)
-    if layout_q == "NTD":
-        softmax_lse[token_idx, head_idx] = value
-    else:
-        softmax_lse[head_idx, token_idx] = value
+    softmax_lse[head_idx, token_idx] = value
 
 
 def _make_scale_tensor(shape, pattern):
@@ -293,10 +290,7 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
 
     total_q = int(cu_seqlens_q[-1].item())
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=output_dtype)
-    if layout_q == "NTD":
-        softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
-    else:
-        softmax_lse = torch.full((n1, total_q), EMPTY_LSE, dtype=torch.float32)
+    softmax_lse = torch.full((n1, total_q), EMPTY_LSE, dtype=torch.float32)
 
     qb_max = math.ceil(case["S1"] / sparse_q_block_size)
     for batch_idx in range(batch):

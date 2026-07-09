@@ -21,8 +21,8 @@ const int64_t DIM_THREE = 3;
 const int64_t FP32_BYTES = 4;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，TND/NTD 输入均输出 TND 排布
-//   - softmax_lse:   FLOAT32，return_softmax_lse 为真时 TND 为 (N1,T)，NTD 为 (T,N1)，否则空张量
+//   - attention_out: BF16，layoutType只支持 "TND"
+//   - softmax_lse:   FLOAT32，layoutType只支持 "TND"
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
                                                                 c10::string_view layout_q, bool return_softmax_lse)
 {
@@ -44,12 +44,8 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
     int64_t d_size = query.size(2);
 
     at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
-    at::SmallVector<int64_t, SIZE> softmax_lse_size;
-    if (is_ntd) {
-        softmax_lse_size = {t_size, n1_size};
-    } else {
-        softmax_lse_size = {n1_size, t_size};
-    }
+    at::SmallVector<int64_t, SIZE> softmax_lse_size = {n1_size, t_size};
+
     if (!return_softmax_lse) {
         softmax_lse_size = {};
     }
@@ -106,7 +102,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     }
 
     // construct the output tensors
-    std::tuple<at::Tensor, at::Tensor> outputs = construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
+    std::tuple<at::Tensor, at::Tensor> outputs =
+        construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
 

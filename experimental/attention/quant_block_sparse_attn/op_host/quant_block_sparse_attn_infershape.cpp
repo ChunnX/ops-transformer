@@ -47,8 +47,8 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
     }
     const std::string layoutQ = optiling::BSAGetStringAttr(attrs, optiling::BSA_LAYOUT_Q_ATTR_INDEX, "TND");
     if (queryShape->GetDimNum() != 3U || (layoutQ != "TND" && layoutQ != "NTD")) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query", std::to_string(queryShape->GetDimNum()) +
-                                                     "D with layout " + layoutQ,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
+                                                 std::to_string(queryShape->GetDimNum()) + "D with layout " + layoutQ,
                                                  "3D with layout TND or 3D with layout NTD");
         return ge::GRAPH_FAILED;
     }
@@ -79,8 +79,8 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // T
         softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // N1
     } else {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
-        softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
+        softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // T
+        softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // N1
     }
     return ge::GRAPH_SUCCESS;
 }
