@@ -83,7 +83,8 @@ public:
             if ((aivAddOneIndex < this->aivCoreNum + 1) && (vectorIndex >= aivAddOneIndex)) {
                 perAivM += 1;
                 blockAddrOffset = static_cast<int64_t>(aivAddOneIndex) * static_cast<int64_t>(perAivM - 1) *
-                                  static_cast<int64_t>(this->N) + static_cast<int64_t>(vectorIndex - aivAddOneIndex) *
+                                  static_cast<int64_t>(this->N) +
+                                  static_cast<int64_t>(vectorIndex - aivAddOneIndex) *
                                   static_cast<int64_t>(perAivM) * static_cast<int64_t>(this->N);
             } else {
                 blockAddrOffset = static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(perAivM) *
