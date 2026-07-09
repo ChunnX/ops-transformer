@@ -43,7 +43,7 @@ Set the `ALL_CAPS` constants at the top of the file to control what gets run. Wh
 * `PRINT_MASK`: To visually check if the mask is as expected
 * `PRINT_BLOCK_EQUALITY`: if the correctness test fails, you can check which blocks in the outputs match with the reference and which not. The block granularity to visualize is given by `PRINT_HEIGHT` and `PRINT_WIDTH`
 * `RUN_REFERENCE`: Besides measuring time, also test correctness. This only is possible for small enough masks, otherwise you will get OOM in the reference run. For this reason, you can disable this for very long contexts, and enable it for short enough sequences.
-* `TORCH_REFERENCE`: If `True`, correctness will be tested against the torch attention implementation. If `False`, for block-sparse attention the reference is the torch_npu dense with the corresponding attention mask (like in `sparse_block` mode). Please only use `H=1`, as torch_npu doesn't support different masks for different heads.
+* `TORCH_REFERENCE`: If `True`, correctness will be tested against the torch attention implementation. If `False`, for block-sparse attention the reference is the TorchNPU dense with the corresponding attention mask (like in `sparse_block` mode). Please only use `H=1`, as TorchNPU doesn't support different masks for different heads.
 
 ## Examples
 

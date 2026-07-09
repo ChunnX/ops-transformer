@@ -11,7 +11,7 @@
 - Compiler: GCC 9.4.0+
 - Frameworks:
   - PyTorch>=2.6.0
-  - torch_npu (matching your PyTorch version)
+  - TorchNPU (matching your PyTorch version)
 - Toolkit: Ascend CANN Toolkit
 
 ### Installation Steps

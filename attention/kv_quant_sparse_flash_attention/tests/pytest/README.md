@@ -5,7 +5,7 @@
 基于pytest测试框架，实现kv_quant_sparse_flash_attention算子的功能验证：
 
 - **CPU侧**：复现算子功能用以生成golden数据
-- **NPU侧**：通过torch_npu进行算子直调获取实际数据
+- **NPU侧**：通过TorchNPU进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
 支持三条主流程：
@@ -47,7 +47,7 @@
 
 #### 前置要求
 
-1、 确认torch_npu为最新版本
+1、 确认TorchNPU为最新版本
 2、 参考[Attention融合算子Experimental使用说明](https://gitcode.com/cann/ops-transformer/blob/master/attention/Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 
 #### custom包调用

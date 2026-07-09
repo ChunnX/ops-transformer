@@ -61,7 +61,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
    # 指定路径安装
    # source ${install-path}/ascend-toolkit/set_env.sh
     ```  
-3. **安装torch与torch_npu包**
+3. **安装torch与TorchNPU包**
    
    根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl载链接为:[官网地址](http://download.pytorch.org/whl/torch)
 
@@ -71,7 +71,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     pip install torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl
     ```
 
-   根据实际环境，安装对应torch-npu包: `torch_npu-${torch_version}-${python_version}-linux_${arch}.whl`
+   根据实际环境，安装对应TorchNPU包: `torch_npu-${torch_version}-${python_version}-linux_${arch}.whl`
 
    可以直接使用pip命令下载安装，命令如下：
 
@@ -83,7 +83,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     - \$\{python\_version\}：表示python版本号。
     - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
 
-    注：目前torch_npu支持RunOpApiV2接口的版本包括2.1.0、2.4.0+。
+    注：目前TorchNPU支持RunOpApiV2接口的版本包括2.1.0、2.4.0+。
 
 ## 安装步骤 | Installation
 
