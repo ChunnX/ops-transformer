@@ -64,7 +64,6 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
 
 # Instantiate the builder
 flash_attn_metadata_op_builder = FlashAttnMetadataOpBuilder()
-op_module = flash_attn_metadata_op_builder.load()
 
 
 @impl(AS_LIBRARY, flash_attn_metadata_op_builder.name, "PrivateUse1")
@@ -79,6 +78,7 @@ def npu_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim,
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
+    op_module = flash_attn_metadata_op_builder.load()
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv

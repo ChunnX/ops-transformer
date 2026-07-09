@@ -67,7 +67,7 @@ REG_OP(MatmulAlltoAll)
     .ATTR(transpose_x1, Bool, false)
     .ATTR(transpose_x2, Bool, false)
     .ATTR(group_size, Int, 0)
-    .ATTR(comm_mode, String, "")
+    .ATTR(comm_mode, String, "ai_cpu")
     .OP_END_FACTORY_REG(MatmulAlltoAll)
 } // namespace ge
 

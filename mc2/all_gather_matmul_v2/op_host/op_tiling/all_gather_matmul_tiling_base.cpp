@@ -402,22 +402,24 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
 
 /* *
  * Due to communication constraints:
- * 1. The maximum number of communication attempts is limited to 63
- * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
+ * 1. The maximum number of communication attempts is limited to HCCL_MAX_COMM_TILES
+ * 2. The data volume of a single communication shall not exceed 256MB in CCU
+ * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSingleM).c_str(), "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
+            std::to_string(sizeOfSingleM).c_str(),
+            "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
         return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, HCCL_MAX_COMM_TILES) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB even after splitting M into 63 parts"),
+            std::to_string(sizeOfSplitM).c_str(),
+            "The value of x1 size must not exceed 256MB even after splitting M into 62 parts"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -590,9 +592,9 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return false);
     OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) ||
-        (std::strncmp(commMode_, "ai_cpu", CMP_MAX_LEN) == 0) || (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0)),
+        (std::strncmp(commMode_, "ai_cpu", CMP_MAX_LEN) == 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
-        "The value of comm_mode must be ccu, ai_cpu or empty string"),
+        "The value of comm_mode must be ccu, ai_cpu"),
         return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), OP_LOGE(opName_, "GetRankSize failed."),
         return false);
@@ -711,10 +713,6 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     if (npuArch_ == NpuArch::DAV_3510) {
         if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strncmp(commMode_, "", CMP_MAX_LEN) == 0) { // empty string
-            if (rankSize_ <= COMM_MODE_RANKSIZE) {
-                commMode = Mc2Comm::COMM_MODE_CCU;
-            }
         }
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
