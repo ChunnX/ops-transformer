@@ -57,6 +57,7 @@ void MoeReRoutingReTiling::SplitCore()
 
 ge::graphStatus MoeReRoutingReTiling::SplitUb()
 {
+    // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     if (hasTopkWeight_) {
         reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
