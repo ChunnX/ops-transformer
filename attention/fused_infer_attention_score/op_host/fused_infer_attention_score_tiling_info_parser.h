@@ -67,6 +67,7 @@ public:
     void GetKvStorageMode();
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
+    void GetKvIsContiguous();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -144,6 +145,9 @@ public:
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
     bool isTensorV1_ = false;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+    int32_t keyRopeNonContigDim_ = -1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
     MlaMode mlaMode_ = MlaMode::NO_MLA;

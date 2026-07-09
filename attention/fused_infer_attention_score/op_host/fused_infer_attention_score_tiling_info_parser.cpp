@@ -29,6 +29,31 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
+namespace {
+// 判断tensor是否连续，逻辑与 BaseChecker::CheckTensorContiguous 一致
+ge::graphStatus CheckTensorContiguousLocal(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+    const gert::Stride *strides, int32_t &index)
+{
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1;
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (inputShape.GetDim(index) == 1) {
+            continue;
+        }
+        if (preStride != strides->GetStride(index)) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride *= inputShape.GetDim(index);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace
+
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
@@ -241,19 +266,37 @@ ge::graphStatus FiaInfoParser::GetStrides()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FiaInfoParser::GetKvisContiguous(){
-    if (isTensorV1_ || keyStrides_ == nullptr || valueStrides_ == nullptr){
+void FiaInfoParser::GetKvIsContiguous(){
+    if (isTensorV1_ ){
         return ;
     }
 
-    if (KvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
-        return ;
-    }
-
-    // PA场景：检测kv是否非连续，是则标记NON_CONTIGUOUS并记dimIndex供checker复用
+    // 检测kv是否非连续，是则标记NON_CONTIGUOUS并记dimIndex供checker复用
     int32_t keyDimIdx = 0;
     int32_t valDimIdx = 0;
-    const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+    int32_t keyRopeDimIdx = 0;
+    bool keyContig = false;
+    bool valContig = false;
+    bool keyRopeContig = false;
+    
+    if (keyStrides_ != nullptr) {
+        const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+        keyContig = (CheckTensorContiguousLocal(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) == ge::GRAPH_SUCCESS);
+        keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
+
+    }
+
+    if (valueStrides_ != nullptr) {
+        const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
+        valContig = (CheckTensorContiguousLocal(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) == ge::GRAPH_SUCCESS);
+        valueNonContigDim_ = valContig ? -1 : valDimIdx;
+    }
+
+    if (kRopeStrides_ != nullptr) {
+        const gert::Shape &keyRopeShape = opParamInfo_.keyRope.tensor->GetStorageShape();
+        keyRopeContig = (CheckTensorContiguousLocal(keyRopeShape.GetDimNum(), keyRopeShape, kRopeStrides_, keyRopeDimIdx) == ge::GRAPH_SUCCESS);
+        keyRopeNonContigDim_ = keyRopeContig ? -1 : keyRopeDimIdx;
+    }
 }
 
 ge::graphStatus FiaInfoParser::GetNpuInfo()
@@ -675,6 +718,7 @@ void FiaInfoParser::GetKvStorageMode()
             kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
         }
     }
+    GetKvIsContiguous();
 }
 
 void FiaInfoParser::GetQuantMode()
@@ -1498,6 +1542,11 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     GenerateDtypeInfo(fiaInfo);
     fiaInfo.kvStorageMode = kvStorageMode_;
     fiaInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+
+    fiaInfo.keyNonContigDim = keyNonContigDim_;
+    fiaInfo.valueNonContigDim = valueNonContigDim_;
+    fiaInfo.keyRopeNonContigDim = keyRopeNonContigDim_;
+
     fiaInfo.ropeMode = ropeMode_;
     fiaInfo.mlaMode = mlaMode_;
     fiaInfo.quantMode = quantMode_;
@@ -1578,6 +1627,9 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
+    if (ge::GRAPH_SUCCESS != GetStrides()){
+        return ge::GRAPH_FAILED;
+    }
     GetKvStorageMode();
     GetQuantMode();
     if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
