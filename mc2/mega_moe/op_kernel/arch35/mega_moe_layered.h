@@ -871,6 +871,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchComputeK
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
+    PRINTF("DispatchComputeKernel success!");
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -973,6 +974,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKern
             }
         }
     }
+    PRINTF("DispatchSendKernel success!");
 }
 
 template <TemplateMegaMoeTypeClass>
