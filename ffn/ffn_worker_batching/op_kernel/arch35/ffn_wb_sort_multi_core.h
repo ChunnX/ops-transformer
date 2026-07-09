@@ -337,6 +337,10 @@ __aicore__ inline void KernelSortMaskMultiCore::CopyOutValidCount()
 {
     LocalTensor<int32_t> outLocal = sortDataCopyOutQueue.AllocTensor<int32_t>();
     outLocal.SetValue(0, this->totalValidCnt_);
+    // 标量(S)写 UB 后、MTE3 搬出前必须同步：否则 DataCopyPad 可能在 SetValue 落地前读到刚
+    // AllocTensor 的未初始化 UB，atomic-add 上去即垃圾值（多核高频偶发 actual_token_num 变负/减半）。
+    // 单核路径 rsvdCnt 走 SetValue+DataCacheCleanAndInvalid 无此问题；本文件 :170 亦用同款 S_MTE3。
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     DataCopyParams params;
     params.blockCount = 1;
     params.blockLen = 1 * sizeof(int32_t);
