@@ -572,13 +572,14 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
         } else {
             scaleTemp = reduceMax / 127.0f;
         }
-        Duplicate<float>(scaleLocal, scaleTemp, 8);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            Duplicate<float>(scaleLocal, scaleOutVal, 8);
+        } else {
+            Duplicate<float>(scaleLocal, scaleTemp, 8);
+        }
         scaleOutQueue_.EnQue(scaleLocal);
         scaleLocal = scaleOutQueue_.DeQue<float>();
 
-        if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            scaleLocal.SetValue(0, scaleOutVal);
-        }
         DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});
 
         for (int64_t j = 0; j < colLoops_; j++) {

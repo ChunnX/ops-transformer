@@ -28,9 +28,7 @@ constexpr int64_t FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM = 1;
 __aicore__ inline void CopySmallFullLoadQuantOutToBatch(LocalTensor<int8_t> &dstLocal, LocalTensor<int8_t> &srcLocal,
                                                         int64_t dstOffset, int64_t copyBytes)
 {
-    for (int64_t i = 0; i < copyBytes; i++) {
-        dstLocal.SetValue(dstOffset + i, srcLocal.GetValue(i));
-    }
+    DataCopy(dstLocal[dstOffset], srcLocal, copyBytes);
 }
 
 template <typename T, typename QuantT = int8_t>
@@ -400,7 +398,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
                     outBatchLocal = (outBatchBufIdx == 0) ? outBatchLocal0 : outBatchLocal1;
                 }
 
-                scaleBatchLocal.SetValue(scaleBatchCount, scaleLocal.GetValue(0));
+                DataCopy(scaleBatchLocal[scaleBatchCount], scaleLocal, 1);
                 scaleBatchCount++;
                 CopySmallFullLoadQuantOutToBatch(outBatchLocal, outLocal, outBatchCount * colsAsInt8_, colsAsInt8_);
                 outBatchCount++;
