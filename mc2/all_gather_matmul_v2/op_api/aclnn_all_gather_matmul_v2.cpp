@@ -72,14 +72,17 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 }
 
 // 根据API定义，需要列出所能支持的所有dtype
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16, op::DataType::DT_BF16,
-    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16,     op::DataType::DT_BF16,     op::DataType::DT_FLOAT8_E4M3FN,
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16,
     op::DataType::DT_BF16, op::DataType::DT_FLOAT };
 
 static const std::initializer_list<op::DataType> FP8_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT8_E4M3FN,
     op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
+
+static const std::initializer_list<op::DataType> FP4_DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT4_E2M1 };
 
 static const std::initializer_list<op::DataType> OUT_DTYPE_SUPPORT_LIST = BIAS_DTYPE_SUPPORT_LIST;
 
@@ -112,9 +115,12 @@ static bool CheckDataTypeFp16Valid(const aclTensor *x1, const aclTensor *x2, con
     return true;
 }
 
-static bool CheckDataTypeFp8Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
+static bool CheckDataTypeFp8Fp4Valid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias)
 {
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    }
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
         OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
     }
     if (bias != nullptr) {
@@ -145,8 +151,8 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
 
     if (IsFp16orBf16Input(x1)) {
         return CheckDataTypeFp16Valid(x1, x2, bias, output);
-    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        return CheckDataTypeFp8Valid(x1, x2, bias);
+    } else if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
+        return CheckDataTypeFp8Fp4Valid(x1, x2, bias);
     }
     return true;
 }
@@ -529,7 +535,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     OP_LOGD("X1 is %s.", x1->ToString().GetString());
     OP_LOGD("X2 is %s.", x2->ToString().GetString());
 
-    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
+    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST) || CheckSupportDtype(x1, FP4_DTYPE_SUPPORT_LIST)) {
         auto retScaleChk = CheckScale(x1Scale, x2Scale, quantScale);
         CHECK_RET(retScaleChk == ACLNN_SUCCESS, retScaleChk);
     }

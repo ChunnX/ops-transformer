@@ -43,9 +43,13 @@ const std::set<int> SUPPORT_RANK_SIZE{ 2, 4, 8, 16, 32, 64 };
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 static constexpr int64_t CMP_MAX_LEN = 7;
+static constexpr int GET_SIZE_BY_DATATYPE_THRESHOLD = 1000;
+static constexpr uint64_t SINGLE_BYTE_BIT_LENGTH = 8;
 
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
     ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8 };
+
+static const std::initializer_list<ge::DataType> FP4_DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT4_E2M1 };
 
 static bool CheckSupportDtype(const ge::DataType x1DataType, const std::initializer_list<ge::DataType> &supportTypes)
 {
@@ -151,11 +155,12 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
         x2KValue = x2Dim0;
     }
 
-    if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
+    if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST) ||
+        CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP4_DTYPE_SUPPORT_LIST)) {
         OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim1 and x2KValue",
             (std::to_string(x1Dim1) + " and " + std::to_string(x2KValue)).c_str(),
-            "If the dtype of input is fp8, the value of x1Dim1 must be equal to that of x2KValue"),
+            "If the dtype of input is fp8 or fp4, the value of x1Dim1 must be equal to that of x2KValue"),
             return false);
     }
 
@@ -410,7 +415,16 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
-    uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
+    uint64_t sizeOfSingleM = 0;
+    if (ge::GetSizeByDataType(args_.geAType) <
+        GET_SIZE_BY_DATATYPE_THRESHOLD) { // ge::GetSizeByDataType对于传入的data_type所占用的内存小于1byte，
+                                          // 返回1000+该数据类型的bit位数，比如DT_INT4数据类型，返回1004。
+        sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
+    } else {
+        sizeOfSingleM = args_.kValue * args_.rankDim *
+                        static_cast<uint64_t>(ge::GetSizeByDataType(args_.geAType) - GET_SIZE_BY_DATATYPE_THRESHOLD)
+                        / SINGLE_BYTE_BIT_LENGTH;
+    }
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
             std::to_string(sizeOfSingleM).c_str(),
@@ -435,7 +449,11 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
 
     SetMC2AllGatherDataInfo(rcsCfg, mmTiling, tailTiling, debugMode_);
 
-    dataType = (static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType))); // hccl数据类型
+    if (args_.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+        dataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8);
+    } else {
+        dataType = (static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType))); // hccl数据类型
+    }
 
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
@@ -652,6 +670,15 @@ ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+uint64_t AllGatherMatmulTilingBase::CalcGatherLen(uint32_t dimA, uint32_t dimB, uint64_t alignAddrLen)
+{
+    // FP4每字节存放2个元素，按元素数/2计字节数；其余dtype按元素数*dtypeSize
+    if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
+        return mc2tiling::AlignUp(static_cast<uint64_t>(dimA) * static_cast<uint64_t>(dimB) / 2U, alignAddrLen);
+    }
+    return mc2tiling::AlignUp(dimA * dimB * args_.inputDtypeSize, alignAddrLen);
+}
+
 uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
 {
     constexpr uint64_t alignAddrLen = 512;
@@ -680,9 +707,9 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
         uint64_t gatherLen = 0;
         if (args_.isStorageGather == false) {
             if (gatherIndex == 0U) { // A矩阵
-                gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK * args_.inputDtypeSize, alignAddrLen);
+                gatherLen = CalcGatherLen(rcsCfg.rankM, rcsCfg.rankK, alignAddrLen);
             } else {
-                gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN * args_.inputDtypeSize, alignAddrLen);
+                gatherLen = CalcGatherLen(rcsCfg.rankK, rcsCfg.rankN, alignAddrLen);
             }
             gatherLen *= rcsCfg.rankDim;
         }

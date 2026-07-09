@@ -53,7 +53,6 @@ static constexpr size_t DIM_2 = 2;
 static constexpr size_t UNDEFINED_VALUE = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
-static constexpr int64_t MXFP4_PACK_FACTOR = 2;
 
 static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
                                      const gert::Shape *gmmWeightShape)
@@ -152,16 +151,7 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             permuteOutShape->SetDim(DIM_1, FIRST_ELE_SIZE);
         } else {
             permuteOutShape->SetDim(DIM_0, a);
-            int64_t fixFp4 = h;
-            if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
-                OPS_CHECK(fixFp4 % MXFP4_PACK_FACTOR != 0,
-                          OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "gmm_x",
-                          std::to_string(fixFp4).c_str(),
-                          "When the quantization mode is mxfp4, the second dim of gmm_x must be divisible by 2"),
-                          return ge::GRAPH_FAILED);
-                fixFp4 = static_cast<int64_t>(CeilDiv(h, MXFP4_PACK_FACTOR));
-            }
-            permuteOutShape->SetDim(DIM_1, fixFp4);
+            permuteOutShape->SetDim(DIM_1, h);
         }
     }
     return ge::GRAPH_SUCCESS;
